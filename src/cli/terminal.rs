@@ -171,80 +171,9 @@ pub fn get_current_session() -> Option<String> {
     crate::get_current_session()
 }
 
-/// Whether a panic in this process should relabel the on-disk session as crashed.
-///
-/// Only an `Active` session can legitimately make that transition. A dying
-/// client (closed terminal window, dropped SSH) must not relabel a session that
-/// the shared server still owns, nor write its stale snapshot over the server's
-/// newer one. See #599; `mark_current_session_crashed` already had this guard.
-fn should_record_panic_as_crash(status: &session::SessionStatus) -> bool {
-    matches!(status, session::SessionStatus::Active)
-}
-
 pub fn install_panic_hook() {
-    use std::sync::atomic::{AtomicI64, AtomicU8, Ordering};
-
-    // Rate guard: even with UnhandledPanic::Task (Fix D) we still want to die
-    // if panics are arriving faster than once every 12 s — a runaway panic
-    // loop is otherwise indistinguishable from a hot loop. We track the
-    // timestamp (ms since epoch) of the most recent panic; if the gap is
-    // below `PANIC_RATE_WINDOW_MS` five times in a row we `exit` after the
-    // next one.
-    const PANIC_RATE_WINDOW_MS: i64 = 12_000;
-    const PANIC_RATE_LIMIT: u8 = 5;
-
-    static PANIC_TS: AtomicI64 = AtomicI64::new(0);
-    static PANIC_BURST: AtomicU8 = AtomicU8::new(0);
-
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
-        // 0. Rate guard — runs first so we still call the cleanup branch
-        //    below even when we force-exit.
-        let now_ms = chrono::Utc::now().timestamp_millis();
-        let prev_ms = PANIC_TS.swap(now_ms, Ordering::SeqCst);
-        let mut burst = PANIC_BURST.load(Ordering::SeqCst);
-        let in_window = prev_ms != 0 && (now_ms - prev_ms) < PANIC_RATE_WINDOW_MS;
-        if in_window {
-            if burst.saturating_add(1) >= PANIC_RATE_LIMIT {
-                default_hook(info);
-                std::process::exit(101);
-            }
-            burst = burst.saturating_add(1);
-        } else if prev_ms != 0 {
-            burst = 0;
-        }
-        PANIC_BURST.store(burst, Ordering::SeqCst);
-
-        // 1. Best-effort synchronous terminal cleanup so the user is not left
-        //    with raw mode / focus events / bracketed paste still enabled when
-        //    the panic propagates to std::process::exit (issue #214 / report
-        //    §4.4). Errors here are silently swallowed because the panic
-        //    handler must not panic itself.
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableFocusChange);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableBracketedPaste);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::terminal::LeaveAlternateScreen);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::cursor::Show);
-
-        // 2. Persist the panic details to a sibling log file so the next
-        //    process can diagnose even when stderr was swallowed by a parent
-        //    shell or by the backgrounded jcode server.
-        if let Some(session_id) = get_current_session() {
-            let panic_path = std::path::PathBuf::from(format!("{session_id}.panic.log"));
-            if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open(&panic_path) {
-                use std::io::Write as _;
-                let timestamp = chrono::Utc::now().to_rfc3339();
-                let payload = info.payload_as_str().unwrap_or("<no message>");
-                let _ = writeln!(f, "PANIC at {timestamp}: {payload}");
-                if let Some(loc) = info.location() {
-                    let _ = writeln!(f, "  at {}:{}:{}", loc.file(), loc.line(), loc.column());
-                }
-                let _ = f.flush();
-            }
-        }
-
-        // 3. Delegate to the previous (default) hook so the user sees the
-        //    panic message and any RUST_BACKTRACE output as usual.
         default_hook(info);
 
         if let Some(session_id) = get_current_session() {
@@ -254,10 +183,7 @@ pub fn install_panic_hook() {
                 telemetry::record_crash(&provider, &model, telemetry::SessionEndReason::Panic);
             }
 
-            if std::env::var_os("JCODE_SSH_REMOTE").is_none()
-                && let Ok(mut session) = session::Session::load(&session_id)
-                && should_record_panic_as_crash(&session.status)
-            {
+            if let Ok(mut session) = session::Session::load(&session_id) {
                 session.mark_crashed(Some(format!("Panic: {}", info)));
                 let _ = session.save();
             }
@@ -266,9 +192,6 @@ pub fn install_panic_hook() {
 }
 
 pub fn mark_current_session_crashed(message: String) {
-    if std::env::var_os("JCODE_SSH_REMOTE").is_some() {
-        return;
-    }
     if let Some(session_id) = get_current_session() {
         if let Some((provider, model)) = telemetry::current_provider_model() {
             telemetry::record_crash(&provider, &model, telemetry::SessionEndReason::Signal);
@@ -298,6 +221,9 @@ pub fn show_crash_resume_hint() {
         return;
     }
 
+    let (id, name) = &crashed[0];
+    let session_label = id::extract_session_name(id).unwrap_or(name.as_str());
+
     // Crash hints print outside the TUI, possibly on a console that never had
     // VT processing enabled (issue #498), so gate the color codes.
     let ansi = crate::console::stderr_supports_ansi();
@@ -307,101 +233,21 @@ pub fn show_crash_resume_hint() {
         ("", "", "")
     };
 
-    for line in crash_resume_hint_lines(&crashed, yellow, bold, reset) {
-        eprintln!("{}", crate::output_style::terminal_text(&line));
+    if crashed.len() == 1 {
+        eprintln!(
+            "{yellow}💥 Session {bold}{}{reset}{yellow} crashed. Resume with:{reset}  jcode --resume {}",
+            session_label, id
+        );
+    } else {
+        eprintln!(
+            "{yellow}💥 {} sessions crashed recently. Most recent: {bold}{}{reset}",
+            crashed.len(),
+            session_label
+        );
+        eprintln!("{yellow}   Resume with:{reset}  jcode --resume {}", id);
+        eprintln!("{yellow}   List all:{reset}     jcode --resume");
     }
     eprintln!();
-}
-
-/// Build the crash-resume hint lines for `crashed`, newest first.
-///
-/// Pure so the wording is testable: the lines are printed to stderr outside the
-/// TUI, where nothing asserts on them, and the bug in issue #690 was purely
-/// about wording (the single-session form never mentioned that bare
-/// `jcode --resume` opens a searchable picker, so it read as "memorize this ID
-/// or lose the session").
-fn crash_resume_hint_lines(
-    crashed: &[(String, String)],
-    yellow: &str,
-    bold: &str,
-    reset: &str,
-) -> Vec<String> {
-    let Some((id, name)) = crashed.first() else {
-        return Vec::new();
-    };
-    let session_label = id::extract_session_name(id).unwrap_or(name.as_str());
-
-    if crashed.len() == 1 {
-        vec![
-            format!(
-                "{yellow}💥 Session {bold}{session_label}{reset}{yellow} crashed. Resume with:{reset}  jcode --resume {id}"
-            ),
-            // Always mention the picker. Showing only the ID form reads as
-            // "write this down or lose the session", when bare
-            // `jcode --resume` opens a searchable list (issue #690).
-            format!("{yellow}   Or browse all:{reset} jcode --resume"),
-        ]
-    } else {
-        vec![
-            format!(
-                "{yellow}💥 {} sessions crashed recently. Most recent: {bold}{session_label}{reset}",
-                crashed.len()
-            ),
-            format!("{yellow}   Resume with:{reset}  jcode --resume {id}"),
-            format!("{yellow}   List all:{reset}     jcode --resume"),
-        ]
-    }
-}
-
-#[cfg(test)]
-mod crash_resume_hint_tests {
-    use super::crash_resume_hint_lines;
-
-    fn session(id: &str, name: &str) -> (String, String) {
-        (id.to_string(), name.to_string())
-    }
-
-    #[test]
-    fn no_crashed_sessions_produces_no_hint() {
-        assert!(crash_resume_hint_lines(&[], "", "", "").is_empty());
-    }
-
-    /// Issue #690: a user who cannot memorize the ID must still be told how to
-    /// get to the picker.
-    #[test]
-    fn single_session_hint_also_points_at_the_picker() {
-        let lines = crash_resume_hint_lines(&[session("ses_koala_123", "koala")], "", "", "");
-        let joined = lines.join("\n");
-
-        assert!(
-            joined.contains("jcode --resume ses_koala_123"),
-            "the direct resume command must still be offered: {joined}"
-        );
-        assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("Or browse all: jcode --resume")),
-            "the picker form (bare --resume) must be mentioned too: {joined}"
-        );
-    }
-
-    #[test]
-    fn multiple_sessions_hint_lists_recent_and_the_picker() {
-        let lines = crash_resume_hint_lines(
-            &[
-                session("ses_koala_123", "koala"),
-                session("ses_otter_456", "otter"),
-            ],
-            "",
-            "",
-            "",
-        );
-        let joined = lines.join("\n");
-
-        assert!(joined.contains("2 sessions crashed"), "{joined}");
-        assert!(joined.contains("jcode --resume ses_koala_123"), "{joined}");
-        assert!(joined.contains("List all:"), "{joined}");
-    }
 }
 
 fn init_tui_terminal(inherited_terminal: bool) -> Result<ratatui::DefaultTerminal> {
@@ -561,7 +407,7 @@ fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
         if state.keyboard_enhanced {
             tui::disable_keyboard_enhancement();
         }
-        jcode_tui_style::restore_terminal_quietly();
+        ratatui::restore();
     }
 }
 
@@ -611,11 +457,7 @@ fn write_session_resume_hint(mut writer: impl Write, session_id: &str) -> io::Re
         "\x1b[33mSession \x1b[1m{}\x1b[0m\x1b[33m - to resume:\x1b[0m",
         session_name
     )?;
-    if let Some(command) = super::ssh::resume_hint(session_id) {
-        writeln!(writer, "  {command}")?;
-    } else {
-        writeln!(writer, "  jcode --resume {}", session_id)?;
-    }
+    writeln!(writer, "  jcode --resume {}", session_id)?;
     writeln!(writer)?;
     Ok(())
 }
@@ -888,52 +730,5 @@ mod tests {
         let error = write_session_resume_hint(ClosedWriter, "session_closed_pipe")
             .expect_err("closed stderr should be reported as an I/O error");
         assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
-    }
-}
-
-#[cfg(test)]
-mod panic_crash_labeling_tests {
-    //! Regression coverage for #599.
-    //!
-    //! Closing a terminal (or dropping SSH) makes `ratatui::restore()`'s
-    //! internal `eprintln!` panic with EIO. The panic hook then relabeled the
-    //! session as `Crashed` and saved the dying client's stale snapshot over the
-    //! server's newer one. Only an `Active` session may be relabeled.
-    use super::*;
-
-    #[test]
-    fn active_session_is_still_labeled_crashed_on_panic() {
-        assert!(should_record_panic_as_crash(
-            &session::SessionStatus::Active
-        ));
-    }
-
-    #[test]
-    fn already_crashed_session_is_not_relabeled() {
-        assert!(!should_record_panic_as_crash(
-            &session::SessionStatus::Crashed {
-                message: Some("earlier crash".to_string())
-            }
-        ));
-    }
-
-    #[test]
-    fn completed_session_is_not_relabeled_by_a_dying_client() {
-        // The exact #599 shape: the session lives on in the shared server and is
-        // no longer Active locally, so a dead-terminal panic must leave it alone.
-        for status in [
-            session::SessionStatus::Closed,
-            session::SessionStatus::Reloaded,
-            session::SessionStatus::Compacted,
-            session::SessionStatus::RateLimited,
-            session::SessionStatus::Error {
-                message: "unrelated".to_string(),
-            },
-        ] {
-            assert!(
-                !should_record_panic_as_crash(&status),
-                "non-active status {status:?} must not be relabeled as crashed"
-            );
-        }
     }
 }
