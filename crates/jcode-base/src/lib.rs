@@ -26,7 +26,6 @@ pub mod cache_tracker;
 pub mod claude_live;
 pub mod client_input;
 pub mod compaction;
-pub mod console;
 pub mod config;
 pub mod console;
 pub mod copilot_usage;
