@@ -192,7 +192,6 @@ jcode-build-meta = { path = "crates/jcode-build-meta" }
 # Agent mode config types (`AgentMode`) used by the CLI startup path.
 jcode-config-types = { path = "crates/jcode-config-types" }
 # Tiny leaf helpers (console/env/fs/id) used directly by the cli layer.
-jcode-core = { path = "crates/jcode-core" }
 # Presentation layer: the terminal UI (`tui`) + offline replay (`video_export`),
 # compiled as a separate rustc unit. It re-exports the application core
 # (`jcode-app-core`, which re-exports `jcode-base`), so the root crate (cli +

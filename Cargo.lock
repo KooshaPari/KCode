@@ -3110,7 +3110,6 @@ dependencies = [
  "hex",
  "jcode-build-meta",
  "jcode-config-types",
- "jcode-core",
  "jcode-harness-api",
  "jcode-harness-api-server",
  "jcode-herdr",
