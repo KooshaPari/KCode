@@ -829,6 +829,7 @@ mod tests {
         assert_ne!(cache_key("x", false, 240), cache_key("x", false, 312));
     }
 
+    #[cfg(feature = "mermaid-renderer")]
     #[test]
     fn dvipng_foreground_uses_normalized_rgb_components() {
         assert_eq!(
