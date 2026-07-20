@@ -3429,7 +3429,11 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "libc",
+<<<<<<< HEAD
  "rand 0.9.5",
+=======
+ "rand 0.9.3",
+>>>>>>> 2a77805ee (fix: add no-emoji output config (fixes #526))
  "unicode-properties",
  "unicode-segmentation",
  "windows-sys 0.59.0",
