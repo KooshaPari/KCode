@@ -174,6 +174,16 @@ pub(super) struct SubscribeNudgeState {
     todo_started: Option<std::time::Instant>,
 }
 
+/// Per-session state for the subscribe nudge.
+#[derive(Default)]
+pub(super) struct SubscribeNudgeState {
+    /// Whether the nudge already fired this session.
+    shown_this_session: bool,
+    /// When this session's todo list first showed incomplete work, for the
+    /// 1h+ long-task nudge.
+    todo_started: Option<std::time::Instant>,
+}
+
 impl App {
     /// Central gate for both triggers. Returns true when the nudge may be
     /// shown, and records the claim (session flag + weekly file) so a `true`
@@ -364,5 +374,20 @@ mod tests {
         assert_eq!(format_elapsed(Duration::from_secs(60 * 61)), "1h 1m");
         assert_eq!(format_elapsed(Duration::from_secs(7200)), "2h");
         assert_eq!(format_elapsed(Duration::from_secs(60 * 45)), "45m");
+    }
+}
+
+impl App {
+    /// Rate-limit notice line, with the weekly-gated subscribe nudge appended
+    /// when the gate allows (user is blocked on tokens right now).
+    pub(super) fn rate_limit_notice_with_nudge(&mut self, reset_secs: u64) -> String {
+        let mut line = format!(
+            "⏳ Rate limit hit. Will auto-retry in {} seconds...",
+            reset_secs
+        );
+        if self.claim_subscribe_nudge(SubscribeNudgeTrigger::RateLimited) {
+            line.push_str(&format!("\n{}", RATE_LIMIT_NUDGE_LINE));
+        }
+        line
     }
 }
