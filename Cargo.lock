@@ -3479,22 +3479,30 @@ dependencies = [
 
 [[package]]
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 30fb498c2 (tui: move updates box above jcode line, inline unconfigured providers on /login heading)
 name = "jcode-harness-api-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+<<<<<<< HEAD
  "jcode-background-types",
  "jcode-base",
  "jcode-harness-api",
  "jcode-transport",
  "libc",
  "rusqlite",
+=======
+ "jcode-harness-api",
+>>>>>>> 30fb498c2 (tui: move updates box above jcode line, inline unconfigured providers on /login heading)
  "serde",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "jcode-herdr"
 version = "0.1.0"
 dependencies = [
@@ -3510,6 +3518,8 @@ dependencies = [
 [[package]]
 =======
 >>>>>>> c368ef084 (Add jcode-harness-api crate and harness-as-API + desktop rewrite design doc)
+=======
+>>>>>>> 30fb498c2 (tui: move updates box above jcode line, inline unconfigured providers on /login heading)
 name = "jcode-import-core"
 version = "0.1.0"
 dependencies = [
