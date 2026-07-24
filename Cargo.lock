@@ -3469,12 +3469,16 @@ dependencies = [
 name = "jcode-harness-api"
 version = "0.1.0"
 dependencies = [
+<<<<<<< HEAD
  "jcode-usage-types",
+=======
+>>>>>>> c368ef084 (Add jcode-harness-api crate and harness-as-API + desktop rewrite design doc)
  "serde",
  "serde_json",
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "jcode-harness-api-server"
 version = "0.1.0"
 dependencies = [
@@ -3504,6 +3508,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> c368ef084 (Add jcode-harness-api crate and harness-as-API + desktop rewrite design doc)
 name = "jcode-import-core"
 version = "0.1.0"
 dependencies = [
