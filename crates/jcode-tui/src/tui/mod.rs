@@ -47,7 +47,7 @@ pub use jcode_terminal_image::display as image;
 use jcode_terminal_image::metadata as image_metadata;
 pub mod info_widget;
 mod info_widget_layout;
-
+mod info_widget_settle;
 mod info_widget_overview;
 mod info_widget_settle;
 pub mod info_widget_stability;
