@@ -3588,6 +3588,7 @@ name = "jcode"
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.85.1-k1.1.1"
 =======
 version = "0.54.2"
@@ -3610,6 +3611,9 @@ version = "0.57.0"
 =======
 version = "0.57.0"
 >>>>>>> 51e7c10f3 (chore(release): v0.57.0)
+=======
+version = "0.58.0"
+>>>>>>> 36370e5f6 (chore(release): v0.58.0)
 dependencies = [
  "anyhow",
  "async-stream",
