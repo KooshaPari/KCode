@@ -4005,9 +4005,11 @@ dependencies = [
  "jcode-build-meta",
 >>>>>>> a15dee490 (desktop2: centre the input box and give the masthead a version/update/auth row)
  "jcode-harness-api",
+ "jcode-render-core",
  "parley",
  "pollster",
  "serde_json",
+ "unicode-width 0.2.2",
  "vello",
  "winit 0.30.13",
 ]
