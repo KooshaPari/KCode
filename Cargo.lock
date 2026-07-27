@@ -3714,7 +3714,10 @@ dependencies = [
  "jcode-base",
  "jcode-build-meta",
  "jcode-build-support",
+<<<<<<< HEAD
  "jcode-cache-vectors",
+=======
+>>>>>>> 4c5e6c081 (feat(bash): gate destructive commands behind a reflection turn (fixes #604))
  "jcode-command-risk",
  "jcode-core",
  "jcode-herdr",
@@ -3905,6 +3908,7 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "jcode-cache-vectors"
 version = "0.1.0"
 dependencies = [
@@ -3917,6 +3921,11 @@ name = "jcode-command-risk"
 version = "0.1.0"
 dependencies = [
  "regex",
+=======
+name = "jcode-command-risk"
+version = "0.1.0"
+dependencies = [
+>>>>>>> 4c5e6c081 (feat(bash): gate destructive commands behind a reflection turn (fixes #604))
  "tempfile",
 ]
 
