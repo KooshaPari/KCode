@@ -65,6 +65,7 @@ fn connecting() -> Model {
         caret: fixed_caret(),
         busy: false,
         scroll: 0.0,
+        selection: None,
         notice: None,
         reveal: crate::stream::Reveal::default(),
     }
@@ -87,6 +88,7 @@ fn attached_empty() -> Model {
         caret: fixed_caret(),
         busy: false,
         scroll: 0.0,
+        selection: None,
         notice: None,
         reveal: crate::stream::Reveal::default(),
     }
