@@ -139,6 +139,7 @@ impl App {
                                     if self.cancel_requested {
                                         self.cancel_requested = false;
                                         self.interleave_message = None;
+                                        self.interleave_images.clear();
                                         self.pending_soft_interrupts.clear();
                                         self.pending_soft_interrupt_requests.clear();
                                         self.clear_streaming_render_state();
@@ -323,6 +324,7 @@ impl App {
                                     if self.cancel_requested {
                                         self.cancel_requested = false;
                                         self.interleave_message = None;
+                                        self.interleave_images.clear();
                                         self.pending_soft_interrupts.clear();
                                         self.pending_soft_interrupt_requests.clear();
                                         // Save partial assistant response before clearing
@@ -391,6 +393,8 @@ impl App {
                                     }
                                     // Check for interleave request (Shift+Enter)
                                     if let Some(interleave_msg) = self.interleave_message.take() {
+                                        let interleave_images =
+                                            std::mem::take(&mut self.interleave_images);
                                         // Save partial assistant response if any
                                         if !text_content.is_empty() || !tool_calls.is_empty() {
                                             // Complete any pending tool
@@ -447,7 +451,14 @@ impl App {
                                             }
                                         }
                                         // Add user's interleaved message
-                                        self.add_provider_message(Message::user(&interleave_msg));
+                                        if interleave_images.is_empty() {
+                                            self.add_provider_message(Message::user(&interleave_msg));
+                                        } else {
+                                            self.add_provider_message(Message::user_with_images(
+                                                &interleave_msg,
+                                                interleave_images,
+                                            ));
+                                        }
                                         self.push_display_message(DisplayMessage {
                                             role: "user".to_string(),
                                             content: interleave_msg,
@@ -1342,6 +1353,7 @@ impl App {
                                         if self.cancel_requested {
                                             self.cancel_requested = false;
                                             self.interleave_message = None;
+                                            self.interleave_images.clear();
                                             self.pending_soft_interrupts.clear();
                                             self.pending_soft_interrupt_requests.clear();
                                             // Partial text+tool_calls were already saved
