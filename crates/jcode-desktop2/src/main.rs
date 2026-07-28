@@ -255,6 +255,10 @@ const DOUBLE_CLICK: std::time::Duration = std::time::Duration::from_millis(400);
 /// UI model: what the frame is built from.
 pub struct Model {
     pub theme: theme::Theme,
+    /// What the user asked for (light, dark, or follow the system). Kept
+    /// beside the resolved theme so a system-mode window can re-resolve when
+    /// the desktop flips its preference, without forgetting it was "system".
+    pub theme_preference: theme::ThemeMode,
     /// Build identity shown in the masthead: version, updates, account.
     pub meta: meta::Meta,
     pub status: String,
@@ -277,6 +281,7 @@ impl Default for Model {
     fn default() -> Self {
         Self {
             theme: theme::Theme::from_env(),
+            theme_preference: theme::Theme::preference_from_env(),
             meta: meta::Meta::detect(),
             status: "starting...".into(),
             session_id: None,
@@ -655,6 +660,38 @@ impl ApplicationHandler for App {
             }
             WindowEvent::ModifiersChanged(modifiers) => {
                 self.modifiers = modifiers.state();
+            }
+            // The desktop flipped between light and dark. Only a window in
+            // System mode follows: an explicit JCODE_DESKTOP2_THEME choice is
+            // the user overriding the desktop, and must keep winning.
+            WindowEvent::ThemeChanged(system) => {
+                if self.model.theme_preference == theme::ThemeMode::System {
+                    let dark = system == winit::window::Theme::Dark;
+                    self.model.theme = theme::Theme::for_mode(theme::ThemeMode::System, dark);
+                    // The transcript cache keys on the theme, so the switch
+                    // relayouts on the next frame without an explicit flush.
+                    self.request_redraw();
+                }
+            }
+            WindowEvent::Focused(focused) => {
+                self.model.focused = focused;
+                if !focused {
+                    // The compositor stole the rest of the gesture (niri
+                    // grabs most Super chords for itself), so the release
+                    // will never arrive here. Take the field down rather
+                    // than leaving it stuck open under a window the user
+                    // has already left.
+                    self.super_held_since = None;
+                    if self.model.overview.is_visible() {
+                        self.model.overview.abort();
+                    }
+                }
+                // Restart the blink phase on focus so the caret is immediately
+                // solid rather than appearing mid-off-phase.
+                if focused {
+                    self.model.caret.touch();
+                }
+                self.request_redraw();
             }
             WindowEvent::KeyboardInput {
                 event:
