@@ -595,3 +595,31 @@ fn disabled_config_wins_over_install_and_migrate() {
         MacHotkeyAction::Install
     );
 }
+
+#[test]
+fn disabled_config_wins_over_install_and_migrate() {
+    // Fresh user with hotkeys disabled in config: never install (issue #670).
+    let fresh = SetupHintsState::default();
+    assert_eq!(
+        mac_hotkey_action_for_state(&fresh, Some(false)),
+        MacHotkeyAction::Disable
+    );
+
+    // Configured user on an old listener with hotkeys disabled: remove, not migrate.
+    let legacy = SetupHintsState {
+        hotkey_configured: true,
+        hotkey_dismissed: true,
+        hotkey_listener_version: 0,
+        ..SetupHintsState::default()
+    };
+    assert_eq!(
+        mac_hotkey_action_for_state(&legacy, Some(false)),
+        MacHotkeyAction::Disable
+    );
+
+    // Explicit enabled = true behaves like the unset default.
+    assert_eq!(
+        mac_hotkey_action_for_state(&fresh, Some(true)),
+        MacHotkeyAction::Install
+    );
+}
