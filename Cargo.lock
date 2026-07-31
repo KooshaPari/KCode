@@ -4109,6 +4109,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 60914dac5 (desktop2: show background-task progress bars while waiting)
  "jcode-background-types",
  "jcode-base",
  "jcode-harness-api",
