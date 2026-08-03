@@ -4614,12 +4614,18 @@ dependencies = [
  "chrono",
  "jcode-base",
  "jcode-message-types",
+<<<<<<< HEAD
  "jcode-provider-anthropic",
+=======
+>>>>>>> 82512bf3a (chore: lock jcode-schema-dialect dependency)
  "jcode-provider-antigravity",
  "jcode-provider-core",
  "jcode-provider-gemini",
  "jcode-provider-openai",
+<<<<<<< HEAD
  "jcode-provider-openrouter",
+=======
+>>>>>>> 82512bf3a (chore: lock jcode-schema-dialect dependency)
  "jcode-schema-dialect",
  "reqwest 0.12.28",
  "serde",
@@ -4773,6 +4779,16 @@ dependencies = [
  "uuid",
 =======
 >>>>>>> 17e5c1837 (chore: remove legacy jcode-desktop crate and its plumbing)
+]
+
+[[package]]
+name = "jcode-schema-dialect"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
