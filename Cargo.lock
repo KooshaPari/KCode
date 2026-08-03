@@ -3446,6 +3446,7 @@ checksum = "85ab80394333c02fe689eaf900ab500fbd0c2213da414687ebf995a65d5a6104"
 dependencies = [
  "bytemuck",
  "byteorder-lite",
+ "image-webp",
  "moxcms",
  "num-traits",
  "png 0.18.1",
@@ -4103,12 +4104,19 @@ dependencies = [
  "anyhow",
  "arboard",
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
  "jcode-build-meta",
 >>>>>>> a15dee490 (desktop2: centre the input box and give the masthead a version/update/auth row)
  "jcode-harness-api",
+=======
+ "image",
+ "jcode-build-meta",
+ "jcode-math",
+>>>>>>> a36f84064 (feat(desktop2): expand native workspace experience)
  "jcode-render-core",
  "jcode-sdk",
+ "libc",
  "parley",
  "pollster",
  "serde_json",
@@ -4226,6 +4234,13 @@ dependencies = [
  "jcode-storage",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "jcode-math"
+version = "0.1.0"
+dependencies = [
+ "ttf-parser",
 ]
 
 [[package]]
@@ -4758,8 +4773,10 @@ version = "0.1.0"
 dependencies = [
  "jcode-harness-api",
  "jsonschema",
+ "libc",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
