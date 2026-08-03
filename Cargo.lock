@@ -3683,10 +3683,14 @@ dependencies = [
  "global-hotkey",
  "hex",
  "jcode-build-meta",
+<<<<<<< HEAD
  "jcode-config-types",
  "jcode-harness-api",
  "jcode-harness-api-server",
  "jcode-herdr",
+=======
+ "jcode-harness-api-server",
+>>>>>>> a95a2bb06 (sdk: make the harness API reachable without a Rust toolchain)
  "jcode-provider-anthropic-runtime",
  "jcode-provider-antigravity-runtime",
  "jcode-provider-claude-cli-runtime",
