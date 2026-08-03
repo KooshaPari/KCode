@@ -4121,11 +4121,14 @@ dependencies = [
  "jcode-base",
  "jcode-harness-api",
  "jcode-transport",
+<<<<<<< HEAD
  "libc",
  "rusqlite",
 =======
  "jcode-harness-api",
 >>>>>>> 30fb498c2 (tui: move updates box above jcode line, inline unconfigured providers on /login heading)
+=======
+>>>>>>> f749e9847 (bridge: compile and run on Windows, via named pipes)
  "serde",
  "serde_json",
  "tokio",
