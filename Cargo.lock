@@ -4060,6 +4060,7 @@ dependencies = [
 >>>>>>> a15dee490 (desktop2: centre the input box and give the masthead a version/update/auth row)
  "jcode-harness-api",
  "jcode-render-core",
+ "jcode-sdk",
  "parley",
  "pollster",
  "serde_json",
@@ -4122,6 +4123,7 @@ dependencies = [
  "jcode-harness-api",
  "jcode-transport",
 <<<<<<< HEAD
+<<<<<<< HEAD
  "libc",
  "rusqlite",
 =======
@@ -4129,6 +4131,9 @@ dependencies = [
 >>>>>>> 30fb498c2 (tui: move updates box above jcode line, inline unconfigured providers on /login heading)
 =======
 >>>>>>> f749e9847 (bridge: compile and run on Windows, via named pipes)
+=======
+ "libc",
+>>>>>>> b4f5115e9 (build: refresh lockfile for SDK crates)
  "serde",
  "serde_json",
  "tokio",
@@ -4697,6 +4702,14 @@ dependencies = [
  "uuid",
 =======
 >>>>>>> 17e5c1837 (chore: remove legacy jcode-desktop crate and its plumbing)
+]
+
+[[package]]
+name = "jcode-sdk"
+version = "0.1.0"
+dependencies = [
+ "jcode-harness-api",
+ "serde_json",
 ]
 
 [[package]]
