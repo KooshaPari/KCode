@@ -4615,9 +4615,13 @@ dependencies = [
  "jcode-base",
  "jcode-message-types",
 <<<<<<< HEAD
+<<<<<<< HEAD
  "jcode-provider-anthropic",
 =======
 >>>>>>> 82512bf3a (chore: lock jcode-schema-dialect dependency)
+=======
+ "jcode-provider-anthropic",
+>>>>>>> 676613c60 (refactor(anthropic): run the dialect engine, and fix the dialect it exposed)
  "jcode-provider-antigravity",
  "jcode-provider-core",
  "jcode-provider-gemini",
