@@ -4512,8 +4512,12 @@ dependencies = [
  "jcode-logging",
  "jcode-message-types",
  "jcode-schema-dialect",
+<<<<<<< HEAD
  "jcode-usage-types",
  "rand 0.9.5",
+=======
+ "rand 0.9.3",
+>>>>>>> 6776578ed (refactor(openai): run the dialect engine, retiring the last deny-list)
  "reqwest 0.12.28",
  "serde",
  "serde_json",

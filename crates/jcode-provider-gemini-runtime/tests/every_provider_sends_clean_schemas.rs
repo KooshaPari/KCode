@@ -368,3 +368,76 @@ fn a_keyword_no_deny_list_has_ever_heard_of_reaches_no_provider() {
     );
     assert_eq!(openai[0]["parameters"]["properties"]["x"]["type"], "string");
 }
+
+/// The property the whole system exists for: a keyword nobody has ever seen
+/// cannot reach any provider.
+///
+/// Every issue in this class began this way. Some MCP server emitted a construct
+/// that was not on the relevant deny-list, it was forwarded verbatim, and the
+/// provider 400d the entire tool catalog. A deny-list can only ever contain what
+/// has already broken for somebody, so this test is the difference between the
+/// fix and the system: it uses an invented keyword that appears in no list, no
+/// issue, and no provider documentation.
+#[test]
+fn a_keyword_no_deny_list_has_ever_heard_of_reaches_no_provider() {
+    let novel = vec![ToolDefinition {
+        name: "mcp__future__probe".to_string(),
+        description: "probe".to_string(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "string",
+                    "description": "keep me",
+                    "someKeywordFromADraftThatDoesNotExistYet": { "nested": true }
+                }
+            },
+            "required": ["x"]
+        }),
+    }];
+    const NOVEL: &str = "someKeywordFromADraftThatDoesNotExistYet";
+
+    let gemini = serde_json::to_value(
+        jcode_provider_gemini::build_tools(&novel).expect("gemini tools"),
+    )
+    .expect("serialize");
+    assert!(!contains_key(&gemini, NOVEL), "gemini forwarded it: {gemini}");
+
+    let openai = serde_json::to_value(jcode_provider_openai::request::build_tools(&novel))
+        .expect("serialize");
+    assert!(!contains_key(&openai, NOVEL), "openai forwarded it: {openai}");
+
+    let anthropic =
+        serde_json::to_value(jcode_provider_anthropic::format_tools(&novel, false, false))
+            .expect("serialize");
+    assert!(
+        !contains_key(&anthropic, NOVEL),
+        "anthropic forwarded it: {anthropic}"
+    );
+
+    let openrouter = jcode_provider_openrouter::request::sanitize_tool_parameters_schema(
+        &novel[0].input_schema,
+    );
+    assert!(
+        !contains_key(&openrouter, NOVEL),
+        "openrouter forwarded it: {openrouter}"
+    );
+
+    for model in ["gemini-3-flash", "claude-sonnet-4-5", "gpt-oss-120b"] {
+        let antigravity = jcode_provider_antigravity::antigravity_compatible_schema(
+            &novel[0].input_schema,
+            model,
+        );
+        assert!(
+            !contains_key(&antigravity, NOVEL),
+            "antigravity/{model} forwarded it: {antigravity}"
+        );
+    }
+
+    // Dropping the unknown keyword must not cost the tool its meaning.
+    assert_eq!(
+        gemini[0]["functionDeclarations"][0]["parameters"]["properties"]["x"]["description"],
+        "keep me"
+    );
+    assert_eq!(openai[0]["parameters"]["properties"]["x"]["type"], "string");
+}
