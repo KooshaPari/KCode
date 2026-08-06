@@ -107,6 +107,48 @@ def executable_identity(command: str) -> dict[str, Any]:
         "size_bytes": resolved.stat().st_size,
     }
 
+
+def executable_identity(command: str) -> dict[str, Any]:
+    """Resolve and fingerprint the exact Jcode binary used by this run."""
+    candidate = Path(command).expanduser()
+    resolved: Path | None = None
+    if candidate.is_absolute() or candidate.parent != Path("."):
+        try:
+            resolved = candidate.resolve(strict=True)
+        except OSError as error:
+            raise BenchmarkError(f"Jcode executable does not exist: {command}: {error}") from error
+    else:
+        found = shutil.which(command)
+        if found:
+            resolved = Path(found).resolve()
+    if resolved is None or not resolved.is_file() or not os.access(resolved, os.X_OK):
+        raise BenchmarkError(f"Jcode executable is not runnable: {command}")
+
+    digest = hashlib.sha256()
+    with resolved.open("rb") as binary:
+        for chunk in iter(lambda: binary.read(1024 * 1024), b""):
+            digest.update(chunk)
+    try:
+        version_result = subprocess.run(
+            [str(resolved), "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise BenchmarkError(f"Could not identify Jcode executable {resolved}: {error}") from error
+    version = version_result.stdout.strip()
+    commit_match = re.search(r"\(([0-9a-f]{7,40})(?:[, )])", version, re.IGNORECASE)
+    return {
+        "argument": command,
+        "path": str(resolved),
+        "version": version,
+        "commit": commit_match.group(1) if commit_match else None,
+        "sha256": digest.hexdigest(),
+        "size_bytes": resolved.stat().st_size,
+    }
+
 # A trial that never reached the model (auth expiry, provider outage, crash)
 # says nothing about triggering behavior. Such trials are marked invalid and
 # excluded from every rate, so a logged-out provider cannot masquerade as a
