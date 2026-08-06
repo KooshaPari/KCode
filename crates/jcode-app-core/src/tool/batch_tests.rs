@@ -131,6 +131,14 @@ fn description_includes_parallel_tool_call_example() {
 }
 
 #[test]
+fn description_includes_parallel_tool_call_example() {
+    assert!(BATCH_DESCRIPTION.contains("Run independent tool calls in parallel"));
+    assert!(BATCH_DESCRIPTION.contains(r#""tool_calls": ["#));
+    assert!(BATCH_DESCRIPTION.contains(r#""tool": "read""#));
+    assert!(BATCH_DESCRIPTION.contains(r#""tool": "agentgrep""#));
+}
+
+#[test]
 fn test_normalize_flat_params() {
     let input = json!({
         "tool_calls": [
