@@ -3666,6 +3666,7 @@ name = "jcode"
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.85.1-k1.1.1"
 =======
 version = "0.54.2"
@@ -3754,6 +3755,9 @@ version = "0.71.0"
 =======
 version = "0.71.0"
 >>>>>>> b7b5977f8 (fix: unblock SDK 1.2.0 runtime refresh (#842))
+=======
+version = "0.71.1"
+>>>>>>> 77cdbf2d8 (chore(release): prepare v0.71.1 (#843))
 dependencies = [
  "anyhow",
  "async-stream",
