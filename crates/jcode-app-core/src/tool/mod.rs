@@ -67,6 +67,10 @@ fn is_fixed_mcp_tool(name: &str) -> bool {
 fn is_mcp_tool_name(name: &str) -> bool {
     name == "mcp" || name.starts_with("mcp__") || is_fixed_mcp_tool(name)
 }
+
+pub(crate) fn tool_name_is_disabled(disabled: &HashSet<String>, name: &str) -> bool {
+    disabled.contains(name) || (disabled.contains("mcp") && name.starts_with("mcp__"))
+}
 use std::sync::{LazyLock, RwLock as StdRwLock};
 use tokio::sync::RwLock;
 
