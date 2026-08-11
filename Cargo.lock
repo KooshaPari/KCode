@@ -56,7 +56,11 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+<<<<<<< HEAD
  "strum",
+=======
+ "strum 0.28.0",
+>>>>>>> 55ed0d774 (feat: add Grok Build ACP provider)
 ]
 
 [[package]]
@@ -294,6 +298,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bb44936d800fea8f016d7f2311c6a4f97aebd5dc86f09906139ec848cf3a46f"
 dependencies = [
  "libloading",
+]
+
+[[package]]
+name = "async-broadcast"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "435a87a52755b8f27fcf321ac4f04b2802e337c8c4872923137471ec39c37532"
+dependencies = [
+ "event-listener",
+ "event-listener-strategy",
+ "futures-core",
+ "pin-project-lite",
 ]
 
 [[package]]
@@ -1998,7 +2014,11 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustc_version",
+<<<<<<< HEAD
  "syn 2.0.119",
+=======
+ "syn 2.0.117",
+>>>>>>> 55ed0d774 (feat: add Grok Build ACP provider)
  "unicode-xid",
 ]
 
@@ -8536,6 +8556,34 @@ dependencies = [
 [[package]]
 name = "schemars"
 version = "1.2.2"
+<<<<<<< HEAD
+=======
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "687274d293b6cdc6e73e0fee520bf2049650090d7164f87672d212a3c530cf4a"
+dependencies = [
+ "dyn-clone",
+ "ref-cast",
+ "schemars_derive",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "schemars_derive"
+version = "1.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d98c67716b46af2f0b8cf752abc930f6f9aecfbf671ecfb531db8a31dbe4e2ba"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_derive_internals",
+ "syn 3.0.3",
+]
+
+[[package]]
+name = "scoped-tls"
+version = "1.0.1"
+>>>>>>> 55ed0d774 (feat: add Grok Build ACP provider)
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "687274d293b6cdc6e73e0fee520bf2049650090d7164f87672d212a3c530cf4a"
 dependencies = [
@@ -8662,6 +8710,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.6",
+]
+
+[[package]]
+name = "serde_derive_internals"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f852137cce035d6a4df67ccce505ff6b3e9fd3a10e3e52b24dc71e650bb1a9bd"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
 ]
 
 [[package]]
