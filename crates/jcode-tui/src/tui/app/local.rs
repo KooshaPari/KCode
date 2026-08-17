@@ -556,7 +556,19 @@ fn handle_background_task_stalled(app: &mut App, task: crate::bus::BackgroundTas
     }
 
     let notification = crate::message::format_background_task_stalled_markdown(&task);
-    app.push_display_message(DisplayMessage::background_task(notification.clone()));
+    let percent = app
+        .background_task_rows_ref()
+        .iter()
+        .find(|row| row.task_id == task.task_id)
+        .and_then(|row| row.percent);
+    app.upsert_running_background_task(
+        task.task_id.clone(),
+        crate::message::background_task_display_label(
+            &task.tool_name,
+            task.display_name.as_deref(),
+        ),
+        percent,
+    );
     app.set_status_notice(format!(
         "Background task stalled · {} · no output for {}s",
         crate::message::background_task_display_label(
