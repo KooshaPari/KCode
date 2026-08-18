@@ -2209,6 +2209,13 @@ mod tests {
             parameters["properties"]["category"]["enum"],
             json!(crate::sponsors::DISCOVERY_CATEGORIES)
         );
+        assert_eq!(
+            parameters["properties"]["category"]["enum"],
+            json!(crate::sponsors::DISCOVERY_CATEGORIES)
+        );
+        assert!(parameters["properties"]["category"]["enum"]
+            .as_array()
+            .is_some_and(|categories| categories.contains(&json!("git"))));
         assert!(
             parameters["properties"]["category"]["enum"]
                 .as_array()
