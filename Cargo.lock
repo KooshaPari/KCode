@@ -4324,6 +4324,7 @@ dependencies = [
 <<<<<<< HEAD
  "libc",
  "rusqlite",
+<<<<<<< HEAD
 =======
  "jcode-harness-api",
 >>>>>>> 30fb498c2 (tui: move updates box above jcode line, inline unconfigured providers on /login heading)
@@ -4332,6 +4333,8 @@ dependencies = [
 =======
  "libc",
 >>>>>>> b4f5115e9 (build: refresh lockfile for SDK crates)
+=======
+>>>>>>> 42333de87 (feat(sessions): index recent session metadata)
  "serde",
  "serde_json",
  "tokio",
