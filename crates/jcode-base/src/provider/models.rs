@@ -1072,6 +1072,7 @@ pub fn model_availability_for_account(model: &str) -> AccountModelAvailability {
 const OPENAI_MODEL_PREFERENCE: &[&str] = &[
     "gpt-6-astra",
     "gpt-5.6-sol",
+    "gpt-6-astra",
     "gpt-5.6-pro",
     "gpt-5.6",
     "gpt-5.6-terra",
