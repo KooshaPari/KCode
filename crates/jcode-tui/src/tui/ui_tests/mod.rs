@@ -110,7 +110,6 @@ fn native_scrollbar_visibility_requires_overflow() {
 
 #[derive(Clone, Default)]
 struct TestState {
-    session_id: Option<String>,
     input: String,
     cursor_pos: usize,
     provider_name: Option<String>,
@@ -296,7 +295,7 @@ impl crate::tui::TuiState for TestState {
         crate::config::DiffDisplayMode::Inline
     }
     fn current_session_id(&self) -> Option<String> {
-        self.session_id.clone()
+        None
     }
     fn session_display_name(&self) -> Option<String> {
         None
