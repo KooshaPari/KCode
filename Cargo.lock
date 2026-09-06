@@ -3835,7 +3835,10 @@ dependencies = [
  "hex",
  "jcode-build-meta",
 <<<<<<< HEAD
+<<<<<<< HEAD
  "jcode-config-types",
+=======
+>>>>>>> f1cdbd02d (feat(sdk): connect to native harnesses over system SSH)
  "jcode-harness-api",
  "jcode-harness-api-server",
  "jcode-herdr",
