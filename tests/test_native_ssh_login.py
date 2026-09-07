@@ -501,6 +501,7 @@ class LoginPTY:
         os.write(self.master, b"yes\r" if accept else b"\r")
         self.repaint()
         self.wait(f"Login on {host}:", mark)
+        self.repaint()
         if accept:
             self.wait("Import local OpenAI login", mark)
             self.wait("Import local Claude login", mark)
