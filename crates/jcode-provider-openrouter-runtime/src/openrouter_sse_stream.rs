@@ -63,7 +63,9 @@ fn convert_to_responses_format(mut request: Value) -> Value {
                             })];
                         }
 
-                        // Convert content string to Responses API content array
+                        // Convert content string/array to Responses API input content parts.
+                        // Arrays may contain chat-completions-style blocks (image_url, text)
+                        // that need conversion to Responses API types (input_image, input_text).
                         let content_parts = match content {
                             Some(Value::String(s)) => {
                                 vec![serde_json::json!({
@@ -71,7 +73,37 @@ fn convert_to_responses_format(mut request: Value) -> Value {
                                     "text": s
                                 })]
                             }
-                            Some(Value::Array(arr)) => arr.clone(),
+                            Some(Value::Array(arr)) => {
+                                arr.iter()
+                                    .map(|part| {
+                                        let ptype = part.get("type").and_then(|t| t.as_str()).unwrap_or("text");
+                                        match ptype {
+                                            "image_url" => {
+                                                let url = part.pointer("/image_url/url")
+                                                    .and_then(|u| u.as_str())
+                                                    .unwrap_or("");
+                                                let detail = part.pointer("/image_url/detail")
+                                                    .and_then(|d| d.as_str())
+                                                    .map(|d| serde_json::json!(d));
+                                                let mut img = serde_json::json!({
+                                                    "type": "input_image",
+                                                    "image_url": url
+                                                });
+                                                if let Some(d) = detail {
+                                                    img["detail"] = d;
+                                                }
+                                                img
+                                            }
+                                            "text" => serde_json::json!({
+                                                "type": "input_text",
+                                                "text": part.get("text").and_then(|t| t.as_str()).unwrap_or("")
+                                            }),
+                                            // Pass through already-correct Responses types
+                                            _ => part.clone(),
+                                        }
+                                    })
+                                    .collect()
+                            }
                             _ => vec![],
                         };
 
@@ -114,13 +146,16 @@ fn convert_to_responses_format(mut request: Value) -> Value {
         }
     }
 
-    // Remove chat-completions-specific fields, add Responses API defaults
+    // Map chat-completions `max_tokens` to Responses API `max_output_tokens`.
+    // Preserve the caller's configured value instead of hardcoding a default.
     if let Some(obj) = request.as_object_mut() {
-        obj.remove("max_tokens");
+        let max_tokens_value = obj.remove("max_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(16384);
         obj.remove("stream_options");
         obj.insert(
             "max_output_tokens".to_string(),
-            Value::Number(serde_json::Number::from(16384)),
+            Value::Number(serde_json::Number::from(max_tokens_value)),
         );
     }
 
@@ -438,29 +473,59 @@ async fn stream_responses_api_response(
     let mut bytes_stream = response.bytes_stream();
     let mut buffer = String::new();
     let mut current_event_type = String::new();
+    let mut in_thinking = false;
+    let stream_idle_timeout = jcode_base::provider::stream_idle_timeout();
 
-    while let Some(chunk_result) = bytes_stream.next().await {
+    loop {
+        let chunk_result = match tokio::time::timeout(stream_idle_timeout, bytes_stream.next()).await {
+            Ok(Some(result)) => result,
+            Ok(None) => break, // stream ended
+            Err(_) => {
+                jcode_base::logging::warn(&format!(
+                    "Responses API stream timed out (no data for {}s)\n  model: {}",
+                    stream_idle_timeout.as_secs(),
+                    _model
+                ));
+                anyhow::bail!(
+                    "Responses API stream timeout\n  model: {}\n  timeout: no data received for {} seconds",
+                    _model,
+                    stream_idle_timeout.as_secs()
+                );
+            }
+        };
         let chunk = chunk_result.map_err(|e| anyhow::anyhow!("Response stream error: {}", e))?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
-        // Process complete SSE events (terminated by \n\n)
-        while let Some(newline_pos) = buffer.find("\n\n") {
+        // Process complete SSE events (terminated by \n\n or \r\n\r\n)
+        while let Some(newline_pos) = buffer.find("\n\n").or_else(|| buffer.find("\r\n\r\n")) {
+            let sep_len = if buffer[newline_pos..].starts_with("\r\n\r\n") { 4 } else { 2 };
             let event_block = buffer[..newline_pos].to_string();
-            buffer = buffer[newline_pos + 2..].to_string();
+            buffer = buffer[newline_pos + sep_len..].to_string();
 
             // Parse event type and data from the block
             let mut data = String::new();
-            current_event_type.clear();
+            let mut event_type = String::new();
 
             for line in event_block.lines() {
-                if let Some(etype) = line.strip_prefix("event: ") {
-                    current_event_type = etype.to_string();
-                } else if let Some(d) = line.strip_prefix("data: ") {
+                // Handle both "event: x" and "event:x" (no space after colon)
+                if let Some(etype) = line.strip_prefix("event: ").or_else(|| line.strip_prefix("event:")) {
+                    event_type = etype.trim().to_string();
+                } else if let Some(d) = line.strip_prefix("data: ").or_else(|| line.strip_prefix("data:")) {
                     data = d.to_string();
                 }
+                // Ignore comment lines (e.g. ": ping") and other fields
             }
 
-            if data.is_empty() || data == "[DONE]" {
+            // Skip keepalive/empty blocks that have no data payload
+            if data.is_empty() {
+                continue;
+            }
+
+            if data == "[DONE]" {
+                // End-of-stream sentinel: close thinking if active, then finish
+                if in_thinking {
+                    let _ = tx.send(Ok(StreamEvent::ThinkingEnd)).await;
+                }
                 let _ = tx
                     .send(Ok(StreamEvent::MessageEnd { stop_reason: None }))
                     .await;
@@ -468,45 +533,146 @@ async fn stream_responses_api_response(
             }
 
             // Parse the JSON and convert to StreamEvent
-            if let Ok(json) = serde_json::from_str::<Value>(&data) {
-                match current_event_type.as_str() {
-                    "response.output_text.delta" => {
-                        if let Some(delta) = json.get("delta").and_then(|d| d.as_str()) {
-                            let _ = tx
-                                .send(Ok(StreamEvent::TextDelta(delta.to_string())))
-                                .await;
-                        }
+            let json = match serde_json::from_str::<Value>(&data) {
+                Ok(v) => v,
+                Err(e) => {
+                    jcode_base::logging::warn(&format!(
+                        "Responses API: malformed JSON in event '{}': {} -- data: {}",
+                        event_type, e, &data[..data.len().min(200)]
+                    ));
+                    continue; // skip malformed blocks instead of ending the stream
+                }
+            };
+
+            match event_type.as_str() {
+                "response.output_text.delta" => {
+                    // If we were in thinking, close it first
+                    if in_thinking {
+                        let _ = tx.send(Ok(StreamEvent::ThinkingEnd)).await;
+                        in_thinking = false;
                     }
-                    "response.reasoning.delta"
-                    | "response.reasoning_summary_text.delta" => {
-                        if let Some(delta) = json.get("delta").and_then(|d| d.as_str()) {
-                            let _ = tx
-                                .send(Ok(StreamEvent::ThinkingDelta(delta.to_string())))
-                                .await;
-                        }
-                    }
-                    "response.output_item.added" => {
-                        if let Some(item) = json.get("item") {
-                            if item.get("type").and_then(|v| v.as_str()) == Some("reasoning") {
-                                let _ = tx.send(Ok(StreamEvent::ThinkingStart)).await;
-                            }
-                        }
-                    }
-                    "response.completed" => {
+                    if let Some(delta) = json.get("delta").and_then(|d| d.as_str()) {
                         let _ = tx
-                            .send(Ok(StreamEvent::MessageEnd { stop_reason: None }))
+                            .send(Ok(StreamEvent::TextDelta(delta.to_string())))
                             .await;
-                        return Ok(());
                     }
-                    "response.in_progress" | "response.created" | _ => {
-                        // Skip other event types
+                }
+                "response.reasoning.delta"
+                | "response.reasoning_summary_text.delta" => {
+                    if !in_thinking {
+                        let _ = tx.send(Ok(StreamEvent::ThinkingStart)).await;
+                        in_thinking = true;
                     }
+                    if let Some(delta) = json.get("delta").and_then(|d| d.as_str()) {
+                        let _ = tx
+                            .send(Ok(StreamEvent::ThinkingDelta(delta.to_string())))
+                            .await;
+                    }
+                }
+                "response.output_item.added" => {
+                    if let Some(item) = json.get("item") {
+                        match item.get("type").and_then(|v| v.as_str()) {
+                            Some("reasoning") => {
+                                let _ = tx.send(Ok(StreamEvent::ThinkingStart)).await;
+                                in_thinking = true;
+                            }
+                            Some("function_call") => {
+                                let id = item.get("call_id")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let name = item.get("name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let _ = tx.send(Ok(StreamEvent::ToolUseStart { id, name })).await;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                "response.function_call_arguments.delta" => {
+                    if let Some(delta) = json.get("delta").and_then(|d| d.as_str()) {
+                        let _ = tx
+                            .send(Ok(StreamEvent::ToolInputDelta(delta.to_string())))
+                            .await;
+                    }
+                }
+                "response.function_call_arguments.done" => {
+                    let _ = tx.send(Ok(StreamEvent::ToolUseEnd)).await;
+                }
+                "response.completed" => {
+                    // Close thinking if still active
+                    if in_thinking {
+                        let _ = tx.send(Ok(StreamEvent::ThinkingEnd)).await;
+                        in_thinking = false;
+                    }
+                    // Emit token usage if present
+                    if let Some(usage) = json.get("usage") {
+                        let _ = tx.send(Ok(StreamEvent::TokenUsage {
+                            input_tokens: usage.get("input_tokens").and_then(|v| v.as_u64()),
+                            output_tokens: usage.get("output_tokens").and_then(|v| v.as_u64()),
+                            cache_read_input_tokens: usage.get("input_tokens_cache_read").and_then(|v| v.as_u64()),
+                            cache_creation_input_tokens: usage.get("input_tokens_cache_creation").and_then(|v| v.as_u64()),
+                        })).await;
+                    }
+                    // Forward stop reason from response
+                    let stop_reason = json.get("stop_reason")
+                        .and_then(|r| r.as_str())
+                        .map(|s| s.to_string());
+                    let _ = tx
+                        .send(Ok(StreamEvent::MessageEnd { stop_reason }))
+                        .await;
+                    return Ok(());
+                }
+                "response.incomplete" => {
+                    if in_thinking {
+                        let _ = tx.send(Ok(StreamEvent::ThinkingEnd)).await;
+                        in_thinking = false;
+                    }
+                    let _ = tx
+                        .send(Ok(StreamEvent::MessageEnd {
+                            stop_reason: Some("length".to_string()),
+                        }))
+                        .await;
+                    return Ok(());
+                }
+                "response.failed" => {
+                    if in_thinking {
+                        let _ = tx.send(Ok(StreamEvent::ThinkingEnd)).await;
+                    }
+                    let error_msg = json.get("error")
+                        .and_then(|e| e.get("message"))
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("Response failed");
+                    anyhow::bail!("Responses API error: {}", error_msg);
+                }
+                "response.in_progress" | "response.created" | "response.output_item.done" => {
+                    // No-op events
+                }
+                "error" => {
+                    if in_thinking {
+                        let _ = tx.send(Ok(StreamEvent::ThinkingEnd)).await;
+                    }
+                    let error_msg = json.get("message")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("Stream error");
+                    anyhow::bail!("Responses API stream error: {}", error_msg);
+                }
+                _ => {
+                    // Unknown event type — log once for visibility, skip
+                    jcode_base::logging::debug(&format!(
+                        "Responses API: unknown event type '{}'", event_type
+                    ));
                 }
             }
         }
     }
 
-    // Stream ended without explicit completion
+    // Stream ended without explicit completion event
+    if in_thinking {
+        let _ = tx.send(Ok(StreamEvent::ThinkingEnd)).await;
+    }
     let _ = tx
         .send(Ok(StreamEvent::MessageEnd { stop_reason: None }))
         .await;
