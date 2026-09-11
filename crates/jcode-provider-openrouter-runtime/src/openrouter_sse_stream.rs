@@ -1,6 +1,132 @@
 use super::*;
 use jcode_provider_openrouter::stream::OpenRouterStream;
 
+/// Models that require the OpenAI Responses API endpoint (`/responses`)
+/// instead of chat completions when served through OpenCode Go.
+/// See: <https://opencode.ai/docs/go/#endpoints>
+const OPENCODE_GO_RESPONSES_MODELS: &[&str] = &[
+    "grok-4.6",
+    "gpt-5.6-luna",
+    "muse-spark-1.3-contributor",
+    "muse-spark-1.2-contributor",
+];
+
+/// Check if this model+endpoint combination should use the Responses API.
+fn needs_responses_api(model: &str, api_base: &str) -> bool {
+    if !is_opencode_api_base(api_base) {
+        return false;
+    }
+    OPENCODE_GO_RESPONSES_MODELS
+        .iter()
+        .any(|m| model == *m)
+}
+
+/// Convert a chat-completions request body to Responses API format.
+/// Renames `messages` -> `input` and adjusts message content format.
+fn convert_to_responses_format(mut request: Value) -> Value {
+    if let Some(messages) = request.get("messages").cloned() {
+        let input: Vec<Value> = messages
+            .as_array()
+            .map(|msgs| {
+                msgs.iter()
+                    .flat_map(|msg| {
+                        let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
+                        let content = msg.get("content");
+
+                        // Handle tool calls (assistant messages with tool_calls)
+                        if let Some(tool_calls) = msg.get("tool_calls") {
+                            let mut items: Vec<Value> = vec![];
+                            if let Some(Value::String(s)) = content {
+                                items.push(serde_json::json!({
+                                    "type": "message",
+                                    "role": role,
+                                    "content": [{"type": "input_text", "text": s}]
+                                }));
+                            }
+                            for tc in tool_calls.as_array().unwrap_or(&vec![]) {
+                                items.push(serde_json::json!({
+                                    "type": "function_call",
+                                    "call_id": tc.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                                    "name": tc.pointer("/function/name").and_then(|v| v.as_str()).unwrap_or(""),
+                                    "arguments": tc.pointer("/function/arguments").and_then(|v| v.as_str()).unwrap_or("")
+                                }));
+                            }
+                            return items;
+                        }
+
+                        // Handle tool role (tool results)
+                        if role == "tool" {
+                            return vec![serde_json::json!({
+                                "type": "function_call_output",
+                                "call_id": msg.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
+                                "output": content.and_then(|c| c.as_str()).unwrap_or("")
+                            })];
+                        }
+
+                        // Convert content string to Responses API content array
+                        let content_parts = match content {
+                            Some(Value::String(s)) => {
+                                vec![serde_json::json!({
+                                    "type": "input_text",
+                                    "text": s
+                                })]
+                            }
+                            Some(Value::Array(arr)) => arr.clone(),
+                            _ => vec![],
+                        };
+
+                        vec![serde_json::json!({
+                            "type": "message",
+                            "role": role,
+                            "content": content_parts
+                        })]
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        request["input"] = Value::Array(input);
+        request.as_object_mut().unwrap().remove("messages");
+    }
+
+    // Convert tools from chat-completions format to Responses API format
+    if let Some(tools) = request.get("tools").cloned() {
+        if let Some(tools_arr) = tools.as_array() {
+            let converted: Vec<Value> = tools_arr
+                .iter()
+                .filter_map(|tool| {
+                    let tool_type = tool.get("type").and_then(|t| t.as_str())?;
+                    if tool_type == "function" {
+                        let func = tool.get("function")?;
+                        Some(serde_json::json!({
+                            "type": "function",
+                            "name": func.get("name").and_then(|n| n.as_str()).unwrap_or(""),
+                            "description": func.get("description").and_then(|d| d.as_str()).unwrap_or(""),
+                            "parameters": func.get("parameters").cloned().unwrap_or(Value::Object(Default::default())),
+                            "strict": func.get("strict").cloned().unwrap_or(Value::Bool(false)),
+                        }))
+                    } else {
+                        Some(tool.clone())
+                    }
+                })
+                .collect();
+            request["tools"] = Value::Array(converted);
+        }
+    }
+
+    // Remove chat-completions-specific fields, add Responses API defaults
+    if let Some(obj) = request.as_object_mut() {
+        obj.remove("max_tokens");
+        obj.remove("stream_options");
+        obj.insert(
+            "max_output_tokens".to_string(),
+            Value::Number(serde_json::Number::from(16384)),
+        );
+    }
+
+    request
+}
+
 fn local_endpoint_troubleshooting_hint(api_base: &str, model: &str) -> &'static str {
     let lower = api_base.to_ascii_lowercase();
     if lower.contains("localhost:11434") || lower.contains("127.0.0.1:11434") {
@@ -177,7 +303,14 @@ async fn stream_response(
     let connect_start = std::time::Instant::now();
     let stream_idle_timeout = jcode_base::provider::stream_idle_timeout();
 
-    let url = format!("{}/chat/completions", api_base);
+    // OpenCode Go routes certain models to the Responses API instead of chat completions.
+    let use_responses_api = needs_responses_api(&model, &api_base);
+    let (url, request) = if use_responses_api {
+        let converted = convert_to_responses_format(request);
+        (format!("{}/responses", api_base), converted)
+    } else {
+        (format!("{}/chat/completions", api_base), request)
+    };
     let mut req = apply_kimi_coding_agent_headers(
         auth.apply(
             client
@@ -245,6 +378,11 @@ async fn stream_response(
         }))
         .await;
 
+    // Responses API models use a different SSE format than chat completions.
+    if use_responses_api {
+        return stream_responses_api_response(response, tx, &model).await;
+    }
+
     let mut stream = OpenRouterStream::new(response.bytes_stream(), model.clone(), provider_pin);
 
     // Idle timeout between streamed chunks. Configurable so slow reasoning
@@ -285,6 +423,93 @@ async fn stream_response(
         }
     }
 
+    Ok(())
+}
+
+/// Parse and stream Responses API SSE events, converting them to StreamEvents.
+/// The Responses API uses `event: <type>\ndata: <json>` format instead of
+/// chat-completions' `data: <json>` format.
+async fn stream_responses_api_response(
+    response: reqwest::Response,
+    tx: mpsc::Sender<Result<StreamEvent>>,
+    _model: &str,
+) -> Result<()> {
+    use futures::StreamExt;
+    let mut bytes_stream = response.bytes_stream();
+    let mut buffer = String::new();
+    let mut current_event_type = String::new();
+
+    while let Some(chunk_result) = bytes_stream.next().await {
+        let chunk = chunk_result.map_err(|e| anyhow::anyhow!("Response stream error: {}", e))?;
+        buffer.push_str(&String::from_utf8_lossy(&chunk));
+
+        // Process complete SSE events (terminated by \n\n)
+        while let Some(newline_pos) = buffer.find("\n\n") {
+            let event_block = buffer[..newline_pos].to_string();
+            buffer = buffer[newline_pos + 2..].to_string();
+
+            // Parse event type and data from the block
+            let mut data = String::new();
+            current_event_type.clear();
+
+            for line in event_block.lines() {
+                if let Some(etype) = line.strip_prefix("event: ") {
+                    current_event_type = etype.to_string();
+                } else if let Some(d) = line.strip_prefix("data: ") {
+                    data = d.to_string();
+                }
+            }
+
+            if data.is_empty() || data == "[DONE]" {
+                let _ = tx
+                    .send(Ok(StreamEvent::MessageEnd { stop_reason: None }))
+                    .await;
+                return Ok(());
+            }
+
+            // Parse the JSON and convert to StreamEvent
+            if let Ok(json) = serde_json::from_str::<Value>(&data) {
+                match current_event_type.as_str() {
+                    "response.output_text.delta" => {
+                        if let Some(delta) = json.get("delta").and_then(|d| d.as_str()) {
+                            let _ = tx
+                                .send(Ok(StreamEvent::TextDelta(delta.to_string())))
+                                .await;
+                        }
+                    }
+                    "response.reasoning.delta"
+                    | "response.reasoning_summary_text.delta" => {
+                        if let Some(delta) = json.get("delta").and_then(|d| d.as_str()) {
+                            let _ = tx
+                                .send(Ok(StreamEvent::ThinkingDelta(delta.to_string())))
+                                .await;
+                        }
+                    }
+                    "response.output_item.added" => {
+                        if let Some(item) = json.get("item") {
+                            if item.get("type").and_then(|v| v.as_str()) == Some("reasoning") {
+                                let _ = tx.send(Ok(StreamEvent::ThinkingStart)).await;
+                            }
+                        }
+                    }
+                    "response.completed" => {
+                        let _ = tx
+                            .send(Ok(StreamEvent::MessageEnd { stop_reason: None }))
+                            .await;
+                        return Ok(());
+                    }
+                    "response.in_progress" | "response.created" | _ => {
+                        // Skip other event types
+                    }
+                }
+            }
+        }
+    }
+
+    // Stream ended without explicit completion
+    let _ = tx
+        .send(Ok(StreamEvent::MessageEnd { stop_reason: None }))
+        .await;
     Ok(())
 }
 
