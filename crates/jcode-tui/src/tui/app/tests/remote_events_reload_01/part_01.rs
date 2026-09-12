@@ -1124,6 +1124,64 @@ fn test_handle_post_connect_requests_client_reload_after_server_reload_even_with
 }
 
 #[test]
+fn test_handle_post_connect_plain_reconnect_does_not_trigger_client_reload_even_with_newer_binary(
+) {
+    use std::time::{Duration, SystemTime};
+
+    // Regression: a transient PeerClosed reconnect (server crashed and was
+    // restarted, network blip, or simply `cargo build` was run in another
+    // shell while a long-lived session was running) MUST stay in-process.
+    // Previously `must_reload_client` also gated on `app.has_newer_binary()`,
+    // which is true for any selfdev iteration, so every reconnect re-execed
+    // the client — losing in-flight turns and creating session-alias drift
+    // (short alias `tigress` vs full `session_tigress_…`).
+    let _guard = crate::storage::lock_test_env();
+    let temp_home = tempfile::TempDir::new().expect("create temp home");
+    let prev_home = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", temp_home.path());
+
+    let mut app = create_test_app();
+    // Simulate a freshly-built launcher payload: mtime in the future means
+    // has_newer_binary() would return true.
+    app.client_binary_mtime = Some(SystemTime::now() - Duration::from_secs(60));
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _enter = rt.enter();
+    let backend = ratatui::backend::TestBackend::new(80, 24);
+    let mut terminal = ratatui::Terminal::new(backend).expect("failed to create terminal");
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    remote.mark_history_loaded();
+    app.remote_session_id = Some("session_plain_reconnect".to_string());
+
+    let mut state = super::remote::RemoteRunState {
+        reconnect_attempts: 1,
+        // server_reload_in_progress is FALSE — this is a plain reconnect.
+        server_reload_in_progress: false,
+        ..Default::default()
+    };
+
+    let outcome = rt
+        .block_on(super::remote::handle_post_connect(
+            &mut app,
+            &mut terminal,
+            &mut remote,
+            &mut state,
+            Some("session_plain_reconnect"),
+        ))
+        .expect("post connect should succeed");
+
+    // Must be Ready, not Quit. Must not request a reload.
+    assert!(matches!(outcome, super::remote::PostConnectOutcome::Ready));
+    assert!(app.reload_requested.is_none(), "must not request a reload on a plain reconnect");
+    assert!(!app.should_quit, "must not quit on a plain reconnect");
+
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("JCODE_HOME", prev_home);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+}
+
+#[test]
 fn test_handle_server_event_token_usage_uses_per_call_deltas() {
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
