@@ -4279,9 +4279,13 @@ name = "jcode-harness-api"
 version = "0.1.0"
 dependencies = [
 <<<<<<< HEAD
+<<<<<<< HEAD
  "jcode-usage-types",
 =======
 >>>>>>> c368ef084 (Add jcode-harness-api crate and harness-as-API + desktop rewrite design doc)
+=======
+ "jcode-usage-types",
+>>>>>>> 084c2995f (feat(runtime): share durable model route usage and picker ranking)
  "serde",
  "serde_json",
 ]
@@ -4626,9 +4630,13 @@ dependencies = [
  "jcode-message-types",
  "jcode-schema-dialect",
 <<<<<<< HEAD
+<<<<<<< HEAD
  "jcode-usage-types",
  "rand 0.9.5",
 =======
+=======
+ "jcode-usage-types",
+>>>>>>> 084c2995f (feat(runtime): share durable model route usage and picker ranking)
  "rand 0.9.3",
 >>>>>>> 6776578ed (refactor(openai): run the dialect engine, retiring the last deny-list)
  "reqwest 0.12.28",
