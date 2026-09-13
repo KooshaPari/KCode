@@ -22,102 +22,15 @@ fn needs_responses_api(model: &str, api_base: &str) -> bool {
 }
 
 /// Convert a chat-completions request body to Responses API format.
-/// Renames `messages` -> `input` and adjusts message content format.
+/// The Responses API accepts simple `{role, content}` messages directly as `input`,
+/// so for plain messages we pass them through unchanged. Only tool definitions
+/// and parameter names need conversion.
+/// See: https://platform.openai.com/docs/guides/responses-vs-chat-completions
 fn convert_to_responses_format(mut request: Value) -> Value {
     if let Some(messages) = request.get("messages").cloned() {
-        let input: Vec<Value> = messages
-            .as_array()
-            .map(|msgs| {
-                msgs.iter()
-                    .flat_map(|msg| {
-                        let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
-                        let content = msg.get("content");
-
-                        // Handle tool calls (assistant messages with tool_calls)
-                        if let Some(tool_calls) = msg.get("tool_calls") {
-                            let mut items: Vec<Value> = vec![];
-                            if let Some(Value::String(s)) = content {
-                                items.push(serde_json::json!({
-                                    "type": "message",
-                                    "role": role,
-                                    "content": [{"type": "input_text", "text": s}]
-                                }));
-                            }
-                            for tc in tool_calls.as_array().unwrap_or(&vec![]) {
-                                items.push(serde_json::json!({
-                                    "type": "function_call",
-                                    "call_id": tc.get("id").and_then(|v| v.as_str()).unwrap_or(""),
-                                    "name": tc.pointer("/function/name").and_then(|v| v.as_str()).unwrap_or(""),
-                                    "arguments": tc.pointer("/function/arguments").and_then(|v| v.as_str()).unwrap_or("")
-                                }));
-                            }
-                            return items;
-                        }
-
-                        // Handle tool role (tool results)
-                        if role == "tool" {
-                            return vec![serde_json::json!({
-                                "type": "function_call_output",
-                                "call_id": msg.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or(""),
-                                "output": content.and_then(|c| c.as_str()).unwrap_or("")
-                            })];
-                        }
-
-                        // Convert content string/array to Responses API input content parts.
-                        // Arrays may contain chat-completions-style blocks (image_url, text)
-                        // that need conversion to Responses API types (input_image, input_text).
-                        let content_parts = match content {
-                            Some(Value::String(s)) => {
-                                vec![serde_json::json!({
-                                    "type": "input_text",
-                                    "text": s
-                                })]
-                            }
-                            Some(Value::Array(arr)) => {
-                                arr.iter()
-                                    .map(|part| {
-                                        let ptype = part.get("type").and_then(|t| t.as_str()).unwrap_or("text");
-                                        match ptype {
-                                            "image_url" => {
-                                                let url = part.pointer("/image_url/url")
-                                                    .and_then(|u| u.as_str())
-                                                    .unwrap_or("");
-                                                let detail = part.pointer("/image_url/detail")
-                                                    .and_then(|d| d.as_str())
-                                                    .map(|d| serde_json::json!(d));
-                                                let mut img = serde_json::json!({
-                                                    "type": "input_image",
-                                                    "image_url": url
-                                                });
-                                                if let Some(d) = detail {
-                                                    img["detail"] = d;
-                                                }
-                                                img
-                                            }
-                                            "text" => serde_json::json!({
-                                                "type": "input_text",
-                                                "text": part.get("text").and_then(|t| t.as_str()).unwrap_or("")
-                                            }),
-                                            // Pass through already-correct Responses types
-                                            _ => part.clone(),
-                                        }
-                                    })
-                                    .collect()
-                            }
-                            _ => vec![],
-                        };
-
-                        vec![serde_json::json!({
-                            "type": "message",
-                            "role": role,
-                            "content": content_parts
-                        })]
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        request["input"] = Value::Array(input);
+        // Pass messages through as-is: the Responses API accepts
+        // `{role, content}` format directly for input items.
+        request["input"] = messages;
         request.as_object_mut().unwrap().remove("messages");
     }
 
