@@ -3119,26 +3119,32 @@ dependencies = [
  "global-hotkey",
  "jcode-agent-runtime",
  "jcode-ambient-types",
+ "jcode-auto-dream",
  "jcode-base",
  "jcode-build-meta",
  "jcode-build-support",
+ "jcode-cache-vectors",
  "jcode-command-risk",
  "jcode-core",
  "jcode-import-core",
  "jcode-message-types",
+ "jcode-micro-compact",
  "jcode-notify-email",
  "jcode-overnight-core",
  "jcode-pdf",
+ "jcode-permission-bubble",
  "jcode-plan",
  "jcode-provider-core",
  "jcode-schema-dialect",
  "jcode-selfdev-types",
+ "jcode-session-memory",
  "jcode-session-types",
  "jcode-setup-hints",
  "jcode-swarm-core",
  "jcode-task-types",
  "jcode-terminal-image",
  "jcode-tool-core",
+ "jcode-tool-search",
  "jcode-tool-types",
  "jcode-update-core",
  "libc",
@@ -3168,6 +3174,20 @@ name = "jcode-auth-types"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "jcode-auto-dream"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "filetime",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3290,9 +3310,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-cache-vectors"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "jcode-command-risk"
 version = "0.1.0"
 dependencies = [
+ "regex",
  "tempfile",
 ]
 
@@ -3413,6 +3442,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-micro-compact"
+version = "0.1.0"
+dependencies = [
+ "jcode-message-types",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "jcode-notify-email"
 version = "0.1.0"
 dependencies = [
@@ -3441,6 +3479,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "pdf-extract",
+]
+
+[[package]]
+name = "jcode-permission-bubble"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3888,6 +3934,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "jcode-session-memory"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "jcode-session-types"
 version = "0.1.0"
 dependencies = [
@@ -4002,6 +4056,14 @@ dependencies = [
  "jcode-tool-types",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "jcode-tool-search"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

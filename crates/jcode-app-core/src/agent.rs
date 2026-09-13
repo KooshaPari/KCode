@@ -14,6 +14,9 @@ mod tools;
 mod turn_execution;
 mod turn_loops;
 mod turn_streaming_mpsc;
+mod micro_compact;
+mod cache_vectors;
+mod permission_bubble;
 mod utils;
 
 use self::streaming::{send_stream_keepalive_mpsc, stream_keepalive_ticker};
@@ -25,6 +28,7 @@ use self::utils::trace_enabled;
 use crate::build;
 use crate::bus::{Bus, BusEvent, SubagentStatus, ToolEvent, ToolStatus};
 use crate::cache_tracker::CacheTracker;
+use cache_vectors::CacheVectorsTracker;
 use crate::compaction::CompactionEvent;
 use crate::id;
 use crate::logging;
@@ -220,6 +224,8 @@ pub struct Agent {
     graceful_shutdown: InterruptSignal,
     /// Client-side cache tracking for detecting append-only violations
     cache_tracker: CacheTracker,
+    /// Prompt-cache vector tracking for detecting which cache vectors changed
+    cache_vectors: CacheVectorsTracker,
     /// Last token usage from API request (for debug socket queries)
     last_usage: TokenUsage,
     /// Locked tool list: once the first API request is sent, freeze the tool list
@@ -264,6 +270,8 @@ pub struct Agent {
     /// One logical runtime session, independent of the process-global legacy
     /// telemetry slot and of any TUI clients viewing this agent.
     concurrency_session: Option<crate::telemetry::ConcurrencySession>,
+    /// Time-based trigger controlling when micro-compaction runs.
+    micro_compact_trigger: jcode_micro_compact::TimeBasedTrigger,
 }
 
 impl Agent {
@@ -327,6 +335,7 @@ impl Agent {
             background_tool_signal: InterruptSignal::new(),
             graceful_shutdown: InterruptSignal::new(),
             cache_tracker: CacheTracker::new(),
+            cache_vectors: CacheVectorsTracker::new(),
             last_usage: TokenUsage::default(),
             locked_tools: None,
             mcp_late_register_resolved: false,
@@ -340,6 +349,7 @@ impl Agent {
             inline_tail: inline_tail::InlineTailBuffer::default(),
             transcript_telemetry_sent: false,
             concurrency_session: None,
+            micro_compact_trigger: micro_compact::new_trigger(),
         }
     }
 
@@ -638,6 +648,7 @@ impl Agent {
         self.background_tool_signal.reset();
         self.graceful_shutdown.reset();
         self.cache_tracker.reset();
+        self.cache_vectors.reset();
         self.last_usage = TokenUsage::default();
         self.locked_tools = None;
         self.mcp_late_register_resolved = false;
@@ -710,6 +721,7 @@ impl Agent {
         }
 
         self.cache_tracker.reset();
+        self.cache_vectors.reset();
         self.locked_tools = None;
         self.mcp_late_register_resolved = false;
         self.provider_session_id = None;
@@ -848,6 +860,25 @@ impl Agent {
         }
     }
 
+    /// Snapshot prompt-cache vectors and detect breaks before a provider request.
+    pub(crate) fn record_prompt_cache_vectors(
+        &mut self,
+        system_prompt: &str,
+        tools: &[ToolDefinition],
+    ) {
+        self.cache_vectors.record_and_detect(
+            system_prompt,
+            tools,
+            &self.provider.model(),
+            self.provider.premium_mode() != crate::provider::copilot::PremiumMode::Normal,
+        );
+    }
+
+    /// Reset the cache vectors tracker (called on compaction, model switch, etc.).
+    fn reset_cache_vectors(&mut self) {
+        self.cache_vectors.reset();
+    }
+
     fn repair_missing_tool_outputs(&mut self) -> usize {
         if self.tool_output_scan_index > self.session.messages.len() {
             self.reset_tool_output_tracking();
@@ -942,6 +973,7 @@ impl Agent {
         if repaired > 0 {
             self.persist_session_best_effort("missing tool-output repair");
             self.cache_tracker.reset();
+            self.cache_vectors.reset();
             self.locked_tools = None;
             self.mcp_late_register_resolved = false;
         }

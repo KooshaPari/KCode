@@ -24,6 +24,7 @@ members = [
     "crates/jcode-batch-types",
     "crates/jcode-build-support",
     "crates/jcode-compaction-core",
+    "crates/jcode-micro-compact",
     "crates/jcode-config-types",
     "crates/jcode-command-risk",
     "crates/jcode-core",
@@ -74,6 +75,7 @@ members = [
     "crates/jcode-task-types",
     "crates/jcode-transport",
     "crates/jcode-tool-core",
+    "crates/jcode-tool-search",
     "crates/jcode-tool-types",
     "crates/jcode-tui-account-picker",
     "crates/jcode-tui-anim",
@@ -90,6 +92,10 @@ members = [
     "crates/jcode-telemetry-core",
     "crates/jcode-tui-workspace",
     "crates/jcode-render-core",
+    "crates/jcode-permission-bubble",
+    "crates/jcode-session-memory",
+    "crates/jcode-cache-vectors",
+    "crates/jcode-auto-dream",
 ]
 
 [lib]

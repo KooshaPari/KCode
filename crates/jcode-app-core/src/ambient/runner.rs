@@ -793,6 +793,14 @@ impl AmbientRunnerHandle {
                             }
                         }
                     });
+
+                    // Auto-dream: evaluate memory consolidation gates (fire-and-forget)
+                    {
+                        let total_cycles = s.total_cycles;
+                        if let Ok(data_dir) = crate::storage::jcode_dir() {
+                            auto_dream::maybe_dream(data_dir, total_cycles);
+                        }
+                    }
                 }
                 Err(e) => {
                     logging::error(&format!("Ambient cycle failed: {}", e));

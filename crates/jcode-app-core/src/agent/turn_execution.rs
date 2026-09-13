@@ -265,6 +265,7 @@ impl Agent {
         self.provider_session_id = None;
         self.session.provider_session_id = None;
         self.cache_tracker.reset();
+        self.cache_vectors.reset();
         self.locked_tools = None;
         self.reset_tool_output_tracking();
         self.persist_session_best_effort("conversation rewind");
@@ -283,6 +284,7 @@ impl Agent {
         self.session.provider_session_id = snapshot.session_provider_session_id;
         self.session.updated_at = chrono::Utc::now();
         self.cache_tracker.reset();
+        self.cache_vectors.reset();
         self.locked_tools = None;
         self.reset_tool_output_tracking();
         self.persist_session_best_effort("conversation rewind undo");
@@ -296,6 +298,7 @@ impl Agent {
             logging::info("Tool list unlocked — next request will pick up current tools");
             self.locked_tools = None;
             self.cache_tracker.reset();
+        self.cache_vectors.reset();
         }
         // Allow the late-MCP-registration recheck to fire once for the next
         // snapshot (e.g. after an explicit `mcp` reload).
@@ -458,6 +461,7 @@ impl Agent {
                 self.mcp_late_register_resolved = true;
                 self.locked_tools = None;
                 self.cache_tracker.reset();
+        self.cache_vectors.reset();
             } else {
                 // No MCP tools have appeared. They may still be connecting, so
                 // leave the guard unset and re-check on the next turn. Once they

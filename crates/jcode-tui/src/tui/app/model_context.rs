@@ -99,7 +99,7 @@ impl App {
         match self.apply_provider_switch_for_failover(&pending.prompt) {
             Ok(active_model) => {
                 self.push_display_message(DisplayMessage::system(format!(
-                    "⚡ Auto-switched provider after countdown: {} → {}.\n\nResending {} on model {}.\n\n{}",
+                    "◈ Auto-switched provider after countdown: {} → {}.\n\nResending {} on model {}.\n\n{}",
                     pending.prompt.from_label,
                     pending.prompt.to_label,
                     Self::format_failover_input_summary(&pending.prompt),
@@ -127,7 +127,7 @@ impl App {
     fn handle_provider_failover_prompt(&mut self, prompt: crate::provider::ProviderFailoverPrompt) {
         let input_summary = Self::format_failover_input_summary(&prompt);
         let manual_message = format!(
-            "⚠ {} became unavailable - jcode did not resend your prompt to {} automatically.\n\nReason: {}\n\nRetrying elsewhere would send {}.\n\nTo switch manually now, use /model and pick a model from {}, then resend. {}",
+            "▲ {} became unavailable - jcode did not resend your prompt to {} automatically.\n\nReason: {}\n\nRetrying elsewhere would send {}.\n\nTo switch manually now, use /model and pick a model from {}, then resend. {}",
             prompt.from_label,
             prompt.to_label,
             prompt.reason,
@@ -153,7 +153,7 @@ impl App {
                     deadline: Instant::now() + Duration::from_secs(3),
                 });
                 self.push_display_message(DisplayMessage::system(format!(
-                    "⚠ {} became unavailable - jcode will switch to {} in 3 seconds unless you cancel.\n\nReason: {}\n\nRetrying would send {}. Press Esc to cancel.\n\n{}",
+                    "▲ {} became unavailable - jcode will switch to {} in 3 seconds unless you cancel.\n\nReason: {}\n\nRetrying would send {}. Press Esc to cancel.\n\n{}",
                     prompt.from_label,
                     prompt.to_label,
                     prompt.reason,
@@ -869,7 +869,7 @@ impl App {
 
         match manager.force_compact_with(&provider_messages, self.provider.clone()) {
             Ok(()) => Some(
-                "⚡ Auto-compaction started - summarizing old messages in background. Retry in a moment."
+                "◈ Auto-compaction started - summarizing old messages in background. Retry in a moment."
                     .to_string(),
             ),
             Err(reason) => {
@@ -881,7 +881,7 @@ impl App {
                     Ok(dropped) => {
                         self.sync_session_compaction_state_from_manager(&manager);
                         Some(format!(
-                            "⚡ Emergency compaction: dropped {} old messages. You can continue.",
+                            "◈ Emergency compaction: dropped {} old messages. You can continue.",
                             dropped
                         ))
                     }
@@ -890,7 +890,7 @@ impl App {
                         if truncated > 0 {
                             self.messages = provider_messages;
                             Some(format!(
-                                "⚡ Emergency truncation: shortened {} large tool result(s) to fit context. You can continue.",
+                                "◈ Emergency truncation: shortened {} large tool result(s) to fit context. You can continue.",
                                 truncated
                             ))
                         } else {
@@ -933,7 +933,7 @@ impl App {
         self.reseed_compaction_from_provider_messages();
 
         self.push_display_message(DisplayMessage::system(format!(
-            "⚡ Request was too large; dropped {} oversized image(s) and retrying...",
+            "◈ Request was too large; dropped {} oversized image(s) and retrying...",
             stripped
         )));
 
@@ -1002,7 +1002,7 @@ impl App {
         }
 
         self.push_display_message(DisplayMessage::system(
-            "⚠️ Context limit exceeded - auto-compacting and retrying...".to_string(),
+            "▲ Context limit exceeded - auto-compacting and retrying...".to_string(),
         ));
 
         // Force the compaction manager to think we're at the limit

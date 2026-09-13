@@ -535,7 +535,7 @@ fn loop_suffix_renders_safely_at_tiny_sizes() {
     let data = InfoWidgetData {
         todos: vec![todo_item(
             "a",
-            "very long content that will need truncation 汉字 emoji 🚀",
+            "very long content that will need truncation 汉字 emoji ◇",
             "in_progress",
             Some("a very long group name that must truncate"),
         )],
@@ -586,7 +586,7 @@ fn swarm_plan_todos_render_safely_at_extreme_sizes() {
                     _ => "blocked",
                 },
             );
-            item.content = format!("宽字符 emoji 🚀 test {} {}", i, "汉".repeat(40));
+            item.content = format!("宽字符 emoji ◇ test {} {}", i, "汉".repeat(40));
             item.blocked_by = vec!["dep".to_string()];
             item
         })
