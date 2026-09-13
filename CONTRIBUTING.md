@@ -1,31 +1,35 @@
-# Contributing to jcode
+# Contributing to Jcode
 
-Thanks for contributing.
+## Branch Workflow
 
-## Issues vs pull requests
+All changes must go through a feature branch and pull request. Direct pushes to `master` are blocked by pre-tool hooks.
 
-If the problem is easy for me to reproduce, please prefer opening a GitHub issue. A clear issue with reproduction steps, expected behavior, actual behavior, logs, screenshots, or traces is usually the fastest path to a fix.
+```
+git checkout -b feat/my-feature
+# make changes
+git commit -m "feat(scope): description"
+git push origin feat/my-feature
+gh pr create
+```
 
-Pull requests are more useful when the problem depends on an environment I may not have, such as macOS-specific behavior, Windows-specific behavior, unusual shells, terminal emulators, filesystems, GPU/display setups, provider accounts, or other local configuration. In those cases, a PR can be a useful reference because it captures the behavior in the environment where the problem actually occurs.
+## Commit Convention
 
-## Pull request policy
+Use [Conventional Commits](https://www.conventionalcommits.org/):
 
-Pull requests are welcome and encouraged.
+- `feat(scope):` new feature
+- `fix(scope):` bug fix
+- `docs(scope):` documentation only
+- `refactor(scope):` code change that neither fixes a bug nor adds a feature
+- `test(scope):` adding or updating tests
+- `chore(scope):` maintenance tasks
 
-That said, most PRs should be treated as proposals or references, not as changes that are likely to be merged directly. This project is developed with heavy use of code generation, and generated code can be deceptively plausible: it may fix the visible problem while introducing subtle correctness, lifecycle, architecture, or maintenance issues.
+## Code Quality
 
-Because of that, I will often use PRs to understand the bug, feature request, test case, design direction, or proposed implementation, then write my own version of the change. The submitted code may still be extremely valuable as a reference, reproduction, or proof of concept, even if the final committed code is different.
+- All Rust code must pass `cargo check` and `cargo clippy`
+- Line length limit: 100 characters
+- Files must stay under 500 lines (target 350)
+- Tests required for new functionality
 
-This is not a judgment that maintainer-generated code is inherently better than contributor-generated code. It is a practical ownership rule: if I am going to maintain the resulting code, I need to understand its assumptions, tradeoffs, and failure modes.
+## TUI Changes
 
-The best PRs therefore include:
-
-- a clear description of the problem being solved
-- a minimal reproduction or failing test when possible
-- notes about edge cases and tradeoffs
-- focused changes that are easy to review independently
-- any relevant logs, screenshots, traces, or benchmarks
-
-Large, generated, or highly invasive PRs may be closed even when the underlying idea is good. In those cases, the issue or PR may still be used as a reference for a maintainer-authored change.
-
-Handwritten by author: My clanker slop may or may not be better than your clanker slop. I know how to work with my clanker slop though.
+Status bar and layout changes should be verified against compressed pane sizes (30x7) and standard layouts (14" laptop, 27" desktop).
