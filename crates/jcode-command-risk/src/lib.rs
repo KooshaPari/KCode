@@ -33,10 +33,17 @@
 //! not depend on parsing the command correctly.
 
 mod gate;
+mod heredoc;
 mod paths;
+pub mod pipeline;
+pub mod quote_parser;
+pub mod redirection;
+pub mod substitution;
 mod tokenize;
+pub mod zsh_dangerous;
 
 pub use gate::{GateOutcome, Justification, gate};
+pub use heredoc::{has_heredoc_substitution, is_safe_heredoc, strip_safe_heredoc_substitutions};
 pub use paths::{ProtectedPaths, is_catastrophic_target};
 pub use tokenize::{Token, tokenize};
 
@@ -120,12 +127,18 @@ impl RiskAssessment {
 
 /// Context needed to judge blast radius. Supplied by the caller because this
 /// crate deliberately does no I/O of its own beyond path inspection.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RiskContext {
     /// The tool call's working directory, if any.
     pub working_dir: Option<std::path::PathBuf>,
     /// The user's home directory.
     pub home_dir: Option<std::path::PathBuf>,
+}
+
+impl Default for RiskContext {
+    fn default() -> Self {
+        Self::from_env(None)
+    }
 }
 
 impl RiskContext {
