@@ -92,6 +92,29 @@ impl DreamCoordinator {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DreamOutcome {
+    /// Gates passed but no action taken (not yet satisfied).
+    Skipped { reason: &'static str },
+    /// Consolidation would run here (stub for now).
+    WouldConsolidate,
+}
+
+/// Convenience entry point called from the ambient runner.
+/// Evaluates all three gates; if they pass, triggers memory consolidation.
+pub fn maybe_dream(data_dir: impl Into<std::path::PathBuf>, _total_cycles: u64) {
+    let coordinator = DreamCoordinator::new(data_dir);
+    match coordinator.evaluate() {
+        DreamTrigger::Ready => {
+            tracing::info!("auto-dream: gates satisfied, consolidation would run");
+            // TODO: actually run consolidation prompt via LLM
+        }
+        DreamTrigger::NotReady { reason } => {
+            tracing::debug!(reason, "auto-dream: gates not satisfied");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

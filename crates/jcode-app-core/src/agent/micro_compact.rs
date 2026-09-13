@@ -53,11 +53,12 @@ pub fn maybe_compact(session: &mut crate::session::Session, trigger: &mut TimeBa
 /// Returns the number of blocks that were compacted.
 fn compact_messages(messages: &mut [StoredMessage]) -> usize {
     // Build tool_use_id -> tool_name map from assistant ToolUse blocks.
-    let mut tool_map: HashMap<&str, &str> = HashMap::new();
+    // Use owned Strings to avoid lifetime issues with the mutable iterator below.
+    let mut tool_map: HashMap<String, String> = HashMap::new();
     for msg in messages.iter() {
         for block in &msg.content {
             if let ContentBlock::ToolUse { id, name, .. } = block {
-                tool_map.insert(id.as_str(), name.as_str());
+                tool_map.insert(id.clone(), name.clone());
             }
         }
     }
@@ -72,7 +73,7 @@ fn compact_messages(messages: &mut [StoredMessage]) -> usize {
             } = block
             {
                 let tool_name = match tool_map.get(tool_use_id.as_str()) {
-                    Some(name) => *name,
+                    Some(name) => name.as_str(),
                     None => continue,
                 };
                 if !is_compactable(tool_name) {

@@ -16,7 +16,7 @@ mod turn_loops;
 mod turn_streaming_mpsc;
 mod micro_compact;
 mod cache_vectors;
-mod permission_bubble;
+pub(crate) mod permission_bubble;
 mod utils;
 
 use self::streaming::{send_stream_keepalive_mpsc, stream_keepalive_ticker};
