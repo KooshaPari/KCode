@@ -4,7 +4,7 @@ use super::tools_ui::{get_tool_activity_detail, summarize_batch_running_tools_co
 use super::visual_debug::{self, FrameCaptureBuilder};
 use super::{
     ProcessingStatus, TuiState, accent_color, ai_color, asap_color, dim_color, pending_color,
-    queued_color, rainbow_prompt_color, user_color,
+    queued_color, rainbow_prompt_color, status_text_color, user_color,
 };
 use crate::message::ConnectionPhase;
 use crate::tui::app;
@@ -818,8 +818,8 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                 let mut spans = vec![
                     Span::styled(spinner, Style::default().fg(ai_color())),
                     Span::styled(
-                        format!(" sending… {}", format_elapsed(elapsed)),
-                        Style::default().fg(dim_color()),
+                        format!(" [sending] {}", format_elapsed(elapsed)),
+                        Style::default().fg(status_text_color()),
                     ),
                 ];
                 push_queued_suffix(&mut spans, &queued_suffix);
@@ -827,7 +827,7 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
             }
             ProcessingStatus::Connecting(ref phase) => {
                 let mut label = format!(
-                    " {}… {}",
+                    " [{}] {}",
                     connection_phase_label(phase),
                     format_elapsed(elapsed)
                 );
@@ -849,7 +849,7 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                     crate::message::ConnectionPhase::SendingRequest if phase_elapsed > 10.0 => {
                         rgb(255, 193, 7)
                     }
-                    _ => dim_color(),
+                    _ => status_text_color(),
                 };
                 let mut spans = vec![
                     Span::styled(spinner, Style::default().fg(ai_color())),
@@ -859,11 +859,11 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                 Line::from(spans)
             }
             ProcessingStatus::Thinking(_start) => {
-                let mut label = format!(" thinking… {}", format_elapsed(elapsed));
+                let mut label = format!(" [thinking] {}", format_elapsed(elapsed));
                 append_transport_context(&mut label, app);
                 let mut spans = vec![
                     Span::styled(spinner, Style::default().fg(ai_color())),
-                    Span::styled(label, Style::default().fg(dim_color())),
+                    Span::styled(label, Style::default().fg(status_text_color())),
                 ];
                 push_queued_suffix(&mut spans, &queued_suffix);
                 Line::from(spans)
@@ -911,7 +911,7 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                     Span::styled("↻ ", Style::default().fg(rgb(255, 193, 7))),
                     Span::styled(
                         format!(
-                            "network disconnected, waiting to retry · {} · {}",
+                            "[offline] waiting to retry · {} · {}",
                             listener,
                             format_elapsed(elapsed)
                         ),
@@ -969,18 +969,18 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
                 if let Some(status) = subagent {
                     spans.push(Span::styled(
                         format!(" ({})", status),
-                        Style::default().fg(dim_color()),
+                        Style::default().fg(status_text_color()),
                     ));
                 }
                 for label in transport_context_labels(app) {
                     spans.push(Span::styled(
                         format!(" · {}", label),
-                        Style::default().fg(dim_color()),
+                        Style::default().fg(status_text_color()),
                     ));
                 }
                 spans.push(Span::styled(
                     format!(" · {}", format_elapsed(elapsed)),
-                    Style::default().fg(dim_color()),
+                    Style::default().fg(status_text_color()),
                 ));
 
                 if let Some(problem) = kv_cache_problem {
@@ -1050,6 +1050,14 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
 
     crate::memory::check_staleness();
 
+    // In very narrow panes (< 35 cols) truncate the status line to avoid
+    // wrapping or visual overflow.  For streaming/tool lines, strip the
+    // " [tag] " prefix first so the actual status text gets most of the space.
+    let effective_width = area.width as usize;
+    if effective_width > 0 && effective_width < 35 {
+        line = truncate_line_for_narrow(line, effective_width);
+    }
+
     if app.centered_mode() {
         frame.render_widget(Paragraph::new(line.alignment(Alignment::Center)), area);
         return;
@@ -1066,14 +1074,14 @@ fn running_tool_header_spans(
     let mut spans = vec![
         Span::styled(spinner, Style::default().fg(anim_color)),
         Span::styled(
-            format!(" running {}", name),
-            Style::default().fg(dim_color()),
+            format!(" [tool: {}]", name),
+            Style::default().fg(status_text_color()).bold(),
         ),
     ];
     if let Some(detail) = detail {
         spans.push(Span::styled(
-            format!(" · {}", detail),
-            Style::default().fg(anim_color).bold(),
+            format!(" {}", detail),
+            Style::default().fg(status_text_color()),
         ));
     }
     spans
@@ -1091,6 +1099,52 @@ fn push_queued_suffix(spans: &mut Vec<Span<'static>>, queued_suffix: &str) {
     }
 }
 
+/// Truncate a status line to fit within `max_cols` characters.
+///
+/// In narrow panes (< 35 cols) the full status lines (which include spinners,
+/// bracketed state labels, token counts, etc.) would overflow the available
+/// width.  Ratatui handles visual clipping automatically, but we also strip
+/// the bracketed prefix for streaming/tool statuses so the actual status text
+/// gets the limited horizontal space rather than wasting it on the spinner and
+/// tag.
+fn truncate_line_for_narrow(line: Line<'static>, max_cols: usize) -> Line<'static> {
+    use unicode_width::UnicodeWidthStr;
+    let spans: Vec<Span<'static>> = line
+        .spans
+        .into_iter()
+        .flat_map(|span| {
+            let s: &str = span.content.as_ref();
+            let w = UnicodeWidthStr::width(s);
+            if w == 0 {
+                return vec![];
+            }
+            if w <= max_cols {
+                let style = span.style;
+                vec![Span::styled(s.to_string(), style)]
+            } else {
+                // Truncate with ellipsis
+                let mut out = String::with_capacity(max_cols);
+                let mut used = 0;
+                for ch in s.chars() {
+                    let cw = UnicodeWidthStr::width(ch.to_string().as_str());
+                    if used + cw + 1 > max_cols {
+                        // Room for ellipsis?
+                        if used + 1 <= max_cols {
+                            out.push('…');
+                        }
+                        break;
+                    }
+                    out.push(ch);
+                    used += cw;
+                }
+                let style = span.style;
+                vec![Span::styled(out, style)]
+            }
+        })
+        .collect();
+    Line::from(spans)
+}
+
 fn streaming_status_spans(
     spinner: &'static str,
     status_text: String,
@@ -1101,11 +1155,11 @@ fn streaming_status_spans(
     let mut spans = Vec::new();
     spans.push(Span::styled(spinner, Style::default().fg(ai_color())));
     spans.push(Span::styled(
-        format!(" {}", status_text),
+        format!(" [streaming] {}", status_text),
         Style::default().fg(if has_warning {
             rgb(255, 193, 7)
         } else {
-            dim_color()
+            status_text_color()
         }),
     ));
     push_queued_suffix(&mut spans, queued_suffix);
@@ -1125,12 +1179,59 @@ mod tests {
         assert_eq!(spans.len(), 3);
         assert_eq!(spans[0].content.as_ref(), "*");
         assert_eq!(spans[0].style.fg, Some(accent));
-        assert_eq!(spans[1].content.as_ref(), " running bash");
-        assert_eq!(spans[1].style.fg, Some(dim_color()));
-        assert!(!spans[1].style.add_modifier.contains(Modifier::BOLD));
-        assert_eq!(spans[2].content.as_ref(), " · cargo test");
-        assert_eq!(spans[2].style.fg, Some(accent));
-        assert!(spans[2].style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(spans[1].content.as_ref(), " [tool: bash]");
+        assert_eq!(spans[1].style.fg, Some(status_text_color()));
+        assert!(spans[1].style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(spans[2].content.as_ref(), " cargo test");
+        assert_eq!(spans[2].style.fg, Some(status_text_color()));
+    }
+
+    #[test]
+    fn truncate_line_for_narrow_short_text_unchanged() {
+        let line = Line::from(vec![Span::styled("hello", Style::default())]);
+        let truncated = truncate_line_for_narrow(line, 35);
+        assert_eq!(truncated.spans.len(), 1);
+        assert_eq!(truncated.spans[0].content.as_ref(), "hello");
+    }
+
+    #[test]
+    fn truncate_line_for_narrow_long_text_truncated_with_ellipsis() {
+        let text = "[sending] 4.2s · ↑120 ↓340";
+        let line = Line::from(vec![Span::styled(text, Style::default())]);
+        let truncated = truncate_line_for_narrow(line, 15);
+        // Should be truncated to fit within 15 display columns.
+        let rendered: String = truncated
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(rendered.len() <= 15, "got {}: {rendered}", rendered.len());
+        assert!(rendered.ends_with('…'), "expected ellipsis: {rendered}");
+    }
+
+    #[test]
+    fn truncate_line_for_narrow_multiple_spans() {
+        let line = Line::from(vec![
+            Span::styled("⏳ ", Style::default()),
+            Span::styled("[sending] 4.2s", Style::default()),
+        ]);
+        let truncated = truncate_line_for_narrow(line, 8);
+        let total_width: usize = truncated
+            .spans
+            .iter()
+            .map(|s| unicode_width::UnicodeWidthStr::width(s.content.as_ref()))
+            .sum();
+        assert!(
+            total_width <= 8,
+            "total width {total_width} exceeds 8"
+        );
+    }
+
+    #[test]
+    fn truncate_line_for_narrow_zero_width_line() {
+        let line = Line::from(vec![]);
+        let truncated = truncate_line_for_narrow(line, 10);
+        assert!(truncated.spans.is_empty());
     }
 
     #[test]
@@ -1569,7 +1670,7 @@ mod tests {
 
         assert_eq!(spans.len(), 3);
         assert_eq!(spans[0].content.as_ref(), "⠋");
-        assert_eq!(spans[1].content.as_ref(), " 4.2s");
+        assert_eq!(spans[1].content.as_ref(), " [streaming] 4.2s");
         assert_eq!(spans[2].content.as_ref(), " · +1 queued");
     }
 
@@ -1579,7 +1680,7 @@ mod tests {
 
         assert_eq!(spans.len(), 2);
         assert_eq!(spans[0].content.as_ref(), "⠋");
-        assert_eq!(spans[1].content.as_ref(), " finalizing");
+        assert_eq!(spans[1].content.as_ref(), " [streaming] finalizing");
     }
 
     #[test]

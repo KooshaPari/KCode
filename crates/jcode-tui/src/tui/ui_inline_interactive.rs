@@ -344,8 +344,10 @@ pub(super) fn format_elapsed(secs: f32) -> String {
         let mins = (secs / 60.0) as u32;
         let s = (secs % 60.0) as u32;
         format!("{}m {}s", mins, s)
-    } else {
+    } else if secs >= 10.0 {
         format!("{}s", secs as u32)
+    } else {
+        format!("{:.1}s", secs)
     }
 }
 
@@ -859,8 +861,11 @@ mod tests {
 
     #[test]
     fn format_elapsed_uses_whole_seconds_below_one_minute() {
-        assert_eq!(format_elapsed(0.0), "0s");
-        assert_eq!(format_elapsed(1.2), "1s");
+        assert_eq!(format_elapsed(0.0), "0.0s");
+        assert_eq!(format_elapsed(1.2), "1.2s");
+        assert_eq!(format_elapsed(5.9), "5.9s");
+        assert_eq!(format_elapsed(9.9), "9.9s");
+        assert_eq!(format_elapsed(10.0), "10s");
         assert_eq!(format_elapsed(59.9), "59s");
         assert_eq!(format_elapsed(61.2), "1m 1s");
     }
