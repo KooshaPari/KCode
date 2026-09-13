@@ -16,7 +16,6 @@ mod turn_loops;
 mod turn_streaming_mpsc;
 mod micro_compact;
 mod cache_vectors;
-mod micro_compact;
 mod permission_bubble;
 mod utils;
 
