@@ -333,7 +333,39 @@ EOF
 fi
 
 if [ "$(uname -s)" = "Darwin" ]; then
-  xattr -d com.apple.quarantine "$dest_version_dir/$bin_name" 2>/dev/null || true
+  # macOS 26+ / 27 (Tahoe beta) taskgated rejects adhoc-signed binaries that carry
+  # the `com.apple.provenance` xattr with an "Invalid Signature" SIGKILL on every
+  # exec attempt (issue: see related fork work in PRs/issues below). Strip both
+  # quarantine and provenance xattrs and re-adhoc-sign the actual launcher path
+  # (which may differ from `$dest_version_dir/$bin_name` when `JCODE_INSTALL_DIR`
+  # or a `~/bin` shortcut was used). Re-signing the symlink target resolves to
+  # the real file. We never fail the install if signing is unavailable; the
+  # binary still runs locally, just without a fresh signature.
+  macos_xattr_clean=1
+  for xattr_name in com.apple.quarantine com.apple.provenance; do
+    xattr -dr "$xattr_name" "$dest_version_dir/$bin_name" 2>/dev/null || true
+  done
+  for candidate_path in "$launcher_path" "$stable_dir/$bin_name" "$current_dir/$bin_name"; do
+    [ -e "$candidate_path" ] || continue
+    if [ -L "$candidate_path" ]; then
+      link_target=$(readlink -f "$candidate_path" 2>/dev/null || readlink "$candidate_path" 2>/dev/null || true)
+      [ -n "$link_target" ] && [ -e "$link_target" ] && candidate_path="$link_target"
+    fi
+    for xattr_name in com.apple.quarantine com.apple.provenance; do
+      xattr -d "$xattr_name" "$candidate_path" 2>/dev/null || true
+    done
+    if command -v codesign >/dev/null 2>&1; then
+      codesign --force --deep --sign - "$candidate_path" >/dev/null 2>&1 \
+        || macos_xattr_clean=0
+    else
+      macos_xattr_clean=0
+    fi
+  done
+  if [ "$macos_xattr_clean" = "1" ]; then
+    info "Cleared macOS quarantine/provenance xattrs and re-adhoc-signed launcher."
+  else
+    info "Cleared macOS xattrs; ad-hoc resign skipped (codesign unavailable)."
+  fi
   # Generate the architecture-matched LSUIElement notification broker (and the
   # normal Spotlight launcher) from the verified binary. Best-effort here: the
   # first interactive jcode launch performs the same version-gated repair.

@@ -618,8 +618,22 @@ pub(in crate::tui::app) async fn handle_post_connect<B: ratatui::backend::Backen
             app.reload_info.push(ctx.reconnect_notice_line());
         }
 
-        let must_reload_client = !crate::tui::is_ssh_remote()
-            && (state.server_reload_in_progress || app.has_newer_binary());
+        // A plain reconnect (server crashed and restarted by the operator, network
+        // blip, or PeerClosed after `cargo build`) MUST NOT trigger a client re-exec.
+        // Doing so loses the in-flight turn, forces the user to re-launch `jcode`,
+        // and creates session-alias drift (short alias vs full session id).
+        //
+        // A real "server reloaded" is signalled by `ServerEvent::Reloading`, which
+        // sets `state.server_reload_in_progress = true` *before* the disconnect
+        // arrives. That flag is the only correct trigger for a client reload from
+        // the reconnect path. Self-dev idle reloads are handled separately by
+        // `maybe_self_reload_after_server_reload`, which gates on `is_selfdev_session`.
+        //
+        // Bug history: previously this also gated on `app.has_newer_binary()`, which
+        // is true whenever the launcher payload has been rebuilt (cargo build in
+        // another shell, self-dev iteration, package upgrade). On a transient
+        // PeerClosed reconnect that flag triggered an unwanted client restart.
+        let must_reload_client = !crate::tui::is_ssh_remote() && state.server_reload_in_progress;
 
         if must_reload_client {
             app.push_display_message(DisplayMessage::system(
