@@ -776,7 +776,7 @@ pub(super) fn draw_status(frame: &mut Frame, app: &dyn TuiState, area: Rect, pen
         String::new()
     };
 
-    let line = if let Some(build_progress) = crate::build::read_build_progress() {
+    let mut line = if let Some(build_progress) = crate::build::read_build_progress() {
         let spinner = super::activity_indicator(elapsed, 12.5);
         Line::from(vec![
             Span::styled(spinner, Style::default().fg(rgb(255, 193, 7))),
