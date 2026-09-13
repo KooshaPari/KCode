@@ -14,6 +14,7 @@ mod tools;
 mod turn_execution;
 mod turn_loops;
 mod turn_streaming_mpsc;
+mod micro_compact;
 mod cache_vectors;
 mod micro_compact;
 mod permission_bubble;
@@ -270,6 +271,8 @@ pub struct Agent {
     /// One logical runtime session, independent of the process-global legacy
     /// telemetry slot and of any TUI clients viewing this agent.
     concurrency_session: Option<crate::telemetry::ConcurrencySession>,
+    /// Time-based trigger controlling when micro-compaction runs.
+    micro_compact_trigger: jcode_micro_compact::TimeBasedTrigger,
 }
 
 impl Agent {
@@ -347,6 +350,7 @@ impl Agent {
             inline_tail: inline_tail::InlineTailBuffer::default(),
             transcript_telemetry_sent: false,
             concurrency_session: None,
+            micro_compact_trigger: micro_compact::new_trigger(),
         }
     }
 
