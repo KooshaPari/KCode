@@ -4,8 +4,6 @@
 //! can change what a command actually executes. The reference is Claude Code's
 //! `COMMAND_SUBSTITUTION_PATTERNS` in `bashSecurity.ts`.
 
-use super::quote_parser;
-
 /// Result of scanning a command for substitution/operator patterns.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SubstitutionInfo {
@@ -122,12 +120,6 @@ fn detect_backtick(text: &str) -> Option<usize> {
         i += 1;
     }
     None
-}
-
-/// `<` that is not part of `<(`.
-fn detect_input_redirect(text: &str) -> Option<usize> {
-    let proc_in = text.find("<(");
-    text.find('<').filter(|&p| Some(p) != proc_in)
 }
 
 #[cfg(test)]
