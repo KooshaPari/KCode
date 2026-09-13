@@ -1632,7 +1632,9 @@ async fn init_provider_with_options(
                         &resolved.api_key_env,
                     )?;
                 }
-                runtime_model_hint = resolved.default_model.clone();
+                runtime_model_hint = resolved.default_model.clone().or_else(|| {
+                    crate::config::config().provider.default_model.clone()
+                });
                 resolved.display_name
             };
             init_notice(&format!(
@@ -1860,15 +1862,21 @@ async fn init_provider_with_options(
     if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
         && std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none()
         && model.is_none()
-        && let Some(profile) = profile_for_choice(choice)
-        && let Some(default_model) = resolved_profile_default_model(profile)
-        && provider.set_model(&default_model).is_ok()
     {
-        let resolved = resolve_openai_compatible_profile(profile);
-        init_notice(&format!(
-            "Using default model for {}: {}",
-            resolved.display_name, default_model
-        ));
+        let effective_default = profile_for_choice(choice)
+            .and_then(|p| resolved_profile_default_model(p))
+            .or_else(|| crate::config::config().provider.default_model.clone());
+        if let Some(default_model) = effective_default
+            && provider.set_model(&default_model).is_ok()
+        {
+            if let Some(profile) = profile_for_choice(choice) {
+                let resolved = resolve_openai_compatible_profile(profile);
+                init_notice(&format!(
+                    "Using default model for {}: {}",
+                    resolved.display_name, default_model
+                ));
+            }
+        }
     }
 
     if let Some(model_name) = model {
