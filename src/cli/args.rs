@@ -486,6 +486,9 @@ pub(crate) enum Command {
 
     /// Diagnose why a provider/model or the model picker is broken by walking the
     /// strict end-to-end checkpoints (catalog, picker, model-switch, chat, streaming, tools).
+    ///
+    /// Use the global `-m`/`--model` flag to test a specific model instead of the
+    /// auto-selected one, e.g. `jcode provider-doctor cerebras -m llama-4-scout-17b`.
     #[command(name = "provider-doctor", alias = "provider-strict-e2e")]
     ProviderDoctor {
         /// OpenAI-compatible provider id to diagnose (e.g. cerebras, fpt, nvidia-nim)
