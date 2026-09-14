@@ -26,7 +26,7 @@ pub(crate) struct PermissionBubbleResult {
 }
 
 /// Reconstruct a `ForkDepthGuard` from persisted session fields.
-fn guard_from_session(session: &crate::base::Session) -> ForkDepthGuard {
+fn guard_from_session(session: &crate::session::Session) -> ForkDepthGuard {
     let mut guard = ForkDepthGuard::with_max_depth(session.fork_max_depth as usize);
     // Replay the fork chain to bring the guard up to the session's current depth.
     for fork_id in &session.fork_chain {
@@ -44,7 +44,7 @@ pub(crate) fn create_forked_child_messages(
     parent_messages: &[StoredMessage],
     directive: &str,
     fork_id: &str,
-    parent_session: &mut crate::base::Session,
+    parent_session: &mut crate::session::Session,
 ) -> PermissionBubbleResult {
     let mut guard = guard_from_session(parent_session);
 

@@ -27,6 +27,9 @@ members = [
     "crates/jcode-micro-compact",
     "crates/jcode-config-types",
     "crates/jcode-command-risk",
+    "crates/jcode-terminal-detect",
+    "crates/jcode-shell-integration",
+
     "crates/jcode-core",
     "crates/jcode-fuzzy",
     "crates/jcode-harness-api",

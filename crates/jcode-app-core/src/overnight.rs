@@ -174,8 +174,9 @@ fn create_coordinator_session(parent: &mut Session, mission: &Option<String>) ->
     // The parent session carries fork depth state that persists across saves.
     let fork_id = format!("overnight-{}", parent.id);
     let directive = mission.as_deref().unwrap_or("Run overnight tasks");
+    let parent_messages = parent.messages.clone();
     let fork_result = create_forked_child_messages(
-        &parent.messages,
+        &parent_messages,
         &directive,
         &fork_id,
         parent,
