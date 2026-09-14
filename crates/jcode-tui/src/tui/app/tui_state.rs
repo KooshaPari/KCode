@@ -1803,6 +1803,12 @@ impl crate::tui::TuiState for App {
     fn swarm_filter_query(&self) -> &str {
         &self.swarm_filter_query
     }
+    fn swarm_rename_active(&self) -> bool {
+        self.swarm_rename_active
+    }
+    fn swarm_rename_buffer(&self) -> &str {
+        &self.swarm_rename_buffer
+    }
     fn filtered_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
         let members = self.inline_swarm_members();
         if self.swarm_filter_query.is_empty() {
@@ -2145,7 +2151,7 @@ impl App {
         if !self.swarm_panel_focused || !self.inline_swarm_gallery_active() {
             return false;
         }
-        match swarm_panel_action_for_key(code, modifiers, self.swarm_filter_active, self.swarm_batch_mode) {
+        match swarm_panel_action_for_key(code, modifiers, self.swarm_filter_active, self.swarm_batch_mode, self.swarm_rename_active) {
             Some(SwarmPanelAction::SelectNext) => {
                 self.move_swarm_panel_selection(1);
                 true
@@ -2248,6 +2254,48 @@ impl App {
                     true
                 }
             }
+            Some(SwarmPanelAction::StartRename) => {
+                let members = self.filtered_swarm_members();
+                if !members.is_empty() {
+                    self.swarm_rename_active = true;
+                    self.swarm_rename_buffer.clear();
+                    // Pre-fill with current label
+                    let ordered = crate::tui::info_widget::swarm_gallery::members_display_order(&members);
+                    let idx = self.swarm_panel_selected.min(order.len().saturating_sub(1));
+                    if let Some(session_id) = ordered.get(idx) {
+                        if let Some(member) = members.iter().find(|m| &m.session_id == session_id) {
+                            self.swarm_rename_buffer = member
+                                .friendly_name
+                                .clone()
+                                .unwrap_or_else(|| member.session_id.chars().take(8).collect());
+                        }
+                    }
+                }
+                true
+            }
+            Some(SwarmPanelAction::RenameChar(c)) => {
+                self.swarm_rename_buffer.push(c);
+                true
+            }
+            Some(SwarmPanelAction::RenameBackspace) => {
+                self.swarm_rename_buffer.pop();
+                true
+            }
+            Some(SwarmPanelAction::RenameConfirm) => {
+                let new_label = self.swarm_rename_buffer.clone();
+                self.swarm_rename_active = false;
+                self.swarm_rename_buffer.clear();
+                // TODO: Send rename command to swarm coordinator
+                // SwarmCommand::RenameAgent { session_id, new_label }
+                let _ = new_label;
+                self.set_status_notice("Rename sent (TODO: wire to swarm coordinator)");
+                true
+            }
+            Some(SwarmPanelAction::RenameEscape) => {
+                self.swarm_rename_active = false;
+                self.swarm_rename_buffer.clear();
+                true
+            }
             Some(SwarmPanelAction::Exit) => {
                 self.swarm_panel_focused = false;
                 self.swarm_panel_full_page = false;
@@ -2315,6 +2363,12 @@ pub(crate) enum SwarmPanelAction {
     FilterBackspace,
     FilterConfirm,
     FilterEscape,
+    /// Start renaming the selected agent's label (r, not in batch mode).
+    StartRename,
+    RenameChar(char),
+    RenameBackspace,
+    RenameConfirm,
+    RenameEscape,
 }
 
 /// Map a key to a focused-swarm-panel action.
@@ -2325,6 +2379,7 @@ pub(crate) enum SwarmPanelAction {
 /// - Space: toggle multi-select on the focused agent
 /// - Shift+Tab: toggle batch mode
 /// - In batch mode: s=stop, r=restart, p=prompt for all selected agents
+/// - r (not batch): start renaming the selected agent
 /// - Alt+↑ / Alt+↓ (also Alt+k / Alt+j): move the selection
 /// - Alt+o / Alt+Enter: pop the selected agent out to a terminal
 /// - Alt+Shift+p: open the active swarm routing prompt in the editor
@@ -2334,6 +2389,7 @@ pub(crate) fn swarm_panel_action_for_key(
     modifiers: crossterm::event::KeyModifiers,
     filter_active: bool,
     batch_mode: bool,
+    rename_active: bool,
 ) -> Option<SwarmPanelAction> {
     use crossterm::event::{KeyCode, KeyModifiers};
     if filter_active {
@@ -2345,6 +2401,19 @@ pub(crate) fn swarm_panel_action_for_key(
                 && !modifiers.contains(KeyModifiers::ALT) =>
             {
                 Some(SwarmPanelAction::FilterChar(c))
+            }
+            _ => None,
+        };
+    }
+    if rename_active {
+        return match code {
+            KeyCode::Esc if modifiers.is_empty() => Some(SwarmPanelAction::RenameEscape),
+            KeyCode::Enter if modifiers.is_empty() => Some(SwarmPanelAction::RenameConfirm),
+            KeyCode::Backspace => Some(SwarmPanelAction::RenameBackspace),
+            KeyCode::Char(c) if !modifiers.contains(KeyModifiers::CONTROL)
+                && !modifiers.contains(KeyModifiers::ALT) =>
+            {
+                Some(SwarmPanelAction::RenameChar(c))
             }
             _ => None,
         };
@@ -2371,6 +2440,10 @@ pub(crate) fn swarm_panel_action_for_key(
             KeyCode::Char('p') if modifiers.is_empty() => Some(SwarmPanelAction::BatchPrompt),
             _ => None,
         };
+    }
+    // r (not batch mode) starts renaming the selected agent's label.
+    if code == KeyCode::Char('r') && modifiers.is_empty() {
+        return Some(SwarmPanelAction::StartRename);
     }
     let alt = modifiers.contains(KeyModifiers::ALT);
     // macOS Option+letter often arrives as a transformed glyph with no ALT
@@ -2480,7 +2553,7 @@ mod swarm_panel_key_tests {
                 KeyModifiers::NONE
             };
             assert_eq!(
-                swarm_panel_action_for_key(code, mods, false, false),
+                swarm_panel_action_for_key(code, mods, false, false, false),
                 None,
                 "{code:?} must pass through to the chat input"
             );
@@ -2490,7 +2563,7 @@ mod swarm_panel_key_tests {
     #[test]
     fn space_toggles_select() {
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char(' '), KeyModifiers::NONE, false, false),
+            swarm_panel_action_for_key(KeyCode::Char(' '), KeyModifiers::NONE, false, false, false),
             Some(SwarmPanelAction::ToggleSelect)
         );
     }
@@ -2498,37 +2571,37 @@ mod swarm_panel_key_tests {
     #[test]
     fn shift_tab_toggles_batch_mode() {
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::BackTab, KeyModifiers::SHIFT, false, false),
+            swarm_panel_action_for_key(KeyCode::BackTab, KeyModifiers::SHIFT, false, false, false),
             Some(SwarmPanelAction::BatchMode)
         );
     }
 
     #[test]
     fn batch_mode_keys_only_active_when_batch() {
-        // In non-batch mode, s/r/p pass through.
+        // In non-batch mode, s/p pass through. r now maps to StartRename.
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('s'), KeyModifiers::NONE, false, false),
+            swarm_panel_action_for_key(KeyCode::Char('s'), KeyModifiers::NONE, false, false, false),
             None
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('r'), KeyModifiers::NONE, false, false),
-            None
+            swarm_panel_action_for_key(KeyCode::Char('r'), KeyModifiers::NONE, false, false, false),
+            Some(SwarmPanelAction::StartRename)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('p'), KeyModifiers::NONE, false, false),
+            swarm_panel_action_for_key(KeyCode::Char('p'), KeyModifiers::NONE, false, false, false),
             None
         );
         // In batch mode, s/r/p map to batch actions.
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('s'), KeyModifiers::NONE, false, true),
+            swarm_panel_action_for_key(KeyCode::Char('s'), KeyModifiers::NONE, false, true, false),
             Some(SwarmPanelAction::BatchStop)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('r'), KeyModifiers::NONE, false, true),
+            swarm_panel_action_for_key(KeyCode::Char('r'), KeyModifiers::NONE, false, true, false),
             Some(SwarmPanelAction::BatchRestart)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('p'), KeyModifiers::NONE, false, true),
+            swarm_panel_action_for_key(KeyCode::Char('p'), KeyModifiers::NONE, false, true, false),
             Some(SwarmPanelAction::BatchPrompt)
         );
     }
@@ -2536,39 +2609,39 @@ mod swarm_panel_key_tests {
     #[test]
     fn alt_chords_drive_the_panel() {
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Down, KeyModifiers::ALT, false, false),
+            swarm_panel_action_for_key(KeyCode::Down, KeyModifiers::ALT, false, false, false),
             Some(SwarmPanelAction::SelectNext)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Up, KeyModifiers::ALT, false, false),
+            swarm_panel_action_for_key(KeyCode::Up, KeyModifiers::ALT, false, false, false),
             Some(SwarmPanelAction::SelectPrev)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('j'), KeyModifiers::ALT, false, false),
+            swarm_panel_action_for_key(KeyCode::Char('j'), KeyModifiers::ALT, false, false, false),
             Some(SwarmPanelAction::SelectNext)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('k'), KeyModifiers::ALT, false, false),
+            swarm_panel_action_for_key(KeyCode::Char('k'), KeyModifiers::ALT, false, false, false),
             Some(SwarmPanelAction::SelectPrev)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('o'), KeyModifiers::ALT, false, false),
+            swarm_panel_action_for_key(KeyCode::Char('o'), KeyModifiers::ALT, false, false, false),
             Some(SwarmPanelAction::PopOut)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Enter, KeyModifiers::ALT, false, false),
+            swarm_panel_action_for_key(KeyCode::Enter, KeyModifiers::ALT, false, false, false),
             Some(SwarmPanelAction::PopOut)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('P'), KeyModifiers::ALT | KeyModifiers::SHIFT, false, false),
+            swarm_panel_action_for_key(KeyCode::Char('P'), KeyModifiers::ALT | KeyModifiers::SHIFT, false, false, false),
             Some(SwarmPanelAction::OpenPrompt)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('p'), KeyModifiers::ALT | KeyModifiers::SHIFT, false, false),
+            swarm_panel_action_for_key(KeyCode::Char('p'), KeyModifiers::ALT | KeyModifiers::SHIFT, false, false, false),
             Some(SwarmPanelAction::OpenPrompt)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Esc, KeyModifiers::NONE, false, false),
+            swarm_panel_action_for_key(KeyCode::Esc, KeyModifiers::NONE, false, false, false),
             Some(SwarmPanelAction::Exit)
         );
     }
@@ -2577,11 +2650,53 @@ mod swarm_panel_key_tests {
     fn ctrl_chords_pass_through() {
         for code in [KeyCode::Char('j'), KeyCode::Char('o'), KeyCode::Down] {
             assert_eq!(
-                swarm_panel_action_for_key(code, KeyModifiers::CONTROL, false, false),
+                swarm_panel_action_for_key(code, KeyModifiers::CONTROL, false, false, false),
                 None,
                 "{code:?}+ctrl belongs to other handlers"
             );
         }
+    }
+
+    #[test]
+    fn r_key_starts_rename_when_not_in_batch() {
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Char('r'), KeyModifiers::NONE, false, false, false),
+            Some(SwarmPanelAction::StartRename)
+        );
+        // r in batch mode maps to BatchRestart, not StartRename.
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Char('r'), KeyModifiers::NONE, false, true, false),
+            Some(SwarmPanelAction::BatchRestart)
+        );
+    }
+
+    #[test]
+    fn rename_mode_captures_text_input() {
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Char('a'), KeyModifiers::NONE, false, false, true),
+            Some(SwarmPanelAction::RenameChar('a'))
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Backspace, KeyModifiers::NONE, false, false, true),
+            Some(SwarmPanelAction::RenameBackspace)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Enter, KeyModifiers::NONE, false, false, true),
+            Some(SwarmPanelAction::RenameConfirm)
+        );
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Esc, KeyModifiers::NONE, false, false, true),
+            Some(SwarmPanelAction::RenameEscape)
+        );
+    }
+
+    #[test]
+    fn rename_mode_blocks_other_keys() {
+        // In rename mode, alt-chords and other keys pass through.
+        assert_eq!(
+            swarm_panel_action_for_key(KeyCode::Down, KeyModifiers::ALT, false, false, true),
+            None
+        );
     }
 }
 
