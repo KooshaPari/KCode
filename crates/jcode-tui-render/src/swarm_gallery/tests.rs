@@ -1,8 +1,7 @@
 use super::*;
+use super::util::disp_w;
+use jcode_tui_style::color::rgb;
 use ratatui::prelude::Line;
-
-
-    use super::*;
 
     fn member(id: &str, status: &str, role: Option<&str>, body: &[&str]) -> GalleryMember {
         GalleryMember {
