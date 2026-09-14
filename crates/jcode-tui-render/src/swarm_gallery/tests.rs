@@ -139,7 +139,7 @@ use ratatui::prelude::Line;
 
     #[test]
     fn panel_empty_renders_nothing() {
-        assert!(render_swarm_panel(&[], 0, true, 60, 12).is_empty());
+        assert!(render_swarm_panel(&[], 0, true, 60, 12, None).is_empty());
     }
 
     #[test]
@@ -149,7 +149,7 @@ use ratatui::prelude::Line;
             member("implementer", "running", None, &["building", "· 3s ago"]),
             member("reviewer", "done", None, &["LGTM", "· 1m ago"]),
         ];
-        let lines = render_swarm_panel(&members, 0, true, 70, 14);
+        let lines = render_swarm_panel(&members, 0, true, 70, 14, None);
         assert!(!lines.is_empty());
         for line in &lines {
             assert!(line.width() <= 70, "line too wide: {}", plain_line(line));
@@ -171,7 +171,7 @@ use ratatui::prelude::Line;
             member("b", "running", None, &[]),
         ];
         // After sort, coordinator "a" is index 0; selecting 1 marks "b".
-        let lines = render_swarm_panel(&members, 1, true, 60, 14);
+        let lines = render_swarm_panel(&members, 1, true, 60, 14, None);
         let selected_row = lines
             .iter()
             .map(plain_line)
@@ -186,7 +186,7 @@ use ratatui::prelude::Line;
             member("a", "running", Some("coordinator"), &["alpha work"]),
             member("b", "running", None, &["beta output here"]),
         ];
-        let lines = render_swarm_panel(&members, 1, true, 60, 14);
+        let lines = render_swarm_panel(&members, 1, true, 60, 14, None);
         let joined: String = lines.iter().map(plain_line).collect::<Vec<_>>().join("\n");
         // The detail viewport (bordered box) shows the selected agent's tail.
         assert!(joined.contains("beta output here"), "got:\n{joined}");
@@ -201,15 +201,15 @@ use ratatui::prelude::Line;
     fn panel_clamps_out_of_range_selection() {
         let members = vec![member("only", "running", None, &["x"])];
         // selected far beyond range must not panic and still render.
-        let lines = render_swarm_panel(&members, 99, true, 40, 12);
+        let lines = render_swarm_panel(&members, 99, true, 40, 12, None);
         assert!(!lines.is_empty());
     }
 
     #[test]
     fn panel_focus_hint_only_when_focused() {
         let members = vec![member("a", "running", None, &[])];
-        let focused = plain_line(&render_swarm_panel(&members, 0, true, 60, 12)[0]);
-        let unfocused = plain_line(&render_swarm_panel(&members, 0, false, 60, 12)[0]);
+        let focused = plain_line(&render_swarm_panel(&members, 0, true, 60, 12, None)[0]);
+        let unfocused = plain_line(&render_swarm_panel(&members, 0, false, 60, 12, None)[0]);
         assert!(focused.contains("pop out"), "got: {focused}");
         assert!(!unfocused.contains("pop out"), "got: {unfocused}");
     }
@@ -237,7 +237,7 @@ use ratatui::prelude::Line;
 
     #[test]
     fn strip_empty_renders_nothing() {
-        assert!(render_swarm_strip(&[], 0, true, &hints(), None, 0, 80, 12).is_empty());
+        assert!(render_swarm_strip(&[], 0, true, &hints(), None, 0, 80, 12, None).is_empty());
     }
 
     #[test]
@@ -626,7 +626,7 @@ use ratatui::prelude::Line;
             member("researcher", "thinking", Some("coordinator"), &["working"]),
             member("implementer", "running", None, &["building"]),
         ];
-        let unfocused = render_swarm_strip(&members, 0, false, &hints(), None, 0, 80, 12);
+        let unfocused = render_swarm_strip(&members, 0, false, &hints(), None, 0, 80, 12, None);
         assert_eq!(
             unfocused.len(),
             1,
@@ -634,7 +634,7 @@ use ratatui::prelude::Line;
         );
         // Focused: chips line + expanded detail viewport + hint line, bounded
         // by the max_height budget.
-        let focused = render_swarm_strip(&members, 0, true, &hints(), None, 0, 80, 12);
+        let focused = render_swarm_strip(&members, 0, true, &hints(), None, 0, 80, 12, None);
         assert!(
             focused.len() > 3,
             "focused strip should expand into a detail viewport, got {} lines",
@@ -643,7 +643,7 @@ use ratatui::prelude::Line;
         assert!(focused.len() <= 12, "focused strip must respect max_height");
         // With a tiny budget the focused strip degrades to the compact
         // 3-line form (chips + one detail line + hints).
-        let tiny = render_swarm_strip(&members, 0, true, &hints(), None, 0, 80, 3);
+        let tiny = render_swarm_strip(&members, 0, true, &hints(), None, 0, 80, 3, None);
         assert_eq!(tiny.len(), 3, "tiny budget should degrade to 3 lines");
     }
 
@@ -673,7 +673,7 @@ use ratatui::prelude::Line;
                 tool_intents: Vec::new(),
             },
         ];
-        let lines = render_swarm_strip(&[m], 0, true, &hints(), None, 0, 80, 14);
+        let lines = render_swarm_strip(&[m], 0, true, &hints(), None, 0, 80, 14, None);
         let text: Vec<String> = lines.iter().map(plain_line).collect();
         let all = text.join("\n");
         // Todo names replace the less actionable transcript tail when present.
@@ -695,7 +695,7 @@ use ratatui::prelude::Line;
             member("implementer", "running", None, &["building"]),
             member("reviewer", "done", None, &["done"]),
         ];
-        let lines = render_swarm_strip(&members, 1, true, &hints(), None, 0, 90, 12);
+        let lines = render_swarm_strip(&members, 1, true, &hints(), None, 0, 90, 12, None);
         for line in &lines {
             assert!(line.width() <= 90, "line too wide: {}", plain_line(line));
         }
@@ -721,6 +721,7 @@ use ratatui::prelude::Line;
             0,
             90,
             12,
+            None,
         );
         let chips = plain_line(&lines[0]);
         assert!(chips.contains("alt+n controls"), "got: {chips}");
@@ -730,7 +731,7 @@ use ratatui::prelude::Line;
     fn strip_shows_todo_counter() {
         let mut m = member("worker", "running", None, &["step"]);
         m.todo = Some((8, 16));
-        let lines = render_swarm_strip(&[m], 0, false, &hints(), None, 0, 90, 12);
+        let lines = render_swarm_strip(&[m], 0, false, &hints(), None, 0, 90, 12, None);
         let chips = plain_line(&lines[0]);
         assert!(chips.contains("8/16"), "todo counter missing: {chips}");
     }
@@ -741,7 +742,7 @@ use ratatui::prelude::Line;
         a.task = Some("fix parser".to_string());
         let mut b = member("owl", "running", None, &[]);
         b.task = Some("write docs".to_string());
-        let lines = render_swarm_strip(&[a, b], 0, false, &hints(), None, 0, 100, 12);
+        let lines = render_swarm_strip(&[a, b], 0, false, &hints(), None, 0, 100, 12, None);
         let chips = plain_line(&lines[0]);
         assert!(chips.contains("fox·fix parser"), "got: {chips}");
         assert!(chips.contains("owl·write docs"), "got: {chips}");
@@ -765,9 +766,9 @@ use ratatui::prelude::Line;
             .collect();
         for width in [40usize, 60, 90, 120] {
             let plain =
-                plain_line(&render_swarm_strip(&base, 0, false, &hints(), None, 0, width, 12)[0]);
+                plain_line(&render_swarm_strip(&base, 0, false, &hints(), None, 0, width, 12, None)[0]);
             let labeled_lines =
-                render_swarm_strip(&with_tasks, 0, false, &hints(), None, 0, width, 12);
+                render_swarm_strip(&with_tasks, 0, false, &hints(), None, 0, width, 12, None);
             let labeled = plain_line(&labeled_lines[0]);
             assert!(labeled_lines[0].width() <= width);
             let count = |s: &str| (0..8).filter(|i| s.contains(&format!("agent{i}"))).count();
@@ -790,7 +791,7 @@ use ratatui::prelude::Line;
             })
             .collect();
         for width in 8..200 {
-            let lines = render_swarm_strip(&members, 2, false, &hints(), None, 0, width, 12);
+            let lines = render_swarm_strip(&members, 2, false, &hints(), None, 0, width, 12, None);
             for line in &lines {
                 assert!(
                     line.width() <= width,
@@ -806,7 +807,7 @@ use ratatui::prelude::Line;
         let members: Vec<GalleryMember> = (0..12)
             .map(|i| member(&format!("agent-number-{i:02}"), "running", None, &[]))
             .collect();
-        let lines = render_swarm_strip(&members, 0, false, &hints(), None, 0, 50, 12);
+        let lines = render_swarm_strip(&members, 0, false, &hints(), None, 0, 50, 12, None);
         assert!(lines[0].width() <= 50, "too wide");
         let chips = plain_line(&lines[0]);
         assert!(chips.contains('+'), "expected +N overflow marker: {chips}");
@@ -831,6 +832,7 @@ use ratatui::prelude::Line;
                     0,
                     width,
                     12,
+                    None,
                 );
                 for line in &lines {
                     let text = plain_line(line);
@@ -859,6 +861,7 @@ use ratatui::prelude::Line;
             0,
             60,
             12,
+            None,
         );
         let chips = plain_line(&lines[0]);
         assert!(chips.contains("6/6 active"), "tally missing: {chips}");
@@ -880,7 +883,7 @@ use ratatui::prelude::Line;
         for width in 8..=80 {
             for focused in [false, true] {
                 for lines in [
-                    render_swarm_panel(&members, 0, focused, width, 14),
+                    render_swarm_panel(&members, 0, focused, width, 14, None),
                     render_gallery(&members, width, 12, None),
                 ] {
                     for line in &lines {
@@ -922,7 +925,7 @@ use ratatui::prelude::Line;
             for width in [0usize, 1, 2, 7, 8, 9, 40] {
                 for height in [0usize, 1, 2, 3, 7, 20] {
                     let _ = render_gallery(&members, width, height, None);
-                    let _ = render_swarm_panel(&members, count + 5, true, width, height);
+                    let _ = render_swarm_panel(&members, count + 5, true, width, height, None);
                     let _ = render_swarm_strip(
                         &members,
                         count + 5,
@@ -932,6 +935,7 @@ use ratatui::prelude::Line;
                         usize::MAX / 2,
                         width,
                         12,
+                        None,
                     );
                 }
             }
@@ -955,6 +959,7 @@ use ratatui::prelude::Line;
             0,
             width,
             12,
+            None,
         );
         let chips = plain_line(&lines[0]);
         assert!(

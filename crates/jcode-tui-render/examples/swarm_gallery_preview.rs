@@ -214,11 +214,11 @@ fn main() {
     );
     print_lines(
         "STRIP: focused, selected #1 @ width 90",
-        &render_swarm_strip(&panel_members, 1, true, &hints, None, 3, 90, 12),
+        &render_swarm_strip(&panel_members, 1, true, &hints, None, 3, 90, 12, None),
     );
     print_lines(
         "STRIP: focused narrow @ width 54",
-        &render_swarm_strip(&panel_members, 0, true, &hints, None, 5, 54, 12),
+        &render_swarm_strip(&panel_members, 0, true, &hints, None, 5, 54, 12, None),
     );
 
     // ---- Vertical strip (default layout: one agent per row) ----

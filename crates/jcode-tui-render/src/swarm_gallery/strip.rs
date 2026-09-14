@@ -55,6 +55,7 @@ pub fn render_swarm_strip(
     spinner_frame: usize,
     width: usize,
     max_height: usize,
+    batch_selected: Option<&std::collections::HashSet<usize>>,
 ) -> Vec<Line<'static>> {
     if members.is_empty() || width < 8 {
         return Vec::new();
@@ -96,6 +97,7 @@ pub fn render_swarm_strip(
         color: Color,
         active: bool,
         is_sel: bool,
+        is_batch: bool,
     }
     let chips: Vec<Chip> = ordered
         .iter()
@@ -112,11 +114,13 @@ pub fn render_swarm_strip(
             color: role_color(m.role.as_deref()).unwrap_or_else(|| status_accent(&m.status)),
             active: is_active_status(&m.status),
             is_sel: idx == selected,
+            is_batch: batch_selected.is_some_and(|set| set.contains(&idx)),
         })
         .collect();
     let chip_w = |c: &Chip| -> usize {
         let prefix = if c.is_sel && focused { 2 } else { 0 }; // '▸ ' width
-        prefix + disp_w(&c.glyph) + 1 + disp_w(&c.name)
+        let batch_pfx = if c.is_batch { 2 } else { 0 }; // '✓ ' width
+        prefix + batch_pfx + disp_w(&c.glyph) + 1 + disp_w(&c.name)
             + c.todo.as_ref().map(|t| disp_w(t) + 1).unwrap_or(0)
     };
 
@@ -211,20 +215,30 @@ pub fn render_swarm_strip(
         // Degenerate width: show the first chip truncated.
         let c = &chips[0];
         let prefix_w = if c.is_sel && focused { 2 } else { 0 }; // '▸ ' width
+        let batch_pfx_w = if c.is_batch { 2 } else { 0 }; // '✓ ' width
         let budget = width.saturating_sub(lead_w + if show_tally { tail_w + gap } else { 0 });
-        let avail = budget.saturating_sub(disp_w(&c.glyph) + 1 + prefix_w);
+        let avail = budget.saturating_sub(disp_w(&c.glyph) + 1 + prefix_w + batch_pfx_w);
         let name = truncate_label(&c.name, avail.max(1));
-        let style = if c.active {
+        let mut style = if c.active {
             Style::default().fg(c.color).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(rgb(110, 110, 125))
         };
-        let prefix = if c.is_sel && focused { "▸ " } else { "" };
+        if c.is_batch {
+            style = style.bg(rgb(20, 30, 40));
+        }
+        let mut prefix = String::new();
+        if c.is_sel && focused {
+            prefix.push_str("▸ ");
+        }
+        if c.is_batch {
+            prefix.push_str("\u{2713} ");
+        }
         spans.push(Span::styled(
             format!("{prefix}{} {}", c.glyph, name),
             style,
         ));
-        used = prefix_w + disp_w(&c.glyph) + 1 + disp_w(&name);
+        used = prefix_w + batch_pfx_w + disp_w(&c.glyph) + 1 + disp_w(&name);
     } else {
         for (i, chip) in chips.iter().take(shown).enumerate() {
             if i > 0 {
@@ -235,13 +249,22 @@ pub fn render_swarm_strip(
             } else {
                 Style::default().fg(rgb(110, 110, 125))
             };
+            if chip.is_batch {
+                style = style.bg(rgb(20, 30, 40));
+            }
             if chip.is_sel && focused {
                 style = style
                     .add_modifier(Modifier::REVERSED | Modifier::UNDERLINED);
             } else if chip.is_sel {
                 style = style.add_modifier(Modifier::UNDERLINED);
             }
-            let prefix = if chip.is_sel && focused { "▸ " } else { "" };
+            let mut prefix = String::new();
+            if chip.is_sel && focused {
+                prefix.push_str("▸ ");
+            }
+            if chip.is_batch {
+                prefix.push_str("\u{2713} ");
+            }
             spans.push(Span::styled(
                 format!("{prefix}{} {}", chip.glyph, chip.name),
                 style,
@@ -546,6 +569,10 @@ pub fn render_swarm_strip_vertical(
         } else {
             Style::default().fg(rgb(110, 110, 125))
         };
+        let is_batch_row = batch_selected.is_some_and(|set| set.contains(&(start + row)));
+        if is_batch_row {
+            style = style.bg(rgb(20, 30, 40));
+        }
         if is_sel {
             style = style.add_modifier(Modifier::UNDERLINED);
         }
