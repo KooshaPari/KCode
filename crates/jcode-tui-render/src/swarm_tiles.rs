@@ -31,6 +31,9 @@ pub struct SwarmTile {
     pub accent: Color,
     /// Optional role/prefix glyph drawn before the title (e.g. "★").
     pub role_glyph: Option<String>,
+    /// Role-based accent color for the title text when unselected.
+    /// Provides a subtle role hint even for non-focused tiles.
+    pub role_color: Option<Color>,
     /// The agent's recent output, oldest first. The renderer shows the tail.
     pub body: Vec<String>,
 }
@@ -42,12 +45,18 @@ impl SwarmTile {
             status: status.into(),
             accent,
             role_glyph: None,
+            role_color: None,
             body: Vec::new(),
         }
     }
 
     pub fn with_role_glyph(mut self, glyph: impl Into<String>) -> Self {
         self.role_glyph = Some(glyph.into());
+        self
+    }
+
+    pub fn with_role_color(mut self, color: Color) -> Self {
+        self.role_color = Some(color);
         self
     }
 
@@ -170,9 +179,14 @@ fn render_cell(tile: &SwarmTile, inner_w: usize, inner_h: usize, selected: bool)
             Color::Rgb(170, 172, 180),                         // normal body text
         )
     } else {
+        // Use role_color for the title when available, giving a subtle
+        // role hint even for unselected tiles.
+        let dim_title = tile
+            .role_color
+            .unwrap_or(Color::Rgb(130, 130, 145));
         (
             Color::Rgb(80, 80, 92),                            // dim border (default)
-            Color::Rgb(130, 130, 145),                         // slightly dim title
+            dim_title,                                         // role-tinted title
             Color::Rgb(100, 100, 115),                         // dim badge
             Color::Rgb(170, 170, 185),                         // slightly dimmed body text
         )
@@ -249,7 +263,11 @@ fn render_cell(tile: &SwarmTile, inner_w: usize, inner_h: usize, selected: bool)
     // ---- Body: bottom-anchored tail of the stream ----
     let body_lines = wrap_tail(&tile.body, inner_w, inner_h);
     let blank_top = inner_h.saturating_sub(body_lines.len());
-    let text_style = Style::default().fg(text_color);
+    let text_style = if selected {
+        Style::default().fg(text_color).bg(Color::Rgb(25, 25, 35))
+    } else {
+        Style::default().fg(text_color)
+    };
     for _ in 0..blank_top {
         lines.push(content_line("", inner_w, border_style, text_style));
     }
@@ -297,7 +315,7 @@ fn content_line(
     Line::from(vec![
         Span::styled("│".to_string(), border_style),
         Span::styled(truncated, text_style),
-        Span::raw(" ".repeat(pad)),
+        Span::styled(" ".repeat(pad), text_style),
         Span::styled("│".to_string(), border_style),
     ])
 }
