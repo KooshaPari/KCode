@@ -4,6 +4,7 @@
 //! (time, session count, file lock) and triggers background memory
 //! consolidation when all gates pass.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -188,7 +189,177 @@ async fn run_consolidation(provider: &Arc<dyn Provider>) -> anyhow::Result<()> {
         ));
     }
 
+    // Apply the operations to the memory graph.
+    let applied = apply_consolidation_ops(&ops, &manager)?;
+    logging::info(&format!(
+        "Auto-dream: applied {}/{} operations",
+        applied,
+        ops.len()
+    ));
+
     Ok(())
+}
+
+/// Apply consolidation operations to the memory graph.
+///
+/// Returns the count of successfully applied operations.
+fn apply_consolidation_ops(
+    ops: &[ConsolidationOp],
+    manager: &MemoryManager,
+) -> anyhow::Result<usize> {
+    // Build a lookup map of all active memories by id.
+    let all_entries = manager.list_all()?;
+    let by_id: HashMap<String, _> = all_entries
+        .into_iter()
+        .filter(|e| e.active)
+        .map(|e| (e.id.clone(), e))
+        .collect();
+
+    let mut applied = 0;
+
+    for op in ops {
+        match op.op.as_str() {
+            "merge" => {
+                if op.ids.len() < 2 {
+                    logging::warn("Auto-dream: merge op has < 2 ids, skipping");
+                    continue;
+                }
+                // Keep the first entry (survivor), supersede the rest.
+                let survivor_id = &op.ids[0];
+                if !by_id.contains_key(survivor_id) {
+                    logging::warn(&format!(
+                        "Auto-dream: merge survivor {} not found, skipping",
+                        survivor_id
+                    ));
+                    continue;
+                }
+                let mut success = true;
+                for victim_id in &op.ids[1..] {
+                    match manager.forget(victim_id) {
+                        Ok(true) => {
+                            logging::info(&format!(
+                                "Auto-dream: merged {} -> {} (superseded {})",
+                                victim_id, survivor_id, victim_id
+                            ));
+                            applied += 1;
+                        }
+                        Ok(false) => {
+                            logging::warn(&format!(
+                                "Auto-dream: merge victim {} not found",
+                                victim_id
+                            ));
+                        }
+                        Err(e) => {
+                            logging::error(&format!(
+                                "Auto-dream: failed to forget {}: {}",
+                                victim_id, e
+                            ));
+                            success = false;
+                        }
+                    }
+                }
+                // Link survivor to superseded entries for provenance.
+                if success {
+                    for victim_id in &op.ids[1..] {
+                        let _ = manager.link_memories(survivor_id, victim_id, 0.8);
+                    }
+                }
+            }
+            "promote" => {
+                for id in &op.ids {
+                    let entry = crate::memory::MemoryEntry::new(
+                        MemoryCategory::Fact,
+                        &format!("promoted: {}", id),
+                    )
+                    .with_id(format!("{}:promoted", id));
+                    match manager.remember_global(entry) {
+                        Ok(new_id) => {
+                            logging::info(&format!(
+                                "Auto-dream: promoted {} as {}",
+                                id, new_id
+                            ));
+                            applied += 1;
+                        }
+                        Err(e) => {
+                            logging::error(&format!(
+                                "Auto-dream: failed to promote {}: {}",
+                                id, e
+                            ));
+                        }
+                    }
+                }
+            }
+            "decay" => {
+                for id in &op.ids {
+                    if let Some(entry) = by_id.get(id) {
+                        if entry.confidence < 0.1 || entry.strength < 2 {
+                            // Low-value entry: remove it.
+                            match manager.forget(id) {
+                                Ok(true) => {
+                                    logging::info(&format!(
+                                        "Auto-dream: decayed and removed {}",
+                                        id
+                                    ));
+                                    applied += 1;
+                                }
+                                _ => {
+                                    logging::warn(&format!(
+                                        "Auto-dream: decay target {} not found",
+                                        id
+                                    ));
+                                }
+                            }
+                        } else {
+                            // Medium-value: tag for review.
+                            let _ = manager.tag_memory(id, "decay-candidate");
+                            logging::info(&format!(
+                                "Auto-dream: tagged {} as decay-candidate",
+                                id
+                            ));
+                            applied += 1;
+                        }
+                    }
+                }
+            }
+            "tag" => {
+                for id in &op.ids {
+                    // Derive a tag from the reason (first word, lowercased,
+                    // alphanumeric only).
+                    let tag = op.reason
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("consolidated")
+                        .to_lowercase()
+                        .chars()
+                        .filter(|c| c.is_alphanumeric())
+                        .collect::<String>();
+                    match manager.tag_memory(id, &tag) {
+                        Ok(()) => {
+                            logging::info(&format!(
+                                "Auto-dream: tagged {} with '{}'",
+                                id, tag
+                            ));
+                            applied += 1;
+                        }
+                        Err(e) => {
+                            logging::error(&format!(
+                                "Auto-dream: failed to tag {}: {}",
+                                id, e
+                            ));
+                        }
+                    }
+                }
+            }
+            other => {
+                logging::warn(&format!(
+                    "Auto-dream: unknown op '{}', skipping",
+                    other
+                ));
+            }
+        }
+    }
+
+    Ok(applied)
 }
 
 /// Map a `MemoryCategory` to the consolidation `EntryRole`.
