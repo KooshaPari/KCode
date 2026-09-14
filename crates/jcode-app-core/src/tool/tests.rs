@@ -838,6 +838,7 @@ async fn test_context_guard_small_output_passes_through() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let output = ToolOutput::new("small output");
@@ -852,6 +853,7 @@ async fn test_context_guard_withholds_huge_single_output_by_default() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     // 30% of 1000 = 300 tokens = 1200 chars max for a single output
@@ -889,6 +891,7 @@ async fn test_context_guard_returns_truncated_output_when_caller_accepts() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let big_output = "x".repeat(8000);
@@ -924,6 +927,7 @@ async fn test_context_guard_reports_the_real_cost_and_affordable_size() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let output = ToolOutput::new("x".repeat(360_000)); // ~90k tokens
@@ -969,6 +973,7 @@ async fn test_context_guard_truncates_when_context_nearly_full() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     // Even a modest output should get truncated when context is 95% full
@@ -994,6 +999,7 @@ async fn test_context_guard_still_refuses_when_context_is_exhausted() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let payload = "x".repeat(400_000);
@@ -1019,6 +1025,7 @@ async fn test_context_guard_zero_budget_passes_through() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let output = ToolOutput::new("x".repeat(100_000));
@@ -1237,6 +1244,7 @@ async fn test_context_guard_never_spends_more_than_it_reports() {
                         tools: Arc::new(RwLock::new(HashMap::new())),
                         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
                         compaction,
+                        search_index: tool_search::ToolSearchIndex::new(),
                     };
 
                     let payload = "x".repeat(payload_tokens * 4);
@@ -1285,6 +1293,7 @@ async fn test_context_guard_refusal_reads_clearly_for_todays_regression() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let result = registry
@@ -1575,6 +1584,7 @@ async fn test_guard_withholds_large_output_on_a_million_token_window() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     // ~233k tokens: the real size of the agentgrep result that started this.
@@ -1606,6 +1616,7 @@ async fn test_single_output_ceiling_is_absolute_not_only_proportional() {
             tools: Arc::new(RwLock::new(HashMap::new())),
             skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
             compaction,
+            search_index: tool_search::ToolSearchIndex::new(),
         };
 
         // Just over the absolute ceiling, but a trivial fraction of a huge window.
