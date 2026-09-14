@@ -241,6 +241,105 @@ pub fn summary_line(
 }
 
 
+/// Summary line built directly from a `&[GalleryMember]` slice.
+///
+/// Counts members by status category and formats as:
+/// `Agents: {total} · {running} running · {queued} queued · {idle} idle`
+/// Categories with zero count are omitted. Right-aligned to `width`.
+pub fn summary_line_from_members(members: &[GalleryMember], width: usize) -> Line<'static> {
+    let total = members.len();
+
+    let mut running = 0usize;
+    let mut queued = 0usize;
+    let mut done = 0usize;
+    let mut failed = 0usize;
+    let mut idle = 0usize;
+
+    for m in members {
+        match m.status.as_str() {
+            "running" | "streaming" | "thinking" => running += 1,
+            "queued" | "waiting" => queued += 1,
+            "completed" | "done" => done += 1,
+            "failed" | "error" => failed += 1,
+            _ => idle += 1,
+        }
+    }
+
+    // Build the "Agents: N" prefix.
+    let mut parts: Vec<String> = Vec::new();
+    parts.push(format!("Agents: {total}"));
+
+    let dim = rgb(105, 105, 120);
+    let accent = rgb(255, 200, 100);
+
+    // Collect non-zero categories as (label, color) pairs.
+    let mut segments: Vec<(String, Color)> = Vec::new();
+    if running > 0 {
+        segments.push((format!("{running} running"), accent));
+    }
+    if queued > 0 {
+        segments.push((format!("{queued} queued"), dim));
+    }
+    if done > 0 {
+        segments.push((format!("{done} done"), dim));
+    }
+    if failed > 0 {
+        segments.push((format!("{failed} failed"), rgb(255, 100, 100)));
+    }
+    if idle > 0 {
+        segments.push((format!("{idle} idle"), dim));
+    }
+
+    // Compose the full body text to measure width.
+    let mut body_text = parts.join(" · ");
+    for (label, _) in &segments {
+        body_text.push_str(" · ");
+        body_text.push_str(label);
+    }
+
+    let body_w = disp_w(&body_text);
+    if body_w > width {
+        let mut w = 0usize;
+        let mut end = body_text.len();
+        for (i, ch) in body_text.char_indices() {
+            w += unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+            if w > width {
+                end = i;
+                break;
+            }
+        }
+        body_text.truncate(end);
+    }
+
+    let body_w = disp_w(&body_text);
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    if body_w < width {
+        spans.push(Span::raw(" ".repeat(width - body_w)));
+    }
+
+    // Re-segment with styling: prefix in dim, category labels colored.
+    // Simple approach: the prefix (before first ·) is dim, then each segment
+    // gets its own color.
+    let prefix_text = parts.join(" · ");
+
+    // If the full body was truncated, just render it in dim.
+    if body_w < disp_w(&prefix_text) + 20 {
+        // Truncated or very narrow: render everything dim.
+        spans.push(Span::styled(body_text, Style::default().fg(dim)));
+    } else {
+        // Render prefix dim, then each colored segment.
+        spans.push(Span::styled(prefix_text, Style::default().fg(dim)));
+        for (label, color) in &segments {
+            let sep = " · ";
+            spans.push(Span::styled(sep, Style::default().fg(dim)));
+            spans.push(Span::styled(label.clone(), Style::default().fg(*color)));
+        }
+    }
+
+    Line::from(spans)
+}
+
+
 /// Truncate a styled line so its display width never exceeds `max_width`.
 /// Splits mid-span if needed, dropping a trailing wide glyph that would
 /// straddle the boundary.

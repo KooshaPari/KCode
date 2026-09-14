@@ -797,7 +797,7 @@ fn summary_line_with_batch(
     width: usize,
     batch_info: &str,
 ) -> Line<'static> {
-    let inner = jcode_tui_render::swarm_gallery::summary_line(members, width);
+    let inner = jcode_tui_render::swarm_gallery::summary_line_from_members(members, width);
     if batch_info.is_empty() {
         return inner;
     }
@@ -909,7 +909,11 @@ pub(crate) fn render_swarm_strip_lines(
             width,
             SWARM_STRIP_VERTICAL_MAX_ROWS,
             max_height,
-            None,
+            if batch_mode {
+                Some(selected_agents)
+            } else {
+                None
+            },
         ),
         crate::config::SwarmStripLayout::Horizontal => render_swarm_strip(
             &members_to_gallery(members),
@@ -924,6 +928,11 @@ pub(crate) fn render_swarm_strip_lines(
             spinner_frame,
             width,
             max_height,
+            if batch_mode {
+                Some(selected_agents)
+            } else {
+                None
+            },
         ),
     };
     // ---- Aggregate summary bar (focused only) ----
