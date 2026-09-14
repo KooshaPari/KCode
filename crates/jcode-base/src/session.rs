@@ -183,6 +183,15 @@ pub struct Session {
     /// Non-conversation UI/state events persisted for higher-fidelity replay.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub replay_events: Vec<StoredReplayEvent>,
+    /// Fork depth guard: current depth in the fork chain (0 = root session).
+    #[serde(default)]
+    pub fork_depth: u8,
+    /// Fork depth guard: maximum allowed fork depth.
+    #[serde(default = "default_fork_max_depth")]
+    pub fork_max_depth: u8,
+    /// Fork depth guard: chain of fork IDs from root to this session.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fork_chain: Vec<String>,
     #[serde(skip)]
     persist_state: SessionPersistState,
     #[serde(skip)]
@@ -274,6 +283,10 @@ fn env_flag_enabled(name: &str) -> bool {
 
 fn default_is_test_session() -> bool {
     env_flag_enabled("JCODE_TEST_SESSION")
+}
+
+fn default_fork_max_depth() -> u8 {
+    jcode_permission_bubble::MAX_FORK_DEPTH as u8
 }
 
 pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
@@ -760,6 +773,9 @@ impl Session {
             env_snapshots: Vec::new(),
             memory_injections: Vec::new(),
             replay_events: Vec::new(),
+            fork_depth: 0,
+            fork_max_depth: default_fork_max_depth(),
+            fork_chain: Vec::new(),
             persist_state: SessionPersistState::default(),
             provider_messages_cache: Vec::new(),
             provider_message_prefix_hashes_cache: Vec::new(),
@@ -814,6 +830,9 @@ impl Session {
             env_snapshots: Vec::new(),
             memory_injections: Vec::new(),
             replay_events: Vec::new(),
+            fork_depth: 0,
+            fork_max_depth: default_fork_max_depth(),
+            fork_chain: Vec::new(),
             persist_state: SessionPersistState::default(),
             provider_messages_cache: Vec::new(),
             provider_message_prefix_hashes_cache: Vec::new(),

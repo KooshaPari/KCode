@@ -53,6 +53,7 @@ jcode-embedding = { path = "../jcode-embedding", optional = true }
 jcode-gateway-types = { path = "../jcode-gateway-types" }
 jcode-import-core = { path = "../jcode-import-core" }
 jcode-logging = { path = "../jcode-logging" }
+jcode-permission-bubble = { path = "../jcode-permission-bubble" }
 
 # OAuth
 base64 = "0.22"
