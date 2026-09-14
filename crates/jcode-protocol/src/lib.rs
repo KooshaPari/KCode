@@ -500,6 +500,18 @@ pub struct SwarmMemberRuntime {
     pub effort: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub elapsed_secs: Option<u64>,
+    /// Total input tokens consumed by this agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    /// Total output tokens produced by this agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    /// Number of tasks queued behind this agent (auto-scaling signal).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_depth: Option<u32>,
+    /// Estimated cost in USD cents for this agent's session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_cents: Option<u64>,
 }
 
 impl SwarmMemberRuntime {
@@ -509,6 +521,10 @@ impl SwarmMemberRuntime {
             && self.auth_method.is_none()
             && self.effort.is_none()
             && self.elapsed_secs.is_none()
+            && self.input_tokens.is_none()
+            && self.output_tokens.is_none()
+            && self.queue_depth.is_none()
+            && self.cost_cents.is_none()
     }
 }
 

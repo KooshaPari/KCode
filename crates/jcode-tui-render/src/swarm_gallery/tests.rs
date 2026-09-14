@@ -19,6 +19,10 @@ use ratatui::prelude::Line;
             auth_method: None,
             effort: None,
             elapsed_secs: None,
+            input_tokens: None,
+            output_tokens: None,
+            queue_depth: None,
+            cost_cents: None,
         }
     }
 

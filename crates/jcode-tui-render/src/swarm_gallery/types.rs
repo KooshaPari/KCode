@@ -35,6 +35,14 @@ pub struct GalleryMember {
     pub effort: Option<String>,
     /// Seconds since this member was spawned.
     pub elapsed_secs: Option<u64>,
+    /// Total input tokens consumed.
+    pub input_tokens: Option<u64>,
+    /// Total output tokens produced.
+    pub output_tokens: Option<u64>,
+    /// Tasks queued behind this agent (auto-scaling signal).
+    pub queue_depth: Option<u32>,
+    /// Estimated cost in USD cents.
+    pub cost_cents: Option<u64>,
 }
 
 /// One compact todo entry shown in the focused swarm detail view.
