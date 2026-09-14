@@ -5,7 +5,9 @@ use ratatui::prelude::*;
 use jcode_tui_style::color::rgb;
 
 use super::types::{GalleryMember, GalleryToolIntent};
-use super::util::{role_color, status_accent, status_glyph, truncate_label};
+use super::util::{
+    format_elapsed_short, role_color, status_accent, status_glyph, truncate_label,
+};
 
 /// Render the expanded detail viewport for the hovered agent in the focused
 /// strip: a header, a tail of the agent's live transcript, and its todo list.
@@ -89,6 +91,50 @@ pub(crate) fn hovered_detail_body(
     }
 
     let mut out: Vec<Line<'static>> = Vec::new();
+
+    // ---- Expanded metadata lines (visible when this is the focused agent) ----
+    // Show elapsed time, effort level, and auth method as compact indicator
+    // lines above the todo card so they are always visible in the detail pane.
+    let detail_fg = rgb(110, 110, 125);
+    if let Some(secs) = m.elapsed_secs {
+        if out.len() < budget {
+            out.push(Line::from(vec![
+                Span::raw(GUTTER),
+                Span::styled(
+                    if show_member_rail { BAR } else { "    " },
+                    Style::default().fg(gutter_fg),
+                ),
+                Span::styled("  ⏱ ", Style::default().fg(detail_fg)),
+                Span::raw(format_elapsed_short(secs)),
+            ]));
+        }
+    }
+    if let Some(ref effort) = m.effort {
+        if !effort.trim().is_empty() && out.len() < budget {
+            out.push(Line::from(vec![
+                Span::raw(GUTTER),
+                Span::styled(
+                    if show_member_rail { BAR } else { "    " },
+                    Style::default().fg(gutter_fg),
+                ),
+                Span::styled("  ⚡ ", Style::default().fg(detail_fg)),
+                Span::raw(format!("effort: {effort}")),
+            ]));
+        }
+    }
+    if let Some(ref auth) = m.auth_method {
+        if !auth.trim().is_empty() && out.len() < budget {
+            out.push(Line::from(vec![
+                Span::raw(GUTTER),
+                Span::styled(
+                    if show_member_rail { BAR } else { "    " },
+                    Style::default().fg(gutter_fg),
+                ),
+                Span::styled("  🔑 ", Style::default().fg(detail_fg)),
+                Span::raw(format!("auth: {auth}")),
+            ]));
+        }
+    }
 
     // ---- Todo card ----
     // Show a sliding window of four item names. Tool activity belongs to the

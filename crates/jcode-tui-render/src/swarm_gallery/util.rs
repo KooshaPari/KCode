@@ -137,6 +137,16 @@ pub(crate) fn format_elapsed(seconds: u64) -> String {
 }
 
 
+/// Short elapsed-time formatting: "Xm Ys" or "Ys".
+pub fn format_elapsed_short(secs: u64) -> String {
+    if secs < 60 {
+        format!("{secs}s")
+    } else {
+        format!("{}m {}s", secs / 60, secs % 60)
+    }
+}
+
+
 pub(crate) fn format_model(model: &str) -> String {
     let routed = model.rsplit([':', '/']).next().unwrap_or(model);
     let model = routed
