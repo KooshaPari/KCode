@@ -1068,8 +1068,10 @@ impl App {
                 return false;
             }
 
-            // Redraw UI while we wait
+            // Redraw UI while we wait (with sync to prevent tearing)
+            let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026h");
             let _ = terminal.draw(|frame| crate::tui::ui::draw(frame, self));
+            let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026l");
 
             let compaction = self.registry.compaction();
             let done = if let Ok(mut manager) = compaction.try_write() {

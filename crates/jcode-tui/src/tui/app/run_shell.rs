@@ -491,11 +491,14 @@ impl StatusSpinnerRenderer {
         let previous_frame = self.last_frame.as_ref();
         let draw_start = Instant::now();
         let mut render_elapsed = Duration::ZERO;
+        // Synchronized update prevents tearing on supported terminals.
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026h");
         let completed = terminal.draw(|frame| {
             let render_start = Instant::now();
             crate::tui::ui::draw(frame, app);
             render_elapsed = render_start.elapsed();
         })?;
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026l");
         let total_elapsed = draw_start.elapsed();
         let changed_cells = previous_frame
             .filter(|previous| previous.area == completed.buffer.area)
@@ -1061,7 +1064,9 @@ impl App {
         let mut event_cursor: usize = 0;
         let mut replay_turn_id: u64 = 0;
 
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026h");
         terminal.draw(|f| crate::tui::render_frame(f, &self))?;
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026l");
         frames.push((0.0, terminal.backend().buffer().clone()));
 
         let progress_interval = (total_duration_ms / 20.0).max(1000.0);
@@ -1084,7 +1089,9 @@ impl App {
 
             if sim_time_ms >= next_frame_at {
                 replay::update_replay_elapsed_override(&mut self, sim_time_ms);
+                let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026h");
                 terminal.draw(|f| crate::tui::render_frame(f, &self))?;
+                let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026l");
                 frames.push((sim_time_ms / 1000.0, terminal.backend().buffer().clone()));
                 next_frame_at = sim_time_ms + frame_duration_ms;
             }

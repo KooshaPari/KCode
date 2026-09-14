@@ -824,7 +824,7 @@ fn handle_terminal_event_while_disconnected(
     }
 
     if needs_redraw {
-        terminal.draw(|frame| crate::tui::ui::draw(frame, app))?;
+        crate::tui::draw_synced(terminal, app)?;
     }
 
     Ok(app.should_quit)
