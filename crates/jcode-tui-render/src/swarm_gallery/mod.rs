@@ -26,8 +26,9 @@ pub use self::strip::{render_swarm_strip, render_swarm_strip_vertical, SwarmStri
 pub use self::types::{GalleryMember, GalleryTodo, GalleryToolIntent};
 pub use self::util::{
     STRIP_SPINNER_FRAME_MS, STRIP_SPINNER_FPS, STRIP_SPINNER_FRAMES, display_order,
-    format_elapsed_short, humanize_age, is_active_status, role_color, role_glyph,
-    status_accent, status_glyph, summary_line, summary_line_from_members,
+    format_cost, format_elapsed_short, format_tokens, humanize_age, is_active_status,
+    role_color, role_glyph, status_accent, status_glyph, summary_line,
+    summary_line_from_members,
 };
 
 #[cfg(test)]

@@ -147,6 +147,28 @@ pub fn format_elapsed_short(secs: u64) -> String {
 }
 
 
+/// Format token counts with human-readable suffixes.
+pub fn format_tokens(tokens: u64) -> String {
+    if tokens >= 1_000_000 {
+        format!("{:.1}M tokens", tokens as f64 / 1_000_000.0)
+    } else if tokens >= 1_000 {
+        format!("{:.1}K tokens", tokens as f64 / 1_000.0)
+    } else {
+        format!("{tokens} tokens")
+    }
+}
+
+
+/// Format cost in USD cents with a dollar sign.
+pub fn format_cost(cents: u64) -> String {
+    if cents >= 100 {
+        format!("${:.2}", cents as f64 / 100.0)
+    } else {
+        format!("${:.3}", cents as f64 / 100.0)
+    }
+}
+
+
 pub(crate) fn format_model(model: &str) -> String {
     let routed = model.rsplit([':', '/']).next().unwrap_or(model);
     let model = routed

@@ -111,6 +111,10 @@ fn workers_to_members(workers: &[MockWorker]) -> Vec<GalleryMember> {
                 auth_method: None,
                 effort: None,
                 elapsed_secs: Some(w.age_secs()),
+                input_tokens: None,
+                output_tokens: None,
+                queue_depth: None,
+                cost_cents: None,
             }
         })
         .collect()

@@ -6,7 +6,8 @@ use jcode_tui_style::color::rgb;
 
 use super::types::{GalleryMember, GalleryToolIntent};
 use super::util::{
-    format_elapsed_short, role_color, status_accent, status_glyph, truncate_label,
+    format_cost, format_elapsed_short, format_tokens, role_color, status_accent,
+    status_glyph, truncate_label,
 };
 
 /// Render the expanded detail viewport for the hovered agent in the focused
@@ -132,6 +133,60 @@ pub(crate) fn hovered_detail_body(
                 ),
                 Span::styled("  🔑 ", Style::default().fg(detail_fg)),
                 Span::raw(format!("auth: {auth}")),
+            ]));
+        }
+    }
+
+    // ---- Performance metrics ----
+    if let Some(tokens) = m.input_tokens {
+        if out.len() < budget {
+            out.push(Line::from(vec![
+                Span::raw(GUTTER),
+                Span::styled(
+                    if show_member_rail { BAR } else { "    " },
+                    Style::default().fg(gutter_fg),
+                ),
+                Span::styled("  📥 ", Style::default().fg(detail_fg)),
+                Span::raw(format_tokens(tokens)),
+            ]));
+        }
+    }
+    if let Some(tokens) = m.output_tokens {
+        if out.len() < budget {
+            out.push(Line::from(vec![
+                Span::raw(GUTTER),
+                Span::styled(
+                    if show_member_rail { BAR } else { "    " },
+                    Style::default().fg(gutter_fg),
+                ),
+                Span::styled("  📤 ", Style::default().fg(detail_fg)),
+                Span::raw(format_tokens(tokens)),
+            ]));
+        }
+    }
+    if let Some(depth) = m.queue_depth {
+        if depth > 0 && out.len() < budget {
+            out.push(Line::from(vec![
+                Span::raw(GUTTER),
+                Span::styled(
+                    if show_member_rail { BAR } else { "    " },
+                    Style::default().fg(gutter_fg),
+                ),
+                Span::styled("  ⚠️  ", Style::default().fg(rgb(255, 180, 50))),
+                Span::raw(format!("{depth} tasks queued")),
+            ]));
+        }
+    }
+    if let Some(cents) = m.cost_cents {
+        if out.len() < budget {
+            out.push(Line::from(vec![
+                Span::raw(GUTTER),
+                Span::styled(
+                    if show_member_rail { BAR } else { "    " },
+                    Style::default().fg(gutter_fg),
+                ),
+                Span::styled("  💰 ", Style::default().fg(detail_fg)),
+                Span::raw(format_cost(cents)),
             ]));
         }
     }
