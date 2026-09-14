@@ -21,6 +21,9 @@ Improve swarm panel readability in crowded multi-pane layouts (4x2 to 6x6+).
 11. **Agent rename UI** (`6acbce03f`) — `r` key opens inline rename
 12. **Summary bar** (`af07b0ee7`) — per-status agent counts (running/queued/done/failed/idle)
 13. **Multi-select batch** (`f8f7725b5`) — Space/Ctrl+a for batch selection with ✓ indicators
+14. **Protocol telemetry fields** (`5eba86fb1`) — added input_tokens, output_tokens, queue_depth, cost_cents to SwarmMemberRuntime
+15. **Detail card token display** (`6af0b39cb`) — token counts, cost, and queue depth shown in agent detail card
+16. **Vertical strip extraction** (`30065d931`) — split strip.rs (702 lines) into strip.rs (401) + strip_vertical.rs (313)
 
 ## Keyboard bindings
 - `Alt+j/k` or `Alt+Up/Down` — select agent
@@ -37,7 +40,8 @@ Improve swarm panel readability in crowded multi-pane layouts (4x2 to 6x6+).
 - `jcode-tui-render/src/swarm_gallery/` — pure rendering (ratatui, no app state)
   - `util.rs` — status_accent, role_glyph, role_color, summary_line helpers
   - `types.rs` — GalleryMember, GalleryTodo, GalleryToolIntent structs
-  - `strip.rs` — horizontal/vertical agent strip rendering
+  - `strip.rs` — horizontal agent strip rendering + SwarmStripHint
+  - `strip_vertical.rs` — vertical/accordion agent strip rendering
   - `dock.rs` — bottom ticker dock
   - `panel.rs` — full-page swarm panel
   - `card.rs` — agent detail cards
@@ -47,7 +51,9 @@ Improve swarm panel readability in crowded multi-pane layouts (4x2 to 6x6+).
 - `jcode-tui/src/tui/info_widget_swarm_gallery.rs` — bridges protocol types to render layer
 - `jcode-tui/src/tui/app/tui_state.rs` — keyboard handling, selection state
 
-## Blocked items (need protocol changes)
-- Agent performance metrics (needs input_tokens/output_tokens on SwarmMemberRuntime)
-- Auto-scaling hints (needs queue depth data)
-- Cost budget alerts (needs token cost calculation)
+## Future enhancements (protocol fields now available)
+- Agent performance metrics dashboard (input_tokens/output_tokens now on SwarmMemberRuntime)
+- Auto-scaling hints (queue_depth now on SwarmMemberRuntime)
+- Cost budget alerts (cost_cents now on SwarmMemberRuntime)
+- Inline cost-per-agent in strip view
+- Historical token usage sparkline in detail card
