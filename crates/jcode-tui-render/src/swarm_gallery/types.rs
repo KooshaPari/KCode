@@ -56,11 +56,3 @@ pub struct GalleryToolIntent {
     /// Optional live progress as (current, total, unit).
     pub progress: Option<(u64, u64, Option<String>)>,
 }
-
-/// A key/label pair for the swarm strip hint line.
-pub struct SwarmStripHint {
-    /// The key chord to show, e.g. "alt+n" or "j/k".
-    pub key: String,
-    /// What it does, e.g. "select".
-    pub label: String,
-}

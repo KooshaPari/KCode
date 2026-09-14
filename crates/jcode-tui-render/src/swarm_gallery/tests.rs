@@ -722,7 +722,6 @@ use ratatui::prelude::Line;
             0,
             90,
             12,
-            None,
         );
         let chips = plain_line(&lines[0]);
         assert!(chips.contains("alt+n controls"), "got: {chips}");
@@ -833,7 +832,6 @@ use ratatui::prelude::Line;
                     0,
                     width,
                     12,
-                    None,
                 );
                 for line in &lines {
                     let text = plain_line(line);
@@ -862,7 +860,6 @@ use ratatui::prelude::Line;
             0,
             60,
             12,
-            None,
         );
         let chips = plain_line(&lines[0]);
         assert!(chips.contains("6/6 active"), "tally missing: {chips}");
@@ -959,7 +956,6 @@ use ratatui::prelude::Line;
             0,
             width,
             12,
-            None,
         );
         let chips = plain_line(&lines[0]);
         assert!(

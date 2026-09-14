@@ -5,7 +5,7 @@ use ratatui::prelude::*;
 use jcode_tui_style::color::rgb;
 
 use super::hover::{hovered_detail_body, render_hovered_detail};
-use super::types::{GalleryMember, SwarmStripHint};
+use super::types::GalleryMember;
 use super::util::{
     card_status_label, clamp_line_to_width, count_digits, disp_w, format_elapsed, format_model,
     is_active_status, role_color, sort_members_for_display, status_accent, status_glyph,
@@ -18,6 +18,14 @@ use super::util::{
 /// column "·…" label is noise, not information).
 const CHIP_TASK_MAX_W: usize = 24;
 const CHIP_TASK_MIN_W: usize = 6;
+
+/// A key/label pair for the swarm strip hint line.
+pub struct SwarmStripHint {
+    /// The key chord to show, e.g. "alt+n" or "j/k".
+    pub key: String,
+    /// What it does, e.g. "select".
+    pub label: String,
+}
 
 
 /// Render the compact swarm strip shown directly above the status line.
@@ -403,7 +411,6 @@ pub fn render_swarm_strip_vertical(
     width: usize,
     max_rows: usize,
     max_height: usize,
-    batch_selected: Option<&std::collections::HashSet<usize>>,
 ) -> Vec<Line<'static>> {
     if members.is_empty() || width < 8 || max_rows == 0 {
         return Vec::new();
@@ -460,17 +467,6 @@ pub fn render_swarm_strip_vertical(
             ));
         } else {
             spans.push(Span::raw(INDENT));
-        }
-
-        // In batch mode, prepend a checkbox for each agent.
-        if let Some(selected_set) = batch_selected {
-            let checked = selected_set.contains(&(start + row));
-            let check = if checked { "[\u{2713}] " } else { "[ ] " };
-            let check_color = if checked { rgb(100, 200, 100) } else { rgb(100, 100, 110) };
-            spans.push(Span::styled(
-                check.to_string(),
-                Style::default().fg(check_color),
-            ));
         }
 
         // Right tail only on the first row; degrade by dropping hint first.
