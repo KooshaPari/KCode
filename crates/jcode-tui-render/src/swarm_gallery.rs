@@ -603,6 +603,7 @@ pub fn render_swarm_strip(
         task: Option<String>,
         todo: Option<String>,
         color: Color,
+        active: bool,
         is_sel: bool,
     }
     let chips: Vec<Chip> = ordered
@@ -618,11 +619,14 @@ pub fn render_swarm_strip(
                 .map(|t| truncate_label(t, CHIP_TASK_MAX_W)),
             todo: m.todo.map(|(done, total)| format!("{done}/{total}")),
             color: status_accent(&m.status),
+            active: is_active_status(&m.status),
             is_sel: idx == selected,
         })
         .collect();
     let chip_w = |c: &Chip| -> usize {
-        disp_w(&c.glyph) + 1 + disp_w(&c.name) + c.todo.as_ref().map(|t| disp_w(t) + 1).unwrap_or(0)
+        let prefix = if c.is_sel && focused { 2 } else { 0 }; // '▸ ' width
+        prefix + disp_w(&c.glyph) + 1 + disp_w(&c.name)
+            + c.todo.as_ref().map(|t| disp_w(t) + 1).unwrap_or(0)
     };
 
     // Fit as many chips as possible into `budget`, collapsing overflow into a
@@ -714,26 +718,43 @@ pub fn render_swarm_strip(
     let used: usize;
     if shown == 0 && !chips.is_empty() {
         // Degenerate width: show the first chip truncated.
-        let budget = width.saturating_sub(lead_w + if show_tally { tail_w + gap } else { 0 });
         let c = &chips[0];
-        let avail = budget.saturating_sub(disp_w(&c.glyph) + 1);
+        let prefix_w = if c.is_sel && focused { 2 } else { 0 }; // '▸ ' width
+        let budget = width.saturating_sub(lead_w + if show_tally { tail_w + gap } else { 0 });
+        let avail = budget.saturating_sub(disp_w(&c.glyph) + 1 + prefix_w);
         let name = truncate_label(&c.name, avail.max(1));
-        let style = Style::default().fg(c.color);
-        spans.push(Span::styled(format!("{} ", c.glyph), style));
-        spans.push(Span::styled(name.clone(), style));
-        used = disp_w(&c.glyph) + 1 + disp_w(&name);
+        let style = if c.active {
+            Style::default().fg(c.color).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(rgb(110, 110, 125))
+        };
+        let prefix = if c.is_sel && focused { "▸ " } else { "" };
+        spans.push(Span::styled(
+            format!("{prefix}{} {}", c.glyph, name),
+            style,
+        ));
+        used = prefix_w + disp_w(&c.glyph) + 1 + disp_w(&name);
     } else {
         for (i, chip) in chips.iter().take(shown).enumerate() {
             if i > 0 {
                 spans.push(Span::raw(CHIP_SEP));
             }
-            let mut style = Style::default().fg(chip.color);
+            let mut style = if chip.active {
+                Style::default().fg(chip.color).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(rgb(110, 110, 125))
+            };
             if chip.is_sel && focused {
-                style = style.add_modifier(Modifier::BOLD | Modifier::REVERSED);
+                style = style
+                    .add_modifier(Modifier::REVERSED | Modifier::UNDERLINED);
             } else if chip.is_sel {
-                style = style.add_modifier(Modifier::BOLD);
+                style = style.add_modifier(Modifier::UNDERLINED);
             }
-            spans.push(Span::styled(format!("{} {}", chip.glyph, chip.name), style));
+            let prefix = if chip.is_sel && focused { "▸ " } else { "" };
+            spans.push(Span::styled(
+                format!("{prefix}{} {}", chip.glyph, chip.name),
+                style,
+            ));
             if per_task_w > 0
                 && let Some(task) = &chip.task
             {
@@ -1015,9 +1036,14 @@ pub fn render_swarm_strip_vertical(
         }
 
         // <glyph> [icon ]<name>[ · task][ done/total]
-        let mut style = Style::default().fg(color);
-        if is_sel && focused {
-            style = style.add_modifier(Modifier::BOLD);
+        let row_active = is_active_status(&m.status);
+        let mut style = if row_active {
+            Style::default().fg(color).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(rgb(110, 110, 125))
+        };
+        if is_sel {
+            style = style.add_modifier(Modifier::UNDERLINED);
         }
         // The assigned animal icon already identifies the worker. Keep compact
         // strip rows emoji-only so names such as "sauropod" do not consume the
@@ -1425,6 +1451,7 @@ fn dock_row(
     width: usize,
 ) -> Line<'static> {
     let accent = status_accent(&member.status);
+    let active = is_active_status(&member.status);
     let marker = if selected { "▸ " } else { "  " };
     let glyph = role_glyph(member.role.as_deref())
         .map(|g| format!("{g} "))
@@ -1439,26 +1466,39 @@ fn dock_row(
         .saturating_sub(2 + disp_w(&glyph) + disp_w(&label) + right_w)
         .max(1);
 
-    let mut label_style = Style::default().fg(if selected {
-        rgb(235, 235, 245)
+    let mut label_style = if active {
+        Style::default().fg(accent).add_modifier(Modifier::BOLD)
     } else {
-        rgb(170, 170, 180)
-    });
+        Style::default().fg(rgb(110, 110, 125))
+    };
+    if selected {
+        label_style = label_style.add_modifier(Modifier::UNDERLINED);
+    }
     if selected && focused {
-        label_style = label_style.add_modifier(Modifier::BOLD);
+        label_style = label_style.add_modifier(Modifier::REVERSED);
     }
     let mut spans = vec![Span::styled(
         marker.to_string(),
         Style::default().fg(if selected { accent } else { rgb(90, 90, 100) }),
     )];
     if !glyph.is_empty() {
-        spans.push(Span::styled(glyph, Style::default().fg(accent)));
+        let glyph_style = if active {
+            Style::default().fg(accent)
+        } else {
+            Style::default().fg(rgb(110, 110, 125))
+        };
+        spans.push(Span::styled(glyph, glyph_style));
     }
     spans.push(Span::styled(label, label_style));
     spans.push(Span::raw(" ".repeat(filler)));
+    let status_style = if active {
+        Style::default().fg(accent)
+    } else {
+        Style::default().fg(rgb(110, 110, 125))
+    };
     spans.push(Span::styled(
         status.to_string(),
-        Style::default().fg(accent),
+        status_style,
     ));
     if let Some(todo) = todo {
         spans.push(Span::styled(todo, Style::default().fg(rgb(130, 130, 140))));
