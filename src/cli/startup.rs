@@ -146,9 +146,9 @@ pub async fn run() -> Result<()> {
     // a HERDR pane. Reports lifecycle state (working/idle/blocked) and
     // session identity for restore.
     if args.herdr {
-        crate::herdr::init_forced("jcode");
+        crate::herdr::init_forced(&args.herdr_kind);
     } else {
-        crate::herdr::init("jcode");
+        crate::herdr::init(&args.herdr_kind);
     }
 
     if let Err(e) = dispatch::run_main(args).await {
