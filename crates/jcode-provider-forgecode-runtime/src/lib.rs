@@ -4,11 +4,14 @@
 //! binary's composition root registers [`ForgeCodeProvider`] with
 //! `jcode_base::provider::external` at startup.
 
+mod config;
+pub mod parser;
+pub mod translator;
+
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use jcode_message_types::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
 use jcode_provider_core::{EventStream, Provider};
-use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -20,9 +23,14 @@ use tokio::process::Command;
 use tokio::sync::{Mutex, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
 
+use config::ForgeCodeCliConfig;
+use parser::{CliOutput, CliOutputParser};
+use translator::ForgeCodeEventTranslator;
+
 /// Global mutex to serialize ForgeCode CLI requests.
 /// Prevents concurrent subprocess writes from racing.
-static FORGECODE_CLI_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static FORGECODE_CLI_LOCK: LazyLock<Mutex<()>> =
+    LazyLock::new(|| Mutex::new(()));
 
 const DEFAULT_MODEL: &str = "default";
 
@@ -60,7 +68,10 @@ impl ForgeCodeProvider {
         }
     }
 
-    fn tool_names_for_cli(&self, tools: &[ToolDefinition]) -> Vec<String> {
+    fn tool_names_for_cli(
+        &self,
+        tools: &[ToolDefinition],
+    ) -> Vec<String> {
         let mut seen = HashSet::new();
         let mut names = Vec::new();
         for tool in tools {
@@ -75,7 +86,10 @@ impl ForgeCodeProvider {
         names
     }
 
-    fn extract_user_prompt(&self, messages: &[Message]) -> Result<String> {
+    fn extract_user_prompt(
+        &self,
+        messages: &[Message],
+    ) -> Result<String> {
         for msg in messages.iter().rev() {
             if msg.role != Role::User {
                 continue;
@@ -83,7 +97,9 @@ impl ForgeCodeProvider {
             let mut parts = Vec::new();
             for block in &msg.content {
                 match block {
-                    ContentBlock::Text { text, .. } => parts.push(text.clone()),
+                    ContentBlock::Text { text, .. } => {
+                        parts.push(text.clone());
+                    }
                     ContentBlock::ToolResult { content, .. } => {
                         parts.push(content.clone());
                     }
@@ -100,540 +116,15 @@ impl ForgeCodeProvider {
                 return Ok(parts.join("\n\n"));
             }
         }
-        anyhow::bail!("No user prompt found for ForgeCode CLI request");
+        anyhow::bail!(
+            "No user prompt found for ForgeCode CLI request"
+        );
     }
 }
 
 impl Default for ForgeCodeProvider {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[derive(Clone)]
-struct ForgeCodeCliConfig {
-    cli_path: String,
-    model: String,
-    permission_mode: Option<String>,
-}
-
-impl ForgeCodeCliConfig {
-    fn from_env() -> Self {
-        let cli_path = std::env::var("JCODE_FORGECODE_CLI_PATH")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "forge".to_string());
-
-        let model = std::env::var("JCODE_FORGECODE_CLI_MODEL")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| DEFAULT_MODEL.to_string());
-
-        let permission_mode = std::env::var("JCODE_FORGECODE_CLI_PERMISSION_MODE")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .or_else(|| Some("bypassPermissions".to_string()));
-
-        Self {
-            cli_path,
-            model,
-            permission_mode,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// CLI output parsing types
-// ---------------------------------------------------------------------------
-
-#[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum CliOutput {
-    System {
-        #[serde(default)]
-        session_id: Option<String>,
-    },
-    StreamEvent {
-        event: Value,
-        #[serde(default, rename = "session_id")]
-        _session_id: Option<String>,
-    },
-    Assistant {
-        message: CliMessage,
-        #[serde(default, rename = "session_id")]
-        _session_id: Option<String>,
-    },
-    User {
-        message: CliMessage,
-        #[serde(default, rename = "session_id")]
-        _session_id: Option<String>,
-    },
-    Result {
-        #[serde(default)]
-        is_error: bool,
-        #[serde(default)]
-        usage: Option<UsageInfo>,
-        #[serde(default)]
-        session_id: Option<String>,
-    },
-    Error {
-        message: String,
-        #[serde(default)]
-        retry_after_secs: Option<u64>,
-    },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Deserialize)]
-struct CliMessage {
-    content: Value,
-}
-
-#[derive(Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum SdkContentBlock {
-    Text {
-        text: String,
-    },
-    ToolUse {
-        id: String,
-        name: String,
-        input: Value,
-    },
-    ToolResult {
-        tool_use_id: String,
-        content: Option<Value>,
-        #[serde(default)]
-        is_error: Option<bool>,
-    },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(tag = "type")]
-enum SseEvent {
-    #[serde(rename = "message_start")]
-    MessageStart { message: Value },
-    #[serde(rename = "content_block_start")]
-    ContentBlockStart {
-        #[serde(rename = "index")]
-        _index: usize,
-        content_block: ContentBlockInfo,
-    },
-    #[serde(rename = "content_block_delta")]
-    ContentBlockDelta {
-        #[serde(rename = "index")]
-        _index: usize,
-        delta: DeltaInfo,
-    },
-    #[serde(rename = "content_block_stop")]
-    ContentBlockStop {
-        #[serde(rename = "index")]
-        _index: usize,
-    },
-    #[serde(rename = "message_delta")]
-    MessageDelta {
-        delta: MessageDeltaInfo,
-        #[serde(default)]
-        usage: Option<UsageInfo>,
-    },
-    #[serde(rename = "message_stop")]
-    MessageStop,
-    #[serde(rename = "ping")]
-    Ping,
-    #[serde(rename = "error")]
-    Error { error: ErrorInfo },
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(tag = "type")]
-enum ContentBlockInfo {
-    #[serde(rename = "text")]
-    Text {
-        #[serde(rename = "text")]
-        _text: String,
-    },
-    #[serde(rename = "tool_use")]
-    ToolUse { id: String, name: String },
-    #[serde(rename = "thinking")]
-    Thinking {
-        #[serde(rename = "thinking")]
-        _thinking: String,
-    },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(tag = "type")]
-enum DeltaInfo {
-    #[serde(rename = "text_delta")]
-    TextDelta { text: String },
-    #[serde(rename = "input_json_delta")]
-    InputJsonDelta { partial_json: String },
-    #[serde(rename = "thinking_delta")]
-    ThinkingDelta {
-        #[serde(rename = "thinking")]
-        _thinking: String,
-    },
-    #[serde(rename = "signature_delta")]
-    SignatureDelta {
-        #[serde(rename = "signature")]
-        _signature: String,
-    },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Deserialize, Debug)]
-struct UsageInfo {
-    #[serde(default)]
-    input_tokens: Option<u64>,
-    #[serde(default)]
-    output_tokens: Option<u64>,
-    #[serde(default)]
-    cache_creation_input_tokens: Option<u64>,
-    #[serde(default)]
-    cache_read_input_tokens: Option<u64>,
-}
-
-#[derive(Deserialize, Debug)]
-struct MessageDeltaInfo {
-    stop_reason: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-struct ErrorInfo {
-    message: String,
-    #[serde(default)]
-    retry_after_secs: Option<u64>,
-    #[serde(default, rename = "status_code")]
-    _status_code: Option<u16>,
-    #[serde(default, rename = "error_type")]
-    _error_type: Option<String>,
-}
-
-// ---------------------------------------------------------------------------
-// Event translator
-// ---------------------------------------------------------------------------
-
-struct ForgeCodeEventTranslator {
-    last_stop_reason: Option<String>,
-    in_thinking_block: bool,
-    in_tool_use_block: bool,
-}
-
-impl ForgeCodeEventTranslator {
-    fn new() -> Self {
-        Self {
-            last_stop_reason: None,
-            in_thinking_block: false,
-            in_tool_use_block: false,
-        }
-    }
-
-    fn handle_event(&mut self, event: SseEvent) -> Vec<StreamEvent> {
-        match event {
-            SseEvent::MessageStart { message } => {
-                if let Some(usage) = message.get("usage") {
-                    let input_tokens = usage.get("input_tokens").and_then(|v| v.as_u64());
-                    let output_tokens =
-                        usage.get("output_tokens").and_then(|v| v.as_u64());
-                    let cache_creation_input_tokens = usage
-                        .get("cache_creation_input_tokens")
-                        .and_then(|v| v.as_u64());
-                    let cache_read_input_tokens = usage
-                        .get("cache_read_input_tokens")
-                        .and_then(|v| v.as_u64());
-                    if input_tokens.is_some()
-                        || output_tokens.is_some()
-                        || cache_creation_input_tokens.is_some()
-                        || cache_read_input_tokens.is_some()
-                    {
-                        return vec![StreamEvent::TokenUsage {
-                            input_tokens,
-                            output_tokens,
-                            cache_read_input_tokens,
-                            cache_creation_input_tokens,
-                        }];
-                    }
-                }
-                Vec::new()
-            }
-            SseEvent::ContentBlockStart {
-                content_block, ..
-            } => match content_block {
-                ContentBlockInfo::Text { .. } => Vec::new(),
-                ContentBlockInfo::ToolUse { id, name } => {
-                    self.in_tool_use_block = true;
-                    vec![StreamEvent::ToolUseStart {
-                        id,
-                        name: to_internal_tool_name(&name),
-                    }]
-                }
-                ContentBlockInfo::Thinking { .. } => {
-                    self.in_thinking_block = true;
-                    vec![StreamEvent::ThinkingStart]
-                }
-                ContentBlockInfo::Other => Vec::new(),
-            },
-            SseEvent::ContentBlockDelta { delta, .. } => match delta {
-                DeltaInfo::TextDelta { text } => {
-                    vec![StreamEvent::TextDelta(text)]
-                }
-                DeltaInfo::InputJsonDelta { partial_json } => {
-                    vec![StreamEvent::ToolInputDelta(partial_json)]
-                }
-                DeltaInfo::ThinkingDelta { .. } => Vec::new(),
-                DeltaInfo::SignatureDelta { .. } => Vec::new(),
-                DeltaInfo::Other => Vec::new(),
-            },
-            SseEvent::ContentBlockStop { .. } => {
-                if self.in_thinking_block {
-                    self.in_thinking_block = false;
-                    vec![StreamEvent::ThinkingEnd]
-                } else if self.in_tool_use_block {
-                    self.in_tool_use_block = false;
-                    vec![StreamEvent::ToolUseEnd]
-                } else {
-                    Vec::new()
-                }
-            }
-            SseEvent::MessageDelta { delta, usage } => {
-                self.last_stop_reason = delta.stop_reason.clone();
-                if let Some(usage) = usage
-                    && (usage.input_tokens.is_some()
-                        || usage.output_tokens.is_some()
-                        || usage
-                            .cache_creation_input_tokens
-                            .is_some()
-                        || usage.cache_read_input_tokens.is_some())
-                {
-                    return vec![StreamEvent::TokenUsage {
-                        input_tokens: usage.input_tokens,
-                        output_tokens: usage.output_tokens,
-                        cache_read_input_tokens: usage.cache_read_input_tokens,
-                        cache_creation_input_tokens: usage
-                            .cache_creation_input_tokens,
-                    }];
-                }
-                Vec::new()
-            }
-            SseEvent::MessageStop => vec![StreamEvent::MessageEnd {
-                stop_reason: self.last_stop_reason.take(),
-            }],
-            SseEvent::Error { error } => vec![StreamEvent::Error {
-                message: error.message,
-                retry_after_secs: error.retry_after_secs,
-            }],
-            _ => Vec::new(),
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// CLI output parser
-// ---------------------------------------------------------------------------
-
-struct CliOutputParser {
-    translator: ForgeCodeEventTranslator,
-    saw_stream_events: bool,
-    saw_message_end: bool,
-}
-
-impl CliOutputParser {
-    fn new() -> Self {
-        Self {
-            translator: ForgeCodeEventTranslator::new(),
-            saw_stream_events: false,
-            saw_message_end: false,
-        }
-    }
-
-    fn handle_output(&mut self, output: CliOutput) -> Vec<StreamEvent> {
-        match output {
-            CliOutput::StreamEvent { event, .. } => {
-                self.saw_stream_events = true;
-                let parsed: SseEvent = match serde_json::from_value(event) {
-                    Ok(parsed) => parsed,
-                    Err(err) => {
-                        return vec![StreamEvent::Error {
-                            message: format!(
-                                "Failed to parse ForgeCode CLI stream event: {}",
-                                err
-                            ),
-                            retry_after_secs: None,
-                        }];
-                    }
-                };
-
-                let events = self.translator.handle_event(parsed);
-                if events.iter().any(|event| {
-                    matches!(event, StreamEvent::MessageEnd { .. })
-                }) {
-                    self.saw_message_end = true;
-                }
-                events
-            }
-            CliOutput::Assistant { message, .. } => {
-                let blocks = parse_content_blocks(&message.content);
-                let mut events = Vec::new();
-                for block in blocks {
-                    match block {
-                        SdkContentBlock::Text { text } => {
-                            if !self.saw_stream_events {
-                                events.push(StreamEvent::TextDelta(text));
-                            }
-                        }
-                        SdkContentBlock::ToolUse {
-                            id, name, input,
-                        } => {
-                            if !self.saw_stream_events {
-                                events.push(StreamEvent::ToolUseStart {
-                                    id,
-                                    name: to_internal_tool_name(&name),
-                                });
-                                events.push(StreamEvent::ToolInputDelta(
-                                    serde_json::to_string(&input)
-                                        .unwrap_or_default(),
-                                ));
-                                events.push(StreamEvent::ToolUseEnd);
-                            }
-                        }
-                        SdkContentBlock::ToolResult {
-                            tool_use_id,
-                            content,
-                            is_error,
-                        } => {
-                            let content_str = content
-                                .map(|v| {
-                                    if let Some(s) = v.as_str() {
-                                        s.to_string()
-                                    } else {
-                                        serde_json::to_string(&v)
-                                            .unwrap_or_default()
-                                    }
-                                })
-                                .unwrap_or_default();
-                            events.push(StreamEvent::ToolResult {
-                                tool_use_id,
-                                content: content_str,
-                                is_error: is_error.unwrap_or(false),
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-
-                if !self.saw_message_end {
-                    self.saw_message_end = true;
-                    events.push(StreamEvent::MessageEnd {
-                        stop_reason: None,
-                    });
-                }
-
-                events
-            }
-            CliOutput::User { message, .. } => {
-                let blocks = parse_content_blocks(&message.content);
-                let mut events = Vec::new();
-                for block in blocks {
-                    if let SdkContentBlock::ToolResult {
-                        tool_use_id,
-                        content,
-                        is_error,
-                    } = block
-                    {
-                        let content_str = content
-                            .map(|v| {
-                                if let Some(s) = v.as_str() {
-                                    s.to_string()
-                                } else {
-                                    serde_json::to_string(&v)
-                                        .unwrap_or_default()
-                                }
-                            })
-                            .unwrap_or_default();
-                        events.push(StreamEvent::ToolResult {
-                            tool_use_id,
-                            content: content_str,
-                            is_error: is_error.unwrap_or(false),
-                        });
-                    }
-                }
-                events
-            }
-            CliOutput::Result {
-                usage,
-                is_error,
-                session_id,
-            } => {
-                let mut events = Vec::new();
-                if let Some(usage) = usage
-                    && (usage.input_tokens.is_some()
-                        || usage.output_tokens.is_some()
-                        || usage
-                            .cache_creation_input_tokens
-                            .is_some()
-                        || usage.cache_read_input_tokens.is_some())
-                {
-                    events.push(StreamEvent::TokenUsage {
-                        input_tokens: usage.input_tokens,
-                        output_tokens: usage.output_tokens,
-                        cache_read_input_tokens: usage.cache_read_input_tokens,
-                        cache_creation_input_tokens: usage
-                            .cache_creation_input_tokens,
-                    });
-                }
-                if let Some(sid) = session_id {
-                    events.push(StreamEvent::SessionId(sid));
-                }
-                if is_error {
-                    events.push(StreamEvent::Error {
-                        message: "ForgeCode CLI reported an error".to_string(),
-                        retry_after_secs: None,
-                    });
-                }
-                if !self.saw_message_end {
-                    self.saw_message_end = true;
-                    events.push(StreamEvent::MessageEnd {
-                        stop_reason: None,
-                    });
-                }
-                events
-            }
-            CliOutput::Error {
-                message,
-                retry_after_secs,
-            } => vec![StreamEvent::Error {
-                message,
-                retry_after_secs,
-            }],
-            CliOutput::System { session_id } => {
-                session_id
-                    .map(StreamEvent::SessionId)
-                    .into_iter()
-                    .collect()
-            }
-            CliOutput::Other => Vec::new(),
-        }
-    }
-}
-
-fn parse_content_blocks(content: &Value) -> Vec<SdkContentBlock> {
-    match content {
-        Value::String(text) => {
-            vec![SdkContentBlock::Text {
-                text: text.clone(),
-            }]
-        }
-        Value::Array(items) => items
-            .iter()
-            .filter_map(|item| serde_json::from_value(item.clone()).ok())
-            .collect(),
-        _ => Vec::new(),
     }
 }
 
@@ -1101,7 +592,7 @@ fn to_forgecode_tool_name(name: &str) -> String {
     .to_string()
 }
 
-fn to_internal_tool_name(name: &str) -> String {
+pub(crate) fn to_internal_tool_name(name: &str) -> String {
     match name {
         "Bash" => "bash",
         "Read" => "read",
@@ -1129,4 +620,31 @@ fn to_internal_tool_name(name: &str) -> String {
         _ => name,
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tool_name_roundtrip() {
+        let names = [
+            "bash", "read", "write", "edit", "glob", "grep",
+            "webfetch", "websearch", "open", "todo", "batch",
+        ];
+        for name in names {
+            let forge_name = to_forgecode_tool_name(name);
+            let back = to_internal_tool_name(&forge_name);
+            assert_eq!(back, name, "roundtrip failed for {name}");
+        }
+    }
+
+    #[test]
+    fn test_is_retryable_error() {
+        assert!(is_retryable_error("502 bad gateway"));
+        assert!(is_retryable_error("503 service unavailable"));
+        assert!(is_retryable_error("not ready for writing"));
+        assert!(is_retryable_error("overloaded"));
+        assert!(!is_retryable_error("permission denied"));
+    }
 }
