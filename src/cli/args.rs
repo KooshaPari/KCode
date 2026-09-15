@@ -71,6 +71,10 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) quiet: bool,
 
+    /// Force HERDR terminal runtime integration (for testing outside HERDR)
+    #[arg(long, global = true)]
+    pub(crate) herdr: bool,
+
     /// Resume a session by ID, or list sessions if no ID provided
     #[arg(long, global = true, num_args = 0..=1, default_missing_value = "")]
     pub(crate) resume: Option<String>,

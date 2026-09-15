@@ -15,6 +15,12 @@ pub fn init(agent_label: &str) {
     let _ = REPORTER.set(Mutex::new(Some(HerdrReporter::new(agent_label))));
 }
 
+/// Force-initialize with `HERDR_ENV=1` for testing outside a real pane.
+pub fn init_forced(agent_label: &str) {
+    unsafe { std::env::set_var("HERDR_ENV", "1"); }
+    let _ = REPORTER.set(Mutex::new(Some(HerdrReporter::new(agent_label))));
+}
+
 /// Report a state transition to HERDR. No-op if not initialized or
 /// not running inside HERDR.
 pub async fn report_state(state: AgentState) {

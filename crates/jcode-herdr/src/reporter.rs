@@ -32,6 +32,14 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Parse a duration from an environment variable, falling back to default.
+fn parse_duration_env(name: &str, fallback: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(fallback)
+}
+
 /// Monotonic sequence counter shared across all reporter instances
 /// in the process. Ensures stale reports from predecessor sessions
 /// are dropped by HERDR.
@@ -70,6 +78,8 @@ pub struct HerdrReporter {
     agent_label: String,
     source: String,
     state: Arc<Mutex<AgentStateInner>>,
+    _idle_debounce_ms: u64,
+    retry_grace_ms: u64,
 }
 
 struct AgentStateInner {
@@ -78,6 +88,9 @@ struct AgentStateInner {
     session_id: Option<String>,
     session_path: Option<String>,
     released: bool,
+    retry_hold_active: bool,
+    failure_blocked: bool,
+    failure_message: Option<String>,
 }
 
 impl HerdrReporter {
@@ -86,16 +99,23 @@ impl HerdrReporter {
     pub fn new(agent_label: &str) -> Self {
         let env = HerdrEnv::capture();
         let source = format!("jcode:{agent_label}");
+        let idle_debounce_ms = parse_duration_env("HERDR_JCODE_IDLE_DEBOUNCE_MS", 250);
+        let retry_grace_ms = parse_duration_env("HERDR_JCODE_RETRY_GRACE_MS", 2500);
         Self {
             env,
             agent_label: agent_label.to_string(),
             source,
+            _idle_debounce_ms: idle_debounce_ms,
+            retry_grace_ms,
             state: Arc::new(Mutex::new(AgentStateInner {
                 current: AgentState::Idle,
                 message: None,
                 session_id: None,
                 session_path: None,
                 released: false,
+                retry_hold_active: false,
+                failure_blocked: false,
+                failure_message: None,
             })),
         }
     }
@@ -227,6 +247,39 @@ impl HerdrReporter {
             return;
         }
         self.send_state_report(AgentState::Idle, None).await;
+    }
+
+    /// Report a provider error. Holds the pane in working state for
+    /// `retry_grace_ms` (default 2.5s) to allow auto-retry, then
+    /// marks as blocked with the error message.
+    pub async fn report_error(&self, error_message: String) {
+        if !self.is_active() {
+            return;
+        }
+
+        {
+            let mut inner = self.state.lock().await;
+            inner.retry_hold_active = true;
+            inner.failure_message = Some(error_message.clone());
+        }
+
+        // Hold working during retry grace window
+        self.send_state_report(AgentState::Working, None).await;
+
+        let grace = self.retry_grace_ms;
+        let state = self.state.clone();
+
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(grace)).await;
+            let mut inner = state.lock().await;
+            if inner.retry_hold_active {
+                inner.retry_hold_active = false;
+                inner.failure_blocked = true;
+                inner.current = AgentState::Blocked;
+                inner.message = Some(error_message);
+                drop(inner);
+            }
+        });
     }
 
     async fn send_state_report(

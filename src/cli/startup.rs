@@ -145,7 +145,11 @@ pub async fn run() -> Result<()> {
     // Initialize HERDR terminal runtime reporter. No-op when not inside
     // a HERDR pane. Reports lifecycle state (working/idle/blocked) and
     // session identity for restore.
-    crate::herdr::init("jcode");
+    if args.herdr {
+        crate::herdr::init_forced("jcode");
+    } else {
+        crate::herdr::init("jcode");
+    }
 
     if let Err(e) = dispatch::run_main(args).await {
         report_main_error(&e);
