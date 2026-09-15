@@ -2,6 +2,40 @@
 
 All notable changes to the KooshaPari fork of Jcode will be documented in this file.
 
+## v0.85.1-k1.1.0 (2026-09-15)
+
+HERDR integration release. Terminal runtime integration, ForgeCode provider improvements.
+
+### Added
+
+- **HERDR terminal runtime integration** (`jcode-herdr` crate) -- 6 modules, 11+ tests
+  - Agent lifecycle state reporting (working/idle/blocked) via Unix socket
+  - Debounced idle transitions (configurable, default 250ms)
+  - Error-hold with retry grace (configurable, default 2500ms)
+  - Monotonic sequence numbers for event ordering
+  - Screen manifest TOML generation for jcode and ForgeCode detection
+  - `--herdr` CLI flag for testing outside HERDR pane
+  - `--herdr-kind` CLI arg for agent type routing (jcode/forge/forgecode)
+  - `jcode herdr status` subcommand (pane env, socket path, reporter state)
+  - `jcode herdr install` subcommand (screen detection manifests)
+  - Env var overrides: `HERDR_JCODE_IDLE_DEBOUNCE_MS`, `HERDR_JCODE_RETRY_GRACE_MS`
+- **ForgeCode runtime provider split** -- monolithic lib.rs decomposed into modules
+  - `config.rs`: ForgeCodeCliConfig (env-based configuration)
+  - `parser.rs`: CLI output types (CliOutput, SseEvent, CliOutputParser)
+  - `translator.rs`: ForgeCodeEventTranslator (SSE-to-StreamEvent mapping)
+  - `lib.rs`: Provider impl + subprocess execution (~650 lines, down from 1132)
+- HERDR install scripts for jcode and ForgeCode screen detection
+
+### Changed
+
+- TUI wired to report working→idle state transitions via HERDR
+- Startup sequence initializes HERDR reporter before TUI launch
+- HERDR reporter released on clean exit and via drop guard
+
+### Fixed
+
+- ForgeCode provider tool name mapping roundtrip correctness
+
 ## v0.85.0-k1.0.0 (2026-09-14)
 
 KooshaPari fork release. First tagged fork version (0.85.0 base + k1.0.0 fork suffix).
