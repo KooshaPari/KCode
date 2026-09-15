@@ -933,13 +933,74 @@ brew tap 1jehuang/jcode
 brew install jcode
 ```
 
-### From Source (all platforms)
+### Building from Source
+
+#### Prerequisites
+
+- **Rust toolchain** (stable). Install via [rustup](https://rustup.rs/):
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+- **macOS**: Xcode Command Line Tools (for the macOS SDK):
+  ```bash
+  xcode-select --install
+  ```
+
+#### Build
 
 ```bash
 git clone https://github.com/1jehuang/jcode.git
 cd jcode
 cargo build --release
 ```
+
+#### macOS SDKROOT Workaround
+
+On macOS with Xcode Command Line Tools (without the full Xcode.app), Cargo may
+fail to locate the macOS SDK, producing errors like:
+
+```
+error: failed to run custom build script for `openssl-sys v...`
+...
+note: SDK not found; set SDKROOT to the SDK path
+```
+
+This happens because Command Line Tools installs the SDK under a versioned path
+that the toolchain does not always discover automatically. The fix is to set two
+environment variables before building:
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `SDKROOT` | `/Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk` | Points the compiler at the macOS SDK installed by Command Line Tools |
+| `MACOSX_DEPLOYMENT_TARGET` | `15.0` (or your macOS version) | Sets the minimum deployment target for compiled binaries |
+
+Find your installed SDK version:
+
+```bash
+ls /Library/Developer/CommandLineTools/SDKs/
+```
+
+Then set the variables. You can **export** them for your shell session:
+
+```bash
+export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk
+export MACOSX_DEPLOYMENT_TARGET=15.0
+cargo build --release
+```
+
+Or set them **inline** for a single build:
+
+```bash
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk \
+  MACOSX_DEPLOYMENT_TARGET=15.0 \
+  cargo build --release
+```
+
+> **Note:** This workaround is only needed on macOS with Xcode Command Line
+> Tools. If you have the full Xcode.app installed, the SDK is typically found
+> automatically and these variables are not required.
+
+#### Linux self-dev
 
 For local self-dev / refactor work on Linux x86_64, prefer:
 
@@ -953,7 +1014,7 @@ working local linker setup (`clang + lld`) instead of assuming every machine's
 `mold` configuration is valid, and can print the active linker/cache setup via
 `--print-setup` so slow-path builds are easier to diagnose.
 
-Then symlink to your PATH:
+#### Install the built binary
 
 ```bash
 scripts/install_release.sh
