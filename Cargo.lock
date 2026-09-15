@@ -3150,6 +3150,7 @@ dependencies = [
  "jcode-build-meta",
  "jcode-harness-api",
  "jcode-harness-api-server",
+ "jcode-herdr",
  "jcode-provider-anthropic-runtime",
  "jcode-provider-antigravity-runtime",
  "jcode-provider-claude-cli-runtime",
@@ -3157,6 +3158,7 @@ dependencies = [
  "jcode-provider-core",
  "jcode-provider-cursor-runtime",
  "jcode-provider-doctor",
+ "jcode-provider-forgecode-runtime",
  "jcode-provider-gemini-runtime",
  "jcode-provider-grok-build-runtime",
  "jcode-provider-openai-runtime",
@@ -3503,6 +3505,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "jcode-herdr"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "tracing",
 ]
 
 [[package]]
@@ -3854,6 +3868,21 @@ dependencies = [
  "jcode-provider-metadata",
  "jcode-storage",
  "tempfile",
+]
+
+[[package]]
+name = "jcode-provider-forgecode-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "jcode-base",
+ "jcode-message-types",
+ "jcode-provider-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
@@ -7771,6 +7800,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
