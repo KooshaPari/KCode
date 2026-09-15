@@ -47,6 +47,10 @@ fn chat_swarm_member(session_id: &str) -> crate::protocol::SwarmMemberStatus {
             auth_method: Some("OAuth".to_string()),
             effort: Some("high".to_string()),
             elapsed_secs: Some(18),
+            input_tokens: None,
+            output_tokens: None,
+            queue_depth: None,
+            cost_cents: None,
         },
     }
 }

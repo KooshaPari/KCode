@@ -797,6 +797,10 @@ fn test_swarm_completion_notification_inserts_agent_snapshot_without_report_pros
             auth_method: Some("OAuth".to_string()),
             effort: Some("high".to_string()),
             elapsed_secs: Some(35),
+            input_tokens: None,
+            output_tokens: None,
+            queue_depth: None,
+            cost_cents: None,
         },
     }];
     let rt = tokio::runtime::Runtime::new().unwrap();

@@ -479,6 +479,10 @@ impl App {
                             auth_method: Some("OAuth".into()),
                             effort: Some("high".into()),
                             elapsed_secs: Some(18),
+                            input_tokens: None,
+                            output_tokens: None,
+                            queue_depth: None,
+                            cost_cents: None,
                         },
                     })
                     .collect();

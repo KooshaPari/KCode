@@ -266,6 +266,10 @@ pub(super) async fn create_headless_session(
                     auth_method,
                     effort,
                     elapsed_secs: Some(0),
+                    input_tokens: None,
+                    output_tokens: None,
+                    queue_depth: None,
+                    cost_cents: None,
                 },
             },
         );

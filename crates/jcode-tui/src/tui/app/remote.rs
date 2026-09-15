@@ -824,7 +824,9 @@ fn handle_terminal_event_while_disconnected(
     }
 
     if needs_redraw {
-        crate::tui::draw_synced(terminal, app)?;
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026h");
+        terminal.draw(|frame| crate::tui::ui::draw(frame, app))?;
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026l");
     }
 
     Ok(app.should_quit)
