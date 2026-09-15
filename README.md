@@ -12,6 +12,8 @@
 The most RAM efficient harness <br>
 The most intelligent harness
 
+> **Fork note:** This is a [KooshaPari](https://github.com/KooshaPari) fork of [1jehuang/jcode](https://github.com/1jehuang/jcode). Latest fork release: **v0.85.0-k1.0.0**.
+
 <a href="https://trendshift.io/repositories/25042?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-25042" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/25042" alt="1jehuang/jcode | Trendshift" width="250" height="55"></a>
 
 <a href="https://github.com/1jehuang/jcode/releases/download/readme-assets/jcode-yc-launch.mp4">
@@ -41,6 +43,20 @@ curl -fsSL https://jcode.sh/install | bash
 # Windows 11 (PowerShell 5.1+)
 irm https://jcode.sh/install.ps1 | iex
 ```
+
+```bash
+# Bun (requires Bun installed)
+bunx jcode-install
+# or
+bun run --bun https://jcode.sh/install_bun.sh
+```
+
+```bash
+# GitHub Packages (replace <version> with desired release, e.g. 0.85.0-k1.0.0)
+docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+```
+
+**Manual download:** Grab a prebuilt binary from [GitHub Releases](https://github.com/KooshaPari/jcode/releases) and add it to your `PATH`.
 
 Need Homebrew, source builds, provider setup, or want an agent to set it up for you?
 [Jump to detailed installation](#detailed-installation).
@@ -882,6 +898,23 @@ curl -fsSL https://jcode.sh/install | bash
 # Windows 11 x64 or ARM64 (PowerShell 5.1+)
 irm https://jcode.sh/install.ps1 | iex
 ```
+
+```bash
+# Bun (requires Bun installed)
+bunx jcode-install
+# or
+bun run --bun https://jcode.sh/install_bun.sh
+```
+
+```bash
+# GitHub Packages (replace <version> with desired release)
+docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+```
+
+**Manual download:** Prebuilt binaries are available on the
+[GitHub Releases](https://github.com/KooshaPari/jcode/releases) page.
+Download the archive for your platform, extract, and place the `jcode` binary
+on your `PATH` (e.g. `~/.local/bin/` or `/usr/local/bin/`).
 
 The Windows installer selects the correct architecture and verifies the download
 against the release's `SHA256SUMS`. Alacritty and the optional global launch
