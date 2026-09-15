@@ -14,6 +14,7 @@ mod debug_socket;
 mod discover;
 mod discover_secrets;
 mod edit;
+mod elicitation;
 mod feedback;
 mod gmail;
 mod goal;
@@ -380,6 +381,12 @@ impl Registry {
                 &mut timings,
                 "maintainer_feedback",
                 feedback::MaintainerFeedbackTool::new,
+            );
+            Self::insert_tool_timed(
+                &mut m,
+                &mut timings,
+                "elicitate_mcp",
+                elicitation::ElicitateMcpTool::new,
             );
             Self::insert_tool_timed(
                 &mut m,

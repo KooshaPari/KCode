@@ -4125,6 +4125,7 @@ dependencies = [
  "jcode-selfdev-types",
  "jcode-session-types",
  "jcode-terminal-image",
+ "jcode-tool-core",
  "jcode-tui-account-picker",
  "jcode-tui-anim",
  "jcode-tui-core",

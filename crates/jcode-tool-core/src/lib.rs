@@ -141,7 +141,8 @@ pub mod elicit_channel {
     static ELICIT_TX: OnceLock<mpsc::UnboundedSender<ElicitMessage>> = OnceLock::new();
 
     /// Initialize the global elicitation channel. Returns the receiver that the
-    /// TUI must poll. Call once at startup; subsequent calls are no-ops.
+    /// TUI must poll. Safe to call once per process; subsequent calls return a
+    /// dead receiver (the first call's sender is used for all tool sends).
     pub fn init() -> mpsc::UnboundedReceiver<ElicitMessage> {
         let (tx, rx) = mpsc::unbounded_channel();
         let _ = ELICIT_TX.set(tx);
