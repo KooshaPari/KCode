@@ -20,4 +20,5 @@ pub mod ssh_transport;
 pub mod startup;
 pub mod telemetry;
 pub mod terminal;
+pub mod herdr;
 pub mod tui_launch;

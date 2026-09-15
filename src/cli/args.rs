@@ -574,6 +574,12 @@ pub(crate) enum Command {
         json: bool,
     },
 
+    /// Show HERDR pane info (socket path, pane ID, agent state)
+    HerdrStatus,
+
+    /// Install screen manifests for jcode and ForgeCode to ~/.config/herdr/agent-detection/
+    HerdrInstall,
+
     /// Serve the stable harness API on a Unix socket, for SDK clients.
     ///
     /// This is the endpoint the TypeScript SDK (`@1jehuang/jcode-sdk`) connects to. It

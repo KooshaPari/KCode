@@ -629,6 +629,12 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Menubar { once, json }) => {
             commands::run_menubar_command(once, json)?;
         }
+        Some(Command::HerdrStatus) => {
+            super::herdr::run_herdr_status()?;
+        }
+        Some(Command::HerdrInstall) => {
+            super::herdr::run_herdr_install()?;
+        }
         None => run_default_command(args).await?,
     }
 
