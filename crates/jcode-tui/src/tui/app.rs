@@ -109,6 +109,7 @@ mod terminal_setup_command;
 mod todos_view;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
+pub(crate) mod tui_event;
 mod tui_state;
 mod turn;
 mod turn_memory;
@@ -1658,6 +1659,8 @@ pub struct App {
     account_picker_overlay: Option<RefCell<super::account_picker::AccountPicker>>,
     /// Usage overlay (None = not visible)
     usage_overlay: Option<RefCell<super::usage_overlay::UsageOverlay>>,
+    /// Elicitation overlay for structured agent-to-user input (None = not active)
+    elicit_overlay: Option<super::elicitation_types::ElicitOverlayState>,
     /// Whether a usage refresh request is currently in flight.
     usage_report_refreshing: bool,
     /// Whether a `/productivity` report generation is currently in flight.
