@@ -354,6 +354,43 @@ impl Drop for HerdrReporter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::UnixListener;
+
+    /// Spawn a mock Unix socket server that collects all received
+    /// JSON-RPC requests. Returns the socket path and a channel
+    /// receiver that yields each request as it arrives.
+    async fn start_mock_server(
+    ) -> (PathBuf, tokio::sync::mpsc::Receiver<serde_json::Value>) {
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("test.sock");
+        let listener = UnixListener::bind(&sock).unwrap();
+        let (tx, rx) = tokio::sync::mpsc::channel(64);
+
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let tx = tx.clone();
+                tokio::spawn(async move {
+                    let mut reader = BufReader::new(stream);
+                    let mut line = String::new();
+                    while reader.read_line(&mut line).await.unwrap() > 0
+                    {
+                        if let Ok(val) =
+                            serde_json::from_str::<serde_json::Value>(
+                                line.trim(),
+                            )
+                        {
+                            let _ = tx.send(val).await;
+                        }
+                        line.clear();
+                    }
+                });
+            }
+        });
+
+        (sock, rx)
+    }
 
     #[test]
     fn reporter_source_format() {
@@ -373,5 +410,147 @@ mod tests {
         let s1 = next_seq();
         let s2 = next_seq();
         assert!(s2 > s1);
+    }
+
+    #[tokio::test]
+    async fn reporter_sends_working_state() {
+        let (sock, mut rx) = start_mock_server().await;
+
+        unsafe {
+            std::env::set_var("HERDR_ENV", "1");
+            std::env::set_var("HERDR_PANE_ID", "test-pane");
+            std::env::set_var(
+                "HERDR_SOCKET_PATH",
+                sock.to_str().unwrap(),
+            );
+        }
+
+        let mut reporter = HerdrReporter::new("jcode");
+        reporter.set_state(AgentState::Working).await;
+
+        // Give fire-and-forget time to connect and send
+        tokio::time::sleep(std::time::Duration::from_millis(100))
+            .await;
+
+        let req = rx.recv().await.expect("expected a request");
+        assert_eq!(req["method"], "pane.report_agent");
+        assert_eq!(req["params"]["state"], "working");
+        assert_eq!(req["params"]["agent"], "jcode");
+        assert_eq!(req["params"]["pane_id"], "test-pane");
+
+        reporter.release().await;
+    }
+
+    #[tokio::test]
+    async fn reporter_sends_idle_state() {
+        let (sock, mut rx) = start_mock_server().await;
+
+        unsafe {
+            std::env::set_var("HERDR_ENV", "1");
+            std::env::set_var("HERDR_PANE_ID", "test-pane");
+            std::env::set_var(
+                "HERDR_SOCKET_PATH",
+                sock.to_str().unwrap(),
+            );
+        }
+
+        let mut reporter = HerdrReporter::new("jcode");
+        reporter.set_state(AgentState::Idle).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(100))
+            .await;
+
+        let req = rx.recv().await.expect("expected idle request");
+        assert_eq!(req["params"]["state"], "idle");
+
+        reporter.release().await;
+    }
+
+    #[tokio::test]
+    async fn reporter_sends_blocked_state() {
+        let (sock, mut rx) = start_mock_server().await;
+
+        unsafe {
+            std::env::set_var("HERDR_ENV", "1");
+            std::env::set_var("HERDR_PANE_ID", "test-pane");
+            std::env::set_var(
+                "HERDR_SOCKET_PATH",
+                sock.to_str().unwrap(),
+            );
+        }
+
+        let mut reporter = HerdrReporter::new("jcode");
+        reporter.report_error("permission denied".into()).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(100))
+            .await;
+
+        let req = rx.recv().await.expect("expected blocked request");
+        assert_eq!(req["params"]["state"], "blocked");
+        assert_eq!(req["params"]["message"], "permission denied");
+
+        reporter.release().await;
+    }
+
+    #[tokio::test]
+    async fn reporter_sends_session_id() {
+        let (sock, mut rx) = start_mock_server().await;
+
+        unsafe {
+            std::env::set_var("HERDR_ENV", "1");
+            std::env::set_var("HERDR_PANE_ID", "test-pane");
+            std::env::set_var(
+                "HERDR_SOCKET_PATH",
+                sock.to_str().unwrap(),
+            );
+        }
+
+        let mut reporter = HerdrReporter::new("jcode");
+        reporter
+            .set_session_id("sess_abc123".to_string())
+            .await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(100))
+            .await;
+
+        let req = rx.recv().await.expect("expected session request");
+        assert_eq!(req["method"], "pane.report_agent_session");
+        assert_eq!(req["params"]["agent_session_id"], "sess_abc123");
+
+        reporter.release().await;
+    }
+
+    #[tokio::test]
+    async fn reporter_seq_numbers_increase() {
+        let (sock, mut rx) = start_mock_server().await;
+
+        unsafe {
+            std::env::set_var("HERDR_ENV", "1");
+            std::env::set_var("HERDR_PANE_ID", "test-pane");
+            std::env::set_var(
+                "HERDR_SOCKET_PATH",
+                sock.to_str().unwrap(),
+            );
+        }
+
+        let mut reporter = HerdrReporter::new("jcode");
+        reporter.set_state(AgentState::Working).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50))
+            .await;
+        reporter.set_state(AgentState::Idle).await;
+        tokio::time::sleep(std::time::Duration::from_millis(100))
+            .await;
+
+        let req1 = rx.recv().await.expect("req1");
+        let req2 = rx.recv().await.expect("req2");
+
+        let seq1 = req1["params"]["seq"].as_i64().unwrap();
+        let seq2 = req2["params"]["seq"].as_i64().unwrap();
+        assert!(
+            seq2 > seq1,
+            "seq2 ({seq2}) should be > seq1 ({seq1})"
+        );
+
+        reporter.release().await;
     }
 }

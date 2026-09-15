@@ -3133,7 +3133,7 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
 name = "jcode"
-version = "0.85.0-k1.0.0"
+version = "0.85.1-k1.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3515,6 +3515,7 @@ dependencies = [
  "anyhow",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "toml",
  "tracing",

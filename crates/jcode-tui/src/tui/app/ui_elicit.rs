@@ -10,6 +10,7 @@ use crate::tui::elicitation_types::{
     ElicitResponse, FieldSpec, NotesSpec, Urgency,
 };
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+use jcode_herdr::AgentState;
 
 impl App {
     /// Handle an incoming elicitation message from the tool-core global channel.
@@ -115,6 +116,9 @@ impl App {
             text_buffer,
             response_tx: Some(bridge_tx),
         });
+
+        // Report HERDR: permission/elicitation prompt is blocking the agent.
+        tokio::spawn(crate::herdr::report_state(AgentState::Blocked));
     }
     /// Handle a key press while the elicitation overlay is active.
     ///
@@ -340,6 +344,15 @@ impl App {
                 let _ = tx.send(response);
             }
         }
+
+        // Report HERDR: elicitation dismissed. Return to Working if the
+        // agent was mid-turn, otherwise Idle.
+        let state = if self.is_processing {
+            AgentState::Working
+        } else {
+            AgentState::Idle
+        };
+        tokio::spawn(crate::herdr::report_state(state));
     }
 }
 
