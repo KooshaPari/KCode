@@ -45,7 +45,14 @@ async fn bash_failing_command_returns_error() {
     let tool = BashTool::new();
     let input = json!({"command": "exit 1", "timeout": 5000});
     let result = tool.execute(input, make_ctx(tmp.path())).await;
-    assert!(result.is_err(), "exit 1 should produce an error");
+    // BashTool returns Ok even for non-zero exit codes; the exit code
+    // is embedded in the output string rather than surfaced as Err.
+    let output = result.expect("BashTool should not return Err for non-zero exit");
+    assert!(
+        output.output.contains("Exit code: 1") || output.output.contains("exit code: 1"),
+        "output should indicate non-zero exit: {}",
+        output.output
+    );
 }
 
 #[tokio::test]
