@@ -72,6 +72,7 @@ mod remote_diff;
 pub mod screenshot;
 pub(crate) mod session_facts;
 pub mod session_picker;
+mod status_bar;
 mod stream_buffer;
 pub mod terminal_setup;
 pub mod test_harness;
