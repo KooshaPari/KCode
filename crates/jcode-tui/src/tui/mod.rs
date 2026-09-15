@@ -1,5 +1,6 @@
 pub mod account_picker;
 pub(crate) mod app;
+pub(crate) mod elicitation_types;
 
 #[derive(Clone)]
 pub struct ContextSnapshot {
@@ -25,6 +26,14 @@ pub struct BackgroundTaskRow {
     /// When a successful task stopped being actionable. Running and failed
     /// tasks remain visible until their state changes or the session closes.
     pub completed_at: Option<std::time::Instant>,
+}
+
+/// Aggregated swarm dispatch statistics for the status bar.
+#[derive(Debug, Clone, Default)]
+pub struct SwarmStats {
+    pub active: u32,
+    pub completed: u32,
+    pub failed: u32,
 }
 
 pub mod backend;
@@ -549,6 +558,11 @@ pub trait TuiState {
     /// Active when `agents.swarm_spawn_mode = inline` and the swarm has members.
     fn inline_swarm_gallery_active(&self) -> bool {
         false
+    }
+    /// Aggregated swarm dispatch statistics (active/completed/failed) for the
+    /// status bar. Default returns zeroed stats for states that don't track swarm.
+    fn swarm_stats(&self) -> SwarmStats {
+        SwarmStats::default()
     }
     /// Members to render in the inline swarm gallery band.
     fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
