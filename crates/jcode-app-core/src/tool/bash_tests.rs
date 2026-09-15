@@ -902,11 +902,11 @@ fn gate_ctx(working_dir: &str) -> ToolContext {
 #[tokio::test]
 async fn bash_refuses_to_delete_the_home_directory() {
     // The #604 incident, at the real tool boundary.
+    let _env_lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("temp home");
     let home = temp.path().to_string_lossy().to_string();
     let previous = std::env::var("HOME").ok();
-    // SAFETY: single-threaded test setup; restored below.
-    unsafe { std::env::set_var("HOME", &home) };
+    crate::env::set_var("HOME", &home);
 
     let canary = temp.path().join("precious.txt");
     std::fs::write(&canary, "user data").expect("write canary");
@@ -919,8 +919,8 @@ async fn bash_refuses_to_delete_the_home_directory() {
         .await;
 
     match previous {
-        Some(value) => unsafe { std::env::set_var("HOME", value) },
-        None => unsafe { std::env::remove_var("HOME") },
+        Some(value) => crate::env::set_var("HOME", value),
+        None => crate::env::remove_var("HOME"),
     }
 
     let error = result.expect_err("deleting HOME must be refused");
@@ -1011,11 +1011,11 @@ async fn indirect_dispatch_paths_cannot_bypass_the_gate() {
     // reimplementing it, so the gate lives at the only chokepoint. Assert that
     // directly: calling execute for a background job (the one path that returns
     // early) is still gated.
+    let _env_lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("temp home");
     let home = temp.path().to_string_lossy().to_string();
     let previous = std::env::var("HOME").ok();
-    // SAFETY: single-threaded test setup; restored below.
-    unsafe { std::env::set_var("HOME", &home) };
+    crate::env::set_var("HOME", &home);
     let canary = temp.path().join("precious.txt");
     std::fs::write(&canary, "user data").expect("canary");
 
@@ -1030,8 +1030,8 @@ async fn indirect_dispatch_paths_cannot_bypass_the_gate() {
         .await;
 
     match previous {
-        Some(value) => unsafe { std::env::set_var("HOME", value) },
-        None => unsafe { std::env::remove_var("HOME") },
+        Some(value) => crate::env::set_var("HOME", value),
+        None => crate::env::remove_var("HOME"),
     }
 
     assert!(

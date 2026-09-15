@@ -725,6 +725,10 @@ async fn broadcast_swarm_status_now(
                         } else {
                             Some(m.runtime.elapsed_secs.unwrap_or(0))
                         },
+                        input_tokens: m.runtime.input_tokens,
+                        output_tokens: m.runtime.output_tokens,
+                        queue_depth: m.runtime.queue_depth,
+                        cost_cents: m.runtime.cost_cents,
                     },
                 })
         })
@@ -1900,23 +1904,15 @@ mod tests {
 
     #[test]
     fn idle_worker_reap_window_env_zero_disables() {
-        // Note: mutating the process env in tests is racy in general, but this
-        // env var is read on every call (not cached), and no other test touches
-        // it.
-        unsafe {
-            std::env::set_var("JCODE_SWARM_IDLE_WORKER_REAP_SECS", "0");
-        }
+        let _env_lock = crate::storage::lock_test_env();
+        crate::env::set_var("JCODE_SWARM_IDLE_WORKER_REAP_SECS", "0");
         assert_eq!(super::swarm_idle_worker_reap_after(), None);
-        unsafe {
-            std::env::set_var("JCODE_SWARM_IDLE_WORKER_REAP_SECS", "90");
-        }
+        crate::env::set_var("JCODE_SWARM_IDLE_WORKER_REAP_SECS", "90");
         assert_eq!(
             super::swarm_idle_worker_reap_after(),
             Some(Duration::from_secs(90))
         );
-        unsafe {
-            std::env::remove_var("JCODE_SWARM_IDLE_WORKER_REAP_SECS");
-        }
+        crate::env::remove_var("JCODE_SWARM_IDLE_WORKER_REAP_SECS");
         assert!(super::swarm_idle_worker_reap_after().is_some());
     }
 
