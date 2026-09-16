@@ -19,6 +19,7 @@ pub(crate) struct StatusBarData {
     pub active_agents: u32,
     pub pending_tasks: u32,
     pub session_name: Option<String>,
+    pub mode_label: Option<String>,
 }
 
 impl StatusBarData {
@@ -32,12 +33,19 @@ impl StatusBarData {
         let pending_tasks = app.queued_messages().len() as u32;
         let session_name = app.session_display_name();
 
+        // Read agent mode from env (set by CLI --mode flag).
+        let mode_label = std::env::var("JCODE_AGENT_MODE")
+            .ok()
+            .and_then(|m| jcode_config_types::AgentMode::parse(&m))
+            .map(|m| m.label().to_string());
+
         Self {
             workspace_name,
             repo_name,
             active_agents,
             pending_tasks,
             session_name,
+            mode_label,
         }
     }
 }
@@ -83,6 +91,22 @@ fn build_status_line(data: &StatusBarData, width: usize) -> Line<'static> {
             spans.push(Span::styled(
                 format!("{} ", repo),
                 Style::default().fg(dim),
+            ));
+        }
+    }
+
+    // Mode indicator (only when non-default)
+    if let Some(ref mode) = data.mode_label {
+        if mode != "EXEC" {
+            spans.push(Span::styled(" \u{2502} ", Style::default().fg(separator_color)));
+            let mode_color = match mode.as_str() {
+                "MGR" => rgb(220, 160, 60),   // amber for manager
+                "RES" => rgb(120, 160, 220),  // blue for researcher
+                _ => dim,
+            };
+            spans.push(Span::styled(
+                format!("[{}] ", mode),
+                Style::default().fg(mode_color),
             ));
         }
     }
