@@ -268,6 +268,9 @@ impl HerdrReporter {
 
         let grace = self.retry_grace_ms;
         let state = self.state.clone();
+        let env = self.env.clone();
+        let source = self.source.clone();
+        let agent_label = self.agent_label.clone();
 
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(grace)).await;
@@ -276,8 +279,24 @@ impl HerdrReporter {
                 inner.retry_hold_active = false;
                 inner.failure_blocked = true;
                 inner.current = AgentState::Blocked;
-                inner.message = Some(error_message);
+                inner.message = Some(error_message.clone());
                 drop(inner);
+
+                // Send the blocked state over socket.
+                let params = serde_json::json!({
+                    "pane_id": env.pane_id(),
+                    "source": source,
+                    "agent": agent_label,
+                    "state": "blocked",
+                    "message": error_message,
+                    "seq": next_seq(),
+                });
+                let request = serde_json::json!({
+                    "id": format!("{source}:blocked:{}", next_seq()),
+                    "method": "pane.report_agent",
+                    "params": params,
+                });
+                socket::send_fire_and_forget(env.socket_path(), &request).await;
             }
         });
     }
@@ -359,14 +378,18 @@ impl Drop for HerdrReporter {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixListener;
 
     /// Spawn a mock Unix socket server that collects all received
     /// JSON-RPC requests. Returns the socket path and a channel
     /// receiver that yields each request as it arrives.
     async fn start_mock_server(
-    ) -> (PathBuf, tokio::sync::mpsc::Receiver<serde_json::Value>) {
+    ) -> (
+        PathBuf,
+        tokio::sync::mpsc::Receiver<serde_json::Value>,
+        tempfile::TempDir,
+    ) {
         let dir = tempfile::tempdir().unwrap();
         let sock = dir.path().join("test.sock");
         let listener = UnixListener::bind(&sock).unwrap();
@@ -376,24 +399,79 @@ mod tests {
             while let Ok((mut stream, _)) = listener.accept().await {
                 let tx = tx.clone();
                 tokio::spawn(async move {
-                    let mut reader = BufReader::new(stream);
-                    let mut line = String::new();
-                    while reader.read_line(&mut line).await.unwrap() > 0
-                    {
-                        if let Ok(val) =
-                            serde_json::from_str::<serde_json::Value>(
-                                line.trim(),
-                            )
-                        {
-                            let _ = tx.send(val).await;
+                    // Read exactly one newline-terminated line using
+                    // raw byte reads (no BufReader) to avoid buffering
+                    // past the line boundary.
+                    let mut buf = Vec::new();
+                    let mut byte = [0u8; 1];
+                    loop {
+                        let n = stream.read(&mut byte).await.unwrap();
+                        if n == 0 {
+                            return;
                         }
-                        line.clear();
+                        if byte[0] == b'\n' {
+                            break;
+                        }
+                        buf.push(byte[0]);
                     }
+                    if let Ok(val) =
+                        serde_json::from_slice::<serde_json::Value>(&buf)
+                    {
+                        let _ = tx.send(val).await;
+                    }
+                    // Write response so client's read_line doesn't hang.
+                    let resp = serde_json::json!({"ok": true});
+                    let resp_str =
+                        serde_json::to_string(&resp).unwrap();
+                    let _ = stream
+                        .write_all(
+                            format!("{resp_str}\n").as_bytes(),
+                        )
+                        .await;
                 });
             }
         });
 
-        (sock, rx)
+        (sock, rx, dir)
+    }
+
+    /// Helper to save and restore env vars across tests to prevent
+    /// leakage between parallel test runs.
+    struct EnvGuard {
+        vars: Vec<(String, Option<String>)>,
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (k, v) in &self.vars {
+                match v {
+                    Some(val) => unsafe {
+                        std::env::set_var(k, val);
+                    },
+                    None => unsafe {
+                        std::env::remove_var(k);
+                    },
+                }
+            }
+        }
+    }
+
+    /// Set the standard HERDR env vars for tests, returning a guard
+    /// that restores original values on drop.
+    fn set_herdr_env(sock: &std::path::Path) -> EnvGuard {
+        let keys = ["HERDR_ENV", "HERDR_PANE_ID", "HERDR_SOCKET_PATH"];
+        let vars: Vec<(String, Option<String>)> = keys
+            .iter()
+            .map(|k| (k.to_string(), std::env::var(k).ok()))
+            .collect();
+        unsafe {
+            std::env::set_var("HERDR_ENV", "1");
+            std::env::set_var("HERDR_PANE_ID", "test-pane");
+            std::env::set_var(
+                "HERDR_SOCKET_PATH",
+                sock.to_str().unwrap(),
+            );
+        }
+        EnvGuard { vars }
     }
 
     #[test]
@@ -404,9 +482,16 @@ mod tests {
 
     #[test]
     fn inactive_reporter_is_noop() {
-        // Without HERDR_ENV, reporter should be inactive
+        // Without HERDR_ENV, reporter should be inactive.
+        // Save and restore to prevent env leakage.
+        let saved = std::env::var("HERDR_ENV").ok();
+        unsafe { std::env::remove_var("HERDR_ENV") };
         let reporter = HerdrReporter::new("test-agent");
         assert!(!reporter.is_active());
+        match saved {
+            Some(v) => unsafe { std::env::set_var("HERDR_ENV", v) },
+            None => {}
+        }
     }
 
     #[test]
@@ -418,21 +503,12 @@ mod tests {
 
     #[tokio::test]
     async fn reporter_sends_working_state() {
-        let (sock, mut rx) = start_mock_server().await;
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _guard = set_herdr_env(&sock);
 
-        unsafe {
-            std::env::set_var("HERDR_ENV", "1");
-            std::env::set_var("HERDR_PANE_ID", "test-pane");
-            std::env::set_var(
-                "HERDR_SOCKET_PATH",
-                sock.to_str().unwrap(),
-            );
-        }
-
-        let mut reporter = HerdrReporter::new("jcode");
+        let reporter = HerdrReporter::new("jcode");
         reporter.set_state(AgentState::Working).await;
 
-        // Give fire-and-forget time to connect and send
         tokio::time::sleep(std::time::Duration::from_millis(100))
             .await;
 
@@ -447,18 +523,18 @@ mod tests {
 
     #[tokio::test]
     async fn reporter_sends_idle_state() {
-        let (sock, mut rx) = start_mock_server().await;
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _guard = set_herdr_env(&sock);
 
-        unsafe {
-            std::env::set_var("HERDR_ENV", "1");
-            std::env::set_var("HERDR_PANE_ID", "test-pane");
-            std::env::set_var(
-                "HERDR_SOCKET_PATH",
-                sock.to_str().unwrap(),
-            );
-        }
+        let reporter = HerdrReporter::new("jcode");
+        // Default state is Idle, so set Working first to bypass
+        // the dedup check, then set Idle to trigger a send.
+        reporter.set_state(AgentState::Working).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50))
+            .await;
+        // Drain the working request.
+        let _ = rx.recv().await;
 
-        let mut reporter = HerdrReporter::new("jcode");
         reporter.set_state(AgentState::Idle).await;
 
         tokio::time::sleep(std::time::Duration::from_millis(100))
@@ -472,24 +548,26 @@ mod tests {
 
     #[tokio::test]
     async fn reporter_sends_blocked_state() {
-        let (sock, mut rx) = start_mock_server().await;
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _guard = set_herdr_env(&sock);
 
-        unsafe {
-            std::env::set_var("HERDR_ENV", "1");
-            std::env::set_var("HERDR_PANE_ID", "test-pane");
-            std::env::set_var(
-                "HERDR_SOCKET_PATH",
-                sock.to_str().unwrap(),
-            );
-        }
-
-        let mut reporter = HerdrReporter::new("jcode");
+        let reporter = HerdrReporter::new("jcode");
         reporter.report_error("permission denied".into()).await;
 
-        tokio::time::sleep(std::time::Duration::from_millis(100))
-            .await;
+        // report_error first sends "working", then spawns a delayed
+        // "blocked" after retry_grace_ms. Consume the working
+        // request, then wait for the blocked one.
+        let req = rx.recv().await.expect("expected working request");
+        assert_eq!(req["params"]["state"], "working");
 
-        let req = rx.recv().await.expect("expected blocked request");
+        // Wait for the grace period task to fire blocked state.
+        let req = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            rx.recv(),
+        )
+        .await
+        .expect("timeout waiting for blocked request")
+        .expect("expected blocked request");
         assert_eq!(req["params"]["state"], "blocked");
         assert_eq!(req["params"]["message"], "permission denied");
 
@@ -498,18 +576,10 @@ mod tests {
 
     #[tokio::test]
     async fn reporter_sends_session_id() {
-        let (sock, mut rx) = start_mock_server().await;
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _guard = set_herdr_env(&sock);
 
-        unsafe {
-            std::env::set_var("HERDR_ENV", "1");
-            std::env::set_var("HERDR_PANE_ID", "test-pane");
-            std::env::set_var(
-                "HERDR_SOCKET_PATH",
-                sock.to_str().unwrap(),
-            );
-        }
-
-        let mut reporter = HerdrReporter::new("jcode");
+        let reporter = HerdrReporter::new("jcode");
         reporter
             .set_session_id("sess_abc123".to_string())
             .await;
@@ -526,18 +596,10 @@ mod tests {
 
     #[tokio::test]
     async fn reporter_seq_numbers_increase() {
-        let (sock, mut rx) = start_mock_server().await;
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _guard = set_herdr_env(&sock);
 
-        unsafe {
-            std::env::set_var("HERDR_ENV", "1");
-            std::env::set_var("HERDR_PANE_ID", "test-pane");
-            std::env::set_var(
-                "HERDR_SOCKET_PATH",
-                sock.to_str().unwrap(),
-            );
-        }
-
-        let mut reporter = HerdrReporter::new("jcode");
+        let reporter = HerdrReporter::new("jcode");
         reporter.set_state(AgentState::Working).await;
         tokio::time::sleep(std::time::Duration::from_millis(50))
             .await;

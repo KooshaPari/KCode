@@ -92,6 +92,11 @@ mod tests {
 
     #[test]
     fn capture_active_with_valid_pane() {
+        // Save existing values to restore after test.
+        let saved_env = std::env::var("HERDR_ENV").ok();
+        let saved_pane = std::env::var("HERDR_PANE_ID").ok();
+        let saved_sock = std::env::var("HERDR_SOCKET_PATH").ok();
+
         unsafe {
             env::set_var("HERDR_ENV", "1");
             env::set_var("HERDR_PANE_ID", "w1:p1");
@@ -102,10 +107,19 @@ mod tests {
         assert!(env.is_valid());
         assert_eq!(env.pane_id(), "w1:p1");
         assert_eq!(env.socket_path(), &PathBuf::from("/tmp/herdr.sock"));
-        unsafe {
-            env::remove_var("HERDR_ENV");
-            env::remove_var("HERDR_PANE_ID");
-            env::remove_var("HERDR_SOCKET_PATH");
+
+        // Restore original values.
+        match saved_env {
+            Some(v) => unsafe { env::set_var("HERDR_ENV", v) },
+            None => unsafe { env::remove_var("HERDR_ENV") },
+        }
+        match saved_pane {
+            Some(v) => unsafe { env::set_var("HERDR_PANE_ID", v) },
+            None => unsafe { env::remove_var("HERDR_PANE_ID") },
+        }
+        match saved_sock {
+            Some(v) => unsafe { env::set_var("HERDR_SOCKET_PATH", v) },
+            None => unsafe { env::remove_var("HERDR_SOCKET_PATH") },
         }
     }
 

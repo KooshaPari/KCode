@@ -63,8 +63,6 @@ pub async fn send_fire_and_forget(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn request_serialization() {
         let req = serde_json::json!({
