@@ -19,6 +19,12 @@ pub async fn run() -> Result<()> {
     // Parse once, before startup side effects. Invalid arguments and --help
     // must not harden credential files or create configuration/telemetry state.
     let args = Args::parse();
+
+    // Propagate agent mode to env so tool-gating and status bar can read it.
+    let resolved_mode = jcode_config_types::AgentMode::parse(&args.mode)
+        .unwrap_or(jcode_config_types::AgentMode::Execute);
+    std::env::set_var("JCODE_AGENT_MODE", resolved_mode.as_str());
+
     // Credential import must refuse existing stores without normal startup
     // hardening, migrations, telemetry, or provider discovery touching them.
     if args.ssh.is_none()
