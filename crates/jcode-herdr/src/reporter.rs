@@ -344,10 +344,14 @@ impl Drop for HerdrReporter {
         });
 
         // Best-effort: spawn a short-lived task for the socket write.
+        // Guard with try_current to avoid panicking when dropped outside
+        // a tokio runtime (e.g. synchronous test cleanup).
         let socket_path = env.socket_path().clone();
-        tokio::spawn(async move {
-            socket::send_fire_and_forget(&socket_path, &request).await;
-        });
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                socket::send_fire_and_forget(&socket_path, &request).await;
+            });
+        }
     }
 }
 
