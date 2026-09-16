@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub(crate) struct ForgeCodeCliConfig {
     pub(crate) cli_path: String,
     pub(crate) model: String,
