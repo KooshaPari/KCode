@@ -159,6 +159,19 @@ impl App {
                                 status_spinner_renderer.draw_full(self, terminal)?;
                                 super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
                             }
+                            Some(Ok(Event::FocusGained)) => {
+                                // Track focus state during the API wait so unfocused
+                                // animations and feature unlocks behave the same as
+                                // in the primary handler. Without this arm the
+                                // terminal's focus-in byte leaks into the catch-all
+                                // and the app stays stuck in "unfocused" mode.
+                                crate::tui::reapply_configured_terminal_modes();
+                                self.note_client_focus(true);
+                                let _ = self.set_client_focused(true);
+                            }
+                            Some(Ok(Event::FocusLost)) => {
+                                self.set_client_focused(false);
+                            }
                             Some(Ok(Event::Mouse(mouse))) => {
                                 if !matches!(mouse.kind, MouseEventKind::Moved) {
                                     let scroll_only = self.handle_mouse_event(mouse);
@@ -173,6 +186,11 @@ impl App {
                                     status_spinner_renderer.draw_full(self, terminal)?;
                                     super::run_shell::reset_status_spinner_interval(&mut status_spinner_interval, self);
                                 }
+                            }
+                            Some(Err(error)) => {
+                                crate::logging::warn(&format!(
+                                    "tui: transient event-stream error during api wait: {error}"
+                                ));
                             }
                             _ => {}
                         }
@@ -457,6 +475,14 @@ impl App {
                                 self.handle_paste(text);
                                 status_spinner_renderer.draw_full(self, terminal)?;
                             }
+                            Some(Ok(Event::FocusGained)) => {
+                                crate::tui::reapply_configured_terminal_modes();
+                                self.note_client_focus(true);
+                                let _ = self.set_client_focused(true);
+                            }
+                            Some(Ok(Event::FocusLost)) => {
+                                self.set_client_focused(false);
+                            }
                             Some(Ok(Event::Mouse(mouse))) => {
                                 if !matches!(mouse.kind, MouseEventKind::Moved) {
                                     let scroll_only = self.handle_mouse_event(mouse);
@@ -469,6 +495,11 @@ impl App {
                                 if self.should_redraw_after_resize() {
                                     status_spinner_renderer.draw_full(self, terminal)?;
                                 }
+                            }
+                            Some(Err(error)) => {
+                                crate::logging::warn(&format!(
+                                    "tui: transient event-stream error during stream: {error}"
+                                ));
                             }
                             _ => {}
                         }
@@ -1350,6 +1381,14 @@ impl App {
                                     self.handle_paste(text);
                                     status_spinner_renderer.draw_full(self, terminal)?;
                                 }
+                                Some(Ok(Event::FocusGained)) => {
+                                    crate::tui::reapply_configured_terminal_modes();
+                                    self.note_client_focus(true);
+                                    let _ = self.set_client_focused(true);
+                                }
+                                Some(Ok(Event::FocusLost)) => {
+                                    self.set_client_focused(false);
+                                }
                                 Some(Ok(Event::Mouse(mouse))) => {
                                     if !matches!(mouse.kind, MouseEventKind::Moved) {
                                         let scroll_only = self.handle_mouse_event(mouse);
@@ -1362,6 +1401,11 @@ impl App {
                                     if self.should_redraw_after_resize() {
                                         status_spinner_renderer.draw_full(self, terminal)?;
                                     }
+                                }
+                                Some(Err(error)) => {
+                                    crate::logging::warn(&format!(
+                                        "tui: transient event-stream error during tool exec: {error}"
+                                    ));
                                 }
                                 _ => {}
                             }

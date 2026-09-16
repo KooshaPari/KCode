@@ -3,16 +3,24 @@
 //! Sends newline-delimited JSON requests to HERDR's local socket and
 //! reads one-line responses. Used for `pane.report_agent`,
 //! `pane.report_agent_session`, and `pane.release_agent`.
+//!
+//! HERDR is Unix-only (it relies on a Unix-domain socket). On Windows
+//! callers receive an explicit "unsupported on this platform" error so
+//! the rest of the workspace still compiles — purely a build fix; no
+//! behavior change on Unix.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
 use std::path::Path;
+#[cfg(unix)]
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(unix)]
 use tokio::net::UnixStream;
 
 /// Send a JSON-RPC-style request to HERDR's socket and return the
 /// parsed response. Each request is one newline-terminated JSON line;
 /// the response is the first line from HERDR.
+#[cfg(unix)]
 pub async fn send_request(
     socket_path: &Path,
     request: &Value,
@@ -49,6 +57,18 @@ pub async fn send_request(
         .with_context(|| format!("failed to parse HERDR response: {response_line}"))
 }
 
+/// Windows stub. HERDR only ships on Unix; surface a clear error so
+/// the workspace still compiles.
+#[cfg(not(unix))]
+pub async fn send_request(
+    _socket_path: &Path,
+    _request: &Value,
+) -> Result<Value> {
+    Err(anyhow!(
+        "HERDR is not supported on this platform (Unix-only)"
+    ))
+}
+
 /// Fire-and-forget: send a request and ignore the response.
 /// Used for non-critical state reports where latency matters more
 /// than confirmation.
@@ -56,8 +76,15 @@ pub async fn send_fire_and_forget(
     socket_path: &Path,
     request: &Value,
 ) {
-    if let Err(e) = send_request(socket_path, request).await {
-        tracing::debug!("HERDR fire-and-forget failed: {e}");
+    #[cfg(unix)]
+    {
+        if let Err(e) = send_request(socket_path, request).await {
+            tracing::debug!("HERDR fire-and-forget failed: {e}");
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (socket_path, request);
     }
 }
 
