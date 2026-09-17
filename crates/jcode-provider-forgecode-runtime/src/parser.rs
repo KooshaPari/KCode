@@ -5,40 +5,40 @@ use serde_json::Value;
 // CLI output parsing types
 // ---------------------------------------------------------------------------
 
-pub(crate) #[derive(Deserialize)]
+#[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum CliOutput {
     System {
         #[serde(default)]
-        pub(crate) session_id: Option<String>,
+        session_id: Option<String>,
     },
     StreamEvent {
-        pub(crate) event: Value,
+        event: Value,
         #[serde(default, rename = "session_id")]
-        pub(crate) _session_id: Option<String>,
+        _session_id: Option<String>,
     },
     Assistant {
-        pub(crate) message: CliMessage,
+        message: CliMessage,
         #[serde(default, rename = "session_id")]
-        pub(crate) _session_id: Option<String>,
+        _session_id: Option<String>,
     },
     User {
-        pub(crate) message: CliMessage,
+        message: CliMessage,
         #[serde(default, rename = "session_id")]
-        pub(crate) _session_id: Option<String>,
+        _session_id: Option<String>,
     },
     Result {
         #[serde(default)]
-        pub(crate) is_error: bool,
+        is_error: bool,
         #[serde(default)]
-        pub(crate) usage: Option<UsageInfo>,
+        usage: Option<UsageInfo>,
         #[serde(default)]
-        pub(crate) session_id: Option<String>,
+        session_id: Option<String>,
     },
     Error {
-        pub(crate) message: String,
+        message: String,
         #[serde(default)]
-        pub(crate) retry_after_secs: Option<u64>,
+        retry_after_secs: Option<u64>,
     },
     #[serde(other)]
     Other,
@@ -53,18 +53,18 @@ pub(crate) struct CliMessage {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum SdkContentBlock {
     Text {
-        pub(crate) text: String,
+        text: String,
     },
     ToolUse {
-        pub(crate) id: String,
-        pub(crate) name: String,
-        pub(crate) input: Value,
+        id: String,
+        name: String,
+        input: Value,
     },
     ToolResult {
-        pub(crate) tool_use_id: String,
-        pub(crate) content: Option<Value>,
+        tool_use_id: String,
+        content: Option<Value>,
         #[serde(default)]
-        pub(crate) is_error: Option<bool>,
+        is_error: Option<bool>,
     },
     #[serde(other)]
     Other,
@@ -78,32 +78,32 @@ pub(crate) enum SseEvent {
     #[serde(rename = "content_block_start")]
     ContentBlockStart {
         #[serde(rename = "index")]
-        pub(crate) _index: usize,
-        pub(crate) content_block: ContentBlockInfo,
+        _index: usize,
+        content_block: ContentBlockInfo,
     },
     #[serde(rename = "content_block_delta")]
     ContentBlockDelta {
         #[serde(rename = "index")]
-        pub(crate) _index: usize,
-        pub(crate) delta: DeltaInfo,
+        _index: usize,
+        delta: DeltaInfo,
     },
     #[serde(rename = "content_block_stop")]
     ContentBlockStop {
         #[serde(rename = "index")]
-        pub(crate) _index: usize,
+        _index: usize,
     },
     #[serde(rename = "message_delta")]
     MessageDelta {
-        pub(crate) delta: MessageDeltaInfo,
+        delta: MessageDeltaInfo,
         #[serde(default)]
-        pub(crate) usage: Option<UsageInfo>,
+        usage: Option<UsageInfo>,
     },
     #[serde(rename = "message_stop")]
     MessageStop,
     #[serde(rename = "ping")]
     Ping,
     #[serde(rename = "error")]
-    Error { pub(crate) error: ErrorInfo },
+    Error { error: ErrorInfo },
 }
 
 #[derive(Deserialize, Debug)]
@@ -112,17 +112,17 @@ pub(crate) enum ContentBlockInfo {
     #[serde(rename = "text")]
     Text {
         #[serde(rename = "text")]
-        pub(crate) _text: String,
+        _text: String,
     },
     #[serde(rename = "tool_use")]
     ToolUse {
-        pub(crate) id: String,
-        pub(crate) name: String,
+        id: String,
+        name: String,
     },
     #[serde(rename = "thinking")]
     Thinking {
         #[serde(rename = "thinking")]
-        pub(crate) _thinking: String,
+        _thinking: String,
     },
     #[serde(other)]
     Other,
@@ -132,18 +132,18 @@ pub(crate) enum ContentBlockInfo {
 #[serde(tag = "type")]
 pub(crate) enum DeltaInfo {
     #[serde(rename = "text_delta")]
-    TextDelta { pub(crate) text: String },
+    TextDelta { text: String },
     #[serde(rename = "input_json_delta")]
-    InputJsonDelta { pub(crate) partial_json: String },
+    InputJsonDelta { partial_json: String },
     #[serde(rename = "thinking_delta")]
     ThinkingDelta {
         #[serde(rename = "thinking")]
-        pub(crate) _thinking: String,
+        _thinking: String,
     },
     #[serde(rename = "signature_delta")]
     SignatureDelta {
         #[serde(rename = "signature")]
-        pub(crate) _signature: String,
+        _signature: String,
     },
     #[serde(other)]
     Other,
