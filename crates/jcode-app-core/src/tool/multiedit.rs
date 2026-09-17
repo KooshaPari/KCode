@@ -133,6 +133,7 @@ impl Tool for MultiEditTool {
 
         // Write the result
         tokio::fs::write(&path, &content).await?;
+        super::edit_stats::record(&ctx, &original_content, &content, false).await;
 
         // Format output
         let mut output = format!("Edited {}\n\n", params.file_path);

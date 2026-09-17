@@ -3951,7 +3951,11 @@ dependencies = [
 >>>>>>> 4c5e6c081 (feat(bash): gate destructive commands behind a reflection turn (fixes #604))
  "jcode-command-risk",
  "jcode-core",
+<<<<<<< HEAD
  "jcode-herdr",
+=======
+ "jcode-harness-api",
+>>>>>>> b414a3a75 (feat: expose durable per-session edit statistics through harness API)
  "jcode-import-core",
  "jcode-message-types",
  "jcode-micro-compact",
