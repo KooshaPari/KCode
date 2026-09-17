@@ -207,17 +207,17 @@ fn pwsh_hooks(f: &FeatureFlags) -> String {
         out.push_str("function Invoke-JcodePreCmd {\n");
         out.push_str("    $exitCode = $global:LASTEXITCODE\n");
         if f.exit_code {
-            out.push_str("    Write-Host -NoNewline \"`e]133;D;${exitCode}`a\"\n");
+            out.push_str("    [Console]::Write(\"`e]133;D;${exitCode}`a\")\n");
         }
         if f.prompt_marking {
-            out.push_str("    Write-Host -NoNewline \"`e]133;A`a\"\n");
+            out.push_str("    [Console]::Write(\"`e]133;A`a\")\n");
         }
         out.push_str("}\n\n");
     }
 
     if f.prompt_marking {
         out.push_str("function Invoke-JcodePreExec {\n");
-        out.push_str("    Write-Host -NoNewline \"`e]133;B`a\"\n");
+        out.push_str("    [Console]::Write(\"`e]133;B`a\")\n");
         out.push_str("}\n\n");
     }
 
@@ -235,7 +235,7 @@ fn pwsh_hooks(f: &FeatureFlags) -> String {
     if f.cwd_reporting {
         out.push_str("function __jcodeReportCwd {\n");
         out.push_str("    $uri = [System.Uri]::new((Get-Location).Path)\n");
-        out.push_str("    Write-Host -NoNewline \"`e]7;$uri`a\"\n");
+        out.push_str("    [Console]::Write(\"`e]7;$uri`a\")\n");
         out.push_str("}\n");
         out.push_str("# Call after each command\n");
     }

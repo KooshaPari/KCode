@@ -89,9 +89,19 @@ pub(super) fn extract_input_shell_command(input: &str) -> Option<&str> {
 fn build_input_shell_command(command: &str) -> std::process::Command {
     #[cfg(windows)]
     {
-        let mut cmd = std::process::Command::new("cmd.exe");
-        cmd.arg("/C").arg(command);
-        cmd
+        use crate::shell::detect::Shell;
+        match Shell::detect() {
+            Shell::PowerShell => {
+                let mut cmd = std::process::Command::new("pwsh.exe");
+                cmd.arg("-NoProfile").arg("-Command").arg(command);
+                cmd
+            }
+            _ => {
+                let mut cmd = std::process::Command::new("cmd.exe");
+                cmd.arg("/C").arg(command);
+                cmd
+            }
+        }
     }
 
     #[cfg(not(windows))]

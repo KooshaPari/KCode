@@ -3,14 +3,14 @@
 /// Precmd hook function.
 pub const PWSH_PRECMD: &str = r#"function Invoke-JcodePreCmd {
     $exitCode = $global:LASTEXITCODE
-    Write-Host -NoNewline "`e]133;D;${exitCode}`a"
-    Write-Host -NoNewline "`e]133;A`a"
+    [Console]::Write("`e]133;D;${exitCode}`a")
+    [Console]::Write("`e]133;A`a")
 }
 "#;
 
 /// Preexec hook function.
 pub const PWSH_PREEXEC: &str = r#"function Invoke-JcodePreExec {
-    Write-Host -NoNewline "`e]133;B`a"
+    [Console]::Write("`e]133;B`a")
 }
 "#;
 
@@ -20,12 +20,12 @@ pub const PWSH_INIT: &str = r#"# jcode shell integration for PowerShell
 
 function Invoke-JcodePreCmd {
     $exitCode = $global:LASTEXITCODE
-    Write-Host -NoNewline "`e]133;D;${exitCode}`a"
-    Write-Host -NoNewline "`e]133;A`a"
+    [Console]::Write("`e]133;D;${exitCode}`a")
+    [Console]::Write("`e]133;A`a")
 }
 
 function Invoke-JcodePreExec {
-    Write-Host -NoNewline "`e]133;B`a"
+    [Console]::Write("`e]133;B`a")
 }
 
 # Register hooks by wrapping the existing Prompt function
@@ -39,7 +39,7 @@ if (-not (Test-Path Variable:\JcodeOriginalPrompt)) {
 
 # Report exit code on shell exit
 Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action {
-    Write-Host -NoNewline "`e]133;D;0`a"
+    [Console]::Write("`e]133;D;0`a")
 }
 "#;
 

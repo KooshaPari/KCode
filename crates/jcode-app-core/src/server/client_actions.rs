@@ -36,9 +36,19 @@ fn derive_subagent_description(prompt: &str) -> String {
 fn build_input_shell_command(command: &str) -> Command {
     #[cfg(windows)]
     {
-        let mut cmd = Command::new("cmd.exe");
-        cmd.arg("/C").arg(command);
-        cmd
+        use crate::shell::detect::Shell;
+        match Shell::detect() {
+            Shell::PowerShell => {
+                let mut cmd = Command::new("pwsh.exe");
+                cmd.arg("-NoProfile").arg("-Command").arg(command);
+                cmd
+            }
+            _ => {
+                let mut cmd = Command::new("cmd.exe");
+                cmd.arg("/C").arg(command);
+                cmd
+            }
+        }
     }
 
     #[cfg(not(windows))]
