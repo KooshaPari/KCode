@@ -1924,10 +1924,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    if handle_disabled_mission_command(app, trimmed) {
-        return true;
-    }
-
     if handle_goals_command(app, trimmed) {
         return true;
     }
@@ -2562,19 +2558,6 @@ pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    true
-}
-
-pub(super) fn handle_disabled_mission_command(app: &mut App, trimmed: &str) -> bool {
-    if slash_command_rest(trimmed, "/mission").is_none()
-        && slash_command_rest(trimmed, "/goal").is_none()
-    {
-        return false;
-    }
-
-    app.push_display_message(DisplayMessage::system(
-        "The /mission and /goal commands are disabled in this build.".to_string(),
-    ));
     true
 }
 
