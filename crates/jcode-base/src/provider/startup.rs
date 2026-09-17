@@ -362,6 +362,10 @@ impl MultiProvider {
 
         result.spawn_anthropic_catalog_refresh_if_needed();
         result.spawn_openai_catalog_refresh_if_needed();
+        // Start the background catalog sweeper early so all configured
+        // OpenAI-compatible profile catalogs are refreshed proactively,
+        // not only after the first `/model` render triggers the lazy start.
+        crate::provider::catalog_scheduler::ensure_started();
         result.auto_select_active_multi_account();
         crate::logging::info(&format!(
             "[TIMING] provider_init: claude={}, anthropic={}, openai={}, copilot={}, antigravity={}, gemini={}, cursor={}, bedrock={}, openrouter={}, total={}ms",
