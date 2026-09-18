@@ -14,6 +14,12 @@ impl MultiEditTool {
     }
 }
 
+impl Default for MultiEditTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Deserialize)]
 struct MultiEditInput {
     file_path: String,

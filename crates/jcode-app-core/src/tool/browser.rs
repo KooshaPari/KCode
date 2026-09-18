@@ -17,6 +17,12 @@ impl BrowserTool {
     }
 }
 
+impl Default for BrowserTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn browser_tool_description_text() -> &'static str {
     "Control the browser. Check action='status' first; run setup only if not ready."
 }

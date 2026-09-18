@@ -177,7 +177,7 @@ fn create_coordinator_session(parent: &mut Session, mission: &Option<String>) ->
     let parent_messages = parent.messages.clone();
     let fork_result = create_forked_child_messages(
         &parent_messages,
-        &directive,
+        directive,
         &fork_id,
         parent,
     );

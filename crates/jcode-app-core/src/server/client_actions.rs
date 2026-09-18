@@ -339,8 +339,8 @@ pub(super) fn handle_run_subagent(
 
         // Agent mode tool gating: block write/build tools in manager/researcher modes.
         let mode_str = std::env::var("JCODE_AGENT_MODE").unwrap_or_default();
-        if let Some(mode) = crate::config::AgentMode::parse(&mode_str) {
-            if mode.is_tool_blocked(&tool_name_for_exec) {
+        if let Some(mode) = crate::config::AgentMode::parse(&mode_str)
+            && mode.is_tool_blocked(&tool_name_for_exec) {
                 let msg = format!(
                     "Tool '{}' is blocked in {} mode. {}",
                     tool_name_for_exec,
@@ -363,7 +363,6 @@ pub(super) fn handle_run_subagent(
                 });
                 return;
             }
-        }
 
         let result = match tokio::spawn(async move {
             registry.execute(&tool_name_for_exec, tool_input, ctx).await

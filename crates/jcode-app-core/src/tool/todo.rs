@@ -21,6 +21,12 @@ impl TodoTool {
     }
 }
 
+impl Default for TodoTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Fold each incoming todo's confidence into its tool-maintained history.
 ///
 /// The model reports `confidence` while working and `completion_confidence` at
@@ -2025,7 +2031,7 @@ mod tests {
             ..before.clone()
         };
 
-        let changes = goal_changes(&[before.clone()], &[after.clone()]);
+        let changes = goal_changes(std::slice::from_ref(&before), std::slice::from_ref(&after));
 
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].before.as_ref(), Some(&before));

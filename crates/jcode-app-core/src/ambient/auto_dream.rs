@@ -269,7 +269,7 @@ fn apply_consolidation_ops(
                 for id in &op.ids {
                     let entry = crate::memory::MemoryEntry::new(
                         MemoryCategory::Fact,
-                        &format!("promoted: {}", id),
+                        format!("promoted: {}", id),
                     )
                     .with_id(format!("{}:promoted", id));
                     match manager.remember_global(entry) {

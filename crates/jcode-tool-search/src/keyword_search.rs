@@ -103,7 +103,7 @@ pub fn search_tools(query: &str, tools: &[Tool]) -> Vec<SearchResult> {
 }
 
 /// Sort search results by descending score, then alphabetically by tool name.
-pub fn rank_results(results: &mut Vec<SearchResult>) {
+pub fn rank_results(results: &mut [SearchResult]) {
     results.sort_by(|a, b| b.score.cmp(&a.score).then(a.tool_name.cmp(&b.tool_name)));
 }
 
@@ -133,10 +133,10 @@ fn score_entry(entry: &ToolEntry, query_lower: &str, tokens: &[&str]) -> Option<
         }
 
         // Description match.
-        if let Some(desc) = &entry.description {
-            if desc.to_lowercase().contains(token) {
-                score += SCORE_DESCRIPTION_CONTAINS;
-            }
+        if let Some(desc) = &entry.description
+            && desc.to_lowercase().contains(token)
+        {
+            score += SCORE_DESCRIPTION_CONTAINS;
         }
     }
 

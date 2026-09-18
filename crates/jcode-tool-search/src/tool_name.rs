@@ -28,9 +28,7 @@ pub fn parse_tool_name(name: &str) -> Option<ParsedToolName> {
     }
 
     if let Some(rest) = name.strip_prefix("mcp__") {
-        let mut segments = rest.splitn(2, "__");
-        let server = segments.next()?;
-        let action = segments.next()?;
+        let (server, action) = rest.split_once("__")?;
         let mut parts: Vec<String> = snake_tokens(server);
         parts.extend(snake_tokens(action));
         let full = parts.join(" ");

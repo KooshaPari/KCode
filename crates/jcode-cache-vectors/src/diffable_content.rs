@@ -73,8 +73,7 @@ impl DiffableContent {
         let tools = snapshot
             .per_tool_hashes
             .iter()
-            .enumerate()
-            .map(|(_i, (name, hash))| {
+            .map(|(name, hash)| {
                 let param_count = tool_params
                     .iter()
                     .find(|(n, _)| n == name)
@@ -104,7 +103,7 @@ impl DiffableContent {
 
     /// Serialize to a JSON `Value` suitable for structured logging.
     pub fn to_json(&self) -> Value {
-        serde_json::to_value(self).unwrap_or_else(|_| Value::Null)
+        serde_json::to_value(self).unwrap_or(Value::Null)
     }
 }
 

@@ -86,18 +86,15 @@ pub enum AmbientStatus {
 
 /// Recurrence pattern for a scheduled item.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Recurrence {
     /// Fire every N minutes, re-enqueue after each execution.
     Interval { every_minutes: u32 },
     /// Fire once (default).
+    #[default]
     Once,
 }
 
-impl Default for Recurrence {
-    fn default() -> Self {
-        Self::Once
-    }
-}
 
 impl Recurrence {
     /// Returns `true` if this is the default `Once` recurrence (used for

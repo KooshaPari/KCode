@@ -20,6 +20,12 @@ impl ReadTool {
     }
 }
 
+impl Default for ReadTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Deserialize)]
 struct ReadInput {
     file_path: String,

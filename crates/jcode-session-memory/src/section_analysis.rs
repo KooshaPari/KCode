@@ -57,7 +57,7 @@ pub fn find_oversized_sections(
     let mut v: Vec<(String, usize)> = analysis.sections.iter()
         .filter(|(_, t)| **t > max_per_section)
         .map(|(n, &t)| (n.clone(), t)).collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1)); v
+    v.sort_by_key(|(_, t)| std::cmp::Reverse(*t)); v
 }
 
 #[cfg(test)]
