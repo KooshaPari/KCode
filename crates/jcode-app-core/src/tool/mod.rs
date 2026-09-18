@@ -395,6 +395,12 @@ impl Registry {
                 jcode_docs::JcodeDocsTool::new,
             );
             Self::insert_tool_timed(&mut m, &mut timings, "todo", todo::TodoTool::new);
+            Self::insert_tool_timed(
+                &mut m,
+                &mut timings,
+                "initiative",
+                goal::InitiativeTool::new,
+            );
             Self::insert_tool_timed(&mut m, &mut timings, "bg", bg::BgTool::new);
             Self::insert_tool_timed(
                 &mut m,
