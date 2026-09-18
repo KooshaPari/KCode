@@ -1,5 +1,5 @@
 use super::AmbientRunnerHandle;
-use crate::ambient::{Priority, ScheduleTarget, ScheduledItem};
+use crate::ambient::{Priority, Recurrence, ScheduleTarget, ScheduledItem};
 use crate::message::{Message, Role, StreamEvent, ToolDefinition};
 use crate::provider::{EventStream, Provider};
 use crate::session::Session;
@@ -197,6 +197,7 @@ async fn spawn_target_creates_one_child_session_and_runs_task() {
         relevant_files: vec!["src/lib.rs".to_string()],
         git_branch: None,
         additional_context: Some("Background: spawned schedule test".to_string()),
+        recurrence: Recurrence::Once,
     };
 
     let runner = AmbientRunnerHandle::new(Arc::new(crate::safety::SafetySystem::new()));
