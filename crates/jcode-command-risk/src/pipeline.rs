@@ -56,7 +56,7 @@ pub fn run_pipeline(command: &str, ctx: &RiskContext) -> PipelineResult {
         check_dangerous_vars(fully),
     ];
 
-    for result in checks.into_iter().flatten() {
+    if let Some(result) = checks.into_iter().flatten().next() {
         return result;
     }
 
