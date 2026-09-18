@@ -62,7 +62,7 @@ pub fn estimate_message_tokens(messages: &[Message]) -> usize {
         .sum();
 
     // Pad by 4/3 to be conservative since we're approximating
-    (raw * PAD_NUM + PAD_DEN - 1) / PAD_DEN // ceil division
+    (raw * PAD_NUM).div_ceil(PAD_DEN) // ceil division
 }
 
 #[cfg(test)]
