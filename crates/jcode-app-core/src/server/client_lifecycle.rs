@@ -1359,9 +1359,10 @@ pub(super) async fn handle_client(
                         active_turn_registered,
                         session_connection_busy,
                     );
-                    if start && let Some(info) = connections.get_mut(&client_connection_id) {
-                        info.is_processing = true;
-                    }
+                    if start
+                        && let Some(info) = connections.get_mut(&client_connection_id) {
+                            info.is_processing = true;
+                        }
                     start
                 };
                 if start_idle_turn {

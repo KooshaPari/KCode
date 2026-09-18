@@ -21,6 +21,12 @@ impl BrowserTool {
     }
 }
 
+impl Default for BrowserTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn browser_tool_description_text() -> &'static str {
     if browser_handoff_disabled() {
         return "Control the browser using direct actions. Check action='status' first; run setup only if not ready. Browser handoff is disabled for this process. Complete browser tasks with direct actions in the requested tab.";

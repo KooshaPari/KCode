@@ -167,7 +167,25 @@ pub fn start_overnight_run(options: OvernightStartOptions) -> Result<OvernightLa
     })
 }
 
-fn create_coordinator_session(parent: &Session, mission: &Option<String>) -> Result<Session> {
+fn create_coordinator_session(parent: &mut Session, mission: &Option<String>) -> Result<Session> {
+    // Check fork depth before creating child session.
+    // The parent session carries fork depth state that persists across saves.
+    let fork_id = format!("overnight-{}", parent.id);
+    let directive = mission.as_deref().unwrap_or("Run overnight tasks");
+    let parent_messages = parent.messages.clone();
+    let fork_result = create_forked_child_messages(
+        &parent_messages,
+        directive,
+        &fork_id,
+        parent,
+    );
+    if fork_result.denied {
+        anyhow::bail!(
+            "Fork depth exceeded: cannot create coordinator child for parent {}",
+            parent.id
+        );
+    }
+
     let title = Some(match mission {
         Some(mission) => format!("Overnight: {}", crate::util::truncate_str(mission, 48)),
         None => "Overnight coordinator".to_string(),

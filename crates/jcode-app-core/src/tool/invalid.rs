@@ -12,6 +12,12 @@ impl InvalidTool {
     }
 }
 
+impl Default for InvalidTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Deserialize)]
 struct InvalidInput {
     tool: String,

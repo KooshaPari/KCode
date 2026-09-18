@@ -9,7 +9,9 @@
 //! the rest of the workspace still compiles — purely a build fix; no
 //! behavior change on Unix.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
+#[cfg(not(unix))]
+use anyhow::anyhow;
 use serde_json::Value;
 use std::path::Path;
 #[cfg(unix)]

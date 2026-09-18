@@ -1843,6 +1843,12 @@ impl CommunicateTool {
     }
 }
 
+impl Default for CommunicateTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Clone, Deserialize)]
 struct CommunicateInput {
     action: String,

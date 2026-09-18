@@ -22,6 +22,12 @@ impl TodoTool {
     }
 }
 
+impl Default for TodoTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Fold each incoming todo's confidence into its tool-maintained history.
 ///
 /// The model reports `confidence` while working and `completion_confidence` at
