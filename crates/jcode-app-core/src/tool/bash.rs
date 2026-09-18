@@ -1190,6 +1190,10 @@ impl BashTool {
                 // in-process reader sees their output. Follow the file to keep
                 // the task's progress bar live.
                 spawn_detached_progress_follower(info.task_id.clone(), info.output_file.clone());
+                // The command outlives this call, so hand the child to a reaper.
+                // Dropping a `std::process::Child` without `wait()` leaves the
+                // process as a <defunct> zombie parented to the server forever.
+                crate::platform::reap_detached(child);
 
                 let elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
                 let output = format!(
@@ -1248,6 +1252,9 @@ impl BashTool {
                     )
                     .await;
                 spawn_detached_progress_follower(info.task_id.clone(), info.output_file.clone());
+                // Same as the timeout handoff: the reloaded server will not own
+                // this child, so reap it here or it lingers as a zombie.
+                crate::platform::reap_detached(child);
                 let output = format!(
                     "Command continued in background due to reload.\n\nTask ID: {}\nOutput file: {}\nStatus file: {}\n\nUse `bg` with action=\"wait\" and task_id=\"{}\" after reload to wait for completion or the next progress checkpoint.",
                     info.task_id,

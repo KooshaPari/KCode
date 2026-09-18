@@ -492,6 +492,10 @@ async fn spawn_with_grace(mut cmd: Command, backend: &str) -> Result<()> {
         }
     }
 
+    // The opener keeps running past the grace period, so collect its exit status
+    // instead of dropping the handle; an unreaped child becomes a zombie.
+    crate::platform::reap_detached(child);
+
     Ok(())
 }
 
