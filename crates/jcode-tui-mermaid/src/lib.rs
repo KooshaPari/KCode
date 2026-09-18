@@ -431,14 +431,16 @@ static RENDER_CACHE: LazyLock<Mutex<MermaidCache>> =
 /// naturally refreshed on the next redraw.
 static DEFERRED_RENDER_EPOCH: AtomicU64 = AtomicU64::new(1);
 
-/// Mermaid source keyed by the same content hash used by inline image markers.
+/// Hash of mermaid source text to the geometry triples (w1,h1),(w2,h2),(w3,h3) for three render profiles.
+type InlineLevelGeometryMap = HashMap<u64, [(u16, u16); 3]>;
+
 /// This lets transcript clicks copy editable Mermaid text instead of PNG pixels.
 static MERMAID_SOURCE_BY_HASH: LazyLock<Mutex<HashMap<u64, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static MERMAID_INLINE_EXPAND_LEVEL: LazyLock<Mutex<HashMap<u64, u8>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static MERMAID_INLINE_EXPAND_EPOCH: AtomicU64 = AtomicU64::new(0);
-static MERMAID_INLINE_LEVEL_GEOMETRY: LazyLock<Mutex<HashMap<u64, [(u16, u16); 3]>>> =
+static MERMAID_INLINE_LEVEL_GEOMETRY: LazyLock<Mutex<InlineLevelGeometryMap>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub fn mermaid_source_for_hash(hash: u64) -> Option<String> {
