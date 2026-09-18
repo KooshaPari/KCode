@@ -148,8 +148,8 @@ fn find_valid_heredocs(command: &str) -> Vec<HeredocSpan> {
 
         // Compute absolute end position (one past `)`).
         let mut end_pos = body_start;
-        for i in 0..paren_idx {
-            end_pos += body_lines[i].len() + 1;
+        for line in body_lines.iter().take(paren_idx) {
+            end_pos += line.len() + 1;
         }
         end_pos += close_paren_col + 1;
 
@@ -204,7 +204,7 @@ fn strip_heredocs(command: &str) -> Option<String> {
     let safe_re = Regex::new(r#"^[a-zA-Z0-9 \t"'.\-/_@=,:+~]*$"#).unwrap();
 
     // Strip in reverse order so earlier indices stay valid.
-    spans.sort_by(|a, b| b.start.cmp(&a.start));
+    spans.sort_by_key(|a| std::cmp::Reverse(a.start));
     let mut result = command.to_string();
     for span in &spans {
         result.replace_range(span.start..span.end, "");
