@@ -4,7 +4,7 @@ use super::{
     inferred_reasoning_efforts, partition_queued_messages, resume_invocation_args,
     resumed_window_title,
 };
-use crate::ambient::{AmbientManager, Priority, ScheduleRequest, ScheduleTarget};
+use crate::ambient::{AmbientManager, Priority, Recurrence, ScheduleRequest, ScheduleTarget};
 use crate::terminal_launch::{detected_resume_terminal, shell_command};
 use crate::tui::session_picker::ResumeTarget;
 use chrono::{Duration as ChronoDuration, Utc};
@@ -431,6 +431,7 @@ fn gather_ambient_info_filters_to_session_reminders_when_ambient_disabled() {
             relevant_files: Vec::new(),
             git_branch: None,
             additional_context: None,
+            recurrence: Recurrence::Once,
         })
         .expect("schedule ambient item");
     manager
@@ -448,6 +449,7 @@ fn gather_ambient_info_filters_to_session_reminders_when_ambient_disabled() {
             relevant_files: Vec::new(),
             git_branch: None,
             additional_context: None,
+            recurrence: Recurrence::Once,
         })
         .expect("schedule first reminder");
     manager
@@ -465,6 +467,7 @@ fn gather_ambient_info_filters_to_session_reminders_when_ambient_disabled() {
             relevant_files: Vec::new(),
             git_branch: None,
             additional_context: None,
+            recurrence: Recurrence::Once,
         })
         .expect("schedule second reminder");
 
