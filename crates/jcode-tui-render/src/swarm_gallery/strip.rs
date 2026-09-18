@@ -210,8 +210,8 @@ pub fn render_swarm_strip(
 
     let mut spans: Vec<Span<'static>> = lead;
     let mut task_used = 0usize;
-    let used: usize;
-    if shown == 0 && !chips.is_empty() {
+
+    let used: usize = if shown == 0 && !chips.is_empty() {
         // Degenerate width: show the first chip truncated.
         let c = &chips[0];
         let prefix_w = if c.is_sel && focused { 2 } else { 0 }; // '▸ ' width
@@ -238,7 +238,7 @@ pub fn render_swarm_strip(
             format!("{prefix}{} {}", c.glyph, name),
             style,
         ));
-        used = prefix_w + batch_pfx_w + disp_w(&c.glyph) + 1 + disp_w(&name);
+        prefix_w + batch_pfx_w + disp_w(&c.glyph) + 1 + disp_w(&name)
     } else {
         for (i, chip) in chips.iter().take(shown).enumerate() {
             if i > 0 {
@@ -293,8 +293,8 @@ pub fn render_swarm_strip(
                 Style::default().fg(rgb(140, 140, 150)),
             ));
         }
-        used = chips_used + task_used;
-    }
+        chips_used + task_used
+    };
 
     // ---- Right-align the tail (tally [+ hint]) ----
     if show_tally {

@@ -97,8 +97,8 @@ pub(crate) fn hovered_detail_body(
     // Show elapsed time, effort level, and auth method as compact indicator
     // lines above the todo card so they are always visible in the detail pane.
     let detail_fg = rgb(110, 110, 125);
-    if let Some(secs) = m.elapsed_secs {
-        if out.len() < budget {
+    if let Some(secs) = m.elapsed_secs
+        && out.len() < budget {
             out.push(Line::from(vec![
                 Span::raw(GUTTER),
                 Span::styled(
@@ -109,9 +109,8 @@ pub(crate) fn hovered_detail_body(
                 Span::raw(format_elapsed_short(secs)),
             ]));
         }
-    }
-    if let Some(ref effort) = m.effort {
-        if !effort.trim().is_empty() && out.len() < budget {
+    if let Some(ref effort) = m.effort
+        && !effort.trim().is_empty() && out.len() < budget {
             out.push(Line::from(vec![
                 Span::raw(GUTTER),
                 Span::styled(
@@ -122,9 +121,8 @@ pub(crate) fn hovered_detail_body(
                 Span::raw(format!("effort: {effort}")),
             ]));
         }
-    }
-    if let Some(ref auth) = m.auth_method {
-        if !auth.trim().is_empty() && out.len() < budget {
+    if let Some(ref auth) = m.auth_method
+        && !auth.trim().is_empty() && out.len() < budget {
             out.push(Line::from(vec![
                 Span::raw(GUTTER),
                 Span::styled(
@@ -135,11 +133,10 @@ pub(crate) fn hovered_detail_body(
                 Span::raw(format!("auth: {auth}")),
             ]));
         }
-    }
 
     // ---- Performance metrics ----
-    if let Some(tokens) = m.input_tokens {
-        if out.len() < budget {
+    if let Some(tokens) = m.input_tokens
+        && out.len() < budget {
             out.push(Line::from(vec![
                 Span::raw(GUTTER),
                 Span::styled(
@@ -150,9 +147,8 @@ pub(crate) fn hovered_detail_body(
                 Span::raw(format_tokens(tokens)),
             ]));
         }
-    }
-    if let Some(tokens) = m.output_tokens {
-        if out.len() < budget {
+    if let Some(tokens) = m.output_tokens
+        && out.len() < budget {
             out.push(Line::from(vec![
                 Span::raw(GUTTER),
                 Span::styled(
@@ -163,9 +159,8 @@ pub(crate) fn hovered_detail_body(
                 Span::raw(format_tokens(tokens)),
             ]));
         }
-    }
-    if let Some(depth) = m.queue_depth {
-        if depth > 0 && out.len() < budget {
+    if let Some(depth) = m.queue_depth
+        && depth > 0 && out.len() < budget {
             out.push(Line::from(vec![
                 Span::raw(GUTTER),
                 Span::styled(
@@ -176,9 +171,8 @@ pub(crate) fn hovered_detail_body(
                 Span::raw(format!("{depth} tasks queued")),
             ]));
         }
-    }
-    if let Some(cents) = m.cost_cents {
-        if out.len() < budget {
+    if let Some(cents) = m.cost_cents
+        && out.len() < budget {
             out.push(Line::from(vec![
                 Span::raw(GUTTER),
                 Span::styled(
@@ -189,7 +183,6 @@ pub(crate) fn hovered_detail_body(
                 Span::raw(format_cost(cents)),
             ]));
         }
-    }
 
     // ---- Todo card ----
     // Show a sliding window of four item names. Tool activity belongs to the
