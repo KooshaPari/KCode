@@ -1715,6 +1715,12 @@ pub struct App {
     account_picker_overlay: Option<RefCell<super::account_picker::AccountPicker>>,
     /// Usage overlay (None = not visible)
     usage_overlay: Option<RefCell<super::usage_overlay::UsageOverlay>>,
+    /// Elicitation overlay for structured agent-to-user input (None = not active)
+    elicit_overlay: Option<super::elicitation_types::ElicitOverlayState>,
+    /// Receiver for elicitation requests from the tool-core global channel.
+    /// Polled in the main event loop; when a message arrives, it is converted
+    /// to a TUI `ElicitOverlayState` and displayed as a modal overlay.
+    elicit_rx: tokio::sync::mpsc::UnboundedReceiver<Box<jcode_tool_core::ElicitMessage>>,
     /// Whether a usage refresh request is currently in flight.
     usage_report_refreshing: bool,
     usage_reset: usage_reset::ResetState,
