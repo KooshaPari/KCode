@@ -660,6 +660,7 @@ impl BridgeState {
                         include_archived || !archive.sessions.contains_key(session_id)
                     })
                     .map(|session_id| SessionInfo {
+                        edit_stats: None,
                         parent_session_id: None,
                         agent_label: None,
                         swarm_status: None,
@@ -689,6 +690,7 @@ impl BridgeState {
                     })
                     .collect();
                 jcode_harness_api::enrich_sessions_from_local_swarm_state(&mut sessions);
+                jcode_harness_api::enrich_sessions_from_local_edit_stats(&mut sessions);
                 let completed = list_started.elapsed();
                 eprintln!(
                     "harness API bridge: list_sessions ids={:.1}ms metadata={:.1}ms total={:.1}ms count={}",
@@ -1108,6 +1110,7 @@ impl BridgeState {
                         api_id,
                         ApiEvent::Attached {
                             session: SessionInfo {
+                                edit_stats: None,
                                 parent_session_id: None,
                                 agent_label: None,
                                 swarm_status: None,
@@ -1278,6 +1281,7 @@ impl BridgeState {
                     api_id,
                     ApiEvent::SessionForked {
                         session: SessionInfo {
+                            edit_stats: None,
                             parent_session_id: None,
                             agent_label: None,
                             swarm_status: None,
@@ -1687,6 +1691,9 @@ impl BridgeState {
             if let ApiEvent::Attached { session } | ApiEvent::SessionForked { session } =
                 &mut frame.event
             {
+                jcode_harness_api::enrich_sessions_from_local_edit_stats(std::slice::from_mut(
+                    session,
+                ));
                 jcode_harness_api::enrich_sessions_from_local_swarm_state(std::slice::from_mut(
                     session,
                 ));
