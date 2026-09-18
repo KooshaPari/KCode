@@ -103,7 +103,7 @@ fn check_newline_destructive(cmd: &str, fully: &str) -> Option<PipelineResult> {
     }
     let destructive = ["rm", "rmdir", "shred", "unlink", "truncate", "dd", "mkfs"];
     for line in fully.lines().skip(1) {
-        let word = line.trim().split_whitespace().next().unwrap_or("");
+        let word = line.split_whitespace().next().unwrap_or("");
         let base = word.rsplit('/').next().unwrap_or(word);
         if destructive.contains(&base) {
             return Some(PipelineResult::Ask {
@@ -157,11 +157,10 @@ fn check_obfuscated_flags(unquoted_kq: &str, fully: &str) -> Option<PipelineResu
 fn check_backslash_ws(cmd: &str) -> Option<PipelineResult> {
     scan_quotes(cmd, |cmd, i, in_sq, in_dq| {
         let bytes = cmd.as_bytes();
-        if bytes[i] == b'\\' && !in_sq {
-            if !in_dq && i + 1 < bytes.len() && matches!(bytes[i + 1], b' ' | b'\t') {
+        if bytes[i] == b'\\' && !in_sq
+            && !in_dq && i + 1 < bytes.len() && matches!(bytes[i + 1], b' ' | b'\t') {
                 return true;
             }
-        }
         false
     })
     .then_some(PipelineResult::Ask {
@@ -172,11 +171,10 @@ fn check_backslash_ws(cmd: &str) -> Option<PipelineResult> {
 fn check_backslash_ops(cmd: &str) -> Option<PipelineResult> {
     scan_quotes(cmd, |cmd, i, in_sq, in_dq| {
         let bytes = cmd.as_bytes();
-        if bytes[i] == b'\\' && !in_sq {
-            if !in_dq && i + 1 < bytes.len() && matches!(bytes[i + 1], b';' | b'|' | b'&' | b'>' | b'<') {
+        if bytes[i] == b'\\' && !in_sq
+            && !in_dq && i + 1 < bytes.len() && matches!(bytes[i + 1], b';' | b'|' | b'&' | b'>' | b'<') {
                 return true;
             }
-        }
         false
     })
     .then_some(PipelineResult::Ask {
