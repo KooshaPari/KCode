@@ -8,6 +8,9 @@ use std::collections::HashSet;
 /// from. This is pure data (only ids/paths) with no UI dependency; it lives in
 /// `jcode-session-types` so the foundation/import layer can match on it without
 /// depending on any `jcode-tui-*` crate. The session-picker UI re-exports it.
+// Variant names are load-bearing for serde serialization (externally-tagged
+// enum format); renaming would change persisted data and cross-crate consumers.
+#[allow(clippy::enum_variant_names)]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ResumeTarget {
     JcodeSession {
