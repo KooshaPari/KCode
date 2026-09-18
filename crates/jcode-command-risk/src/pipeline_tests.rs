@@ -7,6 +7,7 @@ fn ctx() -> RiskContext {
     RiskContext {
         working_dir: Some(PathBuf::from("/home/u/proj")),
         home_dir: Some(PathBuf::from("/home/u")),
+        scratch_dir: None,
     }
 }
 
