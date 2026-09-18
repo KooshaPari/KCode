@@ -16,9 +16,7 @@ fn needs_responses_api(model: &str, api_base: &str) -> bool {
     if !is_opencode_api_base(api_base) {
         return false;
     }
-    OPENCODE_GO_RESPONSES_MODELS
-        .iter()
-        .any(|m| model == *m)
+    OPENCODE_GO_RESPONSES_MODELS.contains(&model)
 }
 
 /// Convert a chat-completions request body to Responses API format.
@@ -35,28 +33,28 @@ fn convert_to_responses_format(mut request: Value) -> Value {
     }
 
     // Convert tools from chat-completions format to Responses API format
-    if let Some(tools) = request.get("tools").cloned() {
-        if let Some(tools_arr) = tools.as_array() {
-            let converted: Vec<Value> = tools_arr
-                .iter()
-                .filter_map(|tool| {
-                    let tool_type = tool.get("type").and_then(|t| t.as_str())?;
-                    if tool_type == "function" {
-                        let func = tool.get("function")?;
-                        Some(serde_json::json!({
-                            "type": "function",
-                            "name": func.get("name").and_then(|n| n.as_str()).unwrap_or(""),
-                            "description": func.get("description").and_then(|d| d.as_str()).unwrap_or(""),
-                            "parameters": func.get("parameters").cloned().unwrap_or(Value::Object(Default::default())),
-                            "strict": func.get("strict").cloned().unwrap_or(Value::Bool(false)),
-                        }))
-                    } else {
-                        Some(tool.clone())
-                    }
-                })
-                .collect();
-            request["tools"] = Value::Array(converted);
-        }
+    if let Some(tools) = request.get("tools").cloned()
+        && let Some(tools_arr) = tools.as_array()
+    {
+        let converted: Vec<Value> = tools_arr
+            .iter()
+            .filter_map(|tool| {
+                let tool_type = tool.get("type").and_then(|t| t.as_str())?;
+                if tool_type == "function" {
+                    let func = tool.get("function")?;
+                    Some(serde_json::json!({
+                        "type": "function",
+                        "name": func.get("name").and_then(|n| n.as_str()).unwrap_or(""),
+                        "description": func.get("description").and_then(|d| d.as_str()).unwrap_or(""),
+                        "parameters": func.get("parameters").cloned().unwrap_or(Value::Object(Default::default())),
+                        "strict": func.get("strict").cloned().unwrap_or(Value::Bool(false)),
+                    }))
+                } else {
+                    Some(tool.clone())
+                }
+            })
+            .collect();
+        request["tools"] = Value::Array(converted);
     }
 
     // Map chat-completions `max_tokens` to Responses API `max_output_tokens`.
@@ -385,7 +383,7 @@ async fn stream_responses_api_response(
     use futures::StreamExt;
     let mut bytes_stream = response.bytes_stream();
     let mut buffer = String::new();
-    let mut current_event_type = String::new();
+    let mut _current_event_type = String::new();
     let mut in_thinking = false;
     let stream_idle_timeout = jcode_base::provider::stream_idle_timeout();
 
@@ -518,7 +516,6 @@ async fn stream_responses_api_response(
                     // Close thinking if still active
                     if in_thinking {
                         let _ = tx.send(Ok(StreamEvent::ThinkingEnd)).await;
-                        in_thinking = false;
                     }
                     // Emit token usage if present
                     if let Some(usage) = json.get("usage") {
@@ -541,7 +538,6 @@ async fn stream_responses_api_response(
                 "response.incomplete" => {
                     if in_thinking {
                         let _ = tx.send(Ok(StreamEvent::ThinkingEnd)).await;
-                        in_thinking = false;
                     }
                     let _ = tx
                         .send(Ok(StreamEvent::MessageEnd {
