@@ -35,6 +35,11 @@
 //! `cfg!(unix)` build). On Windows the install hint points users to
 //! WSL2 + a Herdr WSL build.
 
+mod platforms;
+
+#[cfg(test)]
+mod tests;
+
 /// Plugin identifier for the local jcode HERDR integration.
 pub const JCODE_PLUGIN_ID: &str = "kooshapari.jcode";
 
@@ -185,13 +190,13 @@ fn quote_str(s: &str) -> String {
 
 /// Build the local jcode plugin manifest.
 pub fn jcode_plugin() -> PluginManifest {
-    let install_hint = install_command_hint();
+    let install_hint = platforms::install_command_hint();
     let mut description =
         String::from("Reports Jcode working/idle lifecycle state plus session identity. ");
     description.push_str("In-process HerdrReporter (no external plugin required).");
     if cfg!(windows) {
         description.push(' ');
-        description.push_str(&windows_install_hint());
+        description.push_str(&platforms::windows_install_hint());
     }
 
     PluginManifest {
@@ -200,7 +205,7 @@ pub fn jcode_plugin() -> PluginManifest {
         version: env!("CARGO_PKG_VERSION").to_string(),
         min_herdr_version: MIN_HERDR_VERSION.to_string(),
         description,
-        platforms: platforms_for_host(),
+        platforms: platforms::platforms_for_host(),
         agents: vec![AgentEntry {
             kind: "jcode".to_string(),
             manifest: "~/.config/herdr/agent-detection/jcode.toml".to_string(),
@@ -220,7 +225,7 @@ pub fn jcode_plugin() -> PluginManifest {
                 description: Some(
                     "Print HERDR env vars, pane id, and reporter activity.".to_string(),
                 ),
-                command: replace_cmd(install_hint.clone(), "herdr status"),
+                command: platforms::replace_cmd(install_hint.clone(), "herdr status"),
             },
             PluginAction {
                 id: "doctor".to_string(),
@@ -242,13 +247,13 @@ pub fn jcode_plugin() -> PluginManifest {
 
 /// Build the local ForgeCode plugin manifest.
 pub fn forgecode_plugin() -> PluginManifest {
-    let install_hint = install_command_hint();
+    let install_hint = platforms::install_command_hint();
     let mut description =
         String::from("Reports ForgeCode working/idle lifecycle state plus session identity. ");
     description.push_str("In-process HerdrReporter (no external plugin required).");
     if cfg!(windows) {
         description.push(' ');
-        description.push_str(&windows_install_hint());
+        description.push_str(&platforms::windows_install_hint());
     }
 
     PluginManifest {
@@ -257,7 +262,7 @@ pub fn forgecode_plugin() -> PluginManifest {
         version: env!("CARGO_PKG_VERSION").to_string(),
         min_herdr_version: MIN_HERDR_VERSION.to_string(),
         description,
-        platforms: platforms_for_host(),
+        platforms: platforms::platforms_for_host(),
         agents: vec![AgentEntry {
             kind: "forgecode".to_string(),
             manifest: "~/.config/herdr/agent-detection/forgecode.toml".to_string(),
@@ -275,67 +280,10 @@ pub fn forgecode_plugin() -> PluginManifest {
                 description: Some(
                     "Print HERDR env vars, pane id, and reporter activity.".to_string(),
                 ),
-                command: replace_cmd(install_hint, "herdr status"),
+                command: platforms::replace_cmd(install_hint, "herdr status"),
             },
         ],
     }
-}
-
-/// Return the host-appropriate platforms list.
-///
-/// HERDR is Unix-only, so we emit `["macos", "linux"]` on Unix and an
-/// empty list on Windows (the Windows install hint is surfaced
-/// separately).
-pub fn platforms_for_host() -> Vec<String> {
-    #[cfg(unix)]
-    {
-        let mut v = vec!["linux".to_string()];
-        if std::env::consts::OS == "macos" {
-            v.push("macos".to_string());
-        }
-        v
-    }
-    #[cfg(not(unix))]
-    {
-        Vec::new()
-    }
-}
-
-/// Install instructions for Windows. Returned as a single string that
-/// callers can append to the description or print directly.
-pub fn windows_install_hint() -> String {
-    "Herdr is Unix-only. On Windows, install WSL2 (Ubuntu) and run the \
-     Herdr WSL build inside the WSL distro. Then `jcode herdr install` \
-     from WSL. See docs/HERDR_VS_ACP.md for the full rationale."
-        .to_string()
-}
-
-/// Recommended install command for `jcode herdr install` (or
-/// `forgecode herdr install` when invoked from the ForgeCode binary).
-///
-/// Emits the cargo-discovered package binary name. The first element
-/// is what `cargo run -p <bin>` would invoke. We resolve via the
-/// `CARGO_BIN_NAME` env var (set at compile time by Cargo for bins) and
-/// fall back to "jcode".
-pub fn install_command_hint() -> Vec<String> {
-    // CARGO_BIN_NAME is set by Cargo only when this crate is being
-    // compiled as a binary. When jcode-herdr is compiled as a library
-    // (the default) it is unset; we fall back to "jcode".
-    let bin = option_env!("CARGO_BIN_NAME").unwrap_or("jcode").to_string();
-    vec![bin, "herdr".to_string(), "install".to_string()]
-}
-
-/// Replace the trailing subcommand of an `[install_bin, "herdr", ...]`
-/// argv vector with the given `new_subcmd` form. Used to derive the
-/// `status` action from the `install` action without duplicating the
-/// binary-name selection.
-fn replace_cmd(mut argv: Vec<String>, new_subcmd: &str) -> Vec<String> {
-    // argv looks like ["jcode", "herdr", "install"]. We want
-    // ["jcode", "herdr", new_subcmd] — so keep the first two, drop
-    // the rest, then push the new subcommand.
-    argv.truncate(2);
-    argv.push(new_subcmd.to_string());
-    argv
 }
 
 /// Write a plugin manifest to the given path. Convenience wrapper that
@@ -345,187 +293,4 @@ pub fn write_plugin(manifest: &PluginManifest, path: &std::path::Path) -> std::i
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, manifest.to_toml())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn jcode_plugin_round_trips_as_valid_toml() {
-        let m = jcode_plugin();
-        let toml_text = m.to_toml();
-
-        // Must parse cleanly.
-        let parsed: toml::Value =
-            toml::from_str(&toml_text).expect("plugin manifest must be valid TOML");
-
-        // Top-level scalars preserved.
-        assert_eq!(
-            parsed.get("id").and_then(|v| v.as_str()),
-            Some(JCODE_PLUGIN_ID)
-        );
-        assert_eq!(
-            parsed.get("name").and_then(|v| v.as_str()),
-            Some("Jcode HERDR integration")
-        );
-        assert_eq!(
-            parsed.get("min_herdr_version").and_then(|v| v.as_str()),
-            Some(MIN_HERDR_VERSION)
-        );
-        assert_eq!(
-            parsed
-                .get("platforms")
-                .and_then(|v| v.as_array())
-                .map(|a| a.len()),
-            Some(2)
-        );
-
-        // Agents array has at least one jcode entry.
-        let agents = parsed
-            .get("agents")
-            .and_then(|v| v.as_array())
-            .expect("agents array");
-        assert!(!agents.is_empty());
-        assert_eq!(
-            agents[0].get("kind").and_then(|v| v.as_str()),
-            Some("jcode")
-        );
-        assert!(
-            agents[0]
-                .get("manifest")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .ends_with("jcode.toml")
-        );
-
-        // Actions array has install + status.
-        let actions = parsed
-            .get("actions")
-            .and_then(|v| v.as_array())
-            .expect("actions array");
-        let action_ids: Vec<&str> = actions
-            .iter()
-            .map(|a| a.get("id").and_then(|v| v.as_str()).unwrap_or(""))
-            .collect();
-        assert!(action_ids.contains(&"install"));
-        assert!(action_ids.contains(&"status"));
-
-        // Install command should be [jcode, herdr, install].
-        let install = actions
-            .iter()
-            .find(|a| a.get("id").and_then(|v| v.as_str()) == Some("install"))
-            .expect("install action");
-        let cmd = install
-            .get("command")
-            .and_then(|v| v.as_array())
-            .expect("command array");
-        let cmd_strs: Vec<&str> = cmd.iter().map(|c| c.as_str().unwrap_or("")).collect();
-        assert_eq!(cmd_strs, vec!["jcode", "herdr", "install"]);
-    }
-
-    #[test]
-    fn forgecode_plugin_emits_forgecode_agent() {
-        let m = forgecode_plugin();
-        let toml_text = m.to_toml();
-        let parsed: toml::Value = toml::from_str(&toml_text).expect("valid TOML");
-
-        assert_eq!(
-            parsed.get("id").and_then(|v| v.as_str()),
-            Some(FORGECODE_PLUGIN_ID)
-        );
-        let agents = parsed
-            .get("agents")
-            .and_then(|v| v.as_array())
-            .expect("agents");
-        assert_eq!(agents.len(), 1);
-        assert_eq!(
-            agents[0].get("kind").and_then(|v| v.as_str()),
-            Some("forgecode")
-        );
-        assert!(
-            agents[0]
-                .get("manifest")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .ends_with("forgecode.toml")
-        );
-    }
-
-    #[test]
-    fn platforms_reflect_host_os() {
-        let platforms = platforms_for_host();
-        if cfg!(unix) {
-            // Linux always, macOS only on darwin.
-            assert!(platforms.contains(&"linux".to_string()));
-            if std::env::consts::OS == "macos" {
-                assert!(platforms.contains(&"macos".to_string()));
-            } else {
-                assert!(!platforms.contains(&"macos".to_string()));
-            }
-        } else {
-            // Windows: the plugin is unsupportable, so we ship an
-            // empty platforms list and surface the install hint
-            // through `description` instead.
-            assert!(platforms.is_empty());
-        }
-    }
-
-    #[test]
-    fn windows_install_hint_mentions_wsl2() {
-        let hint = windows_install_hint();
-        assert!(hint.contains("WSL2"), "hint must mention WSL2: {hint}");
-        assert!(
-            hint.contains("Unix"),
-            "hint must explain the Unix-only constraint: {hint}"
-        );
-    }
-
-    #[test]
-    fn install_command_hint_targets_jcode() {
-        let cmd = install_command_hint();
-        assert!(!cmd.is_empty());
-        // First element is the binary name; on jcode it is "jcode".
-        // When compiled under jcode-herdr, CARGO_BIN_NAME is unset
-        // and we fall back to "jcode".
-        assert_eq!(cmd[0], "jcode");
-        assert_eq!(cmd[1], "herdr");
-        assert_eq!(cmd[2], "install");
-    }
-
-    #[test]
-    fn write_plugin_creates_parent_dirs() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("nested").join("sub").join("plugin.toml");
-        let m = jcode_plugin();
-        write_plugin(&m, &path).expect("write_plugin must create parent dirs");
-        assert!(path.exists());
-
-        // Round-trip the written file as TOML.
-        let body = std::fs::read_to_string(&path).unwrap();
-        let parsed: toml::Value = toml::from_str(&body).expect("written file must be valid TOML");
-        assert_eq!(
-            parsed.get("id").and_then(|v| v.as_str()),
-            Some(JCODE_PLUGIN_ID)
-        );
-    }
-
-    #[test]
-    fn quote_str_escapes_special_chars() {
-        // We must escape \ " \n \r \t and control chars.
-        let s = quote_str("a\\b\"c\nd\te");
-        assert!(s.starts_with('"') && s.ends_with('"'));
-        assert!(s.contains("\\\\"));
-        assert!(s.contains("\\\""));
-        assert!(s.contains("\\n"));
-        assert!(s.contains("\\t"));
-
-        // Round-trip through TOML.
-        let wrapped = format!("x = {s}\n");
-        let parsed: toml::Value = toml::from_str(&wrapped).expect("must round-trip");
-        assert_eq!(
-            parsed.get("x").and_then(|v| v.as_str()),
-            Some("a\\b\"c\nd\te")
-        );
-    }
 }
