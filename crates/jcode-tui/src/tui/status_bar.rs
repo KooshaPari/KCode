@@ -96,8 +96,8 @@ fn build_status_line(data: &StatusBarData, width: usize) -> Line<'static> {
     }
 
     // Mode indicator (only when non-default)
-    if let Some(ref mode) = data.mode_label {
-        if mode != "EXEC" {
+    if let Some(ref mode) = data.mode_label
+        && mode != "EXEC" {
             spans.push(Span::styled(" \u{2502} ", Style::default().fg(separator_color)));
             let mode_color = match mode.as_str() {
                 "MGR" => rgb(220, 160, 60),   // amber for manager
@@ -109,17 +109,15 @@ fn build_status_line(data: &StatusBarData, width: usize) -> Line<'static> {
                 Style::default().fg(mode_color),
             ));
         }
-    }
 
     // Center: session name
-    if let Some(ref session) = data.session_name {
-        if spans.is_empty() {
+    if let Some(ref session) = data.session_name
+        && spans.is_empty() {
             spans.push(Span::styled(
                 format!(" {} ", session),
                 Style::default().fg(dim),
             ));
         }
-    }
 
     // Right side: agent stats
     let mut right_spans: Vec<Span<'static>> = Vec::new();

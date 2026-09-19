@@ -9,7 +9,7 @@ use crate::tui::elicitation_types::{
     ButtonSpec, ChoiceOption, DateTimeKind, ElicitAction, ElicitOverlayState, ElicitRequest,
     ElicitResponse, FieldSpec, NotesSpec, Urgency,
 };
-use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{KeyCode, KeyModifiers};
 use jcode_herdr::AgentState;
 
 impl App {
@@ -142,7 +142,6 @@ impl App {
                     value: None,
                     notes: None,
                 });
-                return;
             }
 
             // ---- Confirm / submit ----
@@ -176,7 +175,6 @@ impl App {
                             value: Some(value),
                             notes: None,
                         });
-                        return;
                     }
                     FieldSpec::Choice {
                         options, ..
@@ -195,7 +193,6 @@ impl App {
                             value: Some(value),
                             notes: None,
                         });
-                        return;
                     }
                     FieldSpec::Text { .. }
                     | FieldSpec::Integer { .. }
@@ -210,7 +207,6 @@ impl App {
                             value: Some(value),
                             notes: None,
                         });
-                        return;
                     }
                     FieldSpec::LongText { .. } => {
                         // Ctrl+Enter submits multi-line text; plain Enter inserts newline.
@@ -231,31 +227,24 @@ impl App {
                         if let Some(ref mut state) = self.elicit_overlay {
                             state.text_buffer.push('\n');
                         }
-                        return;
                     }
                 }
             }
 
             // ---- Arrow navigation for choice type ----
             KeyCode::Up => {
-                if let Some(ref mut state) = self.elicit_overlay {
-                    if let FieldSpec::Choice { options, .. } = &state.request.field {
-                        if !options.is_empty() && state.selected > 0 {
+                if let Some(ref mut state) = self.elicit_overlay
+                    && let FieldSpec::Choice { options, .. } = &state.request.field
+                        && !options.is_empty() && state.selected > 0 {
                             state.selected -= 1;
                         }
-                    }
-                }
-                return;
             }
             KeyCode::Down => {
-                if let Some(ref mut state) = self.elicit_overlay {
-                    if let FieldSpec::Choice { options, .. } = &state.request.field {
-                        if state.selected + 1 < options.len() {
+                if let Some(ref mut state) = self.elicit_overlay
+                    && let FieldSpec::Choice { options, .. } = &state.request.field
+                        && state.selected + 1 < options.len() {
                             state.selected += 1;
                         }
-                    }
-                }
-                return;
             }
 
             // ---- Boolean quick keys ----
@@ -266,7 +255,6 @@ impl App {
                         value: Some("true".to_string()),
                         notes: None,
                     });
-                    return;
                 }
             }
             KeyCode::Char('n') | KeyCode::Char('N') => {
@@ -276,7 +264,6 @@ impl App {
                         value: Some("false".to_string()),
                         notes: None,
                     });
-                    return;
                 }
             }
 
@@ -291,12 +278,12 @@ impl App {
                     &self.elicit_overlay.as_ref().map(|s| &s.request.field),
                     Some(FieldSpec::Integer { .. })
                 );
-                if is_text_field || (is_int_field && ch.is_ascii_digit()) {
-                    if let Some(ref mut state) = self.elicit_overlay {
+                if (is_text_field || (is_int_field && ch.is_ascii_digit()))
+                    && let Some(ref mut state) = self.elicit_overlay {
                         // Check max_length constraint.
                         let max_ok = match &state.request.field {
                             FieldSpec::Text { max_length, .. } | FieldSpec::LongText { max_length, .. } => {
-                                max_length.map_or(true, |max| state.text_buffer.len() < max as usize)
+                                max_length.is_none_or(|max| state.text_buffer.len() < max as usize)
                             }
                             _ => true,
                         };
@@ -304,8 +291,6 @@ impl App {
                             state.text_buffer.push(ch);
                         }
                     }
-                }
-                return;
             }
 
             // ---- Backspace for text fields ----
@@ -314,12 +299,10 @@ impl App {
                     &self.elicit_overlay.as_ref().map(|s| &s.request.field),
                     Some(FieldSpec::Text { .. } | FieldSpec::LongText { .. } | FieldSpec::DateTime { .. } | FieldSpec::Integer { .. })
                 );
-                if is_text_field {
-                    if let Some(ref mut state) = self.elicit_overlay {
+                if is_text_field
+                    && let Some(ref mut state) = self.elicit_overlay {
                         state.text_buffer.pop();
                     }
-                }
-                return;
             }
 
             // ---- Tab: cycle through interactive areas (fields -> notes -> buttons) ----
@@ -327,23 +310,20 @@ impl App {
                 if let Some(ref mut state) = self.elicit_overlay {
                     state.cursor = state.cursor.wrapping_add(1) % 3;
                 }
-                return;
             }
 
             _ => {
                 // Consume all other keys (no fallthrough).
-                return;
             }
         }
     }
 
     /// Send the elicitation response and clear the overlay.
     fn send_elicit_response(&mut self, response: ElicitResponse) {
-        if let Some(mut state) = self.elicit_overlay.take() {
-            if let Some(tx) = state.response_tx.take() {
+        if let Some(mut state) = self.elicit_overlay.take()
+            && let Some(tx) = state.response_tx.take() {
                 let _ = tx.send(response);
             }
-        }
 
         // Report HERDR: elicitation dismissed. Return to Working if the
         // agent was mid-turn, otherwise Idle.

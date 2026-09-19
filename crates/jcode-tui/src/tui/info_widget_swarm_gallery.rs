@@ -153,7 +153,7 @@ struct SwarmTreeRow<'a> {
 
 #[derive(Clone)]
 struct DagNode {
-    item_id: String,
+    _item_id: String,
     label: String,
     completed: bool,
     active: bool,
@@ -289,7 +289,7 @@ pub(crate) fn render_swarm_plan_dag(
             format!("{prefix} {}", item.content)
         };
         let mut node = DagNode {
-            item_id: id.to_string(),
+            _item_id: id.to_string(),
             label,
             completed,
             active,
@@ -314,11 +314,10 @@ pub(crate) fn render_swarm_plan_dag(
         .collect();
     let mut roots: Vec<DagNode> = Vec::new();
     for id in &topo_order {
-        if !all_children.contains(id) {
-            if let Some(node) = node_map.remove(id) {
+        if !all_children.contains(id)
+            && let Some(node) = node_map.remove(id) {
                 roots.push(node);
             }
-        }
     }
 
     // Render the tree.
@@ -361,7 +360,7 @@ pub(crate) fn render_swarm_plan_dag(
             style = style.add_modifier(Modifier::BOLD);
         }
 
-        let mut spans = vec![
+        let spans = vec![
             Span::styled(connector, Style::default().fg(Color::Rgb(75, 75, 88))),
             Span::styled(
                 if node.completed {
@@ -814,6 +813,7 @@ fn summary_line_with_batch(
     Line::from(spans)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_swarm_strip_lines(
     members: &[SwarmMemberStatus],
     selected: usize,

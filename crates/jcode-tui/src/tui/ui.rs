@@ -2787,7 +2787,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         return;
     }
 
-    if let Some(ref elicit_state) = app.elicit_overlay() {
+    if let Some(elicit_state) = app.elicit_overlay() {
         elicit_overlay::draw_elicit_overlay(frame, area, elicit_state);
         finalize_frame_metrics(
             app,

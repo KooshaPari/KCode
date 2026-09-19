@@ -15,6 +15,7 @@ use ratatui::style::Color;
 use std::collections::BTreeMap;
 
 /// Render a set of representative frames and tally role area plus adjacency.
+#[allow(clippy::type_complexity)]
 fn measure() -> (
     BTreeMap<&'static str, u32>,
     BTreeMap<(&'static str, &'static str), u32>,

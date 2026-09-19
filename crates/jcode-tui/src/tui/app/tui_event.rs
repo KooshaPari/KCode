@@ -9,6 +9,7 @@ use crate::tui::elicitation_types::{ElicitRequest, ElicitResponse};
 use tokio::sync::oneshot;
 
 /// Events dispatched from background tasks into the TUI event loop.
+#[allow(dead_code)] // Typed elicitation channel; the live path still drives `elicit_overlay` directly.
 pub enum TuiEvent {
     /// Agent requests elicitation from user.
     ///

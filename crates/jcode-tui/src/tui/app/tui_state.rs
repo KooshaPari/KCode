@@ -2298,14 +2298,13 @@ impl App {
                     // Pre-fill with current label
                     let ordered = crate::tui::info_widget::swarm_gallery::members_display_order(&members);
                     let idx = self.swarm_panel_selected.min(ordered.len().saturating_sub(1));
-                    if let Some(session_id) = ordered.get(idx) {
-                        if let Some(member) = members.iter().find(|m| &m.session_id == session_id) {
+                    if let Some(session_id) = ordered.get(idx)
+                        && let Some(member) = members.iter().find(|m| &m.session_id == session_id) {
                             self.swarm_rename_buffer = member
                                 .friendly_name
                                 .clone()
                                 .unwrap_or_else(|| member.session_id.chars().take(8).collect());
                         }
-                    }
                 }
                 true
             }
