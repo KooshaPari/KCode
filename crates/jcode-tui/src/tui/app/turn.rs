@@ -116,7 +116,7 @@ impl App {
 
             // Make API call non-blocking - poll it in select! so we can handle input while waiting
             // Report HERDR: provider request is starting (covers ForgeCode subprocess launch).
-            tokio::spawn(crate::herdr::report_state(AgentState::Working));
+            crate::herdr::spawn_report(AgentState::Working);
             let mut api_future = std::pin::pin!(provider.complete_split(
                 &request_messages,
                 &tools,
@@ -791,7 +791,7 @@ impl App {
                                             continue 'turn_loop;
                                         }
                                         // Report HERDR: provider stream error (ForgeCode subprocess failure).
-                                        tokio::spawn(crate::herdr::report_state(AgentState::Blocked));
+                                        crate::herdr::spawn_report(AgentState::Blocked);
                                         return Err(anyhow::anyhow!("Stream error: {}", message));
                                     }
                                     StreamEvent::ThinkingStart => {
@@ -1062,7 +1062,7 @@ impl App {
                                     continue 'turn_loop;
                                 }
                                 // Report HERDR: provider transport error (ForgeCode subprocess failure).
-                                tokio::spawn(crate::herdr::report_state(AgentState::Blocked));
+                                crate::herdr::spawn_report(AgentState::Blocked);
                                 return Err(e);
                             }
                             None => {
@@ -1532,7 +1532,7 @@ impl App {
         super::commands::maybe_trigger_autoreview_local(self);
         super::commands::maybe_trigger_autojudge_local(self);
         // Report HERDR: provider stream completed successfully.
-        tokio::spawn(crate::herdr::report_state(AgentState::Idle));
+        crate::herdr::spawn_report(AgentState::Idle);
         Ok(())
     }
 }

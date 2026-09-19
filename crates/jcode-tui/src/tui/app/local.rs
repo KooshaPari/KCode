@@ -491,6 +491,8 @@ fn handle_background_task_completed(app: &mut App, task: BackgroundTaskCompleted
                 app.processing_started = Some(std::time::Instant::now());
             }
             app.visible_turn_started = Some(std::time::Instant::now());
+            // Report HERDR: agent is now working
+            crate::herdr::spawn_report(AgentState::Working);
         }
     }
 }
@@ -612,6 +614,8 @@ pub(super) fn finish_turn(app: &mut App) {
     app.update_cost_impl();
     app.is_processing = false;
     app.status = ProcessingStatus::Idle;
+    // Report HERDR: agent is now idle
+    crate::herdr::spawn_report(AgentState::Idle);
     app.stream_message_ended = false;
     app.processing_started = None;
     app.interleave_message = None;
