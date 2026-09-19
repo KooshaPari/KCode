@@ -862,6 +862,11 @@ pub(super) fn resolve_auth_input(value: &str) -> Result<String> {
     Ok(trimmed.to_string())
 }
 
+// 8 parameters where 7 are allowed: the prompt surfaces provider, auth URL,
+// input kind, pending path, optional user code, expiry, JSON flag and flow ID
+// as distinct concerns. A single call site and a JSON-shaped struct make a
+// grouping refactor churn without clarifying anything.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit_scriptable_auth_prompt(
     provider: &str,
     auth_url: &str,

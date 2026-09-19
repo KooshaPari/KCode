@@ -237,6 +237,12 @@ impl Drop for ScopedLoginTestHome {
     }
 }
 
+// The env-isolation guard MUST span the awaits: JCODE_HOME has to stay set
+// while the async login flows run, and dropping it early would break the
+// isolation this test exists to prove. The joined futures call only
+// production code, which never acquires this test-only lock, and
+// #[tokio::test] runs on the single-threaded current_thread runtime.
+#[allow(clippy::await_holding_lock)]
 #[tokio::test]
 async fn scoped_concurrent_begin_completion_and_cancel_are_isolated() {
     let _guard = crate::storage::lock_test_env();

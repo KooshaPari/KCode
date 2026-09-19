@@ -50,61 +50,61 @@ fn bench_tool_constructors(c: &mut Criterion) {
 
     // Simple stateless tools
     group.bench_function("ReadTool::new", |b| {
-        b.iter(|| jcode::tool::read::ReadTool::new());
+        b.iter(jcode::tool::read::ReadTool::new);
     });
     group.bench_function("WriteTool::new", |b| {
-        b.iter(|| jcode::tool::write::WriteTool::new());
+        b.iter(jcode::tool::write::WriteTool::new);
     });
     group.bench_function("EditTool::new", |b| {
-        b.iter(|| jcode::tool::edit::EditTool::new());
+        b.iter(jcode::tool::edit::EditTool::new);
     });
     group.bench_function("MultiEditTool::new", |b| {
-        b.iter(|| jcode::tool::multiedit::MultiEditTool::new());
+        b.iter(jcode::tool::multiedit::MultiEditTool::new);
     });
     group.bench_function("PatchTool::new", |b| {
-        b.iter(|| jcode::tool::patch::PatchTool::new());
+        b.iter(jcode::tool::patch::PatchTool::new);
     });
     group.bench_function("ApplyPatchTool::new", |b| {
-        b.iter(|| jcode::tool::apply_patch::ApplyPatchTool::new());
+        b.iter(jcode::tool::apply_patch::ApplyPatchTool::new);
     });
     group.bench_function("LsTool::new", |b| {
-        b.iter(|| jcode::tool::ls::LsTool::new());
+        b.iter(jcode::tool::ls::LsTool::new);
     });
     group.bench_function("BashTool::new", |b| {
-        b.iter(|| jcode::tool::bash::BashTool::new());
+        b.iter(jcode::tool::bash::BashTool::new);
     });
     group.bench_function("BrowserTool::new", |b| {
-        b.iter(|| jcode::tool::browser::BrowserTool::new());
+        b.iter(jcode::tool::browser::BrowserTool::new);
     });
     group.bench_function("WebFetchTool::new", |b| {
-        b.iter(|| jcode::tool::webfetch::WebFetchTool::new());
+        b.iter(jcode::tool::webfetch::WebFetchTool::new);
     });
     group.bench_function("WebSearchTool::new", |b| {
-        b.iter(|| jcode::tool::websearch::WebSearchTool::new());
+        b.iter(jcode::tool::websearch::WebSearchTool::new);
     });
     group.bench_function("SidePanelTool::new", |b| {
-        b.iter(|| jcode::tool::side_panel::SidePanelTool::new());
+        b.iter(jcode::tool::side_panel::SidePanelTool::new);
     });
     group.bench_function("InvalidTool::new", |b| {
-        b.iter(|| jcode::tool::invalid::InvalidTool::new());
+        b.iter(jcode::tool::invalid::InvalidTool::new);
     });
     group.bench_function("TodoTool::new", |b| {
-        b.iter(|| jcode::tool::todo::TodoTool::new());
+        b.iter(jcode::tool::todo::TodoTool::new);
     });
     group.bench_function("BgTool::new", |b| {
-        b.iter(|| jcode::tool::bg::BgTool::new());
+        b.iter(jcode::tool::bg::BgTool::new);
     });
     group.bench_function("MemoryTool::new", |b| {
-        b.iter(|| jcode::tool::memory::MemoryTool::new());
+        b.iter(jcode::tool::memory::MemoryTool::new);
     });
     group.bench_function("OpenTool::new", |b| {
-        b.iter(|| jcode::tool::open::OpenTool::new());
+        b.iter(jcode::tool::open::OpenTool::new);
     });
     group.bench_function("JcodeDocsTool::new", |b| {
-        b.iter(|| jcode::tool::jcode_docs::JcodeDocsTool::new());
+        b.iter(jcode::tool::jcode_docs::JcodeDocsTool::new);
     });
     group.bench_function("MaintainerFeedbackTool::new", |b| {
-        b.iter(|| jcode::tool::feedback::MaintainerFeedbackTool::new());
+        b.iter(jcode::tool::feedback::MaintainerFeedbackTool::new);
     });
 
     // Tools that need extra state
@@ -114,12 +114,12 @@ fn bench_tool_constructors(c: &mut Criterion) {
     });
 
     group.bench_function("CommunicateTool::new", |b| {
-        b.iter(|| jcode::tool::communicate::CommunicateTool::new());
+        b.iter(jcode::tool::communicate::CommunicateTool::new);
     });
 
     // ToolSearchIndex (used during registry population)
     group.bench_function("ToolSearchIndex::new", |b| {
-        b.iter(|| jcode::tool::tool_search::ToolSearchIndex::new());
+        b.iter(jcode::tool::tool_search::ToolSearchIndex::new);
     });
 
     // Simulate the search-index population loop for a typical tool set
@@ -152,7 +152,7 @@ fn bench_tool_constructors(c: &mut Criterion) {
 fn bench_all_base_tools(c: &mut Criterion) {
     c.bench_function("all_base_tools_constructors", |b| {
         b.iter(|| {
-            let mut count = AtomicUsize::new(0);
+            let count = AtomicUsize::new(0);
             let skills = jcode::skill::SkillRegistry::shared_registry();
 
             let _ = jcode::tool::read::ReadTool::new();
@@ -214,17 +214,17 @@ fn bench_provider_creation(c: &mut Criterion) {
 
     // GeminiProvider::new() is a cheap constructor (no network)
     group.bench_function("GeminiProvider::new", |b| {
-        b.iter(|| jcode_provider_gemini_runtime::GeminiProvider::new());
+        b.iter(jcode_provider_gemini_runtime::GeminiProvider::new);
     });
 
     // AnthropicProvider::new() is a cheap constructor
     group.bench_function("AnthropicProvider::new", |b| {
-        b.iter(|| jcode_provider_anthropic_runtime::AnthropicProvider::new());
+        b.iter(jcode_provider_anthropic_runtime::AnthropicProvider::new);
     });
 
     // OpenAIProvider::new_browser_only() avoids credential loading
     group.bench_function("OpenAIProvider::new_browser_only", |b| {
-        b.iter(|| jcode_provider_openai_runtime::OpenAIProvider::new_browser_only());
+        b.iter(jcode_provider_openai_runtime::OpenAIProvider::new_browser_only);
     });
 
     group.finish();
