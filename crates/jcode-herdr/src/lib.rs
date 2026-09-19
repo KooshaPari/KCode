@@ -15,10 +15,12 @@
 
 pub mod env;
 pub mod manifest;
+pub mod plugin;
 pub mod reporter;
 pub mod socket;
 pub mod state;
 
 pub use env::HerdrEnv;
+pub use plugin::{FORGECODE_PLUGIN_ID, JCODE_PLUGIN_ID, PluginManifest};
 pub use reporter::HerdrReporter;
 pub use state::AgentState;
