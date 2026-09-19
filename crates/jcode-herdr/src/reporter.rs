@@ -476,12 +476,14 @@ mod tests {
 
     #[test]
     fn reporter_source_format() {
+        let _env_lock = crate::env::test_support::lock_test_env();
         let reporter = HerdrReporter::new("jcode");
         assert_eq!(reporter.source, "jcode:jcode");
     }
 
     #[test]
     fn inactive_reporter_is_noop() {
+        let _env_lock = crate::env::test_support::lock_test_env();
         // Without HERDR_ENV, reporter should be inactive.
         // Save and restore to prevent env leakage.
         let saved = std::env::var("HERDR_ENV").ok();
@@ -504,6 +506,7 @@ mod tests {
     #[tokio::test]
     async fn reporter_sends_working_state() {
         let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
         let _guard = set_herdr_env(&sock);
 
         let reporter = HerdrReporter::new("jcode");
@@ -524,6 +527,7 @@ mod tests {
     #[tokio::test]
     async fn reporter_sends_idle_state() {
         let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
         let _guard = set_herdr_env(&sock);
 
         let reporter = HerdrReporter::new("jcode");
@@ -549,6 +553,7 @@ mod tests {
     #[tokio::test]
     async fn reporter_sends_blocked_state() {
         let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
         let _guard = set_herdr_env(&sock);
 
         let reporter = HerdrReporter::new("jcode");
@@ -577,6 +582,7 @@ mod tests {
     #[tokio::test]
     async fn reporter_sends_session_id() {
         let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
         let _guard = set_herdr_env(&sock);
 
         let reporter = HerdrReporter::new("jcode");
@@ -597,6 +603,7 @@ mod tests {
     #[tokio::test]
     async fn reporter_seq_numbers_increase() {
         let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
         let _guard = set_herdr_env(&sock);
 
         let reporter = HerdrReporter::new("jcode");
