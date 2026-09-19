@@ -114,7 +114,7 @@ pub(super) fn reconnect_status_message(app: &App, state: &RemoteRunState, detail
     };
 
     format!(
-        "⚡ Connection lost - retrying (attempt {}, {}) - {}{}",
+        "◈ Connection lost - retrying (attempt {}, {}) - {}{}",
         state.reconnect_attempts.max(1),
         elapsed_str,
         detail,
@@ -153,7 +153,7 @@ pub(super) fn reload_wait_status_message(
     };
 
     format!(
-        "⚡ Server reload in progress - waiting for handoff ({}) - {}{}",
+        "◈ Server reload in progress - waiting for handoff ({}) - {}{}",
         elapsed_str, detail, resume_hint,
     )
 }
