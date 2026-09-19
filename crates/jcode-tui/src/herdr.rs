@@ -10,6 +10,19 @@ use tokio::sync::Mutex;
 
 static REPORTER: OnceLock<Mutex<Option<HerdrReporter>>> = OnceLock::new();
 
+/// Spawn a [`report_state`] report onto the tokio runtime.
+///
+/// Fire-and-forget lifecycle reports run from sync contexts (the TUI event
+/// loop, `finish_turn`) panic on `tokio::spawn` when no reactor exists, as in
+/// unit tests. Reports are already no-ops without an initialized reporter, so
+/// skipping the spawn entirely outside a runtime is behavior-preserving.
+pub fn spawn_report(state: AgentState) {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return;
+    }
+    tokio::spawn(report_state(state));
+}
+
 /// Initialize the global HERDR reporter. Safe to call multiple times;
 /// only the first call takes effect.
 pub fn init(agent_label: &str) {
@@ -18,7 +31,9 @@ pub fn init(agent_label: &str) {
 
 /// Force-initialize with `HERDR_ENV=1` for testing outside a real pane.
 pub fn init_forced(agent_label: &str) {
-    unsafe { std::env::set_var("HERDR_ENV", "1"); }
+    unsafe {
+        std::env::set_var("HERDR_ENV", "1");
+    }
     let _ = REPORTER.set(Mutex::new(Some(HerdrReporter::new(agent_label))));
 }
 
