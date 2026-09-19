@@ -531,6 +531,9 @@ impl Agent {
                             });
                         }
                     }
+                    StreamEvent::TextDone => {
+                        let _ = event_tx.send(ServerEvent::TextDone);
+                    }
                     StreamEvent::TextDelta(text) => {
                         // Close any open reasoning region before real output so the
                         // answer renders as a normal paragraph rather than as reasoning.

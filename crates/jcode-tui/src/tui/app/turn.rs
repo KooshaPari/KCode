@@ -710,7 +710,8 @@ impl App {
                                             status_spinner_renderer.draw_full(self, terminal)?;
                                         }
                                     }
-                                    StreamEvent::MessageEnd { .. } => {
+                                    StreamEvent::TextDone => {}
+                    StreamEvent::MessageEnd { .. } => {
                                         self.pause_streaming_tps(true);
                                         self.stream_message_ended = true;
                                         saw_message_end = true;
