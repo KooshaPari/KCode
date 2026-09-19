@@ -454,7 +454,7 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
                     }
                 }
             }
-            return copy_to_clipboard_osc52(text);
+            copy_to_clipboard_osc52(text)
         }
 
         // Linux has the same failure class (issue #504, Kali/X11): wl-copy fails
@@ -505,7 +505,7 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
 /// terminal emulator to set the system clipboard without needing a local
 /// display server, making it work over SSH, inside Docker, and under tmux
 /// (with `set -g set-clipboard on`). Returns false if stdout is not a TTY.
-#[cfg_attr(test, allow(dead_code))]
+#[allow(dead_code)]
 fn copy_to_clipboard_osc52(text: &str) -> bool {
     use base64::Engine as _;
     use std::io::{IsTerminal, Write};
@@ -931,15 +931,14 @@ pub(super) fn clipboard_image() -> Option<(String, String)> {
             .output()
         {
             let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if result == "ok" {
-                if let Ok(data) = std::fs::read(&temp_path) {
+            if result == "ok"
+                && let Ok(data) = std::fs::read(&temp_path) {
                     let _ = std::fs::remove_file(&temp_path);
                     if !data.is_empty() {
                         let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
                         return Some(("image/png".to_string(), b64));
                     }
                 }
-            }
         }
     }
 

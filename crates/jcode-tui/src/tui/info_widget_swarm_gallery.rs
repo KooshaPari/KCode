@@ -146,6 +146,281 @@ struct SwarmTreeRow<'a> {
     ancestor_is_last: Vec<bool>,
 }
 
+#[derive(Clone)]
+struct DagNode {
+    _item_id: String,
+    label: String,
+    completed: bool,
+    active: bool,
+    failed: bool,
+    children: Vec<DagNode>,
+}
+
+/// Render a compact task dependency DAG for the given plan items.
+///
+/// Items are displayed as an indented tree with status indicators:
+/// - ✅ completed (dim)
+/// - 🔄 active/running (accent, bold)
+/// - ⏳ ready/pending (yellow)
+/// - 🔒 blocked (dim red)
+/// - ❌ failed/cycle (red)
+///
+/// Returns at most `max_height` lines (0 when the plan is empty or width is
+/// too narrow).
+pub(crate) fn render_swarm_plan_dag(
+    items: &[PlanItem],
+    width: usize,
+    max_height: usize,
+) -> Vec<Line<'static>> {
+    if items.is_empty() || width < 12 || max_height == 0 {
+        return Vec::new();
+    }
+
+    // Build lookup maps.
+    let item_map: HashMap<&str, &PlanItem> = items.iter().map(|i| (i.id.as_str(), i)).collect();
+
+    // Compute blocked status from dependency edges.
+    let mut blocked_set: HashSet<&str> = HashSet::new();
+    for item in items {
+        if item
+            .blocked_by
+            .iter()
+            .any(|dep| !matches!(item_map.get(dep.as_str()), Some(i) if i.status == "completed"))
+        {
+            blocked_set.insert(item.id.as_str());
+        }
+    }
+
+    // Classify item status.
+    let classify = |item: &PlanItem| -> (&str, bool, bool, bool) {
+        let id = item.id.as_str();
+        if item.status == "completed" {
+            ("completed", true, false, false)
+        } else if item.status == "active" || item.status == "running" {
+            ("active", false, true, false)
+        } else if blocked_set.contains(id) {
+            ("blocked", false, false, false)
+        } else if item.status == "failed" || item.status == "stopped" {
+            ("failed", false, false, true)
+        } else {
+            ("ready", false, false, false)
+        }
+    };
+
+    // Build dependency graph: item_id -> children (items that depend on it).
+    let mut children_map: HashMap<&str, Vec<&str>> = HashMap::new();
+    for item in items {
+        for dep in &item.blocked_by {
+            if item_map.contains_key(dep.as_str()) {
+                children_map.entry(dep.as_str()).or_default().push(&item.id);
+            }
+        }
+    }
+
+    // Topological sort (roots first: items with no dependencies or all deps external).
+    let mut in_degree: HashMap<&str, usize> = HashMap::new();
+    let mut dep_edges: HashMap<&str, Vec<&str>> = HashMap::new();
+    for item in items {
+        let id = item.id.as_str();
+        in_degree.entry(id).or_insert(0);
+        for dep in &item.blocked_by {
+            if item_map.contains_key(dep.as_str()) {
+                dep_edges.entry(dep.as_str()).or_default().push(id);
+                *in_degree.entry(id).or_insert(0) += 1;
+            }
+        }
+    }
+    let mut topo_order: Vec<&str> = Vec::new();
+    let mut queue: Vec<&str> = in_degree
+        .iter()
+        .filter(|&(_, &d)| d == 0)
+        .map(|(&id, _)| id)
+        .collect();
+    queue.sort();
+    while let Some(id) = queue.pop() {
+        topo_order.push(id);
+        if let Some(deps) = dep_edges.get(id) {
+            for &dep_id in deps {
+                let e = in_degree.entry(dep_id).or_insert(0);
+                *e -= 1;
+                if *e == 0 {
+                    // Insert sorted to maintain stable order.
+                    match queue.binary_search(&dep_id) {
+                        Ok(pos) | Err(pos) => queue.insert(pos, dep_id),
+                    }
+                }
+            }
+        }
+    }
+    // Append items not reachable from roots (cycles, disconnected) in stable order.
+    let topo_set: HashSet<&str> = topo_order.iter().copied().collect();
+    let mut remaining: Vec<&str> = items
+        .iter()
+        .map(|i| i.id.as_str())
+        .filter(|id| !topo_set.contains(id))
+        .collect();
+    remaining.sort();
+    topo_order.extend(remaining);
+
+    // Build tree from topological order.
+    let mut node_map: HashMap<&str, DagNode> = HashMap::new();
+
+    for id in &topo_order {
+        let item = match item_map.get(id) {
+            Some(i) => *i,
+            None => continue,
+        };
+        let (status, completed, active, failed) = classify(item);
+        let prefix = match status {
+            "completed" => "✅",
+            "active" => "🔄",
+            "blocked" => "🔒",
+            "failed" => "❌",
+            _ => "⏳",
+        };
+        let label = if item.content.len() > 40 {
+            format!("{prefix} {}…", &item.content[..39])
+        } else {
+            format!("{prefix} {}", item.content)
+        };
+        let mut node = DagNode {
+            _item_id: id.to_string(),
+            label,
+            completed,
+            active,
+            failed,
+            children: Vec::new(),
+        };
+        if let Some(children) = children_map.get(id) {
+            for child_id in children {
+                if let Some(child) = node_map.remove(child_id) {
+                    node.children.push(child);
+                }
+            }
+        }
+        node_map.insert(id, node);
+    }
+
+    // Separate roots (items not owned as children by any other item).
+    let all_children: HashSet<&str> = children_map
+        .values()
+        .flatten()
+        .copied()
+        .collect();
+    let mut roots: Vec<DagNode> = Vec::new();
+    for id in &topo_order {
+        if !all_children.contains(id)
+            && let Some(node) = node_map.remove(id) {
+                roots.push(node);
+            }
+    }
+
+    // Render the tree.
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut line_count: usize = 0;
+    let item_text_width = width.saturating_sub(4); // Reserve 4 chars for tree prefix.
+
+    fn render_dag_node(
+        node: &DagNode,
+        prefix: &str,
+        is_last: bool,
+        item_text_width: usize,
+        out: &mut Vec<Line<'static>>,
+        line_count: &mut usize,
+        max_height: usize,
+    ) {
+        if *line_count >= max_height {
+            return;
+        }
+        let connector = if prefix.is_empty() {
+            String::new()
+        } else if is_last {
+            format!("{prefix}└─ ")
+        } else {
+            format!("{prefix}├─ ")
+        };
+
+        let (color, bold) = if node.completed {
+            (Color::Rgb(100, 100, 110), false)
+        } else if node.active {
+            (Color::Rgb(120, 180, 255), true)
+        } else if node.failed {
+            (Color::Rgb(255, 100, 100), false)
+        } else {
+            (Color::Rgb(200, 180, 60), false)
+        };
+
+        let mut style = Style::default().fg(color);
+        if bold {
+            style = style.add_modifier(Modifier::BOLD);
+        }
+
+        let spans = vec![
+            Span::styled(connector, Style::default().fg(Color::Rgb(75, 75, 88))),
+            Span::styled(
+                if node.completed {
+                    node.label.clone()
+                } else {
+                    truncate_str(&node.label, item_text_width)
+                },
+                style,
+            ),
+        ];
+
+        out.push(Line::from(spans));
+        *line_count += 1;
+
+        let child_prefix = if prefix.is_empty() {
+            String::new()
+        } else if is_last {
+            format!("{prefix}   ")
+        } else {
+            format!("{prefix}│  ")
+        };
+        for (i, child) in node.children.iter().enumerate() {
+            render_dag_node(
+                child,
+                &child_prefix,
+                i + 1 == node.children.len(),
+                item_text_width,
+                out,
+                line_count,
+                max_height,
+            );
+        }
+    }
+
+    for (i, root) in roots.iter().enumerate() {
+        render_dag_node(
+            root,
+            "",
+            i + 1 == roots.len(),
+            item_text_width,
+            &mut out,
+            &mut line_count,
+            max_height,
+        );
+    }
+
+    out.truncate(max_height);
+    out
+}
+
+fn truncate_str(s: &str, max_width: usize) -> String {
+    let mut width = 0;
+    let mut result = String::new();
+    for ch in s.chars() {
+        let char_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+        if width + char_width > max_width.saturating_sub(1) {
+            result.push('…');
+            break;
+        }
+        width += char_width;
+        result.push(ch);
+    }
+    result
+}
+
 /// Render the dedicated live swarm page. The upper section is a nested,
 /// ownership-aware tree of every managed agent with animated status glyphs.
 /// The lower section is the selected agent's detailed live card.
@@ -496,6 +771,26 @@ pub(crate) fn render_swarm_panel_lines(
 /// used for the unfocused enter-hint.
 /// `spinner_frame` animates active agents' glyphs. `max_height` bounds the
 /// focused strip (chips + expanded hovered-agent detail + hints).
+/// Summary line with optional batch mode info appended.
+fn summary_line_with_batch(
+    members: &[GalleryMember],
+    width: usize,
+    batch_info: &str,
+) -> Line<'static> {
+    let inner = jcode_tui_render::swarm_gallery::summary_line_from_members(members, width);
+    if batch_info.is_empty() {
+        return inner;
+    }
+    // Append batch info after the right-aligned summary.
+    let mut spans = inner.spans;
+    spans.push(Span::styled(
+        batch_info.to_string(),
+        Style::default().fg(jcode_tui_style::color::rgb(105, 105, 120)),
+    ));
+    Line::from(spans)
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn render_swarm_strip_lines(
     members: &[SwarmMemberStatus],
     selected: usize,

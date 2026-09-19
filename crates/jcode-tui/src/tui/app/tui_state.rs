@@ -2162,6 +2162,153 @@ impl App {
                 super::commands::handle_swarm_prompt_command(self, "/swarm-prompt");
                 true
             }
+            Some(SwarmPanelAction::ToggleSelect) => {
+                let idx = self.swarm_panel_selected;
+                if self.swarm_selected_agents.contains(&idx) {
+                    self.swarm_selected_agents.remove(&idx);
+                } else {
+                    self.swarm_selected_agents.insert(idx);
+                }
+                true
+            }
+            Some(SwarmPanelAction::SelectAll) => {
+                let count = self.filtered_swarm_members().len();
+                self.swarm_selected_agents = (0..count).collect();
+                let count = self.swarm_selected_agents.len();
+                self.set_status_notice(format!(
+                    "Selected {count} agent{}",
+                    if count == 1 { "" } else { "s" }
+                ));
+                true
+            }
+            Some(SwarmPanelAction::BatchMode) => {
+                self.swarm_batch_mode = !self.swarm_batch_mode;
+                if self.swarm_batch_mode {
+                    self.swarm_selected_agents
+                        .insert(self.swarm_panel_selected);
+                    let count = self.swarm_selected_agents.len();
+                    self.set_status_notice(format!(
+                        "Batch mode on: {count} agent{} selected",
+                        if count == 1 { "" } else { "s" }
+                    ));
+                } else {
+                    self.swarm_selected_agents.clear();
+                    self.set_status_notice("Batch mode off");
+                }
+                true
+            }
+            Some(SwarmPanelAction::BatchStop) => {
+                let count = self.swarm_selected_agents.len();
+                self.set_status_notice(format!(
+                    "Stop requested for {count} agent{}",
+                    if count == 1 { "" } else { "s" }
+                ));
+                true
+            }
+            Some(SwarmPanelAction::BatchRestart) => {
+                let count = self.swarm_selected_agents.len();
+                self.set_status_notice(format!(
+                    "Restart requested for {count} agent{}",
+                    if count == 1 { "" } else { "s" }
+                ));
+                true
+            }
+            Some(SwarmPanelAction::BatchPrompt) => {
+                let count = self.swarm_selected_agents.len();
+                self.set_status_notice(format!(
+                    "Prompt requested for {count} agent{}",
+                    if count == 1 { "" } else { "s" }
+                ));
+                true
+            }
+            Some(SwarmPanelAction::EnterFilter) => {
+                self.swarm_filter_active = true;
+                self.swarm_filter_query.clear();
+                self.swarm_panel_selected = 0;
+                true
+            }
+            Some(SwarmPanelAction::FilterChar(c)) => {
+                self.swarm_filter_query.push(c);
+                self.swarm_panel_selected = 0;
+                true
+            }
+            Some(SwarmPanelAction::FilterBackspace) => {
+                self.swarm_filter_query.pop();
+                self.swarm_panel_selected = 0;
+                if self.swarm_filter_query.is_empty() {
+                    self.swarm_filter_active = false;
+                }
+                true
+            }
+            Some(SwarmPanelAction::FilterConfirm) => {
+                self.swarm_filter_active = false;
+                true
+            }
+            Some(SwarmPanelAction::FilterEscape) => {
+                if self.swarm_filter_active {
+                    self.swarm_filter_active = false;
+                    self.swarm_filter_query.clear();
+                    self.swarm_panel_selected = 0;
+                    true
+                } else if !self.swarm_selected_agents.is_empty() {
+                    // When batch has items, Escape clears the selection first.
+                    let count = self.swarm_selected_agents.len();
+                    self.swarm_selected_agents.clear();
+                    self.swarm_batch_mode = false;
+                    self.set_status_notice(format!(
+                        "Cleared {count} selection{}",
+                        if count == 1 { "" } else { "s" }
+                    ));
+                    true
+                } else {
+                    self.swarm_panel_focused = false;
+                    self.swarm_panel_full_page = false;
+                    self.swarm_batch_mode = false;
+                    self.swarm_selected_agents.clear();
+                    true
+                }
+            }
+            Some(SwarmPanelAction::StartRename) => {
+                let members = self.filtered_swarm_members();
+                if !members.is_empty() {
+                    self.swarm_rename_active = true;
+                    self.swarm_rename_buffer.clear();
+                    // Pre-fill with current label
+                    let ordered = crate::tui::info_widget::swarm_gallery::members_display_order(&members);
+                    let idx = self.swarm_panel_selected.min(ordered.len().saturating_sub(1));
+                    if let Some(session_id) = ordered.get(idx)
+                        && let Some(member) = members.iter().find(|m| &m.session_id == session_id) {
+                            self.swarm_rename_buffer = member
+                                .friendly_name
+                                .clone()
+                                .unwrap_or_else(|| member.session_id.chars().take(8).collect());
+                        }
+                }
+                true
+            }
+            Some(SwarmPanelAction::RenameChar(c)) => {
+                self.swarm_rename_buffer.push(c);
+                true
+            }
+            Some(SwarmPanelAction::RenameBackspace) => {
+                self.swarm_rename_buffer.pop();
+                true
+            }
+            Some(SwarmPanelAction::RenameConfirm) => {
+                let new_label = self.swarm_rename_buffer.clone();
+                self.swarm_rename_active = false;
+                self.swarm_rename_buffer.clear();
+                // TODO: Send rename command to swarm coordinator
+                // SwarmCommand::RenameAgent { session_id, new_label }
+                let _ = new_label;
+                self.set_status_notice("Rename sent (TODO: wire to swarm coordinator)");
+                true
+            }
+            Some(SwarmPanelAction::RenameEscape) => {
+                self.swarm_rename_active = false;
+                self.swarm_rename_buffer.clear();
+                true
+            }
             Some(SwarmPanelAction::Exit) => {
                 self.swarm_panel_focused = false;
                 self.swarm_panel_full_page = false;

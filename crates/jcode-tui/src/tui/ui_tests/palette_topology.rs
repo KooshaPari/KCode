@@ -18,7 +18,11 @@ type RoleAreas = BTreeMap<&'static str, u32>;
 type RoleAdjacency = BTreeMap<(&'static str, &'static str), u32>;
 
 /// Render a set of representative frames and tally role area plus adjacency.
-fn measure() -> (RoleAreas, RoleAdjacency) {
+#[allow(clippy::type_complexity)]
+fn measure() -> (
+    BTreeMap<&'static str, u32>,
+    BTreeMap<(&'static str, &'static str), u32>,
+) {
     let _lock = super::viewport_snapshot_test_lock();
     // Attribution matches rendered RGB back to role defaults, so the frame
     // must be rendered in truecolor. A hosted CI runner without COLORTERM

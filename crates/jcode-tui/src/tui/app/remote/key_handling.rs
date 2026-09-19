@@ -73,7 +73,7 @@ impl Osc133Filter {
 }
 
 thread_local! {
-    static OSC133_FILTER: Osc133Filter = Osc133Filter::new();
+    static OSC133_FILTER: Osc133Filter = const { Osc133Filter::new() };
 }
 
 /// Returns `true` if `c` is part of a leaked OSC 133 sequence and should
