@@ -4419,6 +4419,10 @@ version = "0.1.0"
 dependencies = [
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+ "jcode-side-panel-types",
+>>>>>>> c6a2a2db3 (fix(api): expose side panel snapshots through harness and SDK)
  "jcode-usage-types",
 =======
 >>>>>>> c368ef084 (Add jcode-harness-api crate and harness-as-API + desktop rewrite design doc)
