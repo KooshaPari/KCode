@@ -799,6 +799,7 @@ fn cache_stats_uses_remote_history_token_usage_totals() {
     app.is_remote = true;
     app.remote_total_tokens = Some((1_250_000, 200_000));
     app.remote_token_usage_totals = Some(crate::protocol::TokenUsageTotals {
+        cache_prompt_tokens: Some(1_000_000),
         messages_with_token_usage: 3,
         input_tokens: 1_250_000,
         output_tokens: 200_000,
@@ -1838,4 +1839,45 @@ fn bare_enter_immediately_after_paste_does_not_submit() {
     app.handle_key_press_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE))
         .unwrap();
     assert!(app.input.is_empty(), "later Enter should submit normally");
+}
+
+include!("tests/cache_prompt_accounting.rs");
+
+
+#[test]
+fn cache_miss_requires_explicit_read_telemetry_even_with_writes() {
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.runtime_mode = AppRuntimeMode::RemoteClient;
+    app.remote_provider_name = Some("openai-api".into());
+    app.remote_provider_model = Some("gpt-6-astra".into());
+    let messages = [Message::user("first")];
+    let baseline = KvCacheBaseline {
+        session_id: app.kv_cache_session_id(),
+        cache_generation: app.kv_cache.cache_generation,
+        input_tokens: 42_000,
+        completed_at: Instant::now(),
+        cache_ttl_secs: Some(1800),
+        provider: "openai-api".into(),
+        model: "gpt-6-astra".into(),
+        upstream_provider: None,
+        signature: Some(App::kv_cache_request_signature(&messages, &[], "before", "")),
+    };
+    for writes in [None, Some(2_000)] {
+        app.kv_cache.kv_cache_baseline = Some(baseline.clone());
+        app.begin_kv_cache_request(&messages, &[], "changed system", "");
+        app.streaming.streaming_input_tokens = 42_000;
+        app.streaming.streaming_cache_read_tokens = None;
+        app.streaming.streaming_cache_creation_tokens = writes;
+        assert!(app.record_completed_stream_cache_usage());
+        assert!(app.kv_cache.kv_cache_miss_samples.is_empty());
+        assert!(!app.display_messages.iter().any(|m| m.content.contains("KV cache miss")));
+    }
+    // An explicitly reported zero remains meaningful and is not suppressed.
+    app.kv_cache.kv_cache_baseline = Some(baseline);
+    app.begin_kv_cache_request(&messages, &[], "changed system", "");
+    app.streaming.streaming_input_tokens = 42_000;
+    app.streaming.streaming_cache_read_tokens = Some(0);
+    assert!(app.record_completed_stream_cache_usage());
+    assert_eq!(app.kv_cache.kv_cache_miss_samples.len(), 1);
 }
