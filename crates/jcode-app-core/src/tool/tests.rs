@@ -848,6 +848,7 @@ fn test_schema_validator_rejects_any_of_branches_without_type() {
 async fn test_context_guard_small_output_passes_through() {
     let compaction = Arc::new(RwLock::new(CompactionManager::new().with_budget(200_000)));
     let registry = Registry {
+        mcp_policy: Arc::default(),
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
@@ -863,6 +864,7 @@ async fn test_context_guard_small_output_passes_through() {
 async fn test_context_guard_withholds_huge_single_output_by_default() {
     let compaction = Arc::new(RwLock::new(CompactionManager::new().with_budget(1000)));
     let registry = Registry {
+        mcp_policy: Arc::default(),
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
@@ -901,6 +903,7 @@ async fn test_context_guard_withholds_huge_single_output_by_default() {
 async fn test_context_guard_returns_truncated_output_when_caller_accepts() {
     let compaction = Arc::new(RwLock::new(CompactionManager::new().with_budget(1000)));
     let registry = Registry {
+        mcp_policy: Arc::default(),
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
@@ -937,6 +940,7 @@ async fn test_context_guard_reports_the_real_cost_and_affordable_size() {
         mgr.update_observed_input_tokens(40_000);
     }
     let registry = Registry {
+        mcp_policy: Arc::default(),
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
@@ -983,6 +987,7 @@ async fn test_context_guard_truncates_when_context_nearly_full() {
         mgr.update_observed_input_tokens(9500); // 95% full
     }
     let registry = Registry {
+        mcp_policy: Arc::default(),
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
@@ -1009,6 +1014,7 @@ async fn test_context_guard_still_refuses_when_context_is_exhausted() {
         mgr.update_observed_input_tokens(9_990);
     }
     let registry = Registry {
+        mcp_policy: Arc::default(),
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
@@ -1035,6 +1041,7 @@ async fn test_context_guard_still_refuses_when_context_is_exhausted() {
 async fn test_context_guard_zero_budget_passes_through() {
     let compaction = Arc::new(RwLock::new(CompactionManager::new().with_budget(0)));
     let registry = Registry {
+        mcp_policy: Arc::default(),
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
@@ -1254,6 +1261,7 @@ async fn test_context_guard_never_spends_more_than_it_reports() {
                         mgr.update_observed_input_tokens(used as u64);
                     }
                     let registry = Registry {
+                        mcp_policy: Arc::default(),
                         tools: Arc::new(RwLock::new(HashMap::new())),
                         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
                         compaction,
@@ -1303,6 +1311,7 @@ async fn test_context_guard_refusal_reads_clearly_for_todays_regression() {
         mgr.update_observed_input_tokens(18_000);
     }
     let registry = Registry {
+        mcp_policy: Arc::default(),
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
@@ -1594,6 +1603,7 @@ async fn test_guard_withholds_large_output_on_a_million_token_window() {
         mgr.update_observed_input_tokens(21_000);
     }
     let registry = Registry {
+        mcp_policy: Arc::default(),
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
@@ -1626,6 +1636,7 @@ async fn test_single_output_ceiling_is_absolute_not_only_proportional() {
     for budget in [200_000usize, 1_000_000, 2_000_000, 10_000_000] {
         let compaction = Arc::new(RwLock::new(CompactionManager::new().with_budget(budget)));
         let registry = Registry {
+            mcp_policy: Arc::default(),
             tools: Arc::new(RwLock::new(HashMap::new())),
             skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
             compaction,
@@ -1802,3 +1813,6 @@ async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode()
          eligibility rule is too aggressive, a missing name means this list is stale"
     );
 }
+
+#[path = "tests/mcp_collision.rs"]
+mod mcp_collision;
