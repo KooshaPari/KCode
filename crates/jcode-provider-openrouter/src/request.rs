@@ -630,6 +630,66 @@ mod request_tests {
     }
 
     #[test]
+    fn compaction_slice_split_leaves_orphan_tool_output_recovered_not_dropped() {
+        // Giraffe scenario (2026-09-19): jcode-base compaction active_messages()
+        // returns messages[compacted_count..], which can split a tool_use /
+        // tool_result pair across the slice boundary. The provider receives only
+        // the tool result (the assistant tool_use half stayed in the compacted
+        // prefix) and must recover it as a user message, never silently drop it.
+        // Observed in production as "Dropped N orphaned tool outputs" scaling
+        // with the compaction slice (23, 26, 29, 32, 35 -> 15..21 dropped).
+        let assistant_half = Message {
+            role: Role::Assistant,
+            content: vec![ContentBlock::ToolUse {
+                id: "read:12".to_string(),
+                name: "read".to_string(),
+                input: json!({"path": "src/lib.rs"}),
+                thought_signature: None,
+            }],
+            timestamp: None,
+            tool_duration_ms: None,
+        };
+        let orphan_result = Message::tool_result("read:12", "file contents after the slice", false);
+        let kept_turn = tool_call("bash:3", "kept output");
+
+        // Simulate the compaction slice: the assistant half is BEFORE
+        // compacted_count and must not leak into the API payload; only the
+        // orphan result and a later intact turn are active.
+        let sliced = vec![
+            orphan_result,
+            kept_turn[0].clone(),
+            kept_turn[1].clone(),
+        ];
+        let _ = assistant_half; // compacted prefix, excluded from the slice
+
+        let api_messages = build_chat_messages(&sliced, "", false, false, false);
+
+        // The orphan must appear exactly once, recovered as a user message.
+        let orphan_hits = api_messages
+            .iter()
+            .filter(|message| {
+                message["role"] == "user"
+                    && message["content"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .contains("Recovered orphaned tool output: read_12")
+            })
+            .count();
+        assert_eq!(
+            orphan_hits, 1,
+            "orphan tool output must be recovered exactly once (sanitized id read_12)"
+        );
+
+        // The intact turn must survive with its tool output in place.
+        let tool_outputs = api_messages
+            .iter()
+            .filter(|message| message["role"] == "tool")
+            .map(|message| message["content"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(tool_outputs, ["kept output"]);
+    }
+
+    #[test]
     fn multi_turn_replay_preserves_vertex_tool_call_thought_signatures() {
         let signed_turn = |id: &str, signature: &str| Message {
             role: Role::Assistant,
