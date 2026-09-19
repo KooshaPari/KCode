@@ -156,6 +156,24 @@ fn normalize_openai_compatible_model_id(
     model.to_string()
 }
 
+/// Models that require the Responses API endpoint (`/responses`) instead of
+/// `/chat/completions` when served through OpenCode Go. These models reject
+/// chat-completions format with `input_text is not valid on assistant messages`.
+const OPENCODE_GO_RESPONSES_MODELS: &[&str] = &[
+    "grok-4.6",
+    "gpt-5.6-luna",
+    "muse-spark-1.3-contributor",
+    "muse-spark-1.2-contributor",
+];
+
+fn needs_responses_api(model: &str, api_base: &str) -> bool {
+    let lower = api_base.to_ascii_lowercase();
+    if !lower.contains("opencode.ai") {
+        return false;
+    }
+    OPENCODE_GO_RESPONSES_MODELS.contains(&model)
+}
+
 pub async fn run_live_openai_compatible_smoke(
     profile: OpenAiCompatibleProfile,
     api_key: &str,
