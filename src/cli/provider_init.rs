@@ -120,7 +120,7 @@ pub enum ProviderChoice {
     #[value(alias = "belvedir.ai", alias = "belvedir-ai")]
     Belvedir,
     #[value(alias = "orca-router")]
-    Orcarouter,
+    OrcaRouter,
     #[value(
         alias = "bailian",
         alias = "aliyun-bailian",
@@ -194,7 +194,7 @@ impl ProviderChoice {
             Self::Chutes => "chutes",
             Self::Cerebras => "cerebras",
             Self::Belvedir => "belvedir",
-            Self::Orcarouter => "orcarouter",
+            Self::OrcaRouter => "orcarouter",
             Self::AlibabaCodingPlan => "alibaba-coding-plan",
             Self::OpenaiCompatible => "openai-compatible",
             Self::Cursor => "cursor",
@@ -391,7 +391,7 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
         crate::provider_catalog::BELVEDIR_LOGIN_PROVIDER,
     ),
     (
-        ProviderChoice::Orcarouter,
+        ProviderChoice::OrcaRouter,
         crate::provider_catalog::ORCAROUTER_LOGIN_PROVIDER,
     ),
     (
@@ -1619,7 +1619,7 @@ async fn init_provider_with_options(
         | ProviderChoice::Chutes
         | ProviderChoice::Cerebras
         | ProviderChoice::Belvedir
-        | ProviderChoice::Orcarouter
+        | ProviderChoice::OrcaRouter
         | ProviderChoice::AlibabaCodingPlan
         | ProviderChoice::GeminiApi
         | ProviderChoice::OpenaiCompatible => {
@@ -1875,11 +1875,18 @@ async fn init_provider_with_options(
         && let Some(default_model) = resolved_profile_default_model(profile)
         && provider.set_model(&default_model).is_ok()
     {
-        let resolved = resolve_openai_compatible_profile(profile);
-        init_notice(&format!(
-            "Using default model for {}: {}",
-            resolved.display_name, default_model
-        ));
+        let effective_default = profile_for_choice(choice)
+            .and_then(resolved_profile_default_model)
+            .or_else(|| crate::config::config().provider.default_model.clone());
+        if let Some(default_model) = effective_default
+            && provider.set_model(&default_model).is_ok()
+            && let Some(profile) = profile_for_choice(choice) {
+                let resolved = resolve_openai_compatible_profile(profile);
+                init_notice(&format!(
+                    "Using default model for {}: {}",
+                    resolved.display_name, default_model
+                ));
+            }
     }
 
     if let Some(model_name) = model {
