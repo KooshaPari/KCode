@@ -25,7 +25,7 @@ use tokio_stream::wrappers::ReceiverStream;
 
 use config::ForgeCodeCliConfig;
 use parser::CliOutput;
-use translator::{CliOutputParser, ForgeCodeEventTranslator};
+use translator::CliOutputParser;
 
 /// Global mutex to serialize ForgeCode CLI requests.
 /// Prevents concurrent subprocess writes from racing.

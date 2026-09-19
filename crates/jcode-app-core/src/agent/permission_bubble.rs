@@ -8,9 +8,7 @@
 //! `fork_depth`, `fork_max_depth`, `fork_chain`) so that depth tracking
 //! survives session saves/loads and is available across forking boundaries.
 
-use jcode_permission_bubble::{
-    build_child_message, ForkDepthGuard, ForkDepthResult,
-};
+use jcode_permission_bubble::{ForkDepthGuard, ForkDepthResult};
 use jcode_session_types::StoredMessage;
 
 use crate::logging;
@@ -19,8 +17,6 @@ use crate::logging;
 pub(crate) struct PermissionBubbleResult {
     /// Messages to use in the child session (forked with prefix integrity).
     pub messages: Vec<StoredMessage>,
-    /// Child's initial system prompt (with the 10-rule boilerplate).
-    pub system_prompt: String,
     /// Whether the fork was denied due to depth limits.
     pub denied: bool,
 }
@@ -42,7 +38,6 @@ fn guard_from_session(session: &crate::session::Session) -> ForkDepthGuard {
 /// fork depth state is read and updated in place.
 pub(crate) fn create_forked_child_messages(
     parent_messages: &[StoredMessage],
-    directive: &str,
     fork_id: &str,
     parent_session: &mut crate::session::Session,
 ) -> PermissionBubbleResult {
@@ -61,7 +56,6 @@ pub(crate) fn create_forked_child_messages(
             ));
             return PermissionBubbleResult {
                 messages: parent_messages.to_vec(),
-                system_prompt: build_child_message(directive),
                 denied: true,
             };
         }
@@ -84,7 +78,6 @@ pub(crate) fn create_forked_child_messages(
 
     PermissionBubbleResult {
         messages,
-        system_prompt: build_child_message(directive),
         denied: false,
     }
 }

@@ -183,9 +183,7 @@ fn needs_responses_api(model: &str, api_base: &str) -> bool {
     if !lower.contains("opencode.ai") {
         return false;
     }
-    OPENCODE_GO_RESPONSES_MODELS
-        .iter()
-        .any(|m| model == *m)
+    OPENCODE_GO_RESPONSES_MODELS.contains(&model)
 }
 
 pub async fn run_live_openai_compatible_smoke(

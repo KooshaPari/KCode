@@ -2,8 +2,7 @@ use jcode_message_types::StreamEvent;
 use serde_json::Value;
 
 use crate::parser::{
-    CliOutput, CliMessage, ContentBlockInfo, DeltaInfo, SdkContentBlock,
-    SseEvent, UsageInfo,
+    CliOutput, ContentBlockInfo, DeltaInfo, SdkContentBlock, SseEvent,
 };
 use crate::to_internal_tool_name;
 
