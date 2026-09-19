@@ -119,6 +119,8 @@ pub enum ProviderChoice {
     Cerebras,
     #[value(alias = "belvedir.ai", alias = "belvedir-ai")]
     Belvedir,
+    #[value(alias = "orca-router")]
+    OrcaRouter,
     #[value(
         alias = "bailian",
         alias = "aliyun-bailian",
@@ -193,6 +195,7 @@ impl ProviderChoice {
             Self::Chutes => "chutes",
             Self::Cerebras => "cerebras",
             Self::Belvedir => "belvedir",
+            Self::OrcaRouter => "orcarouter",
             Self::AlibabaCodingPlan => "alibaba-coding-plan",
             Self::OpenaiCompatible => "openai-compatible",
             Self::Cursor => "cursor",
@@ -388,6 +391,10 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
     (
         ProviderChoice::Belvedir,
         crate::provider_catalog::BELVEDIR_LOGIN_PROVIDER,
+    ),
+    (
+        ProviderChoice::OrcaRouter,
+        crate::provider_catalog::ORCAROUTER_LOGIN_PROVIDER,
     ),
     (
         ProviderChoice::AlibabaCodingPlan,
@@ -1608,6 +1615,7 @@ async fn init_provider_with_options(
         | ProviderChoice::Chutes
         | ProviderChoice::Cerebras
         | ProviderChoice::Belvedir
+        | ProviderChoice::OrcaRouter
         | ProviderChoice::AlibabaCodingPlan
         | ProviderChoice::GeminiApi
         | ProviderChoice::OpenaiCompatible => {
@@ -1882,19 +1890,17 @@ async fn init_provider_with_options(
         && model.is_none()
     {
         let effective_default = profile_for_choice(choice)
-            .and_then(|p| resolved_profile_default_model(p))
+            .and_then(resolved_profile_default_model)
             .or_else(|| crate::config::config().provider.default_model.clone());
         if let Some(default_model) = effective_default
             && provider.set_model(&default_model).is_ok()
-        {
-            if let Some(profile) = profile_for_choice(choice) {
+            && let Some(profile) = profile_for_choice(choice) {
                 let resolved = resolve_openai_compatible_profile(profile);
                 init_notice(&format!(
                     "Using default model for {}: {}",
                     resolved.display_name, default_model
                 ));
             }
-        }
     }
 
     if let Some(model_name) = model {
