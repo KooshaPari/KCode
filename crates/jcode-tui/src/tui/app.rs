@@ -99,6 +99,7 @@ mod split_view;
 mod state_ui;
 mod state_ui_input_helpers;
 mod update_sim;
+mod usage_reset;
 pub(crate) use state_ui_input_helpers::registered_command_entries;
 mod state_ui_maintenance;
 mod state_ui_messages;
@@ -1679,6 +1680,7 @@ pub struct App {
     elicit_rx: tokio::sync::mpsc::UnboundedReceiver<Box<jcode_tool_core::ElicitMessage>>,
     /// Whether a usage refresh request is currently in flight.
     usage_report_refreshing: bool,
+    usage_reset: usage_reset::ResetState,
     /// Whether a `/productivity` report generation is currently in flight.
     productivity_refreshing: bool,
     /// Last time the passive overnight progress card polled its run files.

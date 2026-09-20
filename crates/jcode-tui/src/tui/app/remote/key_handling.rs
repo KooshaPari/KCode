@@ -1196,6 +1196,10 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
+                if app.handle_usage_reset_command(trimmed) {
+                    return Ok(());
+                }
+
                 if app_mod::commands::handle_usage_command(app, trimmed) {
                     return Ok(());
                 }
