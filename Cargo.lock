@@ -5171,8 +5171,12 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
 name = "jcode"
+<<<<<<< HEAD
 version = "0.84.0"
 >>>>>>> c515991f2 (test: verify running ambient loop observes config edits (fixes #1269))
+=======
+version = "0.86.0"
+>>>>>>> e589cbe5a (chore(release): prepare v0.86.0)
 dependencies = [
  "anyhow",
  "async-stream",
