@@ -148,6 +148,22 @@ pub async fn run() -> Result<()> {
     let args = parse_and_prepare_args(args)?;
     spawn_background_update_check(&args);
 
+    // Initialize HERDR terminal runtime reporter. No-op when not inside
+    // a HERDR pane. Reports lifecycle state (working/idle/blocked) and
+    // session identity for restore.
+    if args.herdr {
+        crate::herdr::init_forced(&args.herdr_kind);
+    } else {
+        crate::herdr::init(&args.herdr_kind);
+    }
+
+    // Announce presence immediately so HERDR registers this pane as a jcode
+    // agent even before the first turn starts. Lifecycle transitions are
+    // emitted from the TUI turn loop, but a freshly launched jcode (or a
+    // headless invocation) would otherwise stay invisible in
+    // `herdr agent list` until a turn produced a working/idle report.
+    crate::herdr::on_session_start().await;
+
     if let Err(e) = dispatch::run_main(args).await {
         report_main_error(&e);
         return Err(e);
