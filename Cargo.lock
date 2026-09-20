@@ -5715,7 +5715,11 @@ dependencies = [
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+ "jcode-session-types",
+>>>>>>> adbf48bd3 (feat(sdk): expose structured abnormal turn stop reasons)
  "jcode-side-panel-types",
 >>>>>>> c6a2a2db3 (fix(api): expose side panel snapshots through harness and SDK)
 =======
