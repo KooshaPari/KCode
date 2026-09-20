@@ -387,6 +387,9 @@ impl Session {
         // id find no file and silently treat the session as missing.
         // Parent linkage is also explicit state: an empty fork carries only a
         // hidden fork notice but must be loadable when its new client attaches.
+        // `improve_mode` is explicit state the same way: a session whose only
+        // content is improve-mode must still be written so a later load or
+        // resume finds it.
         if !self.persist_state.snapshot_exists
             && !self
                 .messages
@@ -396,6 +399,7 @@ impl Session {
             && self.custom_title.is_none()
             && self.title.is_none()
             && self.parent_id.is_none()
+            && self.improve_mode.is_none()
         {
             return Ok(());
         }
