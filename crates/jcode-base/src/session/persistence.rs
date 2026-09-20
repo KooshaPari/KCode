@@ -408,10 +408,13 @@ impl Session {
         // id find no file and silently treat the session as missing.
         // Parent linkage is also explicit state: an empty fork carries only a
         // hidden fork notice but must be loadable when its new client attaches.
-        // An explicit system prompt, including an empty string, must likewise
+// An explicit system prompt, including an empty string, must likewise
         // survive attachment before the first visible message.
         // Canary (self-dev) and debug markers are likewise explicit: the
         // selfdev tool and debug-socket clients read them back from disk.
+        // `improve_mode` is explicit state the same way: a session whose only
+        // content is improve-mode must still be written so a later load or
+        // resume finds it.
         if !force
             && !self.persist_state.snapshot_exists
             && !self
@@ -425,6 +428,7 @@ impl Session {
             && self.system_prompt.is_none()
             && !self.is_canary
             && !self.is_debug
+            && self.improve_mode.is_none()
         {
             return Ok(());
         }
