@@ -335,7 +335,11 @@ async fn stream_response(
         return stream_responses_api_response(response, tx, &model).await;
     }
 
-    let mut stream = OpenRouterStream::new(response.bytes_stream(), model.clone(), provider_pin);
+    let mut stream = OpenRouterStream::new(
+        super::body_log::capture_sse_stream(response.bytes_stream(), model.clone()),
+        model.clone(),
+        provider_pin,
+    );
 
     // Idle timeout between streamed chunks. Configurable so slow reasoning
     // models (e.g. DeepSeek) that think silently for minutes before emitting
