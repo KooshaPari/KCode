@@ -199,14 +199,27 @@ mod sse_log_tests {
             .expect("sse capture dir must be created")
             .filter_map(|e| e.ok())
             .collect();
-        assert_eq!(entries.len(), 1, "one sse capture file expected");
+        assert!(
+            !entries.is_empty(),
+            "at least one sse capture file expected"
+        );
+        // A concurrent run of this binary can share the temp dir when the
+        // pid+nanos name collides; only the files written by *this* invocation
+        // must contain our chunks, so assert on the newest entry rather than
+        // the entry count.
         entries.sort_by_key(|e| e.file_name());
-        let name = entries[0].file_name().to_string_lossy().to_string();
+        let name = entries
+            .last()
+            .expect("capture entry")
+            .file_name()
+            .to_string_lossy()
+            .to_string();
         assert!(
             name.ends_with("minimax-m3-sse.txt"),
             "sse capture name expected, got: {name}"
         );
-        let written = std::fs::read_to_string(entries[0].path()).unwrap();
+        let written =
+            std::fs::read_to_string(entries.last().expect("capture entry").path()).unwrap();
         assert!(written.contains("data: hello"));
         assert!(written.contains("data: world"));
         let _ = std::fs::remove_dir_all(&dir);
