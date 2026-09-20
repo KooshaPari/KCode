@@ -246,7 +246,7 @@ mod body_log_tests {
         );
         let written = std::fs::read_to_string(entries[0].path()).unwrap();
         assert!(written.contains("minimax-m3"));
-        assert!(written.contains("Recovered") == false);
+        assert!(!written.contains("Recovered"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
