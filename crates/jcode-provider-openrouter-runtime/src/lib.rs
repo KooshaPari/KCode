@@ -2792,6 +2792,7 @@ mod ollama_context;
 mod openrouter_provider_impl;
 #[path = "openrouter_sse_stream.rs"]
 mod openrouter_sse_stream;
+mod body_log;
 
 #[cfg(test)]
 #[allow(clippy::await_holding_lock)]
