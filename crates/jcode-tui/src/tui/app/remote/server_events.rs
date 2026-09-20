@@ -1096,6 +1096,10 @@ pub(in crate::tui::app) fn handle_server_event(
             true
         }
         ServerEvent::Done { id } => {
+            // Report HERDR: the remote turn has finished; this pane is ready
+            // for input again. The client owns the pane identity, so it is the
+            // correct place to publish the idle transition.
+            crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
             let mut auto_poked = false;
             let mut completed_current_message = false;
             crate::logging::info(&format!(
@@ -1410,6 +1414,9 @@ pub(in crate::tui::app) fn handle_server_event(
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
             crate::set_current_session(&session_id);
+            // Report HERDR: native session identity so the pane can be restored
+            // from the sidebar. Mirrors the codex integration's session report.
+            crate::herdr::spawn_report_session_id(session_id.clone());
             app.note_client_focus(true);
             app.update_terminal_title();
             false

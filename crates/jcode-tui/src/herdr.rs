@@ -58,6 +58,18 @@ pub async fn report_session_id(session_id: String) {
     }
 }
 
+/// Spawn a [`report_session_id`] report onto the tokio runtime.
+///
+/// The remote-client event loop is synchronous, so it cannot await the
+/// report directly. Mirrors [`spawn_report`]: a no-op when no reactor
+/// exists (unit tests) or when the reporter is not initialized.
+pub fn spawn_report_session_id(session_id: String) {
+    if tokio::runtime::Handle::try_current().is_err() {
+        return;
+    }
+    tokio::spawn(report_session_id(session_id));
+}
+
 /// Send the initial idle report on session start.
 pub async fn on_session_start() {
     if let Some(m) = REPORTER.get() {

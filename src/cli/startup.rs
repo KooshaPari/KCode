@@ -157,6 +157,13 @@ pub async fn run() -> Result<()> {
         crate::herdr::init(&args.herdr_kind);
     }
 
+    // Announce presence immediately so HERDR registers this pane as a jcode
+    // agent even before the first turn starts. Lifecycle transitions are
+    // emitted from the TUI turn loop, but a freshly launched jcode (or a
+    // headless invocation) would otherwise stay invisible in
+    // `herdr agent list` until a turn produced a working/idle report.
+    crate::herdr::on_session_start().await;
+
     if let Err(e) = dispatch::run_main(args).await {
         report_main_error(&e);
         crate::herdr::shutdown().await;
