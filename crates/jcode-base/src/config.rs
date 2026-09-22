@@ -803,6 +803,9 @@ pub struct DictationConfig {
     pub key: String,
     /// Maximum time to wait for the command to finish (0 = no timeout).
     pub timeout_secs: u64,
+    /// Extra names or terms sent as recognition context to built-in voice
+    /// transcription, added to Jcode's own product names.
+    pub vocabulary: Vec<String>,
 }
 
 impl Default for DictationConfig {
@@ -812,6 +815,7 @@ impl Default for DictationConfig {
             mode: crate::protocol::TranscriptMode::Send,
             key: "off".to_string(),
             timeout_secs: 90,
+            vocabulary: Vec::new(),
         }
     }
 }
