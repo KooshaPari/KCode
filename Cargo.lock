@@ -1999,6 +1999,7 @@ dependencies = [
 [[package]]
 name = "cmov"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 <<<<<<< HEAD
@@ -2011,6 +2012,11 @@ version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f88a43d011fc4a6876cb7344703e297c71dda42494fee094d5f7c76bf13f746"
 >>>>>>> c515991f2 (test: verify running ambient loop observes config edits (fixes #1269))
+=======
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
+>>>>>>> 4d1e19527 (deps: bump tar, cmov, rand and fast-uri past their published advisories (#1375))
 
 [[package]]
 name = "color_quant"
@@ -9388,10 +9394,14 @@ checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
 dependencies = [
  "phf_shared",
 <<<<<<< HEAD
+<<<<<<< HEAD
  "rand 0.8.8",
 =======
  "rand 0.8.5",
 >>>>>>> c515991f2 (test: verify running ambient loop observes config edits (fixes #1269))
+=======
+ "rand 0.8.6",
+>>>>>>> 4d1e19527 (deps: bump tar, cmov, rand and fast-uri past their published advisories (#1375))
 ]
 
 [[package]]
@@ -10070,6 +10080,7 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 [[package]]
 name = "rand"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e058c7de0b26af77780c769414d6257830bb240f3c38477dbc2c16e5f54d6d4c"
@@ -10078,6 +10089,11 @@ version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34af8d1a0e25924bc5b7c43c079c942339d8f0a8b57c39049bef581b46327404"
 >>>>>>> c515991f2 (test: verify running ambient loop observes config edits (fixes #1269))
+=======
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
+>>>>>>> 4d1e19527 (deps: bump tar, cmov, rand and fast-uri past their published advisories (#1375))
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -10357,7 +10373,11 @@ dependencies = [
  "icy_sixel",
  "image",
 <<<<<<< HEAD
+<<<<<<< HEAD
  "rand 0.8.8",
+=======
+ "rand 0.8.6",
+>>>>>>> 4d1e19527 (deps: bump tar, cmov, rand and fast-uri past their published advisories (#1375))
  "ratatui",
  "rustix 0.38.44",
  "thiserror 1.0.69",
@@ -12186,6 +12206,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 [[package]]
 name = "tar"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.4.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
@@ -12194,6 +12215,11 @@ version = "0.4.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22692a6476a21fa75fdfc11d452fda482af402c008cdbaf3476414e122040973"
 >>>>>>> c515991f2 (test: verify running ambient loop observes config edits (fixes #1269))
+=======
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+>>>>>>> 4d1e19527 (deps: bump tar, cmov, rand and fast-uri past their published advisories (#1375))
 dependencies = [
  "filetime",
  "libc",
@@ -13493,8 +13519,12 @@ dependencies = [
  "http 1.4.0",
  "httparse",
  "log",
+<<<<<<< HEAD
  "rand 0.8.5",
 >>>>>>> c515991f2 (test: verify running ambient loop observes config edits (fixes #1269))
+=======
+ "rand 0.8.6",
+>>>>>>> 4d1e19527 (deps: bump tar, cmov, rand and fast-uri past their published advisories (#1375))
  "rustls",
  "rustls-pki-types",
  "sha1",
