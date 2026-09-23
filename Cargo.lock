@@ -5174,6 +5174,7 @@ name = "jcode"
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.84.0"
 >>>>>>> c515991f2 (test: verify running ambient loop observes config edits (fixes #1269))
 =======
@@ -5185,6 +5186,9 @@ version = "0.87.0"
 =======
 version = "0.87.1"
 >>>>>>> 944f747e9 (chore(release): prepare v0.87.1)
+=======
+version = "0.88.0"
+>>>>>>> ee4cd3db3 (chore(release): prepare v0.88.0)
 dependencies = [
  "anyhow",
  "async-stream",
