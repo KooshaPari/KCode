@@ -5305,6 +5305,7 @@ dependencies = [
  "futures",
  "glob",
  "global-hotkey",
+ "ignore",
  "jcode-agent-runtime",
  "jcode-ambient-types",
 <<<<<<< HEAD
@@ -6825,6 +6826,7 @@ dependencies = [
 name = "jcode-tui-tool-display"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "unicode-width",
 ]
 
