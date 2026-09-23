@@ -5447,6 +5447,7 @@ dependencies = [
 >>>>>>> c515991f2 (test: verify running ambient loop observes config edits (fixes #1269))
  "crossterm",
  "dirs",
+ "flate2",
  "futures",
  "global-hotkey",
  "hex",
