@@ -1625,6 +1625,11 @@ pub(in crate::tui::app) fn handle_server_event(
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
             crate::set_current_session(&session_id);
+            // Adopting the Subscribe snapshot's session id is a binding event
+            // for clients that never see a dedicated `SessionId` message (e.g.
+            // a reconnect whose snapshot predates it). Report it so HERDR
+            // always has an `agent_session`, mirroring the `SessionId` arm.
+            crate::herdr::spawn_report_session_id(session_id.clone());
             app.note_client_focus(true);
             let session_changed = prev_session_id.as_deref() != Some(session_id.as_str());
             // The initial Subscribe snapshot predates an early startup Message
