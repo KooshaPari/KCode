@@ -220,6 +220,26 @@ jobs:
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-app-core --lib retention_readiness -- --nocapture
 
+      - name: Run openrouter-stream EOF regression cohort
+        shell: bash
+        run: |
+          # Regression for the `jcode serve` panic from ~/err.md: a crash in
+          # the tokio task scheduler's `futures::stream::unfold` adapter after
+          # the OpenRouter SSE stream produced its final event. The two
+          # tests below pin it deterministically without any provider round
+          # trip; together they cover both symptom paths
+          # (eof_synthesis and eof_tail_flush) that lead to the same
+          # `Stream polled after completion` panic (Tusk Terminated).
+          # Two named filters keeps the cohort to ~30s on warm cache and
+          # ~3min cold; the budget is dominated by the openrouter-provider
+          # lib test harness first build, not by the test bodies themselves.
+          python3 .github/scripts/run_with_timeout.py 600 \
+            "$(rustup which cargo)" test --target ${{ matrix.target }} \
+            -p jcode-provider-openrouter --lib \
+            eof_synthesis_does_not_repoll_a_non_fused_inner_stream \
+            eof_tail_flush_does_not_repoll_a_non_fused_inner_stream \
+            -- --nocapture
+
       - name: Run secret-input pty cohort (all platforms with a pty)
         if: runner.os != 'Windows'
         shell: bash
