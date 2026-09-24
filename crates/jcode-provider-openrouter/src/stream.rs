@@ -896,6 +896,82 @@ mod tests {
         assert_eq!(text, "tail");
     }
 
+    /// A caller may poll again *after* the stream has already returned
+    /// `Poll::Ready(None)`. The `while let Some(..)` drain used by the provider
+    /// loop stops at the first `None`, so that shape is not covered by the two
+    /// tests above. Every post-termination poll must stay `None` and must never
+    /// touch the dead inner stream, otherwise a non-fused inner (the
+    /// `unfold`-based SSE capture tee) panics again.
+    #[test]
+    fn repeated_post_eof_polls_stay_none_without_repoll_inner() {
+        let payload =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            // Drain to termination above, then poll past it three more times.
+            for _ in 0..3 {
+                assert!(
+                    stream.next().await.is_none(),
+                    "post-EOF poll must stay None, otherwise the inner is re-polled"
+                );
+            }
+            events
+        });
+
+        assert_eq!(events.len(), 2, "events: {events:?}");
+        assert!(matches!(&events[0], Ok(StreamEvent::TextDelta(text)) if text == "hi"));
+        assert!(matches!(
+            &events[1],
+            Ok(StreamEvent::MessageEnd { stop_reason }) if stop_reason.as_deref() == Some("stop")
+        ));
+    }
+
+    /// An inner that yields only an empty chunk (or nothing at all) must still
+    /// synthesize exactly one terminal `MessageEnd`, then report clean EOF.
+    /// Guarding against double synthesis or a hang when the tail is empty.
+    #[test]
+    fn empty_inner_synthesizes_single_message_end_then_clean_eof() {
+        let inner = futures::stream::unfold(
+            Some(()),
+            |state: Option<()>| async move {
+                state.map(|_| (Ok::<Bytes, reqwest::Error>(Bytes::new()), None))
+            },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            assert!(stream.next().await.is_none(), "second EOF poll must stay None");
+            events
+        });
+
+        assert_eq!(events.len(), 1, "events: {events:?}");
+        assert!(
+            matches!(&events[0], Ok(StreamEvent::MessageEnd { stop_reason }) if stop_reason.is_none()),
+            "expected a single synthesized MessageEnd, got: {events:?}"
+        );
+    }
+
     #[test]
     fn parse_next_event_coalesces_repeated_tool_call_id_chunks() {
         let provider_pin = Arc::new(std::sync::Mutex::new(None));
