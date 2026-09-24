@@ -1039,4 +1039,424 @@ mod tests {
 
         assert_ne!(first_turn_id, second_turn_id);
     }
+
+    // =========================================================================
+    //  Regression tests pinned against user-visible failure modes of
+    //  `OpenRouterStream`. Each test asserts a specific state (enum / word /
+    //  exact number) — no fuzz loops, no mega-suites.
+    // =========================================================================
+
+    /// FR-A/1: A normal upstream `[DONE]` sentinel must emit exactly one
+    /// terminal `MessageEnd`; the next poll after that must return `None`
+    /// without re-polling the non-fused inner stream (the `unfold` panic
+    /// class pinned at stream.rs:495-498).
+    #[test]
+    fn upstream_done_event_emits_message_end_then_terminal_none() {
+        let payload = "data: [DONE]\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        // State assertion: exactly one terminal MessageEnd, terminal_kind ==
+        // MessageEnd.
+        let terminal_kind: &str = match events.last() {
+            Some(Ok(StreamEvent::MessageEnd { .. })) => "MessageEnd",
+            other => panic!("terminal_kind must equal MessageEnd, got tail: {other:?}"),
+        };
+        let message_ends = events
+            .iter()
+            .filter(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })))
+            .count();
+        assert_eq!(terminal_kind, "MessageEnd");
+        assert_eq!(message_ends, 1, "exactly one MessageEnd expected, events: {events:?}");
+
+        // tail_kinds == ["None"]: re-poll after termination must yield
+        // `None` (no panic, no Terminated, no second `MessageEnd`).
+        let tail = futures::executor::block_on(stream.next());
+        assert!(tail.is_none(), "tail_kinds == [None], got {tail:?}");
+    }
+
+    /// FR-A/3: A final SSE event that never receives a trailing blank line
+    /// must be force-closed at EOF and produce exactly one terminal
+    /// `MessageEnd` whose `stop_reason` reflects the upstream `finish_reason`.
+    #[test]
+    fn unfinished_sse_buffer_force_close_produces_exactly_one_terminal_message_end() {
+        // Note: the data line is newline-terminated but has no blank-line
+        // terminator. `drain_after_eof` is responsible for appending `\n\n`
+        // so the final event still parses (#609).
+        let payload = "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        let terminals: Vec<Option<String>> = events
+            .iter()
+            .filter_map(|e| match e {
+                Ok(StreamEvent::MessageEnd { stop_reason }) => Some(stop_reason.clone()),
+                _ => None,
+            })
+            .collect();
+        let terminal_event_count = terminals.len();
+        let terminal_stop_reason: Option<String> = terminals.into_iter().flatten().next();
+
+        assert_eq!(
+            terminal_event_count, 1,
+            "exactly one terminal MessageEnd expected, events: {events:?}"
+        );
+        assert_eq!(
+            terminal_stop_reason,
+            Some("stop".to_string()),
+            "stop_reason must be Some(\"stop\")"
+        );
+    }
+
+    /// FR-B/1: N distinct tool-call ids must coalesce into N `ToolUseStart`
+    /// and N `ToolUseEnd` events, emitted in id order, after the stream
+    /// finishes. Pinned so a future refactor cannot drop or reorder the
+    /// pending-drain produced by the parser + EOF accumulator flush.
+    #[test]
+    fn tool_call_deltas_coalesce_into_exactly_n_final_blocks_by_id() {
+        let mut stream = test_stream();
+        let chunk1 = serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "x", "arguments": "{\"k\":1}"}
+                    }]
+                }
+            }]
+        });
+        let chunk2 = serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 1,
+                        "id": "call_2",
+                        "type": "function",
+                        "function": {"name": "y", "arguments": "{\"k\":2}"}
+                    }]
+                }
+            }]
+        });
+        let chunk3 = serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 2,
+                        "id": "call_3",
+                        "type": "function",
+                        "function": {"name": "z", "arguments": "{\"k\":3}"}
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        });
+        stream.buffer = format!(
+            "data: {chunk1}\n\ndata: {chunk2}\n\ndata: {chunk3}\n\ndata: [DONE]\n\n"
+        );
+
+        // Drain parse_next_event to completion. `parse_next_event` flushes
+        // accumulators when it sees `finish_reason` and the trailing [DONE]
+        // queues the terminal MessageEnd, so by the time it returns None
+        // the entire pending drain has been observed.
+        let mut events = Vec::new();
+        for _ in 0..32 {
+            match stream.parse_next_event() {
+                Some(event) => events.push(event),
+                None => break,
+            }
+        }
+
+        let final_tool_use_starts: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::ToolUseStart { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+
+        // Pair every emitted `ToolUseEnd` with the immediately-preceding
+        // `ToolUseStart` id (the emitter interleaves
+        // `ToolUseStart -> ToolInputDelta -> ToolUseEnd`, so `i-2` always
+        // points at the matching start).
+        let final_tool_use_ends: Vec<String> = events
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| match e {
+                StreamEvent::ToolUseEnd => match events.get(i.wrapping_sub(2)) {
+                    Some(StreamEvent::ToolUseStart { id, .. }) => Some(id.clone()),
+                    _ => panic!(
+                        "ToolUseEnd at index {i} has no preceding ToolUseStart; events: {events:?}"
+                    ),
+                },
+                _ => None,
+            })
+            .collect();
+
+        let expected_ids: Vec<String> =
+            ["call_1", "call_2", "call_3"].iter().map(|s| s.to_string()).collect();
+
+        assert_eq!(
+            final_tool_use_starts, expected_ids,
+            "final_tool_use_starts must equal [call_1, call_2, call_3]; events: {events:?}"
+        );
+        assert_eq!(
+            final_tool_use_ends, expected_ids,
+            "final_tool_use_ends must equal [call_1, call_2, call_3]; events: {events:?}"
+        );
+    }
+
+    /// FR-B/2: An event without any `finish_reason` field must not hang the
+    /// stream and must still emit exactly one terminal `MessageEnd`.
+    ///
+    /// Per stream.rs:420-433 the `finish_reason` block is gated on the
+    /// field being present *and* non-empty; an absent field leaves
+    /// `self.finish_reason` at `None`, so `queue_message_end` emits
+    /// `MessageEnd { stop_reason: None }`.
+    #[test]
+    fn missing_finish_reason_does_not_hang_stream_and_emits_message_end() {
+        // No `finish_reason` field on the choice; well-formed `\n\n` terminator.
+        let payload = "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        let terminal_event: Option<StreamEvent> = events
+            .iter()
+            .find_map(|e| match e {
+                Ok(StreamEvent::MessageEnd { stop_reason }) => {
+                    Some(StreamEvent::MessageEnd { stop_reason: stop_reason.clone() })
+                }
+                _ => None,
+            });
+        let terminal_count = events
+            .iter()
+            .filter(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })))
+            .count();
+
+        assert_eq!(terminal_count, 1, "exactly one MessageEnd, events: {events:?}");
+        assert!(
+            matches!(
+                terminal_event,
+                Some(StreamEvent::MessageEnd { stop_reason: None })
+            ),
+            "terminal_event must equal MessageEnd{{stop_reason: None}}, got: {terminal_event:?}"
+        );
+
+        // After the terminal, the next poll must return None (no hanging).
+        let reentry = futures::executor::block_on(stream.next());
+        assert!(
+            reentry.is_none(),
+            "nonterminal_event_count must remain 0 after the terminal; reentry: {reentry:?}"
+        );
+    }
+
+    /// FR-C/1: A provider 4xx mid-stream (`{"error":{"code":401,...}}`) must
+    /// surface as `StreamEvent::Error` *then* exactly one terminal
+    /// `MessageEnd`, in that order, then `None`.
+    #[test]
+    fn provider_4xx_mid_stream_emits_error_then_message_end_and_terminates() {
+        let payload = "data: {\"error\":{\"code\":401,\"message\":\"bad key\"}}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        // State assertion 1: the observed sequence is exactly
+        // [Error, MessageEnd] in that order.
+        let first_error_idx = events
+            .iter()
+            .position(|e| matches!(e, Ok(StreamEvent::Error { .. })));
+        let first_message_end_idx = events
+            .iter()
+            .position(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })));
+        assert!(
+            first_error_idx.is_some(),
+            "no StreamEvent::Error emitted; events: {events:?}"
+        );
+        assert!(
+            first_message_end_idx.is_some(),
+            "no StreamEvent::MessageEnd emitted; events: {events:?}"
+        );
+        assert!(
+            first_error_idx.unwrap() < first_message_end_idx.unwrap(),
+            "events must equal [Error, MessageEnd] in that order; events: {events:?}"
+        );
+
+        // State assertion 2: nothing after the terminal (no second error,
+        // no repeat MessageEnd).
+        let error_after_message_end = events
+            .iter()
+            .skip(first_message_end_idx.unwrap() + 1)
+            .any(|e| matches!(e, Ok(StreamEvent::Error { .. }) | Ok(StreamEvent::MessageEnd { .. })));
+        assert!(
+            !error_after_message_end,
+            "tail_after_message_end must equal []; events: {events:?}"
+        );
+
+        // State assertion 3: the live stream is now exhausted — the bug
+        // class pinned here would have re-polled the inner and panicked.
+        let tail = futures::executor::block_on(stream.next());
+        assert!(tail.is_none(), "tail_after_message_end must equal [None], got {tail:?}");
+    }
+
+    /// FR-C/2: Same shape as FR-C/1 but with a 5xx code. Pinned because
+    /// providers and transports classify 4xx vs 5xx differently and the
+    /// production error mapper must cover both classes.
+    #[test]
+    fn provider_5xx_mid_stream_emits_error_then_message_end_and_terminates() {
+        let payload = "data: {\"error\":{\"code\":502,\"message\":\"bad gateway\"}}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        let first_error_idx = events
+            .iter()
+            .position(|e| matches!(e, Ok(StreamEvent::Error { .. })));
+        let first_message_end_idx = events
+            .iter()
+            .position(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })));
+        assert!(
+            first_error_idx.is_some(),
+            "no StreamEvent::Error emitted; events: {events:?}"
+        );
+        assert!(
+            first_message_end_idx.is_some(),
+            "no StreamEvent::MessageEnd emitted; events: {events:?}"
+        );
+        assert!(
+            first_error_idx.unwrap() < first_message_end_idx.unwrap(),
+            "events must equal [Error, MessageEnd] in that order; events: {events:?}"
+        );
+
+        let error_after_message_end = events
+            .iter()
+            .skip(first_message_end_idx.unwrap() + 1)
+            .any(|e| matches!(e, Ok(StreamEvent::Error { .. }) | Ok(StreamEvent::MessageEnd { .. })));
+        assert!(
+            !error_after_message_end,
+            "tail_after_message_end must equal []; events: {events:?}"
+        );
+
+        let tail = futures::executor::block_on(stream.next());
+        assert!(tail.is_none(), "tail_after_message_end must equal [None], got {tail:?}");
+    }
+
+    /// FR-D/1: After the terminal `MessageEnd`, a second `poll_next` call
+    /// returns `Poll::Ready(None)` without re-polling a non-fused inner
+    /// stream. This is the literal `unfold` double-poll panic class pinned
+    /// at stream.rs:495-498, asserted as a discrete test (not just by
+    /// exhausting the `while let Some(...)` loop).
+    #[test]
+    fn reentrant_poll_after_terminal_state_returns_none_without_panic() {
+        // Empty delta + finish_reason, no text content, so a single poll
+        // reaches the terminal `MessageEnd` directly (the TextDelta path
+        // is exercised separately by other tests).
+        let payload = "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        // Drive to the terminal MessageEnd via one explicit poll.
+        let first = futures::executor::block_on(stream.next());
+        assert!(
+            matches!(
+                first,
+                Some(Ok(StreamEvent::MessageEnd { stop_reason: Some(ref reason) }))
+                    if reason == "stop"
+            ),
+            "first poll must equal Poll::Ready(Some(Ok(MessageEnd {{ stop_reason: Some(\"stop\") }}))); got {first:?}"
+        );
+
+        // State assertion: second poll must equal Poll::Ready(None) and
+        // must NOT panic, must NOT yield a Terminated message, and must
+        // NOT yield a second MessageEnd.
+        let second = futures::executor::block_on(stream.next());
+        assert!(
+            second.is_none(),
+            "second_poll must equal Poll::Ready(None), got {second:?}"
+        );
+
+        // Belt-and-suspenders: a third poll stays None.
+        let third = futures::executor::block_on(stream.next());
+        assert!(third.is_none(), "third_poll must also equal Poll::Ready(None), got {third:?}");
+    }
 }
