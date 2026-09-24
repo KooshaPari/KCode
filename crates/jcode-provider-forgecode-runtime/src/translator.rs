@@ -343,6 +343,7 @@ fn parse_content_blocks(content: &Value) -> Vec<SdkContentBlock> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser::CliMessage;
     use serde_json::json;
 
     #[test]

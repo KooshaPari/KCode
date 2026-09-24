@@ -631,6 +631,7 @@ pub fn load_open_resume_key() -> OptionalBinding {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use jcode_tui_core::keybind::alt_chord;
 
     #[test]
     fn auto_poke_toggle_can_be_remapped_or_disabled() {
@@ -653,7 +654,8 @@ mod tests {
         assert!(binding.matches(KeyCode::Enter, KeyModifiers::ALT));
         assert!(!binding.matches(KeyCode::Enter, KeyModifiers::empty()));
         assert!(!binding.matches(KeyCode::Enter, KeyModifiers::SHIFT));
-        assert_eq!(format_binding(&binding), "Alt+Enter");
+        // format_binding renders the platform keycap (`⌥` on macOS).
+        assert_eq!(format_binding(&binding), alt_chord("Enter"));
     }
 
     #[test]

@@ -100,6 +100,13 @@ pub async fn run_tui_client(
 
     if let Some(ref session_id) = resume_session {
         set_current_session(session_id);
+        // Tell HERDR which session this pane is bound to so it appears with an
+        // `agent_session` (restorable) instead of only an `agent_status`. A
+        // local/resume client never receives the server's `SessionId` event —
+        // the server comment in client_session.rs notes local clients learn
+        // their id from launch state — so launch state is the only chance to
+        // announce it. Mirrors the remote path in server_events.rs.
+        crate::herdr::spawn_report_session_id(session_id.clone());
     }
     let native_ssh = std::env::var_os("JCODE_SSH_REMOTE").is_some();
     if !native_ssh {

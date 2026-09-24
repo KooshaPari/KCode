@@ -240,13 +240,14 @@ impl App {
             Ok((retry_attempts, backoff_secs, retry_at)) => {
                 self.rate_limit_reset = Some(retry_at);
                 let content = format!(
-                    "⚡ Connection lost - retrying (attempt {}/{}, in {}s) - {}",
+                    "◈ Connection lost - retrying (attempt {}/{}, in {}s) - {}",
                     retry_attempts,
                     max_attempts,
                     backoff_secs,
                     reason
                         .trim()
                         .trim_start_matches("⚡ ")
+                        .trim_start_matches("◈ ")
                         .trim_start_matches("Connection lost")
                         .trim_start_matches('(')
                         .trim_end_matches('.')
@@ -257,8 +258,9 @@ impl App {
                         && (message.title.as_deref() == Some("Connection")
                             || message
                                 .content
-                                .starts_with("⚡ Server reload in progress - waiting for handoff")
-                            || message.content.starts_with("⚡ Connection lost"))
+                                .starts_with("◈ Server reload in progress - waiting for handoff")
+                            || message.content.starts_with("⚡ Connection lost")
+                            || message.content.starts_with("◈ Connection lost"))
                 }) {
                     self.replace_display_message_title_and_content(
                         idx,

@@ -537,26 +537,30 @@ fn test_account_switch_shorthand_switches_openai_account_by_label() {
     with_temp_jcode_home(|| {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
-        crate::auth::codex::upsert_account(crate::auth::codex::OpenAiAccount {
-            label: "openai2".to_string(),
-            access_token: "acc".to_string(),
-            refresh_token: "ref".to_string(),
-            id_token: None,
-            account_id: Some("acct_openai2".to_string()),
-            expires_at: Some(now_ms + 60_000),
-            email: Some("user2@example.com".to_string()),
-        })
-        .unwrap();
+        // upsert_account assigns canonical animal labels to new accounts since
+        // b28720562 (2026-08-16); the requested "openai2" label is not honored,
+        // so switch using the label upsert actually stored.
+        let stored_label =
+            crate::auth::codex::upsert_account(crate::auth::codex::OpenAiAccount {
+                label: "openai2".to_string(),
+                access_token: "acc".to_string(),
+                refresh_token: "ref".to_string(),
+                id_token: None,
+                account_id: Some("acct_openai2".to_string()),
+                expires_at: Some(now_ms + 60_000),
+                email: Some("user2@example.com".to_string()),
+            })
+            .unwrap();
 
         let mut app = create_test_app();
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-            app.input = "/account switch openai2".to_string();
+            app.input = format!("/account switch {stored_label}");
             app.submit_input();
 
             assert_eq!(
                 crate::auth::codex::active_account_label().as_deref(),
-                Some("openai-1")
+                Some(stored_label.as_str())
             );
         });
     });

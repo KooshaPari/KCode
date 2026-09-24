@@ -1347,7 +1347,9 @@ fn autodetected_profile_seeds_default_model_and_cache_namespace() {
     write_test_api_key(&temp, &zai.env_file, &zai.api_key_env, "test-zai-key");
 
     let provider = OpenRouterProvider::new().expect("provider");
-    assert_eq!(provider.model.blocking_read().clone(), "glm-4.5");
+    // `zai`'s default model moved to glm-5.3 when the provider defaults were
+    // refreshed (dbc9fb118); the profile constant is the contract here.
+    assert_eq!(provider.model.blocking_read().clone(), "glm-5.3");
     assert_eq!(
         std::env::var("JCODE_OPENROUTER_CACHE_NAMESPACE")
             .ok()

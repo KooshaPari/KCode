@@ -1,0 +1,18 @@
+# lefthook.yml — local pre-commit gate that replaces the openrouter EOF
+# regression cohort from .github/workflows/ci.yml. Per AGENTS.md, local
+# validation IS the gate; this hook fires whenever a file under
+# crates/jcode-provider-openrouter/ is staged.
+pre-commit:
+  parallel: true
+  commands:
+    openrouter-eof-cohort:
+      tags: [regression, gate]
+      glob: "crates/jcode-provider-openrouter/**/*"
+      run: |
+        SDKROOT="${SDKROOT:-/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk}" \
+        MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-15.0}" \
+          "$(rustup which cargo 2>/dev/null || echo cargo)" test \
+            -p jcode-provider-openrouter --lib \
+            eof_synthesis_does_not_repoll_a_non_fused_inner_stream \
+            eof_tail_flush_does_not_repoll_a_non_fused_inner_stream \
+            -- --nocapture

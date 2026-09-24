@@ -184,7 +184,13 @@ fn build_judge_visible_transcript_messages(parent_session: &Session) -> Vec<Stor
                 }
             }
             "assistant" => {
-                let mut text = rendered.content.trim().to_string();
+                // A rendered transcript honors `reasoning_display: full` and
+                // folds persisted reasoning into the content. A judge session
+                // must never see the model's reasoning regardless of the
+                // display config, so strip the reasoning-markup lines here.
+                let mut text = super::input::strip_reasoning_lines(&rendered.content)
+                    .trim()
+                    .to_string();
                 if !rendered.tool_calls.is_empty() {
                     let visible_tools = rendered
                         .tool_calls

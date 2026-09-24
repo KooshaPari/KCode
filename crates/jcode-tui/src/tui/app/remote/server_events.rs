@@ -1096,6 +1096,10 @@ pub(in crate::tui::app) fn handle_server_event(
             true
         }
         ServerEvent::Done { id } => {
+            // Report HERDR: the remote turn has finished; this pane is ready
+            // for input again. The client owns the pane identity, so it is the
+            // correct place to publish the idle transition.
+            crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
             let mut auto_poked = false;
             let mut completed_current_message = false;
             crate::logging::info(&format!(
@@ -1410,6 +1414,9 @@ pub(in crate::tui::app) fn handle_server_event(
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
             crate::set_current_session(&session_id);
+            // Report HERDR: native session identity so the pane can be restored
+            // from the sidebar. Mirrors the codex integration's session report.
+            crate::herdr::spawn_report_session_id(session_id.clone());
             app.note_client_focus(true);
             app.update_terminal_title();
             false
@@ -1462,12 +1469,13 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::Reloading { .. } => {
             app.append_reload_message("⟳ Server reload initiated...");
-            // In-process server reloads (self-dev build-reload) keep the same
-            // server PID and never disconnect this client, so the reconnect-time
-            // client re-exec never fires. If a newer client binary is on disk and
-            // we are idle, re-exec now so client-side (TUI) changes also take
-            // effect. No-op for non-selfdev sessions or when already current.
-            app.maybe_self_reload_after_server_reload()
+            // In-process server reloads keep the same server PID and never
+            // disconnect this client, so the reconnect-time client re-exec never
+            // fires. If a newer client binary is on disk and we are idle, re-exec
+            // now so client-side (TUI) changes also take effect. Applies to every
+            // session so a promoted server build reaches all clients; no-op when
+            // already current.
+            app.maybe_reload_client_after_server_reload()
         }
         ServerEvent::ReloadProgress {
             step,
@@ -1617,6 +1625,11 @@ pub(in crate::tui::app) fn handle_server_event(
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
             crate::set_current_session(&session_id);
+            // Adopting the Subscribe snapshot's session id is a binding event
+            // for clients that never see a dedicated `SessionId` message (e.g.
+            // a reconnect whose snapshot predates it). Report it so HERDR
+            // always has an `agent_session`, mirroring the `SessionId` arm.
+            crate::herdr::spawn_report_session_id(session_id.clone());
             app.note_client_focus(true);
             let session_changed = prev_session_id.as_deref() != Some(session_id.as_str());
             // The initial Subscribe snapshot predates an early startup Message
