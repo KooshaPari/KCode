@@ -52,6 +52,16 @@ pub struct OpenRouterStream {
     reasoning_buffer: String,
     finish_reason: Option<String>,
     message_end_emitted: bool,
+    /// Set once the inner transport reports `Poll::Ready(None)`.
+    ///
+    /// A `Stream` only guarantees to return `None` once; polling a non-fused
+    /// inner stream after that is undefined. The opt-in SSE capture tee
+    /// (`futures::stream::unfold` in `capture_sse_stream`) panics with
+    /// "Unfold must not be polled after it returned `Poll::Ready(None)`".
+    /// `OpenRouterStream` emits its terminal `MessageEnd` at EOF and is then
+    /// polled again by the caller to observe termination, so it must treat the
+    /// inner as fused from that point on.
+    inner_done: bool,
 }
 
 #[derive(Default)]
@@ -81,6 +91,7 @@ impl OpenRouterStream {
             reasoning_buffer: String::new(),
             finish_reason: None,
             message_end_emitted: false,
+            inner_done: false,
         }
     }
 
@@ -477,6 +488,48 @@ impl OpenRouterStream {
 
         None
     }
+
+    /// Drain the buffered tail and synthesize the terminal `MessageEnd` after the
+    /// inner transport has already returned `Poll::Ready(None)`.
+    ///
+    /// `poll_next` cannot re-poll the inner stream after EOF: a non-fused
+    /// `futures::stream::unfold` (used by the opt-in SSE capture tee in
+    /// `capture_sse_stream`) panics with
+    /// "Unfold must not be polled after it returned `Poll::Ready(None)`".
+    /// This helper is therefore responsible for *all* post-EOF emission:
+    /// flushing a mid-character UTF-8 tail, force-closing a buffer that never
+    /// received a trailing blank line (#609), flushing tool-call
+    /// accumulators, and emitting the terminal `MessageEnd`. It is idempotent
+    /// so that the outer `poll_next` loop can call it until it returns `None`.
+    /// Post-EOF emission is infallible (the inner transport is already closed
+    /// and every step operates on owned buffered data), so the helper returns
+    /// the `Result`-shaped item type expected by `Stream::poll_next`.
+    fn drain_after_eof(&mut self) -> Option<Result<StreamEvent>> {
+        // Flush any bytes held back mid-character. `Utf8StreamDecoder::flush`
+        // returns an empty slice after the first call, so this is idempotent.
+        let tail = self.utf8.flush();
+        if !tail.is_empty() {
+            self.buffer.push_str(&tail);
+        }
+        // Force-close a buffer that never received a trailing blank line
+        // (#609). The check is idempotent: once `\n\n` is appended,
+        // `ends_with` stays true and we never push it twice.
+        if !self.buffer.trim().is_empty() && !self.buffer.ends_with("\n\n") {
+            self.buffer.push_str("\n\n");
+        }
+
+        if let Some(event) = self.parse_next_event() {
+            return Some(Ok(event));
+        }
+
+        // Stream ended - emit any pending tool call, then the terminal
+        // `MessageEnd`. `queue_message_end` is idempotent: a second call after
+        // `MessageEnd` is queued sees `message_end_emitted = true` and returns.
+        self.flush_tool_call_accumulators();
+        self.queue_message_end();
+
+        self.pending.pop_front().map(Ok)
+    }
 }
 
 impl Stream for OpenRouterStream {
@@ -488,6 +541,15 @@ impl Stream for OpenRouterStream {
                 return Poll::Ready(Some(Ok(event)));
             }
 
+            // The inner transport already reported EOF: keep draining the
+            // buffered tail on later polls rather than re-polling a stream that
+            // is only guaranteed to return `None` once. Re-polling a non-fused
+            // inner (the `unfold`-based SSE capture tee) panics inside
+            // futures-util.
+            if self.inner_done {
+                return Poll::Ready(self.drain_after_eof());
+            }
+
             match self.inner.as_mut().poll_next(cx) {
                 Poll::Ready(Some(Ok(bytes))) => {
                     let text = self.utf8.decode(&bytes);
@@ -497,30 +559,8 @@ impl Stream for OpenRouterStream {
                     return Poll::Ready(Some(Err(anyhow::anyhow!("Stream error: {}", e))));
                 }
                 Poll::Ready(None) => {
-                    // Flush any bytes held back mid-character, then force-close a
-                    // buffer that never received a trailing blank line (#609).
-                    let tail = self.utf8.flush();
-                    if !tail.is_empty() {
-                        self.buffer.push_str(&tail);
-                    }
-                    if !self.buffer.trim().is_empty() && !self.buffer.ends_with("\n\n") {
-                        self.buffer.push_str("\n\n");
-                        if let Some(event) = self.parse_next_event() {
-                            return Poll::Ready(Some(Ok(event)));
-                        }
-                    }
-                    // Stream ended - emit any pending tool call
-                    self.flush_tool_call_accumulators();
-                    if let Some(event) = self.pending.pop_front() {
-                        return Poll::Ready(Some(Ok(event)));
-                    }
-                    if !self.message_end_emitted {
-                        self.message_end_emitted = true;
-                        return Poll::Ready(Some(Ok(StreamEvent::MessageEnd {
-                            stop_reason: self.finish_reason.take(),
-                        })));
-                    }
-                    return Poll::Ready(None);
+                    self.inner_done = true;
+                    return Poll::Ready(self.drain_after_eof());
                 }
                 Poll::Pending => {
                     return Poll::Pending;
@@ -785,6 +825,75 @@ mod tests {
             Some(Ok(StreamEvent::MessageEnd { stop_reason: Some(reason) })) if reason == "max_tokens"
         ));
         assert!(futures::executor::block_on(stream.next()).is_none());
+    }
+
+    /// Regression: `OpenRouterStream` synthesizes its terminal `MessageEnd` at
+    /// EOF, i.e. *after* the inner transport has already returned
+    /// `Poll::Ready(None)`, and a caller then polls the stream once more to
+    /// observe termination. That extra poll must not re-poll the dead inner
+    /// stream: `futures::stream::unfold` (used by the opt-in SSE capture tee
+    /// `capture_sse_stream`) panics with
+    /// "Unfold must not be polled after it returned `Poll::Ready(None)`".
+    #[test]
+    fn eof_synthesis_does_not_repoll_a_non_fused_inner_stream() {
+        // A finite unfold yields exactly one chunk and then `Ready(None)`; a
+        // second poll after termination panics inside futures-util.
+        let payload =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        // Drain to termination exactly like the provider loop does.
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        assert_eq!(events.len(), 2, "events: {events:?}");
+        assert!(matches!(&events[0], Ok(StreamEvent::TextDelta(text)) if text == "hi"));
+        assert!(matches!(
+            &events[1],
+            Ok(StreamEvent::MessageEnd { stop_reason }) if stop_reason.as_deref() == Some("stop")
+        ));
+    }
+
+    /// Same re-poll hazard when the tail arrives without a trailing blank line
+    /// (EOF force-closes the buffer and emits a buffered event after the inner
+    /// stream already returned `None`).
+    #[test]
+    fn eof_tail_flush_does_not_repoll_a_non_fused_inner_stream() {
+        let payload = "data: {\"choices\":[{\"delta\":{\"content\":\"tail\"}}]}";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let text = futures::executor::block_on(async {
+            let mut text = String::new();
+            while let Some(Ok(event)) = stream.next().await {
+                if let StreamEvent::TextDelta(delta) = event {
+                    text.push_str(&delta);
+                }
+            }
+            text
+        });
+
+        assert_eq!(text, "tail");
     }
 
     #[test]

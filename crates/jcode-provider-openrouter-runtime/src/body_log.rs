@@ -82,6 +82,9 @@ where
     }
 
     let stream = Box::pin(stream);
+    // `.fuse()`: a raw `unfold` panics if polled after it returned
+    // `Ready(None)`. Fusing makes the tee return `None` forever after EOF, so
+    // it cannot take down a consumer that probes for termination.
     futures::stream::unfold(
         (stream, file),
         |(mut stream, file)| async move {
@@ -97,6 +100,7 @@ where
             }
         },
     )
+    .fuse()
 }
 
 /// Write the serialized request body when `dir` is `Some`.
