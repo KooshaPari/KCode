@@ -660,6 +660,66 @@ fn test_reload_requests_exit_when_newer_binary() {
     }
 }
 
+/// Regression: an in-process `/server-reload` must restart the client binary
+/// for **every** idle session, not only self-dev canary sessions. Before this,
+/// `maybe_self_reload_after_server_reload` bailed out unless the session was a
+/// canary, so a promoted server build reached the daemon but every normal
+/// session kept running its old client binary.
+#[test]
+fn test_reload_client_after_server_reload_applies_to_non_selfdev() {
+    use std::time::{Duration, SystemTime};
+
+    let exe = crate::build::launcher_binary_path().unwrap();
+    let mut created = false;
+    if !exe.exists() {
+        if let Some(parent) = exe.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(&exe, "test").unwrap();
+        created = true;
+    }
+
+    // Idle remote client with a newer binary on disk reloads.
+    let mut app = create_test_app();
+    app.is_remote = true;
+    app.is_processing = false;
+    app.client_binary_mtime = Some(SystemTime::UNIX_EPOCH);
+    assert!(
+        !app.session.is_canary,
+        "fixture must be a normal (non-canary) session for this regression"
+    );
+    assert!(app.maybe_reload_client_after_server_reload());
+    assert!(app.reload_requested.is_some());
+    assert!(app.should_quit);
+
+    // A busy client must never be interrupted mid-turn.
+    let mut busy = create_test_app();
+    busy.is_remote = true;
+    busy.is_processing = true;
+    busy.client_binary_mtime = Some(SystemTime::UNIX_EPOCH);
+    assert!(!busy.maybe_reload_client_after_server_reload());
+    assert!(busy.reload_requested.is_none());
+    assert!(!busy.should_quit);
+
+    // An already-current client does not reload.
+    let mut current = create_test_app();
+    current.is_remote = true;
+    current.is_processing = false;
+    current.client_binary_mtime = Some(SystemTime::now() + Duration::from_secs(3600));
+    assert!(!current.maybe_reload_client_after_server_reload());
+    assert!(current.reload_requested.is_none());
+
+    // A local (non-remote) client is never reloaded by a server reload.
+    let mut local = create_test_app();
+    local.is_remote = false;
+    local.client_binary_mtime = Some(SystemTime::UNIX_EPOCH);
+    assert!(!local.maybe_reload_client_after_server_reload());
+
+    if created {
+        let _ = std::fs::remove_file(&exe);
+    }
+}
+
 #[test]
 fn test_background_update_ready_reloads_immediately_when_idle() {
     let mut app = create_test_app();
