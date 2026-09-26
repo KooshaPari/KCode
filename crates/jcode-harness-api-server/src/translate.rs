@@ -330,6 +330,8 @@ impl BridgeState {
                             | "clear"
                             | "prepare_disconnect"
                             | "notify_auth_changed"
+                            | "applet_action"
+                            | "close_applet"
                             | "invalidate_openai_usage"
                             | "invalidate_anthropic_usage"
                     )
@@ -1060,6 +1062,45 @@ impl BridgeState {
                 }
                 vec![Outbound::Legacy(rename)]
             }
+            "applet_action" | "close_applet" => {
+                let session_id = request["session_id"]
+                    .as_str()
+                    .filter(|sid| !sid.is_empty())
+                    .map(str::to_string)
+                    .or_else(|| self.session_id.clone());
+                let instance = request["instance"].as_str().unwrap_or_default();
+                let (Some(session_id), false) = (session_id, instance.is_empty()) else {
+                    return Self::error_reply(
+                        api_id,
+                        ErrorCode::InvalidRequest,
+                        "session_id and instance are required",
+                    );
+                };
+                let id = self.legacy_id();
+                self.pending_simple.push((id, api_id, SimpleKind::Ok));
+                let mut out = json!({
+                    "type": req,
+                    "id": id,
+                    "session_id": session_id,
+                    "instance": instance,
+                });
+                if req == "applet_action" {
+                    if !request["action"].is_object() {
+                        self.pending_simple.pop();
+                        return Self::error_reply(
+                            api_id,
+                            ErrorCode::InvalidRequest,
+                            "applet_action requires an action object",
+                        );
+                    }
+                    out["action"] = request["action"].clone();
+                    out["state"] = request.get("state").cloned().unwrap_or(json!({}));
+                    if let Some(key) = request["source_key"].as_str() {
+                        out["source_key"] = json!(key);
+                    }
+                }
+                vec![Outbound::Legacy(out)]
+            }
             "set_session_saved" => {
                 let id = self.legacy_id();
                 self.pending_simple.push((id, api_id, SimpleKind::Ok));
@@ -1147,6 +1188,22 @@ impl BridgeState {
             session_id: event["session_id"].as_str()?.to_string(),
             continuation_message,
             reconnect_notice,
+        }))
+    }
+
+    fn applet_frame(session_id: &str, snapshot: &Value) -> Option<ServerFrame> {
+        if session_id.is_empty() {
+            return None;
+        }
+        // Missing means empty; malformed must not clear a valid snapshot.
+        let snapshot = if snapshot.is_null() {
+            jcode_harness_api::jcode_applet_types::AgentApplets::default()
+        } else {
+            serde_json::from_value(snapshot.clone()).ok()?
+        };
+        Some(ServerFrame::event(ApiEvent::AppletState {
+            session_id: session_id.to_string(),
+            snapshot,
         }))
     }
 
@@ -1382,6 +1439,9 @@ impl BridgeState {
                     if let Some(snapshot) = event.get("side_panel") {
                         frames.extend(Self::side_panel_frame(&session_id, snapshot));
                     }
+                    if let Some(snapshot) = event.get("applets") {
+                        frames.extend(Self::applet_frame(&session_id, snapshot));
+                    }
                     if fresh_activity {
                         frames.push(ServerFrame::event(ApiEvent::SessionStatus {
                             session_id,
@@ -1483,6 +1543,15 @@ impl BridgeState {
                         Self::side_panel_frame(session_id, snapshot)
                             .into_iter()
                             .collect()
+                    }
+                    _ => vec![],
+                }
+            }
+            "applet_state" => {
+                let session_id = event["session_id"].as_str().or(self.session_id.as_deref());
+                match (session_id, event.get("snapshot")) {
+                    (Some(session_id), Some(snapshot)) if !snapshot.is_null() => {
+                        Self::applet_frame(session_id, snapshot).into_iter().collect()
                     }
                     _ => vec![],
                 }
@@ -1636,6 +1705,10 @@ impl BridgeState {
                         event["session_id"].as_str().unwrap_or_default(),
                         &event["side_panel"],
                     ));
+                    frames.extend(Self::applet_frame(
+                        event["session_id"].as_str().unwrap_or_default(),
+                        &event["applets"],
+                    ));
                     return frames;
                 }
                 // The catalog probe rides the same `history` reply shape but
@@ -1718,6 +1791,7 @@ impl BridgeState {
                     .is_none_or(|sid| Some(sid) == self.session_id.as_deref())
                 {
                     frames.extend(Self::side_panel_frame(&session(self), &event["side_panel"]));
+                    frames.extend(Self::applet_frame(&session(self), &event["applets"]));
                 }
                 frames
             }

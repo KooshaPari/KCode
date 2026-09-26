@@ -5392,6 +5392,7 @@ dependencies = [
  "jcode-agent-runtime",
  "jcode-ambient-types",
 <<<<<<< HEAD
+<<<<<<< HEAD
  "jcode-auto-dream",
  "jcode-base",
  "jcode-build-meta",
@@ -5415,6 +5416,9 @@ dependencies = [
  "jcode-pdf",
  "jcode-permission-bubble",
 =======
+=======
+ "jcode-applet-types",
+>>>>>>> 434a8f9c4 (applets: agent applets across SDK, protocol, server, applet tool and MCP-UI bridge)
  "jcode-base",
  "jcode-build-meta",
  "jcode-build-support",
@@ -5545,6 +5549,7 @@ dependencies = [
  "hex",
  "image",
  "jcode-agent-runtime",
+ "jcode-applet-types",
  "jcode-auth-types",
  "jcode-azure-auth",
  "jcode-background-types",
@@ -5809,8 +5814,12 @@ dependencies = [
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 =======
+=======
+ "jcode-applet-types",
+>>>>>>> 434a8f9c4 (applets: agent applets across SDK, protocol, server, applet tool and MCP-UI bridge)
  "jcode-session-types",
 >>>>>>> adbf48bd3 (feat(sdk): expose structured abnormal turn stop reasons)
  "jcode-side-panel-types",
@@ -6028,6 +6037,7 @@ name = "jcode-protocol"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "jcode-applet-types",
  "jcode-batch-types",
  "jcode-config-types",
  "jcode-message-types",
@@ -6507,6 +6517,7 @@ name = "jcode-sdk"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "jcode-applet-types",
  "jcode-harness-api",
  "jcode-provider-metadata",
  "jcode-transport",
