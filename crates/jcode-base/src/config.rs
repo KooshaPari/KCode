@@ -66,6 +66,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_DEBUG_SOCKET",
     "JCODE_DEFAULT_REASONING_DISPLAY",
     "JCODE_DICTATION_COMMAND",
+    "JCODE_DICTATION_RECORDER",
     "JCODE_DICTATION_KEY",
     "JCODE_DICTATION_MODE",
     "JCODE_DICTATION_TIMEOUT_SECS",
@@ -190,6 +191,7 @@ const CONFIG_ENV_KEYS: &[&str] = &[
     "JCODE_TRUSTED_EXTERNAL_AUTH_SOURCES",
     "JCODE_TYPING_SCROLL_LOCK_TOGGLE_KEY",
     "JCODE_UPDATE_CHANNEL",
+    "JCODE_VOICE_INPUT_KEY",
     "JCODE_WEBSEARCH_ENGINE",
     "JCODE_WEBSEARCH_FALLBACK_ENGINES",
     "JCODE_WORKSPACE_DOWN_KEY",
@@ -814,6 +816,10 @@ pub struct DictationConfig {
     /// Extra names or terms sent as recognition context to built-in voice
     /// transcription, added to Jcode's own product names.
     pub vocabulary: Vec<String>,
+    /// Built-in voice input: optional shell command that records the
+    /// microphone and prints raw mono 16 kHz s16le PCM to stdout. Empty means
+    /// auto-detect (pw-record, parecord, arecord, rec, ffmpeg).
+    pub recorder: String,
 }
 
 impl Default for DictationConfig {
@@ -824,6 +830,7 @@ impl Default for DictationConfig {
             key: "off".to_string(),
             timeout_secs: 90,
             vocabulary: Vec::new(),
+            recorder: String::new(),
         }
     }
 }

@@ -112,6 +112,7 @@ impl App {
         self.dictation_key = keybind::load_dictation_key();
         self.new_terminal_key = keybind::load_new_terminal_key();
         self.open_resume_key = keybind::load_open_resume_key();
+        self.voice_input_key = keybind::load_voice_input_key();
         self.fallback_switch_key = keybind::load_fallback_switch_key();
         self.scroll_keys = keybind::load_scroll_keys();
         crate::logging::info("KEYBINDINGS: reloaded from config change");
@@ -679,6 +680,9 @@ impl App {
             dictation_key: keybind::load_dictation_key(),
             new_terminal_key: keybind::load_new_terminal_key(),
             open_resume_key: keybind::load_open_resume_key(),
+            voice_input_key: keybind::load_voice_input_key(),
+            voice_input: None,
+            voice_input_last_press: None,
             fallback_switch_key: keybind::load_fallback_switch_key(),
             scroll_keys: keybind::load_scroll_keys(),
             keybindings_config_generation: crate::config::config_reload_generation(),
@@ -1144,6 +1148,9 @@ impl App {
             dictation_key: keybind::load_dictation_key(),
             new_terminal_key: keybind::load_new_terminal_key(),
             open_resume_key: keybind::load_open_resume_key(),
+            voice_input_key: keybind::load_voice_input_key(),
+            voice_input: None,
+            voice_input_last_press: None,
             fallback_switch_key: keybind::load_fallback_switch_key(),
             scroll_keys: keybind::load_scroll_keys(),
             keybindings_config_generation: crate::config::config_reload_generation(),

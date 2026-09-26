@@ -982,6 +982,10 @@ impl crate::tui::TuiState for App {
         self.remote_client_count
     }
 
+    fn voice_input_status(&self) -> Option<(bool, String)> {
+        self.voice_input_status_line()
+    }
+
     fn status_notice(&self) -> Option<String> {
         if !self.is_remote
             && self.provider.uses_jcode_compaction()

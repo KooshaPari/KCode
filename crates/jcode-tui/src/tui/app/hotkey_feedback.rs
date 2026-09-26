@@ -98,6 +98,7 @@ pub(super) struct RegistryInputs<'a> {
     pub dictation: &'a OptionalBinding,
     pub new_terminal: &'a OptionalBinding,
     pub open_resume: &'a OptionalBinding,
+    pub voice_input: &'a OptionalBinding,
     pub fallback_switch: &'a OptionalBinding,
     /// Workspace navigation only dispatches in remote/client mode.
     pub remote: bool,
@@ -174,6 +175,11 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
         inputs.open_resume.binding.clone(),
         "open_resume",
         "open the session picker",
+    );
+    push(
+        inputs.voice_input.binding.clone(),
+        "voice_input",
+        "start or stop voice input",
     );
     // Context-armed accept key (fallback offer / update merge). Quiet: it only
     // acts when an offer is on screen, which already explains itself.
@@ -718,6 +724,7 @@ impl App {
             dictation: &self.dictation_key,
             new_terminal: &self.new_terminal_key,
             open_resume: &self.open_resume_key,
+            voice_input: &self.voice_input_key,
             fallback_switch: &self.fallback_switch_key,
             remote,
         })
@@ -891,6 +898,10 @@ mod tests {
             binding: Some(ctrl('y')),
             label: Some("Ctrl+Y".to_string()),
         };
+        let voice_input = OptionalBinding {
+            binding: Some(key(KeyCode::Char(' '), KeyModifiers::CONTROL)),
+            label: Some("Ctrl+Space".to_string()),
+        };
         build_registry(&RegistryInputs {
             model_switch: &model_switch,
             effort: &effort,
@@ -901,6 +912,7 @@ mod tests {
             dictation: &dictation,
             new_terminal: &new_terminal,
             open_resume: &open_resume,
+            voice_input: &voice_input,
             fallback_switch: &fallback_switch,
             remote,
         })
@@ -1053,6 +1065,7 @@ mod tests {
             ("workspace_right", Some(&["workspace_right"])),
             ("new_terminal", Some(&["new_terminal"])),
             ("open_resume", Some(&["open_resume"])),
+            ("voice_input", Some(&["voice_input"])),
         ];
 
         let registry = test_inputs_registry(true);

@@ -1157,6 +1157,9 @@ pub struct KeybindingsConfig {
     /// Open the `/resume` session picker (default: "cmd+b" on macOS, "alt+r"
     /// elsewhere). Set "" to disable.
     pub open_resume: String,
+    /// Start/stop built-in voice input (default: "ctrl+space"). Speech streams
+    /// to Nari and the transcript is sent as a prompt. Set "" to disable.
+    pub voice_input: String,
     /// Session picker Enter action: "current-terminal" (default) or "new-terminal".
     /// Ctrl+Enter performs the alternate action.
     pub session_picker_enter: SessionPickerResumeAction,
@@ -1209,6 +1212,7 @@ impl Default for KeybindingsConfig {
                     "alt+r"
                 },
             ),
+            voice_input: get("voice_input", "ctrl+space"),
             session_picker_enter: SessionPickerResumeAction::CurrentTerminal,
         }
     }

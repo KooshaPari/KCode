@@ -217,6 +217,7 @@ fn test_handle_server_event_history_clears_connection_type_on_session_change_whe
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -271,6 +272,7 @@ fn test_handle_server_event_history_preserves_connection_type_for_same_session_w
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -325,6 +327,7 @@ fn test_handle_server_event_history_preserves_reasoning_effort_for_same_session_
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -406,6 +409,7 @@ fn test_handle_server_event_history_session_change_clears_streaming_preview_diag
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -510,6 +514,7 @@ fn test_handle_server_event_history_same_session_rewind_reapply_clears_streaming
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -620,6 +625,7 @@ fn test_handle_server_event_history_same_session_midstream_duplicate_is_dropped_
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -703,6 +709,7 @@ fn test_handle_server_event_history_same_session_midstream_duplicate_is_dropped_
                 compaction_mode: crate::config::CompactionMode::Reactive,
                 activity: None,
                 side_panel: crate::side_panel::SidePanelSnapshot::default(),
+                applets: Default::default(),
             },
             &mut remote,
         );
@@ -806,6 +813,7 @@ fn test_handle_server_event_history_same_session_rewind_then_late_done_does_not_
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -896,6 +904,7 @@ fn test_handle_server_event_history_session_change_clears_pending_interleaves() 
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -2072,6 +2081,7 @@ fn test_pending_startup_notice_survives_history_bootstrap_for_fresh_session() {
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );

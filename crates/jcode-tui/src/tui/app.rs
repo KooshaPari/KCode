@@ -101,6 +101,7 @@ mod state_ui;
 mod state_ui_input_helpers;
 mod update_sim;
 mod usage_reset;
+mod voice_input;
 pub(crate) use state_ui_input_helpers::{registered_command_entries, registered_command_names};
 mod state_ui_maintenance;
 mod state_ui_messages;
@@ -1516,6 +1517,12 @@ pub struct App {
     new_terminal_key: OptionalBinding,
     // Optional configured keybinding for opening the /resume session picker
     open_resume_key: OptionalBinding,
+    // Keybinding that starts/stops built-in voice input (Ctrl+Space default)
+    voice_input_key: OptionalBinding,
+    // Active built-in voice input (Nari streaming), if recording or finishing
+    voice_input: Option<voice_input::VoiceInput>,
+    // Last voice key press, to tell a held key's auto-repeat from a new press
+    voice_input_last_press: Option<Instant>,
     // Optional configured keybinding for accepting the post-error fallback offer
     fallback_switch_key: OptionalBinding,
     // Config reload generation the keybinding snapshot above was parsed at.

@@ -100,6 +100,11 @@ swarm_panel_focus = "alt+n"
 # Default: Cmd+B on macOS, Alt+R on Windows/Linux. Set "" to disable.
 # open_resume = "cmd+b"
 
+# Built-in voice input: press to record, press again to send the transcript.
+# Esc cancels. Needs a Nari API key (NARI_API_KEY or ~/.config/jcode/nari.env).
+# Default: Ctrl+Space. Set "" to disable.
+# voice_input = "ctrl+space"
+
 # /resume picker Enter behavior. Options: "current-terminal" or "new-terminal".
 # By default Enter resumes in this terminal; Ctrl+Enter performs the alternate action.
 session_picker_enter = "current-terminal"
@@ -126,6 +131,11 @@ timeout_secs = 90
 # Extra names or terms to help built-in voice transcription recognize them.
 # Jcode's own product names are always included.
 # vocabulary = ["Kubernetes", "Alice Zhang"]
+
+# Microphone recorder for built-in voice input (keybindings.voice_input).
+# Empty auto-detects pw-record, parecord, arecord, rec (SoX), or ffmpeg.
+# A custom command must print raw mono 16 kHz signed 16-bit little-endian PCM.
+# recorder = "arecord -q -t raw -f S16_LE -r 16000 -c 1 -"
 
 [display]
 # Diff display mode: "off", "inline" (default), "full-inline", or "file"

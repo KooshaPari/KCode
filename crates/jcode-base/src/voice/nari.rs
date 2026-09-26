@@ -208,7 +208,6 @@ pub fn nari_pcm_channel() -> (mpsc::Sender<Vec<i16>>, mpsc::Receiver<Vec<i16>>) 
 
 /// Microphone-owned channel. Holds 100 ms chunks for longer than the setup
 /// timeout so audio captured during the handshake is buffered, never dropped.
-#[cfg(feature = "voice-capture")]
 pub(super) fn capture_pcm_channel() -> (mpsc::Sender<Vec<i16>>, mpsc::Receiver<Vec<i16>>) {
     mpsc::channel((IO_TIMEOUT.as_secs() as usize + 5) * 10)
 }

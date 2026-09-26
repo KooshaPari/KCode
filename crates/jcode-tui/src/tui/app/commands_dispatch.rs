@@ -84,6 +84,7 @@ pub(super) fn ssh_unsupported_command(input: &str) -> bool {
             | "/goal"
             | "/dictate"
             | "/dictation"
+            | "/voice"
             | "/debug-fixture"
             | "/debug-visual"
             | "/screenshot"

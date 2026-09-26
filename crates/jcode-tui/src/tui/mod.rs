@@ -567,6 +567,11 @@ pub trait TuiState {
     fn connected_clients(&self) -> Option<usize>;
     /// Short-lived notice shown in the status line (e.g., model switch, toggle diff)
     fn status_notice(&self) -> Option<String>;
+    /// Built-in voice input status while recording or transcribing:
+    /// `(recording, text)`. Shown ahead of every other notice.
+    fn voice_input_status(&self) -> Option<(bool, String)> {
+        None
+    }
     /// How long since the user last pressed a key, scrolled, or pasted, or
     /// `None` when they have not interacted yet.
     ///
@@ -884,6 +889,9 @@ pub trait TuiState {
     }
     /// Whether the notification line has content to show
     fn has_notification(&self) -> bool {
+        if self.voice_input_status().is_some() {
+            return true;
+        }
         if self.openai_reset_hint().is_some() {
             return true;
         }
