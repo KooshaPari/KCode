@@ -164,7 +164,13 @@ impl Agent {
             // Background features (memory recall) can hit a plan limit with no
             // visible failure. Surface it once through the agent so every UI
             // shows the upgrade prompt instead of silently degrading.
-            if let Some(notice) = crate::subscription_notice::take() {
+            // Agents without memory (auth smoke tests, headless probes) leave
+            // the notice for a user-facing session.
+            if let Some(notice) = self
+                .memory_enabled
+                .then(crate::subscription_notice::take)
+                .flatten()
+            {
                 messages_with_memory.push(Message::user(&Self::plan_limit_reminder(&notice)));
             }
 
