@@ -46,6 +46,7 @@ const REQUIRES_ATTACH: &[&str] = &[
     "set_reasoning_effort",
     "compact",
     "rename_session",
+    "set_session_saved",
     "get_runtime_info",
     "fork_session",
     "read_file",
@@ -227,6 +228,8 @@ impl PersistedSessionMetadata {
         self.custom_title
             .as_deref()
             .and_then(Self::normalized_title)
+            // Bookmarks labelled before labels doubled as titles.
+            .or_else(|| self.save_label())
             .or_else(|| self.todo_title.as_deref().and_then(Self::normalized_title))
             .or_else(|| self.title.as_deref().and_then(Self::normalized_title))
     }
@@ -1056,6 +1059,19 @@ impl BridgeState {
                     rename["title"] = json!(title);
                 }
                 vec![Outbound::Legacy(rename)]
+            }
+            "set_session_saved" => {
+                let id = self.legacy_id();
+                self.pending_simple.push((id, api_id, SimpleKind::Ok));
+                let mut save = json!({
+                    "type": "set_session_saved",
+                    "id": id,
+                    "saved": request["saved"].as_bool().unwrap_or(true),
+                });
+                if let Some(label) = request["label"].as_str() {
+                    save["label"] = json!(label);
+                }
+                vec![Outbound::Legacy(save)]
             }
             "rewind_undo" => {
                 let id = self.legacy_id();
