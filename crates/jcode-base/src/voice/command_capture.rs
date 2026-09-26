@@ -141,17 +141,31 @@ fn known_recorders() -> Vec<RecorderCommand> {
             ],
         ),
     ];
-    let ffmpeg_input: &[&str] = if cfg!(target_os = "macos") {
-        &["-f", "avfoundation", "-i", ":default"]
-    } else if cfg!(windows) {
-        &["-f", "dshow", "-i", "audio=default"]
-    } else {
-        &["-f", "pulse", "-i", "default"]
-    };
-    let mut ffmpeg = vec!["-hide_banner", "-loglevel", "error", "-nostdin"];
-    ffmpeg.extend_from_slice(ffmpeg_input);
-    ffmpeg.extend_from_slice(&["-ac", "1", "-ar", "16000", "-f", "s16le", "-"]);
-    recorders.push(RecorderCommand::new("ffmpeg", &ffmpeg));
+    // ffmpeg has no portable "default microphone" device name on macOS
+    // (avfoundation needs an index) or Windows (dshow needs the device name),
+    // and those platforms capture natively. Offer it only through PulseAudio.
+    if cfg!(not(any(target_os = "macos", windows))) {
+        recorders.push(RecorderCommand::new(
+            "ffmpeg",
+            &[
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-nostdin",
+                "-f",
+                "pulse",
+                "-i",
+                "default",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-f",
+                "s16le",
+                "-",
+            ],
+        ));
+    }
     recorders
 }
 
