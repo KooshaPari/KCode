@@ -18,6 +18,10 @@ use tokio::sync::{Mutex, RwLock, watch};
 /// server from blocking a single tool call forever (and never blocks spawn).
 const CONNECT_ON_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+type OwnedConnectionResult = Option<std::result::Result<(), String>>;
+type OwnedConnectionSender = watch::Sender<OwnedConnectionResult>;
+type OwnedConnecting = Arc<Mutex<HashMap<String, OwnedConnectionSender>>>;
+
 /// Meter a completed tool call for partner-discovery provenance. No-op for
 /// servers without discovery provenance (the overwhelmingly common case) and
 /// whenever `sponsors.enabled` is false. Counts only; never content.
@@ -54,12 +58,63 @@ pub struct McpManager {
     /// In-flight owned-server handshakes, keyed by server name. This prevents
     /// background startup and a manual connect from spawning two processes for
     /// the same session server at the same time.
-    connecting: Mutex<HashMap<String, watch::Sender<Option<std::result::Result<(), String>>>>>,
+    connecting: OwnedConnecting,
     config: McpConfig,
     session_id: String,
     /// Project directory used to resolve project-local MCP config. `None`
     /// loads only global config and never consults the process working directory.
     project_dir: Option<std::path::PathBuf>,
+}
+
+struct OwnedConnectionAttemptGuard {
+    connecting: OwnedConnecting,
+    name: String,
+    sender: OwnedConnectionSender,
+    armed: bool,
+}
+
+impl OwnedConnectionAttemptGuard {
+    fn new(connecting: OwnedConnecting, name: &str, sender: OwnedConnectionSender) -> Self {
+        Self {
+            connecting,
+            name: name.to_string(),
+            sender,
+            armed: true,
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for OwnedConnectionAttemptGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+
+        let connecting = Arc::clone(&self.connecting);
+        let name = self.name.clone();
+        let sender = self.sender.clone();
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+
+        handle.spawn(async move {
+            let mut connecting = connecting.lock().await;
+            let is_current = connecting
+                .get(&name)
+                .is_some_and(|current| current.same_channel(&sender));
+            if is_current {
+                connecting.remove(&name);
+                let _ = sender.send(Some(Err(format!(
+                    "MCP server '{}' connection attempt was cancelled",
+                    name
+                ))));
+            }
+        });
+    }
 }
 
 impl McpManager {
@@ -70,7 +125,7 @@ impl McpManager {
             pool: None,
             pool_handles: RwLock::new(HashMap::new()),
             owned_clients: RwLock::new(HashMap::new()),
-            connecting: Mutex::new(HashMap::new()),
+            connecting: Arc::new(Mutex::new(HashMap::new())),
             config: McpConfig::load_for_dir(project_dir.as_deref()),
             session_id: "owned".to_string(),
             project_dir,
@@ -94,7 +149,7 @@ impl McpManager {
             pool: Some(pool),
             pool_handles: RwLock::new(HashMap::new()),
             owned_clients: RwLock::new(HashMap::new()),
-            connecting: Mutex::new(HashMap::new()),
+            connecting: Arc::new(Mutex::new(HashMap::new())),
             config: McpConfig::load_for_dir(project_dir.as_deref()),
             session_id,
             project_dir,
@@ -107,7 +162,7 @@ impl McpManager {
             pool: None,
             pool_handles: RwLock::new(HashMap::new()),
             owned_clients: RwLock::new(HashMap::new()),
-            connecting: Mutex::new(HashMap::new()),
+            connecting: Arc::new(Mutex::new(HashMap::new())),
             config,
             session_id: "owned".to_string(),
             project_dir: None,
@@ -229,19 +284,23 @@ impl McpManager {
         self.connect_owned(name, config).await
     }
 
+    #[allow(clippy::await_holding_lock)]
     async fn connect_owned(&self, name: &str, config: &McpServerConfig) -> Result<()> {
         if self.owned_clients.read().await.contains_key(name) {
             return Ok(());
         }
 
-        let (mut waiter, leader) = {
+        let (mut waiter, leader, sender) = {
             let mut connecting = self.connecting.lock().await;
             if let Some(sender) = connecting.get(name) {
-                (Some(sender.subscribe()), false)
+                (Some(sender.subscribe()), false, None)
             } else {
+                if self.owned_clients.read().await.contains_key(name) {
+                    return Ok(());
+                }
                 let (sender, _receiver) = watch::channel(None);
-                connecting.insert(name.to_string(), sender);
-                (None, true)
+                connecting.insert(name.to_string(), sender.clone());
+                (None, true, Some(sender))
             }
         };
 
@@ -259,23 +318,30 @@ impl McpManager {
                 .map_err(anyhow::Error::msg);
         }
 
-        let result =
-            match McpClient::connect_in_dir(name.to_string(), config, self.project_dir.as_deref())
-                .await
-            {
-                Ok(client) => {
-                    self.owned_clients
-                        .write()
-                        .await
-                        .insert(name.to_string(), client);
-                    Ok(())
-                }
-                Err(error) => Err(format!("{:#}", error)),
-            };
+        let sender = sender.expect("owned MCP connection leader must have a sender");
+        let mut attempt_guard =
+            OwnedConnectionAttemptGuard::new(Arc::clone(&self.connecting), name, sender.clone());
+        let connection =
+            McpClient::connect_in_dir(name.to_string(), config, self.project_dir.as_deref()).await;
 
-        if let Some(sender) = self.connecting.lock().await.remove(name) {
+        let mut connecting = self.connecting.lock().await;
+        let mut clients = self.owned_clients.write().await;
+        let result = match connection {
+            Ok(client) => {
+                clients.insert(name.to_string(), client);
+                Ok(())
+            }
+            Err(error) => Err(format!("{:#}", error)),
+        };
+
+        if connecting
+            .get(name)
+            .is_some_and(|current| current.same_channel(&sender))
+        {
+            connecting.remove(name);
             let _ = sender.send(Some(result.clone()));
         }
+        attempt_guard.disarm();
 
         result.map_err(anyhow::Error::msg)
     }
@@ -717,6 +783,38 @@ mod tests {
             started.elapsed() < Duration::from_secs(35),
             "connect-on-first-call must be bounded"
         );
+    }
+
+    #[tokio::test]
+    async fn cancelled_owned_connection_notifies_waiters_and_clears_entry() {
+        let manager = McpManager::with_config(empty_config());
+        let (sender, _receiver) = watch::channel(None);
+        manager
+            .connecting
+            .lock()
+            .await
+            .insert("cancelled".to_string(), sender.clone());
+        let mut waiter = sender.subscribe();
+
+        drop(OwnedConnectionAttemptGuard::new(
+            Arc::clone(&manager.connecting),
+            "cancelled",
+            sender,
+        ));
+
+        tokio::time::timeout(Duration::from_secs(1), waiter.changed())
+            .await
+            .expect("cancellation cleanup must notify waiters")
+            .expect("cancellation sender must remain alive");
+        assert_eq!(
+            waiter
+                .borrow()
+                .as_ref()
+                .and_then(|result| result.as_ref().err())
+                .map(String::as_str),
+            Some("MCP server 'cancelled' connection attempt was cancelled")
+        );
+        assert!(!manager.connecting.lock().await.contains_key("cancelled"));
     }
 
     #[cfg(unix)]
