@@ -1,7 +1,7 @@
 use super::*;
 use std::path::Path;
 use std::sync::{
-    Arc,
+    Arc, OnceLock,
     atomic::{AtomicBool, Ordering},
     mpsc,
 };
@@ -1212,17 +1212,29 @@ fn invalidated_in_flight_load_does_not_repopulate_session_list_cache() {
     let (release_publish_tx, release_publish_rx) = mpsc::channel();
     let hook_used = Arc::new(AtomicBool::new(false));
     let hook_used_for_hook = Arc::clone(&hook_used);
+    let loader_thread_id = Arc::new(OnceLock::new());
+    let loader_thread_id_for_hook = Arc::clone(&loader_thread_id);
     set_before_session_list_cache_publish_hook(Some(Box::new(move || {
-        if hook_used_for_hook
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
+        let is_target_loader = loader_thread_id_for_hook
+            .get()
+            .is_some_and(|thread_id| *thread_id == std::thread::current().id());
+        if is_target_loader
+            && hook_used_for_hook
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
         {
             publish_reached_tx.send(()).expect("signal publish reached");
             release_publish_rx.recv().expect("wait for release");
         }
     })));
 
-    let loader = std::thread::spawn(load_sessions);
+    let loader_thread_id_for_loader = Arc::clone(&loader_thread_id);
+    let loader = std::thread::spawn(move || {
+        loader_thread_id_for_loader
+            .set(std::thread::current().id())
+            .expect("record loader thread");
+        load_sessions()
+    });
     publish_reached_rx
         .recv_timeout(std::time::Duration::from_secs(5))
         .expect("in-flight load reached cache publication");
