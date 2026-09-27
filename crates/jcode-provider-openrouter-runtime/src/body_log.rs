@@ -288,3 +288,85 @@ mod body_log_tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+/// Inventory-unit invariant for the capture directories.
+///
+/// The two capture paths write **different kinds of artifact under different
+/// names**, and evidence inventories that count "capture files" without saying
+/// which kind they mean are ambiguous. A real audit confused the two: an
+/// inventory of 99 was reported as a total when 99 was the SSE count and 5
+/// additional request-body captures sat alongside it (104 actual capture
+/// files). These tests make the split executable rather than prose.
+///
+/// The classifier is test-only on purpose. It is an evidence-accounting
+/// concern, not runtime behavior, so production capture output is unchanged.
+#[cfg(test)]
+mod capture_unit_tests {
+    /// The two disjoint artifact kinds a capture directory can contain.
+    #[derive(Debug, PartialEq, Eq)]
+    enum CaptureUnit {
+        /// Model *output*: `<unix_ms>-<model>-sse.txt`.
+        Sse,
+        /// Request *input*: `<unix_ms>-<model>.json`.
+        Body,
+    }
+
+    /// Classify a capture artifact by filename, or `None` if it is not one.
+    fn capture_artifact_unit(file_name: &str) -> Option<CaptureUnit> {
+        if file_name.ends_with("-sse.txt") {
+            Some(CaptureUnit::Sse)
+        } else if file_name.ends_with(".json") {
+            Some(CaptureUnit::Body)
+        } else {
+            None
+        }
+    }
+
+    #[test]
+    fn sse_and_body_names_classify_into_disjoint_units() {
+        assert_eq!(
+            capture_artifact_unit("1790535284009-MiniMax-M3-sse.txt"),
+            Some(CaptureUnit::Sse)
+        );
+        assert_eq!(
+            capture_artifact_unit("1790535291158-MiniMax-M3.json"),
+            Some(CaptureUnit::Body)
+        );
+        // Non-artifacts in the same directory must not be silently counted.
+        assert_eq!(capture_artifact_unit("acceptance-summary.log"), None);
+        assert_eq!(capture_artifact_unit("README.txt"), None);
+    }
+
+    #[test]
+    fn mixed_capture_directory_reports_per_unit_counts_not_one_total() {
+        // A directory holding both artifact kinds, mirroring the real
+        // m3-accept/m3-final layout: SSE output plus the request bodies.
+        let names = [
+            "1790250195512-MiniMax-M3-sse.txt",
+            "1790250224588-minimax-m3-sse.txt",
+            "1790250186369-MiniMax-M3.json",
+            "1790250213638-minimax-m3.json",
+            "run.log",
+        ];
+        let sse = names
+            .iter()
+            .filter(|n| capture_artifact_unit(n) == Some(CaptureUnit::Sse))
+            .count();
+        let body = names
+            .iter()
+            .filter(|n| capture_artifact_unit(n) == Some(CaptureUnit::Body))
+            .count();
+        let other = names
+            .iter()
+            .filter(|n| capture_artifact_unit(n).is_none())
+            .count();
+
+        assert_eq!(sse, 2, "SSE unit count");
+        assert_eq!(body, 2, "body unit count");
+        assert_eq!(other, 1, "non-artifact count");
+        // The point of the invariant: the per-unit counts are the reportable
+        // numbers, and their sum is a distinct, explicitly named quantity.
+        assert_eq!(sse + body, 4, "all-unit total must be stated as its own measure");
+        assert_ne!(sse + body, names.len(), "non-artifacts must never enter a total");
+    }
+}
