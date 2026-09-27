@@ -818,8 +818,9 @@ pub struct DictationConfig {
     pub key: String,
     /// Maximum time to wait for the command to finish (0 = no timeout).
     pub timeout_secs: u64,
-    /// Extra names or terms sent as recognition context to built-in voice
-    /// transcription, added to Jcode's own product names.
+    /// Personal names or terms sent as recognition context to built-in voice
+    /// transcription. Appended to the built-in vocabulary every user gets
+    /// (Jcode names plus common coding agent terms), for this user only.
     pub vocabulary: Vec<String>,
     /// Built-in voice input: optional shell command that records the
     /// microphone and prints raw mono 16 kHz s16le PCM to stdout. Empty means
