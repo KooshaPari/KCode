@@ -52,9 +52,10 @@ fn server_reload_report_preserves_json_fields_and_exit_status_contract() {
 #[tokio::test]
 async fn server_reload_without_listener_is_a_successful_json_noop() {
     let _env_lock = crate::storage::lock_test_env();
-    let _saved = SavedEnv::capture(&["JCODE_HOME"]);
+    let _saved = SavedEnv::capture(&["JCODE_HOME", "JCODE_SOCKET"]);
     let home = tempfile::tempdir().expect("tempdir");
     crate::env::set_var("JCODE_HOME", home.path());
+    crate::env::set_var("JCODE_SOCKET", home.path().join("isolated.sock"));
 
     let mut output = Vec::new();
     let result = run_server_reload_command_to(false, true, &mut output).await;

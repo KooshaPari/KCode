@@ -2218,7 +2218,7 @@ async fn run_server_reload_command_to(
 
     let socket = crate::server::socket_path();
 
-    let emit = |report: ServerReloadReport| -> Result<()> {
+    let mut emit = |report: ServerReloadReport| -> Result<()> {
         let outcome = validate_server_reload_report(&report);
         if emit_json {
             serde_json::to_writer_pretty(&mut *stdout, &report)?;
