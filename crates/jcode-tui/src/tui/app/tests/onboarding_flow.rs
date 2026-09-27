@@ -1718,6 +1718,14 @@ fn telemetry_pill_opens_settings_page_and_commits_choice() {
             assert!(crate::telemetry::is_enabled());
             assert!(crate::telemetry::content_sharing_enabled());
         }
+        let no_telemetry_marker = std::path::Path::new(
+            &std::env::var_os("JCODE_HOME").expect("temporary JCODE_HOME"),
+        )
+        .join("no_telemetry");
+        assert!(
+            !no_telemetry_marker.exists(),
+            "Send everything must remove the persisted opt-out marker"
+        );
         // We are back on the summary screen with the import still pending.
         match app.onboarding_phase() {
             Some(OnboardingPhase::Login {
@@ -1777,6 +1785,14 @@ fn telemetry_page_send_nothing_disables_telemetry_and_esc_goes_back() {
         drop(delivery_block);
         assert!(!crate::telemetry::is_enabled());
         assert!(!crate::telemetry::content_sharing_enabled());
+        let no_telemetry_marker = std::path::Path::new(
+            &std::env::var_os("JCODE_HOME").expect("temporary JCODE_HOME"),
+        )
+        .join("no_telemetry");
+        assert!(
+            no_telemetry_marker.exists(),
+            "Send nothing must persist the opt-out marker"
+        );
     });
 }
 
