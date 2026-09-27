@@ -2194,6 +2194,26 @@ pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<(
         } else if !report.detail.is_empty() {
             println!("{}", report.detail);
         }
+        // A reload that asked the old server to hand over, and then never saw the
+        // new one take the socket, did not succeed. It is the one outcome a caller
+        // cannot infer from the exit status alone: until now every path here returned
+        // Ok(()), and the distinction lived only inside the JSON body.
+        //
+        // Scope is deliberately narrow, because the comment below documents that an
+        // installer may call `jcode server reload` unconditionally. The two states
+        // that are arguably a success keep exit 0: there was nothing running
+        // (`had_listener == false`), or the binary was already current
+        // (`already_current`). Only the not-ready handoff, where the daemon is
+        // genuinely not serving yet, reports failure.
+        //
+        // The report is printed ABOVE this check, so `--json` output is byte-identical
+        // for every caller that parses it.
+        if report.had_listener && !report.already_current && !report.handoff_ready {
+            return Err(anyhow::anyhow!(
+                "jcode server reload was requested but the new server never became ready: {}",
+                report.detail
+            ));
+        }
         Ok(())
     };
 
