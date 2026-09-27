@@ -279,6 +279,11 @@ pub enum ApiEvent {
         /// Reasoning effort, e.g. `high`, for providers that expose it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reasoning_effort: Option<String>,
+        /// Credential the session bills against, as resolved by the daemon:
+        /// `oauth` or `api_key`. `None` when the provider has no such split
+        /// or the daemon did not report it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auth_method: Option<String>,
     },
 
     /// Reply to `ListModels`: the models this session can switch to.
@@ -301,6 +306,12 @@ pub enum ApiEvent {
         /// Reasoning effort, e.g. `high`, for providers that expose it.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reasoning_effort: Option<String>,
+        /// Credential the session bills against (`oauth` or `api_key`), as
+        /// resolved by the daemon. Clients must prefer this over guessing
+        /// from `routes`, where one model can have both an OAuth and an API
+        /// key route.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        auth_method: Option<String>,
         routes: Vec<ModelRouteInfo>,
     },
 

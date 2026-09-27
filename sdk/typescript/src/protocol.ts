@@ -333,6 +333,7 @@ export type ApiEvent =
       provider?: string;
       model?: string;
       reasoning_effort?: string;
+      auth_method?: string;
     }
   | { ev: "models"; session_id: string; models: string[]; current?: string }
   | {
@@ -341,6 +342,7 @@ export type ApiEvent =
       provider?: string;
       model?: string;
       reasoning_effort?: string;
+      auth_method?: string;
       routes: ModelRouteInfo[];
     }
   | { ev: "credential_updated"; provider: string; configured: boolean }
