@@ -11,6 +11,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
+mod discovery;
+mod live;
+
 const ACP_PROTOCOL_VERSION: u64 = 1;
 
 const JSONRPC_PARSE_ERROR: i64 = -32700;
@@ -91,6 +94,8 @@ struct DaemonSession {
     active_prompt_id: Mutex<Option<u64>>,
     prompt_running: AtomicBool,
     ui_state: Mutex<SessionUiState>,
+    events: Mutex<Option<tokio::sync::mpsc::Receiver<Result<ServerEvent>>>>,
+    pump: Mutex<Option<tokio::task::AbortHandle>>,
 }
 
 /// Session-scoped provider/model state used to surface ACP `configOptions`
@@ -208,6 +213,8 @@ impl DaemonSession {
             active_prompt_id: Mutex::new(None),
             prompt_running: AtomicBool::new(false),
             ui_state: Mutex::new(SessionUiState::default()),
+            events: Mutex::new(None),
+            pump: Mutex::new(None),
         }
     }
 
@@ -232,6 +239,18 @@ impl DaemonSession {
     }
 
     async fn read_event(&self) -> Result<ServerEvent> {
+        let mut events = self.events.lock().await;
+        if let Some(receiver) = events.as_mut() {
+            return receiver
+                .recv()
+                .await
+                .unwrap_or_else(|| Err(anyhow::anyhow!("Jcode daemon disconnected")));
+        }
+        drop(events);
+        self.read_raw_event().await
+    }
+
+    async fn read_raw_event(&self) -> Result<ServerEvent> {
         let mut line = String::new();
         let mut reader = self.reader.lock().await;
         let n = reader.read_line(&mut line).await?;
@@ -280,6 +299,9 @@ impl AcpRuntime {
             line.clear();
             let n = reader.read_line(&mut line).await?;
             if n == 0 {
+                for session in self.sessions.lock().await.values() {
+                    session.stop_pump().await;
+                }
                 return Ok(());
             }
             if line.trim().is_empty() {
@@ -321,6 +343,17 @@ impl AcpRuntime {
                 if let Some(id) = message.id {
                     self.write_result(id, initialize_result(&message.params, self.profile))
                         .await?;
+                }
+            }
+            "session/list" => {
+                if let Some(id) = message.id {
+                    match discovery::list(&message.params) {
+                        Ok(result) => self.write_result(id, result).await?,
+                        Err(error) => {
+                            self.write_error_value(id, JSONRPC_INVALID_PARAMS, error.to_string())
+                                .await?
+                        }
+                    }
                 }
             }
             "session/new" => self.handle_session_new(message).await?,
@@ -395,10 +428,7 @@ impl AcpRuntime {
             Ok(session) => {
                 let session_id = session.session_id.clone();
                 let state = session.ui_state.lock().await.clone();
-                self.sessions
-                    .lock()
-                    .await
-                    .insert(session_id.clone(), Arc::new(session));
+                self.register_session(session).await;
                 let mut result = json!({ "sessionId": session_id });
                 insert_session_configuration(&mut result, &state);
                 self.write_result(id, result).await?;
@@ -452,10 +482,7 @@ impl AcpRuntime {
         {
             Ok(session) => {
                 let state = session.ui_state.lock().await.clone();
-                self.sessions
-                    .lock()
-                    .await
-                    .insert(session.session_id.clone(), Arc::new(session));
+                self.register_session(session).await;
                 let mut result = json!({});
                 insert_session_configuration(&mut result, &state);
                 self.write_result(id, result).await?;
@@ -523,7 +550,10 @@ impl AcpRuntime {
 
         let runtime = self.clone();
         tokio::spawn(async move {
-            let result = runtime.run_prompt(id.clone(), session, text, images).await;
+            let result = runtime
+                .run_prompt(id.clone(), session.clone(), text, images)
+                .await;
+            cleanup_prompt_state(&session).await;
             if let Err(err) = result {
                 let _ = runtime
                     .write_error_value(
@@ -555,6 +585,7 @@ impl AcpRuntime {
         if let Some(session) = session {
             let cancel_id = session.next_id();
             let _ = session.send(&Request::Cancel { id: cancel_id }).await;
+            session.stop_pump().await;
         }
         if let Some(id) = message.id {
             self.write_result(id, json!({})).await?;
@@ -627,7 +658,11 @@ impl AcpRuntime {
             .await?;
             return Ok(());
         };
-        if session.prompt_running.load(Ordering::SeqCst) {
+        if session
+            .prompt_running
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
             self.write_error_value(
                 id,
                 JSONRPC_SERVER_ERROR,
@@ -638,29 +673,32 @@ impl AcpRuntime {
         }
 
         let request_id = session.next_id();
-        let apply_result = match config_id.as_str() {
-            CONFIG_ID_MODEL => {
-                session
-                    .send(&Request::SetModel {
-                        id: request_id,
-                        model: value.clone(),
-                    })
-                    .await?;
-                wait_for_model_changed(&session, request_id).await
+        let apply_result = async {
+            match config_id.as_str() {
+                CONFIG_ID_MODEL => {
+                    session
+                        .send(&Request::SetModel {
+                            id: request_id,
+                            model: value.clone(),
+                        })
+                        .await?;
+                    wait_for_model_changed(&session, request_id).await
+                }
+                CONFIG_ID_EFFORT => {
+                    session
+                        .send(&Request::SetReasoningEffort {
+                            id: request_id,
+                            effort: value.clone(),
+                            target_session_id: None,
+                        })
+                        .await?;
+                    wait_for_effort_changed(&session, request_id).await
+                }
+                other => Err(anyhow::anyhow!("Unknown config option id: {other}")),
             }
-            CONFIG_ID_EFFORT => {
-                session
-                    .send(&Request::SetReasoningEffort {
-                        id: request_id,
-                        effort: value.clone(),
-                        target_session_id: None,
-                    })
-                    .await?;
-                wait_for_effort_changed(&session, request_id).await
-            }
-            other => Err(anyhow::anyhow!("Unknown config option id: {other}")),
-        };
-
+        }
+        .await;
+        cleanup_prompt_state(&session).await;
         match apply_result {
             Ok(()) => {
                 let config_options = session_config_options(&*session.ui_state.lock().await);
@@ -761,7 +799,7 @@ impl AcpRuntime {
 
     async fn create_new_session(&self, cwd: PathBuf) -> Result<DaemonSession> {
         let (reader, writer) = self.connect_daemon().await?;
-        let session = DaemonSession::new(String::new(), reader, writer, 2);
+        let mut session = DaemonSession::new(String::new(), reader, writer, 2);
         let subscribe_id = 1;
         session
             .send(&Request::Subscribe {
@@ -798,13 +836,8 @@ impl AcpRuntime {
             ),
             other => anyhow::bail!("expected history after session creation, got {other:?}"),
         };
-        Ok(DaemonSession::new(
-            session_id,
-            session.reader.into_inner().into_inner(),
-            session.writer.into_inner(),
-            session.next_request_id.load(Ordering::Relaxed),
-        )
-        .with_ui_state(ui_state))
+        session.session_id = session_id;
+        Ok(session.with_ui_state(ui_state))
     }
 
     async fn attach_existing_session(
@@ -814,7 +847,7 @@ impl AcpRuntime {
         replay_history: bool,
     ) -> Result<DaemonSession> {
         let (reader, writer) = self.connect_daemon().await?;
-        let session = DaemonSession::new(String::new(), reader, writer, 2);
+        let mut session = DaemonSession::new(String::new(), reader, writer, 2);
         let resume_id = 1;
         session
             .send(&Request::Subscribe {
@@ -870,13 +903,8 @@ impl AcpRuntime {
             }
         }
 
-        Ok(DaemonSession::new(
-            attached_id,
-            session.reader.into_inner().into_inner(),
-            session.writer.into_inner(),
-            session.next_request_id.load(Ordering::Relaxed),
-        )
-        .with_ui_state(ui_state))
+        session.session_id = attached_id;
+        Ok(session.with_ui_state(ui_state))
     }
 
     async fn replay_history(
@@ -956,7 +984,6 @@ impl AcpRuntime {
             return Err(err);
         }
 
-        let mut mapper = EventMapper::new(session.session_id.clone(), self.profile);
         let mut stop_reason = "end_turn".to_string();
         let mut turn_usage = TurnUsage::default();
         loop {
@@ -967,10 +994,6 @@ impl AcpRuntime {
                     return Err(err);
                 }
             };
-            if self.profile.is_extended() {
-                self.write_jcode_extension_event(&session.session_id, &event)
-                    .await?;
-            }
             match event {
                 ServerEvent::Ack { .. } => {}
                 ServerEvent::Done { id } if id == prompt_id => break,
@@ -1048,18 +1071,7 @@ impl AcpRuntime {
                         }
                     }
                 }
-                other => {
-                    for update in mapper.map_event(other) {
-                        self.write_notification(
-                            "session/update",
-                            json!({
-                                "sessionId": session.session_id,
-                                "update": update,
-                            }),
-                        )
-                        .await?;
-                    }
-                }
+                _ => {}
             }
         }
 
@@ -1273,7 +1285,12 @@ async fn request_history(session: &DaemonSession) -> Result<ServerEvent> {
 
 async fn request_model_catalog(session: &DaemonSession) -> Result<ServerEvent> {
     let id = session.next_id();
-    session.send(&Request::GetModelCatalog { id, subscribe_usage_updates: false }).await?;
+    session
+        .send(&Request::GetModelCatalog {
+            id,
+            subscribe_usage_updates: false,
+        })
+        .await?;
     loop {
         match session.read_event().await? {
             ServerEvent::Ack { .. } => {}
@@ -1638,6 +1655,7 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
             "sse": false,
         },
         "sessionCapabilities": {
+            "list": {},
             "close": {},
             "resume": {},
         }
