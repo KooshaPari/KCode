@@ -52,17 +52,26 @@ fn server_reload_report_preserves_json_fields_and_exit_status_contract() {
 #[tokio::test]
 async fn server_reload_without_listener_is_a_successful_json_noop() {
     let _env_lock = crate::storage::lock_test_env();
-    let previous_home = std::env::var_os("JCODE_HOME");
+    let _saved = SavedEnv::capture(&["JCODE_HOME"]);
     let home = tempfile::tempdir().expect("tempdir");
     crate::env::set_var("JCODE_HOME", home.path());
 
-    let result = run_server_reload_command(false, true).await;
+    let mut output = Vec::new();
+    let result = run_server_reload_command_to(false, true, &mut output).await;
 
-    match previous_home {
-        Some(value) => crate::env::set_var("JCODE_HOME", value),
-        None => crate::env::remove_var("JCODE_HOME"),
-    }
     result.expect("reload without a listener must be a successful no-op");
+    let report: serde_json::Value =
+        serde_json::from_slice(&output).expect("reload --json must emit one JSON report");
+    assert_eq!(report["had_listener"], false);
+    assert_eq!(report["already_current"], false);
+    assert_eq!(report["handoff_ready"], false);
+    assert_eq!(report["reloaded"], false);
+    assert_eq!(report["forced"], false);
+    assert!(
+        report["detail"]
+            .as_str()
+            .is_some_and(|detail| { detail.contains("No running jcode server found") })
+    );
 }
 
 #[tokio::test]

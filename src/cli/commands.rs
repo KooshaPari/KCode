@@ -2204,6 +2204,15 @@ fn validate_server_reload_report(report: &ServerReloadReport) -> Result<()> {
 /// - If no server is running, this is a successful no-op so installers can call
 ///   it unconditionally.
 pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<()> {
+    let mut stdout = std::io::stdout().lock();
+    run_server_reload_command_to(force, emit_json, &mut stdout).await
+}
+
+async fn run_server_reload_command_to(
+    force: bool,
+    emit_json: bool,
+    stdout: &mut impl Write,
+) -> Result<()> {
     use crate::protocol::ServerEvent;
     use std::time::Duration;
 
@@ -2212,9 +2221,10 @@ pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<(
     let emit = |report: ServerReloadReport| -> Result<()> {
         let outcome = validate_server_reload_report(&report);
         if emit_json {
-            println!("{}", serde_json::to_string_pretty(&report)?);
+            serde_json::to_writer_pretty(&mut *stdout, &report)?;
+            stdout.write_all(b"\n")?;
         } else if !report.detail.is_empty() {
-            println!("{}", report.detail);
+            writeln!(stdout, "{}", report.detail)?;
         }
         // Keep printing the report above the status check so --json output is
         // byte-identical for callers that parse it.
