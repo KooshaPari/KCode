@@ -439,6 +439,24 @@ pub async fn fetch_email(access_token: &str) -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("Google profile did not include an email address"))
 }
 
+/// Ordered list of `loadCodeAssist` hosts to probe for project resolution:
+/// the currently configured/default Cloud Code endpoint first, then the
+/// fixed fallback list (deduplicated).
+///
+/// Kept as a pure helper so the ordering is unit-testable without a network
+/// call. See [`fetch_project_id`] for why the configured endpoint must be
+/// tried first.
+fn project_lookup_endpoints(configured_endpoint: &str) -> Vec<String> {
+    std::iter::once(configured_endpoint.to_string())
+        .chain(
+            LOAD_ENDPOINTS
+                .iter()
+                .filter(|endpoint| **endpoint != configured_endpoint)
+                .map(|endpoint| endpoint.to_string()),
+        )
+        .collect()
+}
+
 pub async fn fetch_project_id(access_token: &str) -> Result<String> {
     let client = crate::provider::shared_http_client();
     let headers = antigravity_headers(access_token)?;
@@ -451,7 +469,15 @@ pub async fn fetch_project_id(access_token: &str) -> Result<String> {
     });
     let mut errors = Vec::new();
 
-    for base_url in LOAD_ENDPOINTS {
+    // Try the configured endpoint (`JCODE_ANTIGRAVITY_ENDPOINT`, defaulting to
+    // the daily Cloud Code host) before the fixed fallback list. Without this,
+    // an account whose project can only be resolved through an explicitly
+    // configured endpoint would have its project lookup probe only the
+    // hardcoded hosts below, never the one actually configured for inference.
+    let configured_endpoint = jcode_provider_antigravity::antigravity_endpoint();
+    let candidate_endpoints = project_lookup_endpoints(&configured_endpoint);
+
+    for base_url in &candidate_endpoints {
         let resp = match client
             .post(format!("{base_url}/v1internal:loadCodeAssist"))
             .headers(headers.clone())
@@ -621,6 +647,32 @@ mod tests {
     fn client_metadata_uses_backend_accepted_platform() {
         assert_eq!(metadata_platform(), "PLATFORM_UNSPECIFIED");
         assert!(client_metadata_header().contains("\"platform\":\"PLATFORM_UNSPECIFIED\""));
+    }
+
+    #[test]
+    fn project_lookup_tries_configured_endpoint_first() {
+        let endpoints = project_lookup_endpoints("https://configured.example.com");
+        assert_eq!(endpoints[0], "https://configured.example.com");
+        // The fixed fallback list still follows, unchanged and deduplicated.
+        assert_eq!(endpoints.len(), 1 + LOAD_ENDPOINTS.len());
+        for fallback in LOAD_ENDPOINTS {
+            assert!(endpoints.contains(&fallback.to_string()));
+        }
+    }
+
+    #[test]
+    fn project_lookup_deduplicates_when_configured_endpoint_is_already_a_fallback() {
+        let configured = LOAD_ENDPOINTS[0];
+        let endpoints = project_lookup_endpoints(configured);
+        assert_eq!(endpoints[0], configured);
+        assert_eq!(endpoints.len(), LOAD_ENDPOINTS.len());
+        assert_eq!(
+            endpoints
+                .iter()
+                .filter(|endpoint| *endpoint == configured)
+                .count(),
+            1
+        );
     }
 
     #[test]
