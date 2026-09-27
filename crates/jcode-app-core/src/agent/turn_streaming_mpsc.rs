@@ -244,6 +244,7 @@ impl Agent {
                 .then(crate::subscription_notice::take)
                 .flatten()
             {
+                crate::subscription_notice::show_upgrade_card(&notice, &self.session.id);
                 let reminder = Message::user(&Self::plan_limit_reminder(&notice));
                 ephemeral_signature_messages.push(reminder.clone());
                 messages_with_memory.push(reminder);
