@@ -68,6 +68,81 @@ pub fn oauth_logins() -> Vec<OAuthLogin> {
     logins
 }
 
+/// The `default_provider` route an account key selects. OAuth and API-key
+/// logins of the same vendor map to distinct routes so the billing identity
+/// the user ordered is the one new sessions use.
+pub fn default_route_for_key(key: &str) -> Option<&'static str> {
+    let provider = key.split_once(':').map_or(key, |(provider, _)| provider);
+    match provider {
+        "claude" => Some("claude-oauth"),
+        "anthropic-api" => Some("anthropic-api"),
+        "openai" => Some("openai-oauth"),
+        "openai-api" => Some("openai-api"),
+        other => crate::provider_catalog::resolve_login_provider(other).and_then(|login| {
+            crate::provider::MultiProvider::config_default_provider_for_login_provider(login)
+        }),
+    }
+}
+
+/// Keep a configured model when it belongs to the same vendor as `route`,
+/// re-prefixed for the new route. A model from another vendor cannot run on
+/// the new route, so it is cleared and the provider's own default applies.
+fn model_for_route(model: Option<&str>, route: &str) -> Option<String> {
+    let model = model?.trim();
+    let target = jcode_provider_core::AuthRoute::parse(route)?.active_provider();
+    let (provider, bare) =
+        match jcode_provider_core::selection::explicit_model_provider_prefix(model) {
+            Some((provider, _, bare)) => (Some(provider), bare),
+            None => (None, model),
+        };
+    let vendor = provider.or_else(|| {
+        if bare.starts_with("claude") {
+            Some(jcode_provider_core::ActiveProvider::Claude)
+        } else if bare.starts_with("gpt") || bare.starts_with("o3") || bare.starts_with("o4") {
+            Some(jcode_provider_core::ActiveProvider::OpenAI)
+        } else {
+            None
+        }
+    })?;
+    (vendor == target).then(|| format!("{route}:{bare}"))
+}
+
+/// Make `key` the default for new sessions: its route becomes the configured
+/// default provider and, for multi-account OAuth, its login becomes active.
+/// Returns whether anything changed.
+pub fn apply_default_account(key: &str) -> Result<bool> {
+    let Some(route) = default_route_for_key(key) else {
+        return Ok(false);
+    };
+    let mut changed = false;
+    if let Some((provider, label)) = key.split_once(':') {
+        match provider {
+            "claude" if crate::auth::claude::active_account_label().as_deref() != Some(label) => {
+                crate::auth::claude::set_active_account(label)?;
+                changed = true;
+            }
+            "openai" if crate::auth::codex::active_account_label().as_deref() != Some(label) => {
+                crate::auth::codex::set_active_account(label)?;
+                changed = true;
+            }
+            _ => {}
+        }
+    }
+    let cfg = crate::config::Config::load();
+    if cfg.provider.default_provider.as_deref() != Some(route) {
+        // Only prefixed routes can carry the model across. Other providers
+        // keep a bare model id only when it is not pinned to another vendor.
+        let model = if jcode_provider_core::AuthRoute::parse(route).is_some() {
+            model_for_route(cfg.provider.default_model.as_deref(), route)
+        } else {
+            None
+        };
+        crate::config::Config::set_default_model(model.as_deref(), Some(route))?;
+        changed = true;
+    }
+    Ok(changed)
+}
+
 fn path() -> Result<PathBuf> {
     Ok(crate::storage::jcode_dir()?.join(FILE_NAME))
 }
@@ -195,6 +270,46 @@ mod tests {
             .iter()
             .map(|(key, default)| (key.to_string(), *default))
             .collect()
+    }
+
+    #[test]
+    fn account_keys_map_to_distinct_default_routes() {
+        assert_eq!(
+            default_route_for_key("claude:claude-otter"),
+            Some("claude-oauth")
+        );
+        assert_eq!(
+            default_route_for_key("anthropic-api"),
+            Some("anthropic-api")
+        );
+        assert_eq!(
+            default_route_for_key("openai:openai-otter"),
+            Some("openai-oauth")
+        );
+        assert_eq!(default_route_for_key("openai-api"), Some("openai-api"));
+        assert_eq!(default_route_for_key("openrouter"), Some("openrouter"));
+        assert_eq!(default_route_for_key("no-such-provider"), None);
+    }
+
+    #[test]
+    fn default_model_follows_same_vendor_routes_only() {
+        assert_eq!(
+            model_for_route(Some("anthropic-api:claude-opus-5-5"), "claude-oauth").as_deref(),
+            Some("claude-oauth:claude-opus-5-5")
+        );
+        assert_eq!(
+            model_for_route(Some("claude-opus-5-5"), "anthropic-api").as_deref(),
+            Some("anthropic-api:claude-opus-5-5")
+        );
+        assert_eq!(
+            model_for_route(Some("anthropic-api:claude-opus-5-5"), "openai-oauth"),
+            None
+        );
+        assert_eq!(
+            model_for_route(Some("openai-api:gpt-5.5"), "openai-oauth").as_deref(),
+            Some("openai-oauth:gpt-5.5")
+        );
+        assert_eq!(model_for_route(None, "openai-api"), None);
     }
 
     #[test]
