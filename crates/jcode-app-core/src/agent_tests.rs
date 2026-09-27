@@ -2704,3 +2704,69 @@ async fn late_mcp_announcement_skips_referenced_native_and_eager() {
         );
     }
 }
+
+struct IdentifiedFakeMcpTool {
+    server: String,
+    raw: String,
+}
+
+#[async_trait]
+impl crate::tool::Tool for IdentifiedFakeMcpTool {
+    fn name(&self) -> &str {
+        &self.raw
+    }
+    fn mcp_identity(&self) -> Option<(&str, &str)> {
+        Some((&self.server, &self.raw))
+    }
+    fn description(&self) -> &str {
+        "fake identified mcp tool"
+    }
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object"})
+    }
+    async fn execute(
+        &self,
+        _input: serde_json::Value,
+        _ctx: crate::tool::ToolContext,
+    ) -> anyhow::Result<ToolOutput> {
+        Ok(ToolOutput::new("ok"))
+    }
+}
+
+/// Dotted MCP names (YC's `hiring.create_job`) are sanitized for providers,
+/// but the late announcement must tell the model the real server/tool pair
+/// that `mcp_call` needs, not a guess split out of the sanitized alias.
+#[tokio::test]
+async fn late_mcp_announcement_uses_original_names_for_sanitized_aliases() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    register_fake_deferred_mcp_surface(&registry).await;
+    let mut agent = Agent::new(provider, registry);
+    agent.mcp_tools_mode = crate::config::McpToolsMode::Auto;
+    let _ = agent.tool_definitions().await;
+
+    let alias = crate::mcp::dispatch_name("yc", "hiring.create_job");
+    assert_eq!(alias, "mcp__yc__hiring_create_job");
+    agent
+        .registry
+        .register(
+            alias.clone(),
+            Arc::new(IdentifiedFakeMcpTool {
+                server: "yc".to_string(),
+                raw: "hiring.create_job".to_string(),
+            }) as Arc<dyn crate::tool::Tool>,
+        )
+        .await;
+
+    agent.announce_late_mcp_tools().await;
+    let text = transcript_texts(&agent)
+        .into_iter()
+        .find(|t| t.contains("New MCP tools are available."))
+        .expect("announcement");
+    assert!(text.contains(&alias), "{text}");
+    assert!(
+        text.contains("server: yc  tool: hiring.create_job"),
+        "{text}"
+    );
+}

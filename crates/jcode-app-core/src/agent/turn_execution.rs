@@ -750,7 +750,13 @@ impl Agent {
              call them with mcp_call (server, tool, arguments matching input_schema).\n",
         );
         for tool in fresh.iter().take(MAX_ANNOUNCED_MCP_TOOLS) {
-            let (server, raw) = split_mcp_dispatch_name(&tool.name);
+            let (server, raw) = self
+                .registry
+                .mcp_identity_for_alias(&tool.name)
+                .unwrap_or_else(|| {
+                    let (server, raw) = split_mcp_dispatch_name(&tool.name);
+                    (server.to_string(), raw.to_string())
+                });
             text.push_str(&format!(
                 "- {}: server: {server}  tool: {raw}  ({})\n  input_schema: {}\n",
                 tool.name,
