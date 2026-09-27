@@ -107,6 +107,106 @@ fn model_for_route(model: Option<&str>, route: &str) -> Option<String> {
     (vendor == target).then(|| format!("{route}:{bare}"))
 }
 
+/// Whether two `default_provider` values pick the same route, so `claude`
+/// and `claude-oauth` are not treated as a change.
+pub fn same_route(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim(), b.trim());
+    match (
+        jcode_provider_core::AuthRoute::parse(a),
+        jcode_provider_core::AuthRoute::parse(b),
+    ) {
+        (Some(a), Some(b)) => a == b,
+        _ => a.eq_ignore_ascii_case(b),
+    }
+}
+
+/// The account a configured default route points at, among `keys`. For
+/// multi-account OAuth the active login wins, then the first listed one.
+pub fn account_for_route<'a>(
+    route: &str,
+    keys: impl IntoIterator<Item = &'a str> + Clone,
+    active: impl Fn(&str) -> Option<String>,
+) -> Option<&'a str> {
+    let matches = |key: &&str| default_route_for_key(key).is_some_and(|r| same_route(r, route));
+    keys.clone()
+        .into_iter()
+        .filter(matches)
+        .find(|key| {
+            key.split_once(':')
+                .is_some_and(|(provider, label)| active(provider).as_deref() == Some(label))
+        })
+        .or_else(|| keys.into_iter().find(matches))
+}
+
+fn active_label(provider: &str) -> Option<String> {
+    match provider {
+        "claude" => crate::auth::claude::active_account_label(),
+        "openai" => crate::auth::codex::active_account_label(),
+        _ => None,
+    }
+}
+
+/// Which of `keys` is the default for new sessions, per the saved config.
+/// This is the single source of truth: the account order follows it.
+pub fn default_account_key<'a>(keys: impl IntoIterator<Item = &'a str> + Clone) -> Option<&'a str> {
+    let cfg = crate::config::Config::load();
+    let route = cfg.provider.default_provider.as_deref()?;
+    account_for_route(route, keys, active_label)
+}
+
+impl AccountPool {
+    /// Move the auto-switch account for `route` to the front. Accounts the
+    /// user kept manual stay manual: choosing a default elsewhere must not
+    /// silently enroll a metered key in failover. Returns whether it moved.
+    fn promote_route(&mut self, route: &str, active: impl Fn(&str) -> Option<String>) -> bool {
+        let members: Vec<&str> = self.members.iter().map(String::as_str).collect();
+        let key = account_for_route(route, members.iter().copied(), &active)
+            .map(str::to_owned)
+            .or_else(|| {
+                // A never-placed account that is auto-switch by default.
+                let (key, api_key) = key_for_route(route, &active)?;
+                (default_member(&key, api_key) && !self.excluded.contains(&key)).then_some(key)
+            });
+        let Some(key) = key else {
+            return false;
+        };
+        if self.members.first() == Some(&key) {
+            return false;
+        }
+        self.members.retain(|member| *member != key);
+        self.members.insert(0, key);
+        true
+    }
+}
+
+/// The pool key a route selects when no placed member matches, and whether
+/// it is a metered API key.
+fn key_for_route(route: &str, active: impl Fn(&str) -> Option<String>) -> Option<(String, bool)> {
+    for provider in ["claude", "openai"] {
+        if default_route_for_key(provider).is_some_and(|r| same_route(r, route)) {
+            return Some((account_key(provider, Some(&active(provider)?)), false));
+        }
+    }
+    let login = crate::provider_catalog::login_providers()
+        .iter()
+        .copied()
+        .find(|login| default_route_for_key(login.id).is_some_and(|r| same_route(r, route)))?;
+    Some((
+        login.id.to_string(),
+        login.auth_kind == crate::provider_catalog::LoginProviderAuthKind::ApiKey,
+    ))
+}
+
+/// Keep the auto-switch order in step after the default provider changed
+/// through any path (model picker, `/account`, login, Desktop).
+pub fn sync_order_with_default_route(route: &str) -> Result<()> {
+    let mut pool = AccountPool::load();
+    if pool.promote_route(route, active_label) {
+        pool.save()?;
+    }
+    Ok(())
+}
+
 /// Make `key` the default for new sessions: its route becomes the configured
 /// default provider and, for multi-account OAuth, its login becomes active.
 /// Returns whether anything changed.
@@ -129,7 +229,12 @@ pub fn apply_default_account(key: &str) -> Result<bool> {
         }
     }
     let cfg = crate::config::Config::load();
-    if cfg.provider.default_provider.as_deref() != Some(route) {
+    if !cfg
+        .provider
+        .default_provider
+        .as_deref()
+        .is_some_and(|current| same_route(current, route))
+    {
         // Only prefixed routes can carry the model across. Other providers
         // keep a bare model id only when it is not pinned to another vendor.
         let model = if jcode_provider_core::AuthRoute::parse(route).is_some() {
@@ -141,6 +246,18 @@ pub fn apply_default_account(key: &str) -> Result<bool> {
         changed = true;
     }
     Ok(changed)
+}
+
+/// Pool key of the Jcode subscription. It joins auto-switch by default but
+/// always comes last among defaulted members: it is the fallback once the
+/// user's own subscriptions run out.
+pub const JCODE_SUBSCRIPTION_KEY: &str = "jcode";
+
+/// Default auto-switch membership for an account the user never placed:
+/// subscription logins (OAuth, device sign-in, the Jcode subscription) join,
+/// metered API keys stay manual so nobody is silently billed per token.
+pub fn default_member(key: &str, api_key: bool) -> bool {
+    key == JCODE_SUBSCRIPTION_KEY || !api_key
 }
 
 fn path() -> Result<PathBuf> {
@@ -175,7 +292,8 @@ impl AccountPool {
 
     /// Split `accounts` (key, default membership) into ordered pool members and
     /// the rest. Placed members keep the user's order, and new defaults follow
-    /// in the caller's order.
+    /// in the caller's order, except the Jcode subscription, which defaults to
+    /// the end of the pool.
     pub fn partition<'a>(&self, accounts: &'a [(String, bool)]) -> (Vec<&'a str>, Vec<&'a str>) {
         let mut members: Vec<&str> = self
             .members
@@ -188,16 +306,22 @@ impl AccountPool {
             })
             .collect();
         let mut others = Vec::new();
+        let mut last = None;
         for (key, default) in accounts {
             if members.contains(&key.as_str()) {
                 continue;
             }
             if self.is_member(key, *default) {
-                members.push(key);
+                if key == JCODE_SUBSCRIPTION_KEY {
+                    last = Some(key.as_str());
+                } else {
+                    members.push(key);
+                }
             } else {
                 others.push(key.as_str());
             }
         }
+        members.extend(last);
         (members, others)
     }
 
@@ -310,6 +434,59 @@ mod tests {
             Some("openai-oauth:gpt-5.5")
         );
         assert_eq!(model_for_route(None, "openai-api"), None);
+    }
+
+    #[test]
+    fn jcode_subscription_joins_by_default_but_comes_last() {
+        assert!(default_member("jcode", true));
+        assert!(default_member("claude:claude-otter", false));
+        assert!(!default_member("openai-api", true));
+        let pool = AccountPool::default();
+        let list = accounts(&[
+            ("jcode", default_member("jcode", true)),
+            ("claude:claude-otter", true),
+            ("openai-api", default_member("openai-api", true)),
+            ("copilot", true),
+        ]);
+        let (members, others) = pool.partition(&list);
+        assert_eq!(members, ["claude:claude-otter", "copilot", "jcode"]);
+        assert_eq!(others, ["openai-api"]);
+        // Once the user places it, their order wins.
+        let pool = AccountPool {
+            members: vec!["jcode".into(), "claude:claude-otter".into()],
+            excluded: vec![],
+        };
+        assert_eq!(pool.partition(&list).0[0], "jcode");
+    }
+
+    #[test]
+    fn default_route_changes_elsewhere_reorder_the_pool() {
+        let active = |provider: &str| match provider {
+            "claude" => Some("claude-fox".to_string()),
+            "openai" => Some("openai-otter".to_string()),
+            _ => None,
+        };
+        let mut pool = AccountPool {
+            members: vec![
+                "claude:claude-otter".into(),
+                "claude:claude-fox".into(),
+                "openai:openai-otter".into(),
+                "anthropic-api".into(),
+            ],
+            excluded: vec!["openai-api".into()],
+        };
+        // The model picker's `anthropic-api` route moves the API key to #1.
+        assert!(pool.promote_route("anthropic-api", active));
+        assert_eq!(pool.members[0], "anthropic-api");
+        // `claude` and `claude-oauth` are the same route: the active login wins.
+        assert!(pool.promote_route("claude", active));
+        assert_eq!(pool.members[0], "claude:claude-fox");
+        assert!(!pool.promote_route("claude-oauth", active));
+        // A manual API key stays manual even when chosen as the default.
+        assert!(!pool.promote_route("openai-api", active));
+        assert!(!pool.members.contains(&"openai-api".to_string()));
+        assert!(same_route("claude", "claude-oauth"));
+        assert!(!same_route("claude-oauth", "anthropic-api"));
     }
 
     #[test]
