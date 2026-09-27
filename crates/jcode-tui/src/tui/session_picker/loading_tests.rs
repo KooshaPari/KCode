@@ -1233,7 +1233,10 @@ fn invalidated_in_flight_load_does_not_repopulate_session_list_cache() {
         loader_thread_id_for_loader
             .set(std::thread::current().id())
             .expect("record loader thread");
-        load_sessions()
+        // Keep the target load in flight even if a detached grouped load has
+        // already published an entry for this temporary home. The regression
+        // under test is publication after invalidation, not cache-hit ordering.
+        load_sessions_inner(true)
     });
     publish_reached_rx
         .recv_timeout(std::time::Duration::from_secs(5))

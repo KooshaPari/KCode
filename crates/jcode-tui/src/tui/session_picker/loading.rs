@@ -1798,12 +1798,17 @@ fn parse_jcode_session_info(
 }
 
 pub fn load_sessions() -> Result<Vec<SessionInfo>> {
+    load_sessions_inner(false)
+}
+
+fn load_sessions_inner(bypass_cache: bool) -> Result<Vec<SessionInfo>> {
     let sessions_dir = storage::jcode_dir()?.join("sessions");
     let scan_limit = session_scan_limit();
     let want_external = include_external_sessions();
 
     let cache_generation = if let Ok(state) = session_list_cache().lock() {
-        if let Some(entry) = state.entry.as_ref()
+        if !bypass_cache
+            && let Some(entry) = state.entry.as_ref()
             && entry.sessions_dir == sessions_dir
             && entry.scan_limit == scan_limit
             && entry.external_sessions == want_external
