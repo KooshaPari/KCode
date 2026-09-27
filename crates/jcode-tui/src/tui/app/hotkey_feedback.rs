@@ -102,6 +102,19 @@ pub(super) struct RegistryInputs<'a> {
     pub fallback_switch: &'a OptionalBinding,
     /// Workspace navigation only dispatches in remote/client mode.
     pub remote: bool,
+    /// Alternate enter queues when `queue_mode` is off and interleaves when
+    /// it is on, so its description depends on this.
+    pub queue_mode: bool,
+}
+
+/// Mirrors `input::send_action`: with `queue_mode` off, Enter interleaves and
+/// alternate enter queues; with it on, the roles swap.
+fn alternate_enter_description(queue_mode: bool) -> &'static str {
+    if queue_mode {
+        "send now, bypassing queue mode"
+    } else {
+        "queue this message until the turn ends"
+    }
 }
 
 /// Enumerate the known hotkeys in rough dispatch order (configured bindings
@@ -378,15 +391,16 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
         "history_search",
         "search prompt history across sessions",
     ));
+    let alternate_enter_desc = alternate_enter_description(inputs.queue_mode);
     out.push(KnownHotkey::new(
         key(KeyCode::Enter, KeyModifiers::CONTROL),
         "alternate_enter",
-        "send now, bypassing queue mode",
+        alternate_enter_desc,
     ));
     out.push(KnownHotkey::new(
         key(KeyCode::Enter, KeyModifiers::SUPER),
         "alternate_enter",
-        "send now, bypassing queue mode",
+        alternate_enter_desc,
     ));
     out.push(KnownHotkey::quiet(
         key(KeyCode::Enter, KeyModifiers::SHIFT),
@@ -727,6 +741,7 @@ impl App {
             voice_input: &self.voice_input_key,
             fallback_switch: &self.fallback_switch_key,
             remote,
+            queue_mode: self.queue_mode,
         })
     }
 
@@ -915,7 +930,20 @@ mod tests {
             voice_input: &voice_input,
             fallback_switch: &fallback_switch,
             remote,
+            queue_mode: false,
         })
+    }
+
+    /// Issue #1500: the hint must match what `send_action` actually does for
+    /// each `queue_mode` value.
+    #[test]
+    fn alternate_enter_description_follows_queue_mode() {
+        assert!(alternate_enter_description(false).contains("queue this message"));
+        assert!(alternate_enter_description(true).contains("bypassing queue mode"));
+        let registry = test_inputs_registry(false);
+        let info = lookup(&registry, false, KeyCode::Enter, KeyModifiers::CONTROL)
+            .expect("ctrl+enter known");
+        assert!(info.description.contains("queue this message"));
     }
 
     #[test]
