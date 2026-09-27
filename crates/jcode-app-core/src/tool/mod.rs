@@ -1450,7 +1450,12 @@ impl Registry {
             let registry = self.clone();
             tokio::spawn(async move {
                 let (successes, failures) = {
-                    let manager = mcp_manager.write().await;
+                    // `connect_all` mutates the manager's internal connection
+                    // maps but does not mutate the manager object itself. A
+                    // read guard lets MCP list and other management actions
+                    // inspect those maps while a slow initialize handshake is
+                    // in flight.
+                    let manager = mcp_manager.read().await;
                     manager.connect_all().await.unwrap_or((0, Vec::new()))
                 };
 
