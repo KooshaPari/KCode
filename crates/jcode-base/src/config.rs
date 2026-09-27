@@ -618,13 +618,16 @@ impl Default for AcpConfig {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum McpToolsMode {
-    /// Expose individual tools until their serialized definitions exceed the
-    /// configured threshold, then use the fixed search/call surface.
+    /// Never change the cached tool list for MCP changes. Providers with
+    /// native deferred loading (Claude, OpenAI gpt-5.4+) get MCP tools as
+    /// deferred definitions; others get the fixed `mcp_search`/`mcp_call`
+    /// surface, with new tools described in the transcript.
     #[default]
     Auto,
     /// Always expose every MCP server tool as a top-level tool definition.
+    /// Adding a server mid-session then invalidates the prompt cache.
     Eager,
-    /// Expose only the fixed `mcp_search` and `mcp_call` tools.
+    /// Same as `Auto` (kept for existing configs).
     Deferred,
 }
 
@@ -662,7 +665,9 @@ pub struct ToolConfig {
     pub disable_base_tools: bool,
     /// MCP tool exposure mode: auto (default), eager, or deferred.
     pub mcp_tools: McpToolsMode,
-    /// In auto mode, defer MCP tools when their definitions exceed this token estimate.
+    /// Ignored. `auto` used to switch MCP exposure at this token estimate,
+    /// which changed the cached tool list mid-session. Kept so existing
+    /// configs and the env override still parse.
     #[serde(
         alias = "mcp_tools_threshold",
         alias = "mcp_tools_auto_threshold",

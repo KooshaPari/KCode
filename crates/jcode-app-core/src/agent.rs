@@ -196,8 +196,6 @@ pub struct Agent {
     _tool_policy_registration: crate::tool::SessionToolPolicyRegistration,
     /// MCP top-level definition exposure policy captured when the session starts.
     mcp_tools_mode: crate::config::McpToolsMode,
-    /// Auto-mode token estimate above which MCP definitions are deferred.
-    mcp_tools_token_threshold: usize,
     /// Provider-specific session ID for conversation resume (e.g., Claude Code CLI session)
     provider_session_id: Option<String>,
     /// Last upstream provider (OpenRouter) observed for this session
@@ -251,6 +249,11 @@ pub struct Agent {
     /// would get a surface built for the other path (for example
     /// `mcp_search` without `mcp_call` or any MCP tools).
     locked_tools_native_deferred: bool,
+    /// MCP tools already described to the model, either in the locked tool
+    /// snapshot or by a late-tool transcript announcement.
+    announced_mcp_tools: HashSet<String>,
+    /// Transcript index already scanned for MCP tools described there.
+    announced_mcp_scan_index: usize,
     /// AGENTS.md is session bootstrap input. Keep the captured text stable so
     /// tool writes do not mutate the provider's cacheable prefix mid-session.
     agents_md_snapshot: (Option<String>, crate::prompt::ContextInfo),
@@ -327,7 +330,6 @@ impl Agent {
             disabled_tools,
             _tool_policy_registration: tool_policy_registration,
             mcp_tools_mode: tool_config.mcp_tools,
-            mcp_tools_token_threshold: tool_config.mcp_tools_token_threshold,
             provider_session_id: None,
             last_upstream_provider: None,
             last_connection_type: None,
@@ -346,6 +348,8 @@ impl Agent {
             locked_tools: None,
             mcp_late_register_resolved: false,
             locked_tools_native_deferred: false,
+            announced_mcp_tools: HashSet::new(),
+            announced_mcp_scan_index: 0,
             agents_md_snapshot,
             memory_enabled: crate::config::config().features.memory,
             rewind_undo_snapshot: None,

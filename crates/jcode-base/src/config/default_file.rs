@@ -339,10 +339,15 @@ profile = "full"
 # disabled = ["browser", "gmail", "swarm"]
 # Disable all built-in tools unless enabled is set.
 disable_base_tools = false
-# MCP tool exposure: "eager" sends every server tool definition, "deferred"
-# sends only fixed mcp_search/mcp_call tools, and "auto" switches to deferred
-# when the filtered MCP definitions exceed the token threshold below.
-# Env overrides: JCODE_MCP_TOOLS, JCODE_MCP_TOOLS_TOKEN_THRESHOLD.
+# MCP tool exposure. "auto" never changes the cached tool list when MCP
+# servers connect, reconnect, or register late, so the provider prompt cache
+# survives: Claude and OpenAI (gpt-5.4+) load MCP tools natively as deferred
+# definitions; other providers use fixed mcp_search/mcp_call tools and learn
+# new tools' schemas from the transcript. "deferred" behaves like "auto".
+# "eager" sends every server tool definition in the tool list; adding a
+# server mid-session then invalidates the whole prompt cache.
+# Env overrides: JCODE_MCP_TOOLS. mcp_tools_token_threshold is ignored and
+# kept only so existing configs still parse.
 mcp_tools = "auto"
 mcp_tools_token_threshold = 8000
 
