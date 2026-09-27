@@ -12,6 +12,79 @@ use ratatui::prelude::*;
 /// Maximum file rows before collapsing the rest into a `+N more` row.
 pub(super) const CHANGES_MAX_FILES: usize = 5;
 
+/// Paths an edit-style tool call wrote to, as given in its input (absolute or
+/// relative to the session working directory). Non-edit tools yield nothing.
+pub(crate) fn edited_paths_from_tool_call(name: &str, input: &serde_json::Value) -> Vec<String> {
+    if !crate::tui::ui::tools_ui::is_edit_tool_name(name) {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for key in ["file_path", "path"] {
+        if let Some(p) = input.get(key).and_then(|v| v.as_str()) {
+            out.push(p.to_string());
+        }
+    }
+    if let Some(text) = input
+        .get("patch_text")
+        .or_else(|| input.get("patch"))
+        .and_then(|v| v.as_str())
+    {
+        for line in text.lines() {
+            let t = line.trim();
+            let codex = t
+                .strip_prefix("*** Update File: ")
+                .or_else(|| t.strip_prefix("*** Add File: "))
+                .or_else(|| t.strip_prefix("*** Move to: "));
+            let unified = line
+                .strip_prefix("+++ ")
+                .map(|r| r.split('\t').next().unwrap_or(r))
+                .filter(|r| *r != "/dev/null")
+                .map(|r| r.strip_prefix("b/").unwrap_or(r));
+            if let Some(p) = codex.or(unified) {
+                out.push(p.trim().to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Resolve an edited path to an absolute, lexically normalized path.
+/// Relative paths are taken relative to the session working directory.
+pub(crate) fn resolve_edited_path(path: &str, working_dir: Option<&str>) -> std::path::PathBuf {
+    let p = std::path::Path::new(path);
+    let joined = if p.is_absolute() {
+        p.to_path_buf()
+    } else if let Some(wd) = working_dir {
+        std::path::Path::new(wd).join(p)
+    } else {
+        p.to_path_buf()
+    };
+    let mut out = std::path::PathBuf::new();
+    for c in joined.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// Whether a repo-relative dirty path is one the agent edited this session.
+pub(crate) fn is_agent_edited(
+    repo_root: Option<&std::path::Path>,
+    repo_path: &str,
+    edited: &std::collections::HashSet<std::path::PathBuf>,
+) -> bool {
+    let Some(root) = repo_root else {
+        return false;
+    };
+    let rel = repo_path.rsplit(" -> ").next().unwrap_or(repo_path).trim_matches('"');
+    edited.contains(&root.join(rel.trim_end_matches('/')))
+}
+
 /// Whether the Changes widget has anything to show. A clean tree (or one that
 /// is only ahead/behind) has no file detail, and the status line already
 /// covers ahead/behind.
@@ -51,24 +124,59 @@ pub(super) fn render_git_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<
         max_files -= 1;
     }
 
-    let mut lines: Vec<Line<'static>> = info
-        .dirty_files
+    let shown: Vec<&DirtyFile> = info.dirty_files.iter().take(max_files).collect();
+    // One shared column width for `+N −M`, so the counts line up.
+    let count_w = shown
         .iter()
-        .take(max_files)
-        .map(|file| changes_file_line(file, w))
+        .map(|f| line_counts(f).map_or(0, |(a, r)| a.chars().count() + 1 + r.chars().count()))
+        .max()
+        .unwrap_or(0);
+    let root = info.repo_root.as_deref();
+    let mut lines: Vec<Line<'static>> = shown
+        .iter()
+        .map(|file| {
+            let agent = is_agent_edited(root, &file.path, &data.agent_edited);
+            changes_file_line(file, agent, count_w, w)
+        })
         .collect();
 
     let hidden = total.saturating_sub(lines.len());
     if hidden > 0 {
-        lines.push(Line::from(Span::styled(
-            format!("  +{hidden} more"),
-            Style::default().fg(rgb(100, 100, 115)),
-        )));
+        let dim = Style::default().fg(rgb(100, 100, 115));
+        let mut spans = vec![Span::styled(format!("  +{hidden} more"), dim)];
+        if info.added_total + info.removed_total > 0 {
+            let totals = format!(
+                "+{} −{} all",
+                info.added_total, info.removed_total
+            );
+            let used = 2 + format!("+{hidden} more").chars().count();
+            let pad = w.saturating_sub(used + totals.chars().count());
+            if pad >= 1 {
+                spans.push(Span::raw(" ".repeat(pad)));
+                spans.push(Span::styled(
+                    format!("+{}", info.added_total),
+                    Style::default().fg(rgb(90, 170, 100)),
+                ));
+                spans.push(Span::styled(
+                    format!(" −{}", info.removed_total),
+                    Style::default().fg(rgb(200, 100, 95)),
+                ));
+                spans.push(Span::styled(" all", dim));
+            }
+        }
+        lines.push(Line::from(spans));
     }
     lines
 }
 
-fn changes_file_line(file: &DirtyFile, width: usize) -> Line<'static> {
+/// `(+added, −removed)` labels, or `None` when counts are unknown (binary).
+fn line_counts(file: &DirtyFile) -> Option<(String, String)> {
+    let added = file.added?;
+    let removed = file.removed.unwrap_or(0);
+    Some((format!("+{added}"), format!("−{removed}")))
+}
+
+fn changes_file_line(file: &DirtyFile, agent: bool, count_w: usize, width: usize) -> Line<'static> {
     let (letter_color, path_color) = match file.status {
         'A' => (rgb(100, 200, 100), rgb(170, 190, 170)),
         'D' => (rgb(255, 120, 110), rgb(150, 130, 130)),
@@ -77,16 +185,44 @@ fn changes_file_line(file: &DirtyFile, width: usize) -> Line<'static> {
         '?' => (rgb(120, 120, 135), rgb(130, 130, 145)),
         _ => (rgb(240, 200, 80), rgb(170, 170, 180)),
     };
-    Line::from(vec![
+    // Layout: `M● name…   +84 −12`. Counts are dropped before the name gets
+    // unreadably short.
+    const PREFIX: usize = 3; // letter + agent marker + space
+    const MIN_NAME: usize = 8;
+    let show_counts = count_w > 0 && width >= PREFIX + MIN_NAME + 1 + count_w;
+    let name_w = if show_counts {
+        width - PREFIX - 1 - count_w
+    } else {
+        width.saturating_sub(PREFIX)
+    };
+    let name = truncate_smart(&changes_display_path(&file.path), name_w);
+    let name_len = unicode_width::UnicodeWidthStr::width(name.as_str());
+
+    let mut spans = vec![
         Span::styled(
-            format!("{} ", file.status),
+            file.status.to_string(),
             Style::default().fg(letter_color).bold(),
         ),
-        Span::styled(
-            truncate_smart(&changes_display_path(&file.path), width.saturating_sub(2)),
-            Style::default().fg(path_color),
-        ),
-    ])
+        if agent {
+            Span::styled("●", Style::default().fg(rgb(186, 139, 255)))
+        } else {
+            Span::raw(" ")
+        },
+        Span::raw(" "),
+        Span::styled(name, Style::default().fg(path_color)),
+    ];
+    if show_counts {
+        let (a, r) = line_counts(file).unwrap_or_default();
+        let this_w = if a.is_empty() { 0 } else { a.chars().count() + 1 + r.chars().count() };
+        let pad = width.saturating_sub(PREFIX + name_len + this_w);
+        spans.push(Span::raw(" ".repeat(pad)));
+        if !a.is_empty() {
+            spans.push(Span::styled(a, Style::default().fg(rgb(90, 170, 100))));
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(r, Style::default().fg(rgb(200, 100, 95))));
+        }
+    }
+    Line::from(spans)
 }
 
 /// Show the file name first: the tail of the path is what identifies it in a
@@ -126,6 +262,7 @@ mod tests {
             behind: 0,
             dirty_files: files.iter().map(|(s, p)| DirtyFile::new(*s, *p)).collect(),
             dirty_total: total,
+            ..Default::default()
         }
     }
 
@@ -150,8 +287,8 @@ mod tests {
             ..Default::default()
         };
         let out = text(&render_git_widget(&data, Rect::new(0, 0, 30, 5)));
-        assert!(out.contains("M turn_execution.rs"), "{out}");
-        assert!(out.contains("? notes.md"), "{out}");
+        assert!(out.contains("M  turn_execution.rs"), "{out}");
+        assert!(out.contains("?  notes.md"), "{out}");
         assert!(!out.contains("main"), "branch belongs to the status line: {out}");
         assert!(!out.contains("↑1"), "counts belong to the status line: {out}");
     }
@@ -195,5 +332,144 @@ mod tests {
         assert_eq!(l(b'R', b' '), 'R');
         assert_eq!(l(b'U', b'U'), 'U');
         assert_eq!(l(b'A', b'A'), 'U');
+    }
+
+    #[test]
+    fn line_counts_align_right_and_agent_edits_get_a_dot() {
+        let root = std::path::PathBuf::from("/repo");
+        let git = GitInfo {
+            dirty_files: vec![
+                DirtyFile::new('M', "src/agent/turn_execution.rs").with_lines(84, 12),
+                DirtyFile::new('M', "src/model_names.rs").with_lines(264, 8),
+                DirtyFile::new('?', "notes.md").with_lines(5, 0),
+            ],
+            dirty_total: 3,
+            repo_root: Some(root.clone()),
+            ..Default::default()
+        };
+        let data = InfoWidgetData {
+            git_info: Some(git),
+            agent_edited: std::sync::Arc::new(
+                [root.join("src/agent/turn_execution.rs")].into_iter().collect(),
+            ),
+            ..Default::default()
+        };
+        let lines = render_git_widget(&data, Rect::new(0, 0, 32, 5));
+        let rows: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+            .collect();
+        assert!(rows[0].starts_with("M● turn_execution.rs"), "{rows:#?}");
+        assert!(rows[1].starts_with("M  model_names.rs"), "{rows:#?}");
+        assert!(rows[0].ends_with("+84 −12"), "{rows:#?}");
+        assert!(rows[1].ends_with("+264 −8"), "{rows:#?}");
+        for r in &rows {
+            assert_eq!(unicode_width::UnicodeWidthStr::width(r.as_str()), 32, "{r:?}");
+        }
+    }
+
+    #[test]
+    fn overflow_row_reports_totals_across_all_files() {
+        let files: Vec<DirtyFile> =
+            (0..10).map(|i| DirtyFile::new('M', format!("f{i}.rs")).with_lines(1, 1)).collect();
+        let data = InfoWidgetData {
+            git_info: Some(GitInfo {
+                dirty_files: files,
+                dirty_total: 23,
+                added_total: 410,
+                removed_total: 96,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let lines = render_git_widget(&data, Rect::new(0, 0, 32, 10));
+        let last: String = lines.last().unwrap().spans.iter().map(|s| s.content.as_ref()).collect();
+        assert!(last.contains("+19 more") && last.ends_with("+410 −96 all"), "{last:?}");
+    }
+
+    #[test]
+    fn narrow_width_drops_counts_before_the_name() {
+        let data = InfoWidgetData {
+            git_info: Some(GitInfo {
+                dirty_files: vec![DirtyFile::new('M', "turn_execution.rs").with_lines(84, 12)],
+                dirty_total: 1,
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let row: String = render_git_widget(&data, Rect::new(0, 0, 16, 3))[0]
+            .spans
+            .iter()
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert!(!row.contains("+84"), "{row:?}");
+        assert!(row.contains("turn_exec"), "{row:?}");
+    }
+
+    #[test]
+    fn edited_paths_cover_edit_write_and_both_patch_formats() {
+        use serde_json::json;
+        assert_eq!(
+            edited_paths_from_tool_call("edit", &json!({"file_path": "/r/a.rs"})),
+            ["/r/a.rs"]
+        );
+        assert_eq!(
+            edited_paths_from_tool_call("write", &json!({"file_path": "b.rs"})),
+            ["b.rs"]
+        );
+        let codex = "*** Begin Patch\n*** Update File: x/c.rs\n@@\n-a\n+b\n*** Add File: d.rs\n+x\n*** End Patch";
+        assert_eq!(
+            edited_paths_from_tool_call("apply_patch", &json!({"patch_text": codex})),
+            ["x/c.rs", "d.rs"]
+        );
+        let unified = "--- a/e.rs\n+++ b/e.rs\n@@\n-a\n+b\n";
+        assert_eq!(
+            edited_paths_from_tool_call("apply_patch", &json!({"patch_text": unified})),
+            ["e.rs"]
+        );
+        assert!(edited_paths_from_tool_call("read", &json!({"file_path": "a.rs"})).is_empty());
+        assert!(edited_paths_from_tool_call("bash", &json!({"command": "rm a"})).is_empty());
+    }
+
+    #[test]
+    fn edited_paths_resolve_against_working_dir_and_match_repo_paths() {
+        let p = resolve_edited_path("../src/./a.rs", Some("/home/me/jcode/crates"));
+        assert_eq!(p, std::path::PathBuf::from("/home/me/jcode/src/a.rs"));
+        let set: std::collections::HashSet<_> = [p].into_iter().collect();
+        let root = std::path::Path::new("/home/me/jcode");
+        assert!(is_agent_edited(Some(root), "src/a.rs", &set));
+        assert!(!is_agent_edited(Some(root), "src/b.rs", &set));
+        assert!(!is_agent_edited(None, "src/a.rs", &set));
+    }
+
+    #[test]
+    fn numstat_parses_plain_binary_and_renamed_paths() {
+        let m = crate::tui::app::helpers::parse_numstat(
+            "84\t12\tsrc/a.rs\n-\t-\tlogo.png\n3\t1\tsrc/{old => new}/b.rs\n2\t2\told.rs => new.rs\n",
+        );
+        assert_eq!(m["src/a.rs"], (Some(84), Some(12)));
+        assert_eq!(m["logo.png"], (None, None));
+        assert_eq!(m["src/new/b.rs"], (Some(3), Some(1)));
+        assert_eq!(m["new.rs"], (Some(2), Some(2)));
+    }
+
+    /// Real-repo probe: runs the production git gather against the working
+    /// directory and renders the Changes widget. Run on demand with
+    /// `cargo test -p jcode-tui -- --ignored real_repo_changes --nocapture`.
+    #[test]
+    #[ignore]
+    fn real_repo_changes_widget() {
+        let info = crate::tui::app::helpers::gather_git_info_inner().expect("inside a git repo");
+        let data = InfoWidgetData {
+            git_info: Some(info.clone()),
+            ..Default::default()
+        };
+        println!("dirty_total={} +{} -{}", info.dirty_total, info.added_total, info.removed_total);
+        for l in render_git_widget(&data, Rect::new(0, 0, 36, 5)) {
+            println!("|{}|", l.spans.iter().map(|s| s.content.as_ref()).collect::<String>());
+        }
+        assert!(info.repo_root.is_some());
+        let ordered: Vec<_> = info.dirty_files.iter().map(|f| f.modified_at).collect();
+        assert!(ordered.windows(2).all(|w| w[0] >= w[1]), "newest first");
     }
 }

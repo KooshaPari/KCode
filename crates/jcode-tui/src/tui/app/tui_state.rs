@@ -1693,6 +1693,7 @@ impl crate::tui::TuiState for App {
                 false
             },
             git_info: gather_git_info(),
+            agent_edited: self.agent_edited_paths(),
         }
     }
 

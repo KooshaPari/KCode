@@ -1373,3 +1373,45 @@ fn overscroll_is_the_only_mode_and_reveals_pink_model_on_real_app() {
         assert!(!after.contains("(overscroll"), "w={width}: {after}");
     }
 }
+
+/// Real App: files the agent edited through transcript tool calls (relative
+/// and absolute, edit and apply_patch) resolve against the session working
+/// directory and are the ones the Changes widget marks.
+#[test]
+fn agent_edited_paths_come_from_transcript_edit_tools() {
+    use crate::tui::TuiState;
+    let _lock = scroll_render_test_lock();
+    let (mut app, _terminal) = create_scroll_test_app(80, 20, 0, 4);
+    app.session.working_dir = Some("/repo/crates".to_string());
+    let tool = |name: &str, input: serde_json::Value| {
+        DisplayMessage::tool(
+            "ok",
+            crate::message::ToolCall {
+                id: name.into(),
+                name: name.into(),
+                input,
+                ..Default::default()
+            },
+        )
+    };
+    app.display_messages.push(tool("edit", serde_json::json!({"file_path": "a/src/x.rs"})));
+    app.display_messages.push(tool(
+        "apply_patch",
+        serde_json::json!({"patch_text": "*** Begin Patch\n*** Update File: /repo/README.md\n@@\n-a\n+b\n*** End Patch"}),
+    ));
+    app.display_messages.push(tool("read", serde_json::json!({"file_path": "a/src/y.rs"})));
+    app.bump_display_messages_version();
+
+    let data = app.info_widget_data();
+    let set = &data.agent_edited;
+    assert!(set.contains(std::path::Path::new("/repo/crates/a/src/x.rs")), "{set:?}");
+    assert!(set.contains(std::path::Path::new("/repo/README.md")), "{set:?}");
+    assert!(!set.contains(std::path::Path::new("/repo/crates/a/src/y.rs")), "reads are not edits");
+
+    // Cached until the transcript changes, then refreshed.
+    let again = app.info_widget_data().agent_edited;
+    assert!(std::sync::Arc::ptr_eq(&data.agent_edited, &again));
+    app.display_messages.push(tool("write", serde_json::json!({"file_path": "/repo/new.rs"})));
+    app.bump_display_messages_version();
+    assert!(app.info_widget_data().agent_edited.contains(std::path::Path::new("/repo/new.rs")));
+}

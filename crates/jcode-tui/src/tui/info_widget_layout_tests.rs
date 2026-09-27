@@ -129,6 +129,7 @@ fn contended_data() -> InfoWidgetData {
             behind: 0,
             dirty_files: vec![DirtyFile::new('M', "a.rs"), DirtyFile::new('M', "b.rs")],
             dirty_total: 2,
+            ..Default::default()
         }),
         ..Default::default()
     }

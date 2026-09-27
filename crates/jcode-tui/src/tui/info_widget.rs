@@ -51,6 +51,7 @@ use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthStr;
 
 use git::{changes_has_data, changes_height, render_git_widget};
+pub(crate) use git::{edited_paths_from_tool_call, resolve_edited_path};
 pub use graph::{GraphEdge, GraphNode, build_graph_topology, graph_node_score};
 pub(crate) use memory_utils::is_traceworthy_memory_event;
 use memory_utils::{memory_active_summary, memory_last_trace_summary, memory_state_detail};
@@ -535,7 +536,7 @@ impl MemoryInfo {
 pub use jcode_tui_mermaid::DiagramInfo;
 
 /// Git repository status for the info widget
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GitInfo {
     pub branch: String,
     pub modified: usize,
@@ -547,15 +548,27 @@ pub struct GitInfo {
     pub dirty_files: Vec<DirtyFile>,
     /// Total number of dirty paths, including those beyond the cap.
     pub dirty_total: usize,
+    /// Lines added across all dirty files (text files only).
+    pub added_total: usize,
+    /// Lines removed across all dirty files (text files only).
+    pub removed_total: usize,
+    /// Absolute repository root, used to match agent-edited paths.
+    pub repo_root: Option<std::path::PathBuf>,
 }
 
 /// One dirty path from `git status --porcelain`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DirtyFile {
     /// Single-letter status shown in the Changes widget: `M`, `A`, `D`, `R`,
     /// `U` (conflict), or `?` (untracked).
     pub status: char,
     pub path: String,
+    /// Lines added, `None` for binary or unknown.
+    pub added: Option<usize>,
+    /// Lines removed, `None` for binary or unknown.
+    pub removed: Option<usize>,
+    /// Last modification time, used for newest-first ordering.
+    pub modified_at: Option<std::time::SystemTime>,
 }
 
 impl DirtyFile {
@@ -563,7 +576,14 @@ impl DirtyFile {
         Self {
             status,
             path: path.into(),
+            ..Default::default()
         }
+    }
+
+    pub fn with_lines(mut self, added: usize, removed: usize) -> Self {
+        self.added = Some(added);
+        self.removed = Some(removed);
+        self
     }
 }
 
@@ -663,6 +683,9 @@ pub struct InfoWidgetData {
     pub is_compacting: bool,
     /// Git repository status
     pub git_info: Option<GitInfo>,
+    /// Absolute paths the agent edited this session (edit-style tool calls),
+    /// used to mark agent changes in the Changes widget.
+    pub agent_edited: std::sync::Arc<std::collections::HashSet<std::path::PathBuf>>,
 }
 
 #[derive(Clone, Debug)]

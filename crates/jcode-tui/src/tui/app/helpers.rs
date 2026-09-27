@@ -1377,8 +1377,8 @@ pub(crate) fn format_countdown_until(target: chrono::DateTime<chrono::Utc>) -> S
     }
 }
 
-#[cfg(not(test))]
-fn gather_git_info_inner() -> Option<GitInfo> {
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) fn gather_git_info_inner() -> Option<GitInfo> {
     use std::process::Command;
 
     let in_repo = Command::new("git")
@@ -1409,10 +1409,18 @@ fn gather_git_info_inner() -> Option<GitInfo> {
     let mut modified = 0;
     let mut staged = 0;
     let mut untracked = 0;
-    let mut dirty_files = Vec::new();
-    let mut dirty_total = 0usize;
+    let mut all_files: Vec<crate::tui::info_widget::DirtyFile> = Vec::new();
 
-    if let Ok(output) = Command::new("git").args(["status", "--porcelain"]).output()
+    let repo_root = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| std::path::PathBuf::from(String::from_utf8_lossy(&o.stdout).trim()));
+
+    if let Ok(output) = Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=all"])
+        .output()
         && output.status.success()
     {
         let status = String::from_utf8_lossy(&output.stdout);
@@ -1435,15 +1443,47 @@ fn gather_git_info_inner() -> Option<GitInfo> {
                 }
             }
 
-            dirty_total += 1;
-            if dirty_files.len() < 10 {
-                dirty_files.push(crate::tui::info_widget::DirtyFile::new(
-                    porcelain_status_letter(index_status, worktree_status),
-                    file_path,
-                ));
-            }
+            all_files.push(crate::tui::info_widget::DirtyFile::new(
+                porcelain_status_letter(index_status, worktree_status),
+                file_path,
+            ));
         }
     }
+
+    // Line counts: tracked files from one numstat against HEAD (staged plus
+    // unstaged), untracked files by counting their lines.
+    let numstat = Command::new("git")
+        .args(["diff", "--numstat", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| parse_numstat(&String::from_utf8_lossy(&o.stdout)))
+        .unwrap_or_default();
+    let mut added_total = 0usize;
+    let mut removed_total = 0usize;
+    for file in &mut all_files {
+        let key = file.path.rsplit(" -> ").next().unwrap_or(&file.path).trim_matches('"');
+        let abs = repo_root.as_ref().map(|root| root.join(key));
+        if file.status == '?' {
+            file.added = abs.as_deref().and_then(count_text_lines);
+            file.removed = file.added.map(|_| 0);
+        } else if let Some(&(a, r)) = numstat.get(key) {
+            file.added = a;
+            file.removed = r;
+        }
+        added_total += file.added.unwrap_or(0);
+        removed_total += file.removed.unwrap_or(0);
+        file.modified_at = abs
+            .as_deref()
+            .and_then(|p| std::fs::symlink_metadata(p).ok())
+            .and_then(|m| m.modified().ok());
+    }
+    // Newest first, so the file being worked on stays visible under the cap.
+    // Deleted files have no mtime and sort last.
+    all_files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+    let dirty_total = all_files.len();
+    all_files.truncate(10);
+    let dirty_files = all_files;
 
     let (ahead, behind) = Command::new("git")
         .args(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
@@ -1475,7 +1515,50 @@ fn gather_git_info_inner() -> Option<GitInfo> {
         behind,
         dirty_files,
         dirty_total,
+        added_total,
+        removed_total,
+        repo_root,
     })
+}
+
+/// Parse `git diff --numstat` into path -> (added, removed). Binary files
+/// report `-` and map to `None` counts.
+pub(crate) fn parse_numstat(
+    text: &str,
+) -> std::collections::HashMap<String, (Option<usize>, Option<usize>)> {
+    let mut out = std::collections::HashMap::new();
+    for line in text.lines() {
+        let mut parts = line.splitn(3, '\t');
+        let (Some(a), Some(r), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        // Renames: `old => new` or `dir/{old => new}/file`.
+        let path = if let (Some(open), Some(close)) = (path.find('{'), path.find('}')) {
+            let inner = &path[open + 1..close];
+            let new = inner.rsplit(" => ").next().unwrap_or(inner);
+            format!("{}{}{}", &path[..open], new, &path[close + 1..]).replace("//", "/")
+        } else {
+            path.rsplit(" => ").next().unwrap_or(path).to_string()
+        };
+        out.insert(path, (a.parse().ok(), r.parse().ok()));
+    }
+    out
+}
+
+/// Line count of a small text file, for untracked files. Large or binary
+/// files return `None` so the widget shows no count rather than a bogus one.
+fn count_text_lines(path: &std::path::Path) -> Option<usize> {
+    const MAX_BYTES: u64 = 2 * 1024 * 1024;
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_BYTES {
+        return None;
+    }
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.contains(&0) {
+        return None;
+    }
+    let lines = bytes.iter().filter(|&&b| b == b'\n').count();
+    Some(if bytes.last().is_some_and(|&b| b != b'\n') { lines + 1 } else { lines })
 }
 
 /// Collapse a porcelain `XY` pair into the single letter the Changes widget
