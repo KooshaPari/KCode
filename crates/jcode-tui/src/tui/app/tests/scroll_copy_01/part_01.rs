@@ -1517,4 +1517,22 @@ fn changes_widget_end_to_end_on_real_git_repo() {
     assert!(row("new.rs").contains("?  new.rs"), "no dot on files agent did not edit:\n{frame}");
     assert!(row("new.rs").contains("+3 −0"), "{frame}");
     assert!(!row("logo.bin").contains('+'), "binary shows no counts:\n{frame}");
+    assert!(
+        frame.contains("● edited by agent"),
+        "legend explains the dot when one is shown:\n{frame}"
+    );
+
+    // Without any agent edits there is no dot, so no legend either.
+    let info = crate::tui::app::helpers::gather_git_info_in(Some(&root)).expect("repo");
+    crate::tui::app::helpers::seed_git_info_cache_for_tests(Some(info));
+    crate::tui::info_widget::clear_widget_placements_for_tests();
+    let (app2, mut terminal2) = create_scroll_test_app(140, 40, 0, 0);
+    let mut frame2 = String::new();
+    for _ in 0..3 {
+        frame2 = render_and_snap(&app2, &mut terminal2);
+    }
+    crate::tui::app::helpers::seed_git_info_cache_for_tests(None);
+    assert!(frame2.contains("src/lib.rs"), "{frame2}");
+    assert!(!frame2.contains("edited by agent"), "{frame2}");
+    assert!(!frame2.contains('●'), "{frame2}");
 }

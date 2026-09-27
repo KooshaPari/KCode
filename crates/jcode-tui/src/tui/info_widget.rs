@@ -50,7 +50,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthStr;
 
-use git::{changes_has_data, changes_height, render_git_widget};
+use git::{changes_has_data, changes_height, changes_legend, render_git_widget};
 pub(crate) use git::{edited_paths_from_tool_call, resolve_edited_path};
 pub use graph::{GraphEdge, GraphNode, build_graph_topology, graph_node_score};
 pub(crate) use memory_utils::is_traceworthy_memory_event;
@@ -1306,6 +1306,9 @@ fn render_single_widget(frame: &mut Frame, placement: &WidgetPlacement, data: &I
         if layout.pages.is_empty() || layout.max_page_height == 0 {
             return;
         }
+        if let Some(legend) = changes_legend(data, inner.height) {
+            block = block.title_bottom(legend);
+        }
         frame.render_widget(block, rect);
         render_overview_widget(frame, inner, data);
         return;
@@ -1326,6 +1329,11 @@ fn render_single_widget(frame: &mut Frame, placement: &WidgetPlacement, data: &I
     let lines = render_widget_content(placement.kind, data, inner);
     if lines.is_empty() {
         return;
+    }
+    if placement.kind == WidgetKind::GitStatus
+        && let Some(legend) = changes_legend(data, inner.height)
+    {
+        block = block.title_bottom(legend);
     }
     frame.render_widget(block, rect);
     let para = Paragraph::new(lines);

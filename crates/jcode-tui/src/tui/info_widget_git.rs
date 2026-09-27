@@ -85,6 +85,35 @@ pub(crate) fn is_agent_edited(
     edited.contains(&root.join(rel.trim_end_matches('/')))
 }
 
+/// Color of the agent-edit marker, shared by the rows and the legend.
+pub(super) const AGENT_DOT_COLOR: (u8, u8, u8) = (186, 139, 255);
+
+/// Border legend explaining the agent marker, shown only when at least one
+/// visible row carries it so it never labels something absent.
+pub(super) fn changes_legend(data: &InfoWidgetData, inner_height: u16) -> Option<Line<'static>> {
+    let info = data.git_info.as_ref()?;
+    let total = info.dirty_total.max(info.dirty_files.len());
+    let mut rows = (inner_height as usize).min(CHANGES_MAX_FILES);
+    if total > rows && rows > 0 {
+        rows -= 1;
+    }
+    let root = info.repo_root.as_deref();
+    let any = info
+        .dirty_files
+        .iter()
+        .take(rows)
+        .any(|f| is_agent_edited(root, &f.path, &data.agent_edited));
+    any.then(|| {
+        let (r, g, b) = AGENT_DOT_COLOR;
+        Line::from(vec![
+            Span::raw(" "),
+            Span::styled("●", Style::default().fg(rgb(r, g, b))),
+            Span::styled(" edited by agent ", Style::default().fg(rgb(130, 130, 145))),
+        ])
+        .right_aligned()
+    })
+}
+
 /// Whether the Changes widget has anything to show. A clean tree (or one that
 /// is only ahead/behind) has no file detail, and the status line already
 /// covers ahead/behind.
@@ -204,7 +233,10 @@ fn changes_file_line(file: &DirtyFile, agent: bool, count_w: usize, width: usize
             Style::default().fg(letter_color).bold(),
         ),
         if agent {
-            Span::styled("●", Style::default().fg(rgb(186, 139, 255)))
+            Span::styled("●", {
+                let (r, g, b) = AGENT_DOT_COLOR;
+                Style::default().fg(rgb(r, g, b))
+            })
         } else {
             Span::raw(" ")
         },
