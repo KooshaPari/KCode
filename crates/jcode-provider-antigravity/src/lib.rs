@@ -18,14 +18,43 @@ pub const AVAILABLE_MODELS: &[&str] = &[
     "gemini-3.5-flash-low",
     "gpt-oss-120b-medium",
 ];
-pub const FETCH_MODELS_API_URL: &str =
-    "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
-pub const GENERATE_CONTENT_API_URL: &str =
-    "https://cloudcode-pa.googleapis.com/v1internal:generateContent";
+/// Default Cloud Code base endpoint used for Antigravity requests.
+///
+/// The official Antigravity IDE talks to `daily-cloudcode-pa.googleapis.com`,
+/// not `cloudcode-pa.googleapis.com`. Google Front End routes by `Host`
+/// header, and for consumer (`@gmail.com`) accounts allocated to the
+/// `aicode-consumers` project, the non-`daily` host rejects otherwise-valid
+/// requests with `HTTP 429 RESOURCE_EXHAUSTED`, even though the identical
+/// token succeeds against `daily-cloudcode-pa.googleapis.com`. See
+/// <https://github.com/1jehuang/jcode/issues/1329>.
+pub const DEFAULT_ENDPOINT: &str = "https://daily-cloudcode-pa.googleapis.com";
+/// Environment variable that overrides [`DEFAULT_ENDPOINT`], for accounts or
+/// environments that need a different Cloud Code host.
+pub const ENDPOINT_ENV: &str = "JCODE_ANTIGRAVITY_ENDPOINT";
 const VERSION_ENV: &str = "JCODE_ANTIGRAVITY_VERSION";
 pub const ANTIGRAVITY_VERSION: &str = "1.18.3";
 pub const X_GOOG_API_CLIENT: &str = "google-cloud-sdk vscode_cloudshelleditor/0.1";
 const CATALOG_REFRESH_TTL_HOURS: i64 = 6;
+
+/// Resolve the Cloud Code base endpoint, honoring [`ENDPOINT_ENV`] and
+/// otherwise defaulting to [`DEFAULT_ENDPOINT`].
+pub fn antigravity_endpoint() -> String {
+    std::env::var(ENDPOINT_ENV)
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_ENDPOINT.to_string())
+}
+
+/// Full URL for the `fetchAvailableModels` RPC against the resolved endpoint.
+pub fn fetch_models_api_url() -> String {
+    format!("{}/v1internal:fetchAvailableModels", antigravity_endpoint())
+}
+
+/// Full URL for the `generateContent` RPC against the resolved endpoint.
+pub fn generate_content_api_url() -> String {
+    format!("{}/v1internal:generateContent", antigravity_endpoint())
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
 pub struct PersistedCatalog {
@@ -576,5 +605,60 @@ pub fn flatten_schema_combiners(schema: &Value) -> Value {
         }
         Value::Array(items) => Value::Array(items.iter().map(flatten_schema_combiners).collect()),
         _ => schema.clone(),
+    }
+}
+
+#[cfg(test)]
+mod endpoint_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    // Serialize env-var mutation across tests in this module: `std::env` is
+    // process-global, and cargo runs tests in this crate on multiple threads.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn antigravity_endpoint_defaults_to_daily_host() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            std::env::remove_var(ENDPOINT_ENV);
+        }
+        assert_eq!(antigravity_endpoint(), DEFAULT_ENDPOINT);
+        assert_eq!(
+            fetch_models_api_url(),
+            format!("{DEFAULT_ENDPOINT}/v1internal:fetchAvailableModels")
+        );
+        assert_eq!(
+            generate_content_api_url(),
+            format!("{DEFAULT_ENDPOINT}/v1internal:generateContent")
+        );
+    }
+
+    #[test]
+    fn antigravity_endpoint_honors_env_override_and_trims_trailing_slash() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            std::env::set_var(ENDPOINT_ENV, " https://example.googleapis.com/ ");
+        }
+        assert_eq!(antigravity_endpoint(), "https://example.googleapis.com");
+        assert_eq!(
+            fetch_models_api_url(),
+            "https://example.googleapis.com/v1internal:fetchAvailableModels"
+        );
+        unsafe {
+            std::env::remove_var(ENDPOINT_ENV);
+        }
+    }
+
+    #[test]
+    fn antigravity_endpoint_ignores_blank_env_override() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        unsafe {
+            std::env::set_var(ENDPOINT_ENV, "   ");
+        }
+        assert_eq!(antigravity_endpoint(), DEFAULT_ENDPOINT);
+        unsafe {
+            std::env::remove_var(ENDPOINT_ENV);
+        }
     }
 }

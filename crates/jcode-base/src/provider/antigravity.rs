@@ -18,11 +18,11 @@ use chrono::Utc;
 
 pub use jcode_provider_antigravity::is_known_model;
 pub use jcode_provider_antigravity::{
-    AVAILABLE_MODELS, CatalogModel, CatalogSnapshot, DEFAULT_FALLBACK_MODEL, FETCH_MODELS_API_URL,
-    FetchAvailableModelsResponse, GENERATE_CONTENT_API_URL, PersistedCatalog, X_GOOG_API_CLIENT,
+    AVAILABLE_MODELS, CatalogModel, CatalogSnapshot, DEFAULT_FALLBACK_MODEL,
+    FetchAvailableModelsResponse, PersistedCatalog, X_GOOG_API_CLIENT,
     antigravity_compatible_schema, antigravity_user_agent, catalog_is_stale, catalog_model_detail,
-    client_metadata_header, is_retryable_empty_turn, merge_antigravity_model_ids,
-    parse_fetch_available_models_response, remap_unsupported_model,
+    client_metadata_header, fetch_models_api_url, is_retryable_empty_turn,
+    merge_antigravity_model_ids, parse_fetch_available_models_response, remap_unsupported_model,
 };
 
 /// Path of the persisted warm-catalog cache shared by the runtime crate and
@@ -73,7 +73,7 @@ async fn fetch_available_models_with_project(
     };
 
     let response = client
-        .post(FETCH_MODELS_API_URL)
+        .post(fetch_models_api_url())
         .header(
             reqwest::header::AUTHORIZATION,
             format!("Bearer {}", access_token),
