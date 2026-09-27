@@ -458,6 +458,30 @@ fn project_lookup_endpoints(configured_endpoint: &str) -> Vec<String> {
 }
 
 pub async fn fetch_project_id(access_token: &str) -> Result<String> {
+    // Try the configured endpoint (`JCODE_ANTIGRAVITY_ENDPOINT`, defaulting to
+    // the daily Cloud Code host) before the fixed fallback list. Without this,
+    // an account whose project can only be resolved through an explicitly
+    // configured endpoint would have its project lookup probe only the
+    // hardcoded hosts below, never the one actually configured for inference.
+    let configured_endpoint = jcode_provider_antigravity::antigravity_endpoint();
+    let candidate_endpoints = project_lookup_endpoints(&configured_endpoint);
+    fetch_project_id_from_endpoints(access_token, &candidate_endpoints).await
+}
+
+/// Core of [`fetch_project_id`], taking an explicit ordered endpoint list so
+/// it is unit-testable against local mock servers instead of only the
+/// production Cloud Code hosts.
+///
+/// Every failure mode (transport error, non-2xx status, a 2xx response that
+/// isn't valid `loadCodeAssist` JSON, or a response missing a project id) is
+/// recorded and the loop moves on to the next candidate endpoint rather than
+/// returning early: an account whose project is only resolvable through a
+/// later endpoint in the list must not be blocked by an earlier endpoint's
+/// unexpected response shape.
+async fn fetch_project_id_from_endpoints(
+    access_token: &str,
+    candidate_endpoints: &[String],
+) -> Result<String> {
     let client = crate::provider::shared_http_client();
     let headers = antigravity_headers(access_token)?;
     let body = serde_json::json!({
@@ -469,15 +493,7 @@ pub async fn fetch_project_id(access_token: &str) -> Result<String> {
     });
     let mut errors = Vec::new();
 
-    // Try the configured endpoint (`JCODE_ANTIGRAVITY_ENDPOINT`, defaulting to
-    // the daily Cloud Code host) before the fixed fallback list. Without this,
-    // an account whose project can only be resolved through an explicitly
-    // configured endpoint would have its project lookup probe only the
-    // hardcoded hosts below, never the one actually configured for inference.
-    let configured_endpoint = jcode_provider_antigravity::antigravity_endpoint();
-    let candidate_endpoints = project_lookup_endpoints(&configured_endpoint);
-
-    for base_url in &candidate_endpoints {
+    for base_url in candidate_endpoints {
         let resp = match client
             .post(format!("{base_url}/v1internal:loadCodeAssist"))
             .headers(headers.clone())
@@ -499,10 +515,15 @@ pub async fn fetch_project_id(access_token: &str) -> Result<String> {
             continue;
         }
 
-        let parsed: LoadCodeAssistResponse = resp
-            .json()
-            .await
-            .with_context(|| format!("Failed to parse loadCodeAssist response from {base_url}"))?;
+        let parsed: LoadCodeAssistResponse = match resp.json().await {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                errors.push(format!(
+                    "{base_url}: failed to parse loadCodeAssist response: {err}"
+                ));
+                continue;
+            }
+        };
         if let Some(project_id) = extract_project_id(parsed.cloudaicompanion_project) {
             return Ok(project_id);
         }
@@ -672,6 +693,74 @@ mod tests {
                 .filter(|endpoint| *endpoint == configured)
                 .count(),
             1
+        );
+    }
+
+    /// Bind a one-shot local HTTP server that replies to every connection
+    /// with `body` (a full raw HTTP response, status line included), and
+    /// return its `http://127.0.0.1:<port>` base URL. Used to exercise
+    /// [`fetch_project_id_from_endpoints`]'s fallback behavior against
+    /// specific malformed/unexpected responses without touching the real
+    /// Cloud Code hosts.
+    async fn spawn_one_shot_http_server(body: &'static str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind local test server");
+        let addr = listener.local_addr().expect("local addr");
+        tokio::spawn(async move {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                let mut buf = [0u8; 4096];
+                // Drain the request so the client isn't left waiting on a
+                // half-closed connection before we reply.
+                let _ = stream.read(&mut buf).await;
+                let _ = stream.write_all(body.as_bytes()).await;
+                let _ = stream.shutdown().await;
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn fetch_project_id_falls_back_past_a_response_that_is_not_valid_json() {
+        // First candidate: HTTP 200 but a body that isn't valid
+        // `loadCodeAssist` JSON (e.g. an HTML error page from a
+        // misconfigured endpoint). This must not abort the whole lookup;
+        // it must be recorded as an error and the loop must continue to
+        // the next candidate, which resolves the project normally.
+        let bad_json_endpoint = spawn_one_shot_http_server(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 13\r\nConnection: close\r\n\r\n<html>oops</html>",
+        )
+        .await;
+        let good_endpoint = spawn_one_shot_http_server(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{\"cloudaicompanionProject\":\"proj-from-fallback\"}",
+        )
+        .await;
+
+        let project = fetch_project_id_from_endpoints(
+            "test-access-token",
+            &[bad_json_endpoint, good_endpoint],
+        )
+        .await
+        .expect("fallback endpoint should resolve the project");
+
+        assert_eq!(project, "proj-from-fallback");
+    }
+
+    #[tokio::test]
+    async fn fetch_project_id_fails_with_all_errors_when_every_endpoint_is_bad() {
+        let bad_json_endpoint = spawn_one_shot_http_server(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\nnot json",
+        )
+        .await;
+
+        let err = fetch_project_id_from_endpoints("test-access-token", &[bad_json_endpoint])
+            .await
+            .expect_err("no endpoint returned a usable project id");
+        let message = err.to_string();
+        assert!(
+            message.contains("failed to parse loadCodeAssist response"),
+            "unexpected error message: {message}"
         );
     }
 
