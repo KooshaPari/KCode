@@ -230,12 +230,6 @@ prompt_entry_animation = true
 # (default: true). Set false to list only jcode's own sessions.
 # external_sessions = true
 
-# Overscroll status line (model/provider/context info below the input):
-#   "on"         - always visible (default)
-#   "overscroll" - elastic reveal when scrolling past the bottom
-#   "off"        - never shown
-# overscroll_status = "on"
-
 # Disable specific animation variants by name.
 # Examples: ["donut"] or ["donut", "orbit_rings"]
 # Legacy aliases such as "three_rings" and "gyroscope" are still accepted.

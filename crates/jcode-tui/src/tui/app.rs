@@ -1697,9 +1697,6 @@ pub struct App {
     /// overscroll line, so momentum from a scroll that merely carries the view
     /// into the bottom does not trigger it.
     chat_scroll_gesture_from_bottom: bool,
-    /// When to show the overscroll status line: off, always on, or the elastic
-    /// overscroll reveal (default). From `display.overscroll_status` config.
-    overscroll_status_mode: crate::config::OverscrollStatusMode,
     /// Scroll offset for changelog overlay (None = not visible)
     changelog_scroll: Option<usize>,
     help_scroll: Option<usize>,

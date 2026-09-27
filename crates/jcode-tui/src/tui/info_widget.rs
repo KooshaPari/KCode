@@ -6,6 +6,8 @@
 //! In left-aligned mode, widgets only appear on the right margin.
 
 use super::color_support::rgb;
+#[path = "info_widget_context.rs"]
+mod context_mix;
 #[path = "info_widget_git.rs"]
 mod git;
 #[path = "info_widget_graph.rs"]
@@ -37,7 +39,6 @@ pub use crate::memory_types::{
 };
 use crate::prompt::ContextInfo;
 use crate::protocol::SwarmMemberStatus;
-use crate::provider::DEFAULT_CONTEXT_LIMIT;
 use crate::todo::TodoItem;
 use memory_render::{render_memory_compact, render_memory_expanded, render_memory_widget};
 use ratatui::{
@@ -51,20 +52,29 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthStr;
 
-use git::{render_git_compact, render_git_widget};
+use context_mix::{context_mix_height, render_context_mix_widget};
+use git::{changes_has_data, changes_height, render_git_widget};
 pub use graph::{GraphEdge, GraphNode, build_graph_topology, graph_node_score};
 pub(crate) use memory_utils::is_traceworthy_memory_event;
 use memory_utils::{memory_active_summary, memory_last_trace_summary, memory_state_detail};
-use model::{render_model_info, render_model_widget};
+use model::{render_model_info, render_model_widget, runtime_has_data, runtime_height};
 use swarm_background::{render_background_compact, render_background_widget, render_swarm_widget};
 use text::{truncate_smart, truncate_with_ellipsis};
 pub(crate) use tips::occasional_status_tip;
 use tips::{render_tips_widget, tips_widget_height};
 pub(crate) use todos_render::swarm_plan_todos;
 use todos_render::{render_todos_compact, render_todos_expanded, render_todos_widget};
-#[cfg(test)]
-use usage_render::render_usage_pill;
-use usage_render::{render_context_usage_line, render_usage_compact, render_usage_widget};
+use usage_render::{render_usage_compact, render_usage_widget};
+
+/// Overview rows used by the Changes section, mirroring [`render_sections`].
+pub(super) fn changes_section_height(data: &InfoWidgetData) -> u16 {
+    data.git_info.as_ref().map(changes_height).unwrap_or(0)
+}
+
+/// Overview rows used by the Runtime section, mirroring [`render_sections`].
+pub(super) fn model_info_height(data: &InfoWidgetData) -> u16 {
+    runtime_height(data)
+}
 
 /// Types of info widgets that can be displayed
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -75,7 +85,8 @@ pub enum WidgetKind {
     WorkspaceMap,
     /// Todo list with progress
     Todos,
-    /// Token/context usage bar
+    /// Context mix: what is filling the context window (the status line owns
+    /// the total and percentage)
     ContextUsage,
     /// Memory sidecar activity
     MemoryActivity,
@@ -89,7 +100,8 @@ pub enum WidgetKind {
     UsageLimits,
     /// Session-level KV cache hit ratio
     KvCache,
-    /// Current model name
+    /// Runtime details: service tier, route, transport, throughput, session
+    /// (the status line owns model, effort, provider, and auth)
     ModelInfo,
     /// Mermaid diagrams
     Diagrams,
@@ -97,7 +109,7 @@ pub enum WidgetKind {
     AmbientMode,
     /// Rotating tips/shortcuts
     Tips,
-    /// Git status
+    /// Changes: the dirty file list (the status line owns branch and counts)
     GitStatus,
 }
 
@@ -151,7 +163,7 @@ impl WidgetKind {
             WidgetKind::WorkspaceMap => 1,
             WidgetKind::Overview => 8,
             WidgetKind::Todos => 3,
-            WidgetKind::ContextUsage => 2,
+            WidgetKind::ContextUsage => 3,
             WidgetKind::MemoryActivity => 3,
             WidgetKind::SwarmStatus => 3,
             WidgetKind::Compaction => 3,
@@ -159,9 +171,9 @@ impl WidgetKind {
             WidgetKind::AmbientMode => 3,
             WidgetKind::UsageLimits => 3,
             WidgetKind::KvCache => 3,
-            WidgetKind::ModelInfo => 3, // Model + usage bars
+            WidgetKind::ModelInfo => 1,
             WidgetKind::Tips => 3,
-            WidgetKind::GitStatus => 3,
+            WidgetKind::GitStatus => 1,
         }
     }
 
@@ -543,7 +555,28 @@ pub struct GitInfo {
     pub untracked: usize,
     pub ahead: usize,
     pub behind: usize,
-    pub dirty_files: Vec<String>,
+    /// First few dirty paths with their porcelain status (capped).
+    pub dirty_files: Vec<DirtyFile>,
+    /// Total number of dirty paths, including those beyond the cap.
+    pub dirty_total: usize,
+}
+
+/// One dirty path from `git status --porcelain`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirtyFile {
+    /// Single-letter status shown in the Changes widget: `M`, `A`, `D`, `R`,
+    /// `U` (conflict), or `?` (untracked).
+    pub status: char,
+    pub path: String,
+}
+
+impl DirtyFile {
+    pub fn new(status: char, path: impl Into<String>) -> Self {
+        Self {
+            status,
+            path: path.into(),
+        }
+    }
 }
 
 impl GitInfo {
@@ -681,15 +714,9 @@ impl InfoWidgetData {
             WidgetKind::WorkspaceMap => !self.workspace_rows.is_empty(),
             WidgetKind::Overview => {
                 let mut sections = 0usize;
-                if self.model.is_some() {
-                    sections += 1;
-                }
-                if self
-                    .context_info
-                    .as_ref()
-                    .map(|c| c.total_chars > 0)
-                    .unwrap_or(false)
-                {
+                // Status-line facts (model, context %, branch) never count:
+                // the overview only joins detail sections.
+                if runtime_has_data(self) {
                     sections += 1;
                 }
                 if !self.todos.is_empty() {
@@ -723,7 +750,7 @@ impl InfoWidgetData {
                 if self
                     .git_info
                     .as_ref()
-                    .map(|g| g.is_interesting())
+                    .map(changes_has_data)
                     .unwrap_or(false)
                 {
                     sections += 1;
@@ -732,14 +759,7 @@ impl InfoWidgetData {
                 sections >= 2
             }
             WidgetKind::Todos => !self.todos.is_empty(),
-            WidgetKind::ContextUsage => {
-                self.context_info_stale
-                    || self
-                        .context_info
-                        .as_ref()
-                        .map(|c| c.total_chars > 0)
-                        .unwrap_or(false)
-            }
+            WidgetKind::ContextUsage => !self.context_info_stale && context_mix_height(self) > 0,
             WidgetKind::MemoryActivity => self
                 .memory_info
                 .as_ref()
@@ -763,13 +783,9 @@ impl InfoWidgetData {
                 .map(|u| u.available)
                 .unwrap_or(false),
             WidgetKind::KvCache => self.cache_hit_info.is_some(),
-            WidgetKind::ModelInfo => self.model.is_some(),
+            WidgetKind::ModelInfo => runtime_has_data(self),
             WidgetKind::Tips => false,
-            WidgetKind::GitStatus => self
-                .git_info
-                .as_ref()
-                .map(|g| g.is_interesting())
-                .unwrap_or(false),
+            WidgetKind::GitStatus => self.git_info.as_ref().map(changes_has_data).unwrap_or(false),
         }
     }
 
@@ -1106,15 +1122,11 @@ pub(crate) fn calculate_widget_height(
             1 + items + if data.todos.len() > 5 { 1 } else { 0 }
         }
         WidgetKind::ContextUsage => {
-            if data
-                .context_info
-                .as_ref()
-                .map(|c| c.total_chars == 0)
-                .unwrap_or(true)
-            {
+            let h = context_mix_height(data);
+            if h == 0 {
                 return 0;
             }
-            1 // Just the bar
+            h
         }
         WidgetKind::MemoryActivity => {
             if data.memory_info.is_none() {
@@ -1208,52 +1220,9 @@ pub(crate) fn calculate_widget_height(
             1 + attribution_lines
         }
         WidgetKind::ModelInfo => {
-            if data.model.is_none() {
+            let h = runtime_height(data);
+            if h == 0 {
                 return 0;
-            }
-            let mut h = 1u16; // Model name
-            if data
-                .provider_name
-                .as_deref()
-                .map(str::trim)
-                .is_some_and(|s| !s.is_empty())
-            {
-                h += 1; // Provider line
-            }
-            if data
-                .connection_type
-                .as_deref()
-                .map(str::trim)
-                .is_some_and(|s| !s.is_empty())
-            {
-                h += 1; // Connection line
-            }
-            if data.auth_method != AuthMethod::Unknown {
-                h += 1; // Auth method line
-            }
-            if data.session_count.is_some() || data.session_name.is_some() {
-                h += 1; // Session/name line
-            }
-            if let Some(info) = &data.usage_info
-                && info.available
-            {
-                match info.provider {
-                    UsageProvider::CostBased | UsageProvider::Copilot => {
-                        h += 1; // Cost/tokens line
-                        if info.cache_read_tokens.is_some() || info.cache_write_tokens.is_some() {
-                            h += 1; // Cache line
-                        }
-                        if info.output_tps.is_some() {
-                            h += 1; // TPS line
-                        }
-                    }
-                    _ => {
-                        h += 2; // Base subscription bars
-                        if info.spark.is_some() {
-                            h += 1; // Optional Spark bar
-                        }
-                    }
-                }
             }
             h
         }
@@ -1262,13 +1231,9 @@ pub(crate) fn calculate_widget_height(
             let Some(info) = &data.git_info else {
                 return 0;
             };
-            if !info.is_interesting() {
+            let h = changes_height(info);
+            if h == 0 {
                 return 0;
-            }
-            let mut h = 1u16; // Branch + stats on one line
-            h += info.dirty_files.len().min(5) as u16;
-            if info.dirty_files.len() > 5 {
-                h += 1;
             }
             h
         }
@@ -1612,7 +1577,7 @@ fn render_widget_content(
         WidgetKind::WorkspaceMap => Vec::new(), // Handled specially in render_single_widget
         WidgetKind::Overview => Vec::new(), // Handled specially in render_single_widget
         WidgetKind::Todos => render_todos_widget(data, inner),
-        WidgetKind::ContextUsage => render_context_widget(data, inner),
+        WidgetKind::ContextUsage => render_context_mix_widget(data, inner),
         WidgetKind::MemoryActivity => render_memory_widget(data, inner),
         WidgetKind::SwarmStatus => render_swarm_widget(data, inner),
         WidgetKind::BackgroundTasks => render_background_widget(data, inner),
@@ -1811,34 +1776,6 @@ fn compact_token_count(tokens: u64) -> String {
     }
 }
 
-/// Render context usage widget
-fn render_context_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
-    if data.context_info_stale {
-        return vec![Line::from(vec![
-            Span::styled("Context ", Style::default().fg(rgb(140, 140, 150))),
-            Span::styled("updating...", Style::default().fg(rgb(220, 180, 80))),
-        ])];
-    }
-    let Some(info) = &data.context_info else {
-        return Vec::new();
-    };
-    if info.total_chars == 0 && data.observed_context_tokens.is_none() {
-        return Vec::new();
-    }
-
-    let used_tokens = data
-        .observed_context_tokens
-        .map(|t| t as usize)
-        .unwrap_or_else(|| info.estimated_tokens());
-    let limit_tokens = data.context_limit.unwrap_or(DEFAULT_CONTEXT_LIMIT).max(1);
-    vec![render_context_usage_line(
-        "Context",
-        used_tokens,
-        limit_tokens,
-        inner.width,
-    )]
-}
-
 /// Render ambient mode status widget
 fn render_ambient_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
     let Some(info) = &data.ambient_info else {
@@ -2029,16 +1966,9 @@ fn render_sections(
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
 
-    // Model info at the top
-    if data.model.is_some() {
-        lines.extend(render_model_info(data, inner));
-    }
-
-    if let Some(info) = &data.context_info
-        && info.total_chars > 0
-    {
-        lines.extend(render_context_compact(data, inner));
-    }
+    // Detail layer only: model identity, context %, and branch/counts live on
+    // the overscroll status line and are never repeated here.
+    lines.extend(render_model_info(data, inner));
 
     if !data.todos.is_empty() {
         if matches!(focus, Some(InfoPageKind::TodosExpanded)) {
@@ -2081,11 +2011,9 @@ fn render_sections(
         lines.push(render_kv_cache_summary_line(cache));
     }
 
-    // Git info
-    if let Some(info) = &data.git_info
-        && info.is_interesting()
-    {
-        lines.extend(render_git_compact(info, inner.width));
+    // Changed files (the detail behind the line's git counts).
+    if data.git_info.as_ref().is_some_and(changes_has_data) {
+        lines.extend(render_git_widget(data, inner));
     }
 
     lines
@@ -2191,37 +2119,4 @@ fn format_event_for_expanded(
         }
         _ => ("·", String::new(), rgb(100, 100, 110)),
     }
-}
-
-fn render_context_compact(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
-    if data.context_info_stale {
-        return vec![Line::from(vec![
-            Span::styled("Context ", Style::default().fg(rgb(140, 140, 150))),
-            Span::styled("updating...", Style::default().fg(rgb(220, 180, 80))),
-        ])];
-    }
-    let Some(info) = &data.context_info else {
-        return Vec::new();
-    };
-    if info.total_chars == 0 && data.observed_context_tokens.is_none() {
-        return Vec::new();
-    }
-
-    let used_tokens = data
-        .observed_context_tokens
-        .map(|t| t as usize)
-        .unwrap_or_else(|| info.estimated_tokens());
-    let limit_tokens = data.context_limit.unwrap_or(DEFAULT_CONTEXT_LIMIT).max(1);
-    let label = if data.is_compacting {
-        "Context📦"
-    } else {
-        "Context"
-    };
-
-    vec![render_context_usage_line(
-        label,
-        used_tokens,
-        limit_tokens,
-        inner.width,
-    )]
 }

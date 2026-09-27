@@ -226,30 +226,6 @@ mod diff_display_mode_tests {
     }
 }
 
-/// When to show the overscroll status line (model/provider/context info below
-/// the input).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum OverscrollStatusMode {
-    /// Never show the status line.
-    Off,
-    /// Always show the status line below the input (default).
-    #[default]
-    On,
-    /// Elastic reveal: show it briefly when scrolling past the bottom.
-    Overscroll,
-}
-
-impl OverscrollStatusMode {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::On => "on",
-            Self::Overscroll => "overscroll",
-        }
-    }
-}
-
 /// How to display mermaid diagrams.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

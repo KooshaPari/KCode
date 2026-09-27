@@ -2298,7 +2298,7 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         Alignment::Right
     };
 
-    // Pinned mode (no countdown): the info line owns the whole row.
+    // No countdown (dwell just expired this frame): the info line owns the row.
     let Some(secs) = countdown_secs else {
         let (spans, _) = overscroll_fit_facts(&facts, total_width);
         if spans.is_empty() {
@@ -2360,6 +2360,9 @@ pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area
         Line::from(vec![Span::styled(label, countdown_style)]).alignment(Alignment::Right);
     frame.render_widget(Paragraph::new(countdown_line), right_area);
 }
+
+/// Model name color on the overscroll status line.
+const OVERSCROLL_MODEL_PINK: Color = Color::Rgb(255, 135, 200);
 
 /// Raw facts for the overscroll status line, before width fitting.
 struct OverscrollFacts {
@@ -2505,7 +2508,7 @@ fn overscroll_fact_spans(
     if let Some(model) = &facts.model {
         let mut group = vec![Span::styled(
             model.clone(),
-            Style::default().fg(rgb(190, 190, 200)).bold(),
+            Style::default().fg(OVERSCROLL_MODEL_PINK).bold(),
         )];
         if levels.model == 0
             && let Some(effort) = &facts.effort

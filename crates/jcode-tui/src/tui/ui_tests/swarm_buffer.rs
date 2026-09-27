@@ -714,6 +714,7 @@ fn overscroll_line_state() -> TestState {
         ahead: 1,
         behind: 0,
         dirty_files: Vec::new(),
+        dirty_total: 0,
     });
     state
 }

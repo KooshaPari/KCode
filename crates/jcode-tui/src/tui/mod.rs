@@ -437,12 +437,6 @@ pub trait TuiState {
     fn chat_overscroll_active(&self) -> bool {
         false
     }
-    /// Whether the overscroll status line is pinned permanently visible by
-    /// config (`display.overscroll_status = "on"`). A pinned line is part of
-    /// the stable layout, unlike the transient elastic reveal.
-    fn chat_overscroll_pinned(&self) -> bool {
-        false
-    }
     /// Seconds remaining in the overscroll dwell window, used to render the
     /// `(overscroll x.x)` countdown. `None` when not shown.
     fn chat_overscroll_remaining(&self) -> Option<f32> {

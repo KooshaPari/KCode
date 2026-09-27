@@ -1410,6 +1410,7 @@ fn gather_git_info_inner() -> Option<GitInfo> {
     let mut staged = 0;
     let mut untracked = 0;
     let mut dirty_files = Vec::new();
+    let mut dirty_total = 0usize;
 
     if let Ok(output) = Command::new("git").args(["status", "--porcelain"]).output()
         && output.status.success()
@@ -1434,8 +1435,12 @@ fn gather_git_info_inner() -> Option<GitInfo> {
                 }
             }
 
+            dirty_total += 1;
             if dirty_files.len() < 10 {
-                dirty_files.push(file_path);
+                dirty_files.push(crate::tui::info_widget::DirtyFile::new(
+                    porcelain_status_letter(index_status, worktree_status),
+                    file_path,
+                ));
             }
         }
     }
@@ -1469,5 +1474,26 @@ fn gather_git_info_inner() -> Option<GitInfo> {
         ahead,
         behind,
         dirty_files,
+        dirty_total,
     })
+}
+
+/// Collapse a porcelain `XY` pair into the single letter the Changes widget
+/// shows. Conflicts win, then the worktree side (what the user is editing),
+/// then the index side.
+pub(crate) fn porcelain_status_letter(index: u8, worktree: u8) -> char {
+    if index == b'?' {
+        return '?';
+    }
+    if index == b'U' || worktree == b'U' || (index == b'A' && worktree == b'A') {
+        return 'U';
+    }
+    let pick = if worktree != b' ' { worktree } else { index };
+    match pick {
+        b'M' | b'T' => 'M',
+        b'A' => 'A',
+        b'D' => 'D',
+        b'R' | b'C' => 'R',
+        _ => 'M',
+    }
 }
