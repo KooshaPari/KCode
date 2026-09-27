@@ -287,6 +287,17 @@ export type ApiEvent =
       cache_read_input?: number;
       cache_creation_input?: number;
     }
+  | {
+      ev: "kv_cache_miss";
+      session_id: string;
+      reason: string;
+      harness_caused: boolean;
+      missed_tokens: number;
+      expected_tokens: number;
+      read_tokens: number;
+      documented_cause?: string;
+      message: string;
+    }
   | { ev: "turn_stopped"; session_id: string; reason: TurnStopReason; message: string; provider_stop_reason?: string }
   | { ev: "turn_done"; session_id: string }
   | {
@@ -415,6 +426,7 @@ export const KNOWN_EVENT_KINDS = [
   "tool_exec",
   "tool_done",
   "token_usage",
+  "kv_cache_miss",
   "turn_done",
   "turn_stopped",
   "wake_requested",

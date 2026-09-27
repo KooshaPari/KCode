@@ -1574,6 +1574,16 @@ impl BridgeState {
                 cache_read_input: event["cache_read_input"].as_u64(),
                 cache_creation_input: event["cache_creation_input"].as_u64(),
             })],
+            "kv_cache_miss" => vec![ServerFrame::event(ApiEvent::KvCacheMiss {
+                session_id: session(self),
+                reason: event["reason"].as_str().unwrap_or("unknown").to_string(),
+                harness_caused: event["harness_caused"].as_bool().unwrap_or(false),
+                missed_tokens: event["missed_tokens"].as_u64().unwrap_or(0),
+                expected_tokens: event["expected_tokens"].as_u64().unwrap_or(0),
+                read_tokens: event["read_tokens"].as_u64().unwrap_or(0),
+                documented_cause: event["documented_cause"].as_str().map(str::to_string),
+                message: event["message"].as_str().unwrap_or("KV cache miss").to_string(),
+            })],
             "done" => {
                 let id = event["id"].as_u64().unwrap_or(0);
                 // Subscribe and controls also emit `done`. Exclude their ids,

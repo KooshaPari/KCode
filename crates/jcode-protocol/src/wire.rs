@@ -1011,6 +1011,24 @@ pub enum ServerEvent {
         ephemeral_message_count: usize,
     },
 
+    /// Daemon-classified KV (prompt) cache miss for the request that just
+    /// completed. Emitted after `tokens`. `reason` is a stable snake_case id
+    /// (e.g. `prefix_changed`, `tools_changed`, `expired`, `model_switch`).
+    #[serde(rename = "kv_cache_miss")]
+    KvCacheMiss {
+        reason: String,
+        /// True when the harness itself changed the cached prefix.
+        harness_caused: bool,
+        missed_tokens: u64,
+        expected_tokens: u64,
+        read_tokens: u64,
+        /// Documented intentional invalidation that explains the miss.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        documented_cause: Option<String>,
+        /// Ready-to-display one-line summary.
+        message: String,
+    },
+
     /// Active transport/connection type for the current stream
     #[serde(rename = "connection_type")]
     ConnectionType { connection: String },
