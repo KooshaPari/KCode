@@ -11,6 +11,60 @@ use std::sync::Arc;
 use tokio::sync::mpsc as tokio_mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 
+#[test]
+fn server_reload_report_preserves_json_fields_and_exit_status_contract() {
+    let cases = [
+        (false, false, false, false),
+        (true, true, true, false),
+        (true, false, true, false),
+        (true, false, false, true),
+    ];
+
+    for (had_listener, already_current, handoff_ready, should_fail) in cases {
+        let report = ServerReloadReport {
+            socket: "/tmp/jcode.sock".to_string(),
+            had_listener,
+            forced: false,
+            reloaded: had_listener && !already_current,
+            already_current,
+            handoff_ready,
+            detail: "test reload outcome".to_string(),
+        };
+
+        let json = serde_json::to_value(&report).expect("serialize reload report");
+        assert_eq!(json["had_listener"], had_listener);
+        assert_eq!(json["already_current"], already_current);
+        assert_eq!(json["handoff_ready"], handoff_ready);
+
+        let result = validate_server_reload_report(&report);
+        assert_eq!(result.is_err(), should_fail, "report: {json}");
+        if should_fail {
+            assert!(
+                result
+                    .expect_err("not-ready handoff must fail")
+                    .to_string()
+                    .contains("never became ready")
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn server_reload_without_listener_is_a_successful_json_noop() {
+    let _env_lock = crate::storage::lock_test_env();
+    let previous_home = std::env::var_os("JCODE_HOME");
+    let home = tempfile::tempdir().expect("tempdir");
+    crate::env::set_var("JCODE_HOME", home.path());
+
+    let result = run_server_reload_command(false, true).await;
+
+    match previous_home {
+        Some(value) => crate::env::set_var("JCODE_HOME", value),
+        None => crate::env::remove_var("JCODE_HOME"),
+    }
+    result.expect("reload without a listener must be a successful no-op");
+}
+
 #[tokio::test]
 async fn memory_cli_project_import_uses_explicit_directory_and_persists() {
     let _guard = crate::storage::lock_test_env();
