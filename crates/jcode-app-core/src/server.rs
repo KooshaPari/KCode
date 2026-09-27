@@ -2301,6 +2301,9 @@ impl Server {
         crate::transport::remove_socket(&self.debug_socket_path);
 
         let main_listener = Listener::bind(&self.socket_path)?;
+        if let Err(error) = crate::tool::interaction::ensure_server().await {
+            crate::logging::warn(&format!("Interaction broker unavailable: {error}"));
+        }
         let debug_listener = Listener::bind(&self.debug_socket_path)?;
 
         #[cfg(unix)]

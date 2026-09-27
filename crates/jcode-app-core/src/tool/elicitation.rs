@@ -120,7 +120,7 @@ impl Tool for ElicitateMcpTool {
         })
     }
 
-    async fn execute(&self, input: Value, _ctx: ToolContext) -> Result<ToolOutput> {
+    async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
         let params: ElicitInput = serde_json::from_value(input)?;
 
         let field = params
@@ -139,6 +139,10 @@ impl Tool for ElicitateMcpTool {
             urgency: params.urgency.unwrap_or_else(|| "info".to_string()),
         };
 
+        if super::interaction::remotely_controlled(&ctx.session_id) {
+            return super::interaction_form::elicit(&ctx, request).await;
+        }
+
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
 
         let msg = ElicitMessage {
@@ -152,13 +156,11 @@ impl Tool for ElicitateMcpTool {
 
         // Wait for user response (with timeout)
         let timeout = params.timeout_secs.unwrap_or(600);
-        let response = tokio::time::timeout(
-            std::time::Duration::from_secs(timeout as u64),
-            response_rx,
-        )
-        .await
-        .map_err(|_| anyhow::anyhow!("elicitation timed out after {timeout}s"))?
-        .map_err(|_| anyhow::anyhow!("elicitation response channel closed"))?;
+        let response =
+            tokio::time::timeout(std::time::Duration::from_secs(timeout as u64), response_rx)
+                .await
+                .map_err(|_| anyhow::anyhow!("elicitation timed out after {timeout}s"))?
+                .map_err(|_| anyhow::anyhow!("elicitation response channel closed"))?;
 
         let output = json!({
             "action": response.action,

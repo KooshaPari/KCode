@@ -12,6 +12,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
 mod discovery;
+mod interactions;
 mod live;
 
 const ACP_PROTOCOL_VERSION: u64 = 1;
@@ -57,6 +58,7 @@ struct JsonRpcMessage {
     id: Option<Value>,
     method: Option<String>,
     params: Value,
+    result: Option<Value>,
 }
 
 impl JsonRpcMessage {
@@ -77,6 +79,7 @@ impl JsonRpcMessage {
         }
         Ok(Self {
             id: object.get("id").cloned(),
+            result: object.get("result").cloned(),
             method: object
                 .get("method")
                 .and_then(Value::as_str)
@@ -96,6 +99,7 @@ struct DaemonSession {
     ui_state: Mutex<SessionUiState>,
     events: Mutex<Option<tokio::sync::mpsc::Receiver<Result<ServerEvent>>>>,
     pump: Mutex<Option<tokio::task::AbortHandle>>,
+    interaction_pump: Mutex<Option<tokio::task::AbortHandle>>,
 }
 
 /// Session-scoped provider/model state used to surface ACP `configOptions`
@@ -215,6 +219,7 @@ impl DaemonSession {
             ui_state: Mutex::new(SessionUiState::default()),
             events: Mutex::new(None),
             pump: Mutex::new(None),
+            interaction_pump: Mutex::new(None),
         }
     }
 
@@ -271,6 +276,9 @@ struct AcpRuntime {
     provider_choice: ProviderChoice,
     model: Option<String>,
     provider_profile: Option<String>,
+    controller: String,
+    form_elicitation: Arc<AtomicBool>,
+    interaction_requests: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl AcpRuntime {
@@ -284,6 +292,9 @@ impl AcpRuntime {
             stdout: Arc::new(Mutex::new(tokio::io::stdout())),
             sessions: Arc::new(Mutex::new(HashMap::new())),
             profile,
+            controller: crate::id::new_id("acp"),
+            form_elicitation: Arc::new(AtomicBool::new(false)),
+            interaction_requests: Arc::new(Mutex::new(HashMap::new())),
             provider_choice,
             model,
             provider_profile,
@@ -328,18 +339,20 @@ impl AcpRuntime {
     async fn handle_message(&self, message: JsonRpcMessage) -> Result<()> {
         let Some(method) = message.method.as_deref() else {
             if let Some(id) = message.id {
-                self.write_error_value(
-                    id,
-                    JSONRPC_INVALID_REQUEST,
-                    "JSON-RPC request missing method".to_string(),
-                )
-                .await?;
+                self.interaction_response(id, message.result).await?;
             }
             return Ok(());
         };
 
         match method {
             "initialize" => {
+                self.form_elicitation.store(
+                    message
+                        .params
+                        .pointer("/clientCapabilities/elicitation/form")
+                        .is_some_and(|v| !v.is_null()),
+                    Ordering::SeqCst,
+                );
                 if let Some(id) = message.id {
                     self.write_result(id, initialize_result(&message.params, self.profile))
                         .await?;
@@ -428,7 +441,8 @@ impl AcpRuntime {
             Ok(session) => {
                 let session_id = session.session_id.clone();
                 let state = session.ui_state.lock().await.clone();
-                self.register_session(session).await;
+                self.register_session(session, interaction_control(&message.params, true))
+                    .await;
                 let mut result = json!({ "sessionId": session_id });
                 insert_session_configuration(&mut result, &state);
                 self.write_result(id, result).await?;
@@ -482,7 +496,8 @@ impl AcpRuntime {
         {
             Ok(session) => {
                 let state = session.ui_state.lock().await.clone();
-                self.register_session(session).await;
+                self.register_session(session, interaction_control(&message.params, false))
+                    .await;
                 let mut result = json!({});
                 insert_session_configuration(&mut result, &state);
                 self.write_result(id, result).await?;
@@ -548,6 +563,7 @@ impl AcpRuntime {
             return Ok(());
         }
 
+        session.clear_events().await;
         let runtime = self.clone();
         tokio::spawn(async move {
             let result = runtime
@@ -583,9 +599,9 @@ impl AcpRuntime {
             sessions.get(&session_id).cloned()
         };
         if let Some(session) = session {
+            self.cancel_interactions(&session_id).await;
             let cancel_id = session.next_id();
             let _ = session.send(&Request::Cancel { id: cancel_id }).await;
-            session.stop_pump().await;
         }
         if let Some(id) = message.id {
             self.write_result(id, json!({})).await?;
@@ -606,8 +622,10 @@ impl AcpRuntime {
             }
         };
         if let Some(session) = self.sessions.lock().await.remove(&session_id) {
+            self.cancel_interactions(&session_id).await;
             let cancel_id = session.next_id();
             let _ = session.send(&Request::Cancel { id: cancel_id }).await;
+            session.stop_pump().await;
         }
         self.write_result(id, json!({})).await?;
         Ok(())
@@ -672,6 +690,7 @@ impl AcpRuntime {
             return Ok(());
         }
 
+        session.clear_events().await;
         let request_id = session.next_id();
         let apply_result = async {
             match config_id.as_str() {
@@ -1638,6 +1657,13 @@ fn compatibility_option_value(
         })
 }
 
+fn interaction_control(params: &Value, new_session: bool) -> bool {
+    params
+        .pointer("/_meta/jcode.interactionController")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| new_session || std::env::var("JCODE_ACP_CONTROL").as_deref() == Ok("1"))
+}
+
 fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
     // We only speak exactly ACP_PROTOCOL_VERSION; the response pins to our
     // version regardless of the `protocolVersion` the client requested.
@@ -1674,6 +1700,8 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
             }),
         );
     }
+
+    agent_capabilities["_meta"]["jcode.interactionController"] = json!(cfg!(unix));
 
     json!({
         "protocolVersion": protocol_version,

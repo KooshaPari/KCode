@@ -1,7 +1,15 @@
 use super::*;
 
 impl DaemonSession {
+    pub(super) async fn clear_events(&self) {
+        if let Some(receiver) = self.events.lock().await.as_mut() {
+            while receiver.try_recv().is_ok() {}
+        }
+    }
     pub(super) async fn stop_pump(&self) {
+        if let Some(pump) = self.interaction_pump.lock().await.take() {
+            pump.abort();
+        }
         if let Some(pump) = self.pump.lock().await.take() {
             pump.abort();
         }
@@ -9,7 +17,11 @@ impl DaemonSession {
 }
 
 impl AcpRuntime {
-    pub(super) async fn register_session(&self, session: DaemonSession) {
+    pub(super) async fn register_session(
+        &self,
+        session: DaemonSession,
+        control_interactions: bool,
+    ) {
         let session = Arc::new(session);
         let (sender, receiver) = tokio::sync::mpsc::channel(256);
         *session.events.lock().await = Some(receiver);
@@ -61,6 +73,9 @@ impl AcpRuntime {
             }
         });
         *session.pump.lock().await = Some(task.abort_handle());
+        if control_interactions {
+            self.start_interactions(session).await;
+        }
     }
 }
 
@@ -95,7 +110,7 @@ mod tests {
         let session = DaemonSession::new("isolated".into(), reader, writer, 2);
         session.prompt_running.store(true, Ordering::SeqCst);
         let runtime = AcpRuntime::new(AcpProfile::Standard, ProviderChoice::Jcode, None, None);
-        runtime.register_session(session).await;
+        runtime.register_session(session, false).await;
         let session = runtime.sessions.lock().await["isolated"].clone();
         server
             .write_all(b"{\"type\":\"done\",\"id\":7}\n")
@@ -107,6 +122,39 @@ mod tests {
         ));
         drop(server);
         assert!(session.read_event().await.is_err());
+        session.stop_pump().await;
+    }
+}
+
+#[cfg(test)]
+mod ownership_tests {
+    use super::*;
+    #[test]
+    fn interaction_ownership_requires_explicit_existing_session_claim() {
+        assert!(interaction_control(&json!({}), true));
+        assert!(interaction_control(
+            &json!({"_meta":{"jcode.interactionController":true}}),
+            false
+        ));
+        assert!(!interaction_control(
+            &json!({"_meta":{"jcode.interactionController":false}}),
+            true
+        ));
+    }
+    #[tokio::test]
+    async fn passive_attachment_never_starts_interaction_controller() {
+        let (client, _server) = crate::transport::stream_pair().unwrap();
+        let (reader, writer) = client.into_split();
+        let runtime = AcpRuntime::new(AcpProfile::Standard, ProviderChoice::Jcode, None, None);
+        runtime.form_elicitation.store(true, Ordering::SeqCst);
+        runtime
+            .register_session(
+                DaemonSession::new("passive".into(), reader, writer, 2),
+                false,
+            )
+            .await;
+        let session = runtime.sessions.lock().await["passive"].clone();
+        assert!(session.interaction_pump.lock().await.is_none());
         session.stop_pump().await;
     }
 }

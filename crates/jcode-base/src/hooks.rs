@@ -41,6 +41,7 @@ const BLOCK_REASON_LIMIT: usize = 2000;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GateDecision {
     Allow,
+    Ask { reason: String },
     Block { reason: String },
 }
 
@@ -259,6 +260,8 @@ pub fn dispatch_observer(event: HookEvent) {
 ///
 /// - exit 0: allow the tool call
 /// - exit 2: block it; stderr becomes the error shown to the model
+/// - exit 3: ask the connected ACP controller; stderr describes the held operation
+///   (explicit opt-in, fail closed on timeout, denial, cancellation or unavailable broker)
 /// - anything else (other exits, timeout, spawn failure): fail open
 pub async fn run_pre_tool_gate(
     session_id: &str,
@@ -285,7 +288,9 @@ pub async fn run_pre_tool_gate(
     let mut decision = GateDecision::Allow;
     for command_line in command_lines {
         let current = run_pre_tool_command(&command_line, &event, tool_name, tool_input_json).await;
-        if matches!(current, GateDecision::Block { .. }) && decision == GateDecision::Allow {
+        if matches!(current, GateDecision::Block { .. })
+            || (matches!(current, GateDecision::Ask { .. }) && decision == GateDecision::Allow)
+        {
             decision = current;
         }
     }
@@ -353,6 +358,12 @@ async fn run_pre_tool_command(
 
     match output.status.code() {
         Some(0) => GateDecision::Allow,
+        Some(3) => GateDecision::Ask {
+            reason: String::from_utf8_lossy(&output.stderr)
+                .chars()
+                .take(BLOCK_REASON_LIMIT)
+                .collect(),
+        },
         Some(2) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let reason = stderr.trim();
