@@ -6,8 +6,6 @@
 //! In left-aligned mode, widgets only appear on the right margin.
 
 use super::color_support::rgb;
-#[path = "info_widget_context.rs"]
-mod context_mix;
 #[path = "info_widget_git.rs"]
 mod git;
 #[path = "info_widget_graph.rs"]
@@ -52,7 +50,6 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthStr;
 
-use context_mix::{context_mix_height, render_context_mix_widget};
 use git::{changes_has_data, changes_height, render_git_widget};
 pub use graph::{GraphEdge, GraphNode, build_graph_topology, graph_node_score};
 pub(crate) use memory_utils::is_traceworthy_memory_event;
@@ -85,9 +82,6 @@ pub enum WidgetKind {
     WorkspaceMap,
     /// Todo list with progress
     Todos,
-    /// Context mix: what is filling the context window (the status line owns
-    /// the total and percentage)
-    ContextUsage,
     /// Memory sidecar activity
     MemoryActivity,
     /// Subagents/sessions status
@@ -121,7 +115,6 @@ impl WidgetKind {
             WidgetKind::WorkspaceMap => 1,
             WidgetKind::Overview => 2,
             WidgetKind::Todos => 3,
-            WidgetKind::ContextUsage => 4,
             WidgetKind::UsageLimits => 5, // Bumped up - important when near limits
             WidgetKind::KvCache => 6,
             WidgetKind::MemoryActivity => 7,
@@ -142,7 +135,6 @@ impl WidgetKind {
             WidgetKind::WorkspaceMap => Side::Right,
             WidgetKind::Overview => Side::Right,
             WidgetKind::Todos => Side::Right,
-            WidgetKind::ContextUsage => Side::Right,
             WidgetKind::MemoryActivity => Side::Right,
             WidgetKind::SwarmStatus => Side::Left,
             WidgetKind::Compaction => Side::Left,
@@ -163,7 +155,6 @@ impl WidgetKind {
             WidgetKind::WorkspaceMap => 1,
             WidgetKind::Overview => 8,
             WidgetKind::Todos => 3,
-            WidgetKind::ContextUsage => 3,
             WidgetKind::MemoryActivity => 3,
             WidgetKind::SwarmStatus => 3,
             WidgetKind::Compaction => 3,
@@ -184,7 +175,6 @@ impl WidgetKind {
             WidgetKind::WorkspaceMap,
             WidgetKind::Overview,
             WidgetKind::Todos,
-            WidgetKind::ContextUsage,
             WidgetKind::UsageLimits,
             WidgetKind::KvCache,
             WidgetKind::MemoryActivity,
@@ -204,7 +194,6 @@ impl WidgetKind {
             WidgetKind::WorkspaceMap => "workspace",
             WidgetKind::Overview => "overview",
             WidgetKind::Todos => "todos",
-            WidgetKind::ContextUsage => "context",
             WidgetKind::MemoryActivity => "memory",
             WidgetKind::SwarmStatus => "swarm",
             WidgetKind::BackgroundTasks => "background",
@@ -239,7 +228,6 @@ pub(crate) fn is_overview_mergeable(kind: WidgetKind) -> bool {
     matches!(
         kind,
         WidgetKind::Todos
-            | WidgetKind::ContextUsage
             | WidgetKind::SwarmStatus
             | WidgetKind::BackgroundTasks
             | WidgetKind::Compaction
@@ -759,7 +747,6 @@ impl InfoWidgetData {
                 sections >= 2
             }
             WidgetKind::Todos => !self.todos.is_empty(),
-            WidgetKind::ContextUsage => !self.context_info_stale && context_mix_height(self) > 0,
             WidgetKind::MemoryActivity => self
                 .memory_info
                 .as_ref()
@@ -1120,13 +1107,6 @@ pub(crate) fn calculate_widget_height(
             // Header (with inline pip meter) + up to 5 items
             let items = data.todos.len().min(5) as u16;
             1 + items + if data.todos.len() > 5 { 1 } else { 0 }
-        }
-        WidgetKind::ContextUsage => {
-            let h = context_mix_height(data);
-            if h == 0 {
-                return 0;
-            }
-            h
         }
         WidgetKind::MemoryActivity => {
             if data.memory_info.is_none() {
@@ -1577,7 +1557,6 @@ fn render_widget_content(
         WidgetKind::WorkspaceMap => Vec::new(), // Handled specially in render_single_widget
         WidgetKind::Overview => Vec::new(), // Handled specially in render_single_widget
         WidgetKind::Todos => render_todos_widget(data, inner),
-        WidgetKind::ContextUsage => render_context_mix_widget(data, inner),
         WidgetKind::MemoryActivity => render_memory_widget(data, inner),
         WidgetKind::SwarmStatus => render_swarm_widget(data, inner),
         WidgetKind::BackgroundTasks => render_background_widget(data, inner),
