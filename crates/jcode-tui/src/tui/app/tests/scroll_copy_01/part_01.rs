@@ -1334,3 +1334,42 @@ fn retained_frame_row_matches_the_rendered_screen() {
         "the retained frame's row must be the line rendered at the top of the viewport"
     );
 }
+
+/// Real App + real input path: at rest the status-line facts are nowhere on
+/// screen except inside the widgets' detail (none of them), a wheel
+/// overscroll reveals the line with a pink model, and it rebounds.
+#[test]
+fn overscroll_is_the_only_mode_and_reveals_pink_model_on_real_app() {
+    let _lock = scroll_render_test_lock();
+    for width in [120u16, 60] {
+        let (mut app, mut terminal) = create_scroll_test_app(width, 30, 0, 36);
+        let at_rest = render_and_snap(&app, &mut terminal);
+        assert!(!app.chat_overscroll_active(), "line hidden at rest (w={width})");
+        assert!(!at_rest.contains("(overscroll"), "w={width}: {at_rest}");
+
+        app.handle_mouse_event(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::empty(),
+        });
+        let revealed = render_and_snap(&app, &mut terminal);
+        assert!(revealed.contains("(overscroll"), "w={width}: {revealed}");
+
+        let buf = terminal.backend().buffer();
+        let pink = ratatui::style::Color::Rgb(255, 135, 200);
+        let pink_cells = (0..buf.area.height)
+            .flat_map(|y| (0..buf.area.width).map(move |x| (x, y)))
+            .filter(|&(x, y)| buf[(x, y)].fg == pink && buf[(x, y)].symbol().trim() != "")
+            .count();
+        assert!(pink_cells >= 3, "pink model on overscroll line (w={width}): {revealed}");
+
+        // Dwell expires => line rebounds away.
+        app.chat_overscroll_last =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(5));
+        assert!(app.update_chat_overscroll(), "rebound triggers a redraw");
+        assert!(!app.chat_overscroll_active());
+        let after = render_and_snap(&app, &mut terminal);
+        assert!(!after.contains("(overscroll"), "w={width}: {after}");
+    }
+}
