@@ -819,9 +819,14 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    // `disconnect_all` flushes process-global sponsor provenance counters, so
+    // hold the test-env lock to avoid draining another test's pending reports.
+    #[allow(clippy::await_holding_lock)]
     async fn concurrent_owned_connects_spawn_only_one_server() {
         use std::os::unix::fs::PermissionsExt;
         use std::sync::Arc;
+
+        let _env_lock = crate::storage::lock_test_env();
 
         let temp = tempfile::tempdir().expect("tempdir");
         let script = temp.path().join("counted-mcp.sh");
