@@ -57,7 +57,12 @@ pub fn socket_path() -> std::path::PathBuf {
     path.into()
 }
 
-pub async fn request(session: &str, method: &str, params: Value, timeout: u64) -> Result<Value> {
+pub async fn request(
+    session: &str,
+    method: &str,
+    mut params: Value,
+    timeout: u64,
+) -> Result<Value> {
     ensure_server().await?;
     let id = crate::id::new_id("interaction");
     let (response, receiver) = oneshot::channel();

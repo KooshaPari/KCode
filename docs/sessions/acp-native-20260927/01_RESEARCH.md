@@ -95,3 +95,8 @@ this PR directly without changing the unrelated general workflow.
 - Fixed ACP workflow YAML: Rust test filters containing `:: ` require block
   scalars. Ruby YAML parsing and actionlint now both pass. Initial run
   36364974914 failed before jobs due this syntax; it provided no compile evidence.
+
+Hosted run 36388245312 reached the real production compiler on Ubuntu and macOS.
+Both reported E0596 at interaction.rs:64: timeout metadata mutates an immutable
+`params` argument. Fixed the argument binding to `mut params`. No tests ran in
+that failed run; a new source commit is required to advance the compile gate.
