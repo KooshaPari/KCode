@@ -69,3 +69,15 @@ false metadata value suppresses ownership even for new sessions. Generic clients
 that cannot supply metadata can launch `env JCODE_ACP_CONTROL=1 jcode acp` to opt
 into ownership on load/resume; this is process-scoped, not persisted global policy.
 `agentCapabilities._meta["jcode.interactionController"]` advertises Unix support.
+
+## Hosted validation route
+
+KCode is public. Added scoped ACP Bridge workflow on standard free GitHub-hosted
+Ubuntu/macOS runners; it requires no deployment secrets or paid runner upgrade.
+It compiles the minimal production binary (`--no-default-features`, excluding
+unrelated PDF/embedding/Bedrock stacks) and runs ACP, broker and existing hook
+policy tests, then retains the exact development artifact for three days.
+This does not replace full-feature/release gates or physical desktop deployment.
+The existing general CI only targets main/master and contains duplicate top-level
+env keys, so it did not compile this feature-branch PR. The new workflow covers
+this PR directly without changing the unrelated general workflow.
