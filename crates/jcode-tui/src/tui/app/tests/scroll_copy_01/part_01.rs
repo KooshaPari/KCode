@@ -704,15 +704,17 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
         app.scroll_offset += 1;
         clean = render_and_snap(&app, &mut terminal);
     }
-    assert!(
-        !clean.contains('Z'),
-        "ghost marker must not be present before injection:\n{clean}"
-    );
     let target_row = clean
         .lines()
         .position(|line| line.contains("read lines"))
         .unwrap_or_else(|| panic!("expected file activity line to be visible, got:\n{clean}"));
     let target_line = clean.lines().nth(target_row).expect("target line text");
+    // Check only the injected row: the header and status line show the cwd and
+    // the session name, either of which can contain a 'Z'.
+    assert!(
+        !target_line.contains('Z'),
+        "ghost marker must not be present before injection:\n{clean}"
+    );
     let trail_start = target_line
         .find("read lines 1-9")
         .expect("expected file activity suffix")
@@ -733,7 +735,10 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
     let scrolled = render_and_snap(&app, &mut terminal);
 
     assert!(
-        scrolled.contains('Z'),
+        scrolled
+            .lines()
+            .nth(target_row)
+            .is_some_and(|line| line.contains('Z')),
         "expected an injected ghost marker to remain after scroll-like repaint:\n{scrolled}"
     );
 }

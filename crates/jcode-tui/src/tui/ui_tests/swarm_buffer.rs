@@ -664,11 +664,15 @@ fn widgets_render_detail_layer_without_repeating_status_line_facts() {
     }
 
     let mut terminal = Terminal::new(TestBackend::new(160, 40)).expect("test terminal");
+    // The Updates box is a widget box too and lists the build's latest commit
+    // subjects; pin it empty so a subject like "… main …" cannot fail the scan.
+    crate::tui::ui::header::set_unseen_changelog_entries_override_for_tests(Some(Vec::new()));
     for _ in 0..3 {
         terminal
             .draw(|frame| crate::tui::ui::draw(frame, &state))
             .expect("frame");
     }
+    crate::tui::ui::header::set_unseen_changelog_entries_override_for_tests(None);
     let rows = buffer_rows(&terminal);
     let frame = rows.join("\n");
     // Text inside rounded widget boxes only: every column from a box's left
