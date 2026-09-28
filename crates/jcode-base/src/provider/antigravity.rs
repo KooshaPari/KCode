@@ -39,9 +39,12 @@ pub fn persisted_catalog_path() -> Result<std::path::PathBuf> {
 /// offer a model id the current endpoint cannot actually serve.
 pub fn load_persisted_catalog() -> Option<PersistedCatalog> {
     let path = persisted_catalog_path().ok()?;
-    crate::storage::read_json(&path).ok().filter(|catalog: &PersistedCatalog| {
-        !catalog.models.is_empty() && jcode_provider_antigravity::catalog_matches_current_endpoint(catalog)
-    })
+    crate::storage::read_json(&path)
+        .ok()
+        .filter(|catalog: &PersistedCatalog| {
+            !catalog.models.is_empty()
+                && jcode_provider_antigravity::catalog_matches_current_endpoint(catalog)
+        })
 }
 
 /// Persist the warm catalog so later processes skip the cold fetch.
