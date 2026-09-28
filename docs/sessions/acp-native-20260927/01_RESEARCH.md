@@ -81,3 +81,17 @@ This does not replace full-feature/release gates or physical desktop deployment.
 The existing general CI only targets main/master and contains duplicate top-level
 env keys, so it did not compile this feature-branch PR. The new workflow covers
 this PR directly without changing the unrelated general workflow.
+
+## Independent review corrections
+
+- Explicit interaction claims now complete before registering the ACP attachment.
+  Broker unavailability or competing ownership returns a JSON-RPC server error;
+  successful lifecycle responses include `_meta["jcode.interactionController"]`
+  as a confirmed boolean. Passive loading remains available without a broker.
+- An Ask gate without an active controller now fails promptly before creating a
+  pending request. It never waits ten minutes for a nonexistent remote UI.
+- Added a fake isolated broker rejection test and an immediate no-controller
+  permission negative control. Execution remains delegated to hosted CI.
+- Fixed ACP workflow YAML: Rust test filters containing `:: ` require block
+  scalars. Ruby YAML parsing and actionlint now both pass. Initial run
+  36364974914 failed before jobs due this syntax; it provided no compile evidence.

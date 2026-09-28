@@ -277,6 +277,7 @@ struct AcpRuntime {
     model: Option<String>,
     provider_profile: Option<String>,
     controller: String,
+    broker_path: PathBuf,
     form_elicitation: Arc<AtomicBool>,
     interaction_requests: Arc<Mutex<HashMap<String, String>>>,
 }
@@ -293,6 +294,7 @@ impl AcpRuntime {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             profile,
             controller: crate::id::new_id("acp"),
+            broker_path: crate::tool::interaction::socket_path(),
             form_elicitation: Arc::new(AtomicBool::new(false)),
             interaction_requests: Arc::new(Mutex::new(HashMap::new())),
             provider_choice,
@@ -441,10 +443,19 @@ impl AcpRuntime {
             Ok(session) => {
                 let session_id = session.session_id.clone();
                 let state = session.ui_state.lock().await.clone();
-                self.register_session(session, interaction_control(&message.params, true))
-                    .await;
+                let control_interactions = interaction_control(&message.params, true);
+                if let Err(error) = self.register_session(session, control_interactions).await {
+                    self.write_error_value(
+                        id,
+                        JSONRPC_SERVER_ERROR,
+                        format!("Interaction ownership failed: {error:#}"),
+                    )
+                    .await?;
+                    return Ok(());
+                }
                 let mut result = json!({ "sessionId": session_id });
                 insert_session_configuration(&mut result, &state);
+                result["_meta"]["jcode.interactionController"] = json!(control_interactions);
                 self.write_result(id, result).await?;
                 self.write_available_commands(&session_id).await?;
             }
@@ -496,10 +507,19 @@ impl AcpRuntime {
         {
             Ok(session) => {
                 let state = session.ui_state.lock().await.clone();
-                self.register_session(session, interaction_control(&message.params, false))
-                    .await;
+                let control_interactions = interaction_control(&message.params, false);
+                if let Err(error) = self.register_session(session, control_interactions).await {
+                    self.write_error_value(
+                        id,
+                        JSONRPC_SERVER_ERROR,
+                        format!("Interaction ownership failed: {error:#}"),
+                    )
+                    .await?;
+                    return Ok(());
+                }
                 let mut result = json!({});
                 insert_session_configuration(&mut result, &state);
+                result["_meta"]["jcode.interactionController"] = json!(control_interactions);
                 self.write_result(id, result).await?;
                 self.write_available_commands(&session_id).await?;
             }

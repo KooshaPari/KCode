@@ -16,6 +16,17 @@ static CONTROLLERS: OnceLock<Mutex<HashMap<String, (String, std::time::Instant, 
 fn controllers() -> &'static Mutex<HashMap<String, (String, std::time::Instant, bool)>> {
     CONTROLLERS.get_or_init(|| Mutex::new(HashMap::new()))
 }
+pub fn controller_active(session: &str) -> bool {
+    controllers()
+        .lock()
+        .map(|owners| {
+            owners
+                .get(session)
+                .is_some_and(|(_, expires, _)| *expires > std::time::Instant::now())
+        })
+        .unwrap_or(false)
+}
+
 pub fn remotely_controlled(session: &str) -> bool {
     controllers()
         .lock()
@@ -216,6 +227,9 @@ pub async fn permission(
     input: &Value,
     reason: &str,
 ) -> Result<()> {
+    if !controller_active(&ctx.session_id) {
+        bail!("Tool requires approval but this session has no active interaction controller");
+    }
     let response = request(&ctx.session_id, "session/request_permission", json!({
         "sessionId":ctx.session_id,"toolCall":{"toolCallId":ctx.tool_call_id,"title":reason,"name":name,"rawInput":input,"status":"pending"},
         "options":[{"optionId":"allow-once","name":"Allow once","kind":"allow_once"},{"optionId":"reject-once","name":"Reject","kind":"reject_once"}]

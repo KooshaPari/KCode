@@ -98,3 +98,39 @@ fn controller_lease_is_exclusive_and_reconnect_recovers_pending_request() {
     );
     drop(Guard(id));
 }
+
+#[tokio::test]
+async fn ask_without_controller_fails_before_waiting_or_creating_pending_operation() {
+    let ctx = crate::tool::ToolContext {
+        session_id: crate::id::new_id("no-controller"),
+        message_id: "message".into(),
+        tool_call_id: "tool".into(),
+        working_dir: None,
+        stdin_request_tx: None,
+        graceful_shutdown_signal: None,
+        execution_mode: crate::tool::ToolExecutionMode::Direct,
+    };
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        permission(
+            &ctx,
+            "bash",
+            &json!({"command":"true"}),
+            "Explicit ask gate",
+        ),
+    )
+    .await;
+    let error = result.expect("must fail promptly").unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("no active interaction controller")
+    );
+    assert!(
+        !pending()
+            .lock()
+            .unwrap()
+            .values()
+            .any(|operation| operation.session == ctx.session_id)
+    );
+}

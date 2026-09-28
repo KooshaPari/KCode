@@ -21,8 +21,11 @@ impl AcpRuntime {
         &self,
         session: DaemonSession,
         control_interactions: bool,
-    ) {
+    ) -> Result<()> {
         let session = Arc::new(session);
+        if control_interactions {
+            self.claim_interactions(&session.session_id).await?;
+        }
         let (sender, receiver) = tokio::sync::mpsc::channel(256);
         *session.events.lock().await = Some(receiver);
         if let Some(old) = self
@@ -76,6 +79,7 @@ impl AcpRuntime {
         if control_interactions {
             self.start_interactions(session).await;
         }
+        Ok(())
     }
 }
 
@@ -110,7 +114,7 @@ mod tests {
         let session = DaemonSession::new("isolated".into(), reader, writer, 2);
         session.prompt_running.store(true, Ordering::SeqCst);
         let runtime = AcpRuntime::new(AcpProfile::Standard, ProviderChoice::Jcode, None, None);
-        runtime.register_session(session, false).await;
+        runtime.register_session(session, false).await.unwrap();
         let session = runtime.sessions.lock().await["isolated"].clone();
         server
             .write_all(b"{\"type\":\"done\",\"id\":7}\n")
@@ -152,7 +156,8 @@ mod ownership_tests {
                 DaemonSession::new("passive".into(), reader, writer, 2),
                 false,
             )
-            .await;
+            .await
+            .unwrap();
         let session = runtime.sessions.lock().await["passive"].clone();
         assert!(session.interaction_pump.lock().await.is_none());
         session.stop_pump().await;

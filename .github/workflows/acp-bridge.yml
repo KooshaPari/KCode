@@ -56,11 +56,14 @@ jobs:
       - name: Compile minimal production binary
         run: cargo build --locked --no-default-features -p jcode --bin jcode
       - name: Run ACP adapter tests
-        run: cargo test --locked --no-default-features -p jcode --lib cli::acp:: -- --nocapture
+        run: |
+          cargo test --locked --no-default-features -p jcode --lib cli::acp:: -- --nocapture
       - name: Run interaction broker negative controls
-        run: cargo test --locked --no-default-features -p jcode-app-core --lib tool::interaction:: -- --nocapture
+        run: |
+          cargo test --locked --no-default-features -p jcode-app-core --lib tool::interaction:: -- --nocapture
       - name: Run hook policy regression tests
-        run: cargo test --locked --no-default-features -p jcode-base --lib hooks::tests:: -- --nocapture
+        run: |
+          cargo test --locked --no-default-features -p jcode-base --lib hooks::tests:: -- --nocapture
       - name: Preserve exact development artifact
         uses: actions/upload-artifact@v4
         with:
