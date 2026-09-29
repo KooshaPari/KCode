@@ -134,3 +134,6 @@ async fn ask_without_controller_fails_before_waiting_or_creating_pending_operati
             .any(|operation| operation.session == ctx.session_id)
     );
 }
+
+#[cfg(unix)]
+mod ipc;
