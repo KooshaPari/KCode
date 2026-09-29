@@ -942,10 +942,13 @@ selfdev profile):
 
 Shipped in `scripts/dev_cargo.sh` (`configure_parallel_frontend`): enabled for
 the unoptimized `dev`, `selfdev`, and `test` profiles through Cargo's
-`RUSTC_WORKSPACE_WRAPPER` (`scripts/rustc-parallel-frontend`). Only workspace
-crates get `-Zthreads`, so dependency artifacts never rebuild when it is
-toggled, and the wrapper sets `RUSTC_BOOTSTRAP=1` for those invocations only,
-so the stable toolchain is enough. Optimized compiles pass through untouched.
+`RUSTC_WRAPPER` (`scripts/rustc-parallel-frontend`). Only local crates (sources
+outside `CARGO_HOME`) get `-Zthreads`. Unlike `RUSTC_WORKSPACE_WRAPPER`, a
+`RUSTC_WRAPPER` is not hashed into crate metadata or fingerprints, so wrapped
+and raw `cargo` builds share artifacts. The wrapper sets `RUSTC_BOOTSTRAP=1`
+for those invocations only, so the stable toolchain is enough. Optimized
+compiles pass through untouched. Jcode Desktop applies the same wrapper
+repo-wide through `build.rustc-wrapper` in its `.cargo/config.toml`.
 Re-measured on a 16-thread Core Ultra X9 388H with `-Zthreads=8` (full
 re-check of one crate): `jcode-base` 29.3s -> 8.8s, `jcode-app-core`
 25.7s -> 8.9s, at ~0.1-0.2 GiB extra RSS.

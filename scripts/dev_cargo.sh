@@ -611,13 +611,17 @@ maybe_configure_low_memory_selfdev() {
 #   jcode-base      29.3s -> 8.8s   (-Zthreads=8, +0.08 GiB RSS)
 #   jcode-app-core  25.7s -> 8.9s   (-Zthreads=8, +0.2 GiB RSS)
 #
-# This is applied through Cargo's RUSTC_WORKSPACE_WRAPPER
-# (scripts/rustc-parallel-frontend), not RUSTFLAGS:
-#   - only workspace crates get the flag, so dependency artifacts and their
-#     fingerprints are untouched and nothing rebuilds when toggling it;
+# This is applied through Cargo's RUSTC_WRAPPER
+# (scripts/rustc-parallel-frontend), not RUSTFLAGS or RUSTC_WORKSPACE_WRAPPER:
+#   - only local crates (sources outside CARGO_HOME) get the flag, so registry
+#     and git dependency artifacts are untouched;
+#   - RUSTC_WRAPPER is not hashed into crate metadata or fingerprints, so raw
+#     `cargo` (rust-analyzer, CI) and wrapped builds share the same artifacts;
 #   - it works on the stable toolchain (the wrapper sets RUSTC_BOOTSTRAP=1 for
 #     those rustc invocations only), so no nightly install is required;
 #   - optimized compiles (release/release-lto/publish) are passed through.
+# Keep it stable between builds: rustc's incremental cache is keyed on the
+# flags, so flipping it recompiles the affected crates once.
 #
 # Controls:
 #   JCODE_PARALLEL_FRONTEND=auto|0     (default auto = on for dev/selfdev/test)
@@ -635,24 +639,20 @@ configure_parallel_frontend() {
       ;;
   esac
 
-  if [[ -n "${RUSTC_WORKSPACE_WRAPPER:-}" ]]; then
-    parallel_frontend_status="skipped-external-workspace-wrapper:${RUSTC_WORKSPACE_WRAPPER}"
+  if [[ -n "${RUSTC_WRAPPER:-}" ]]; then
+    parallel_frontend_status="skipped-external-rustc-wrapper:${RUSTC_WRAPPER}"
     return 0
   fi
 
-  # Cargo hashes the workspace wrapper path into each workspace crate's
-  # metadata. Install it unconditionally for these profiles and let the
-  # wrapper itself honor JCODE_PARALLEL_FRONTEND=0, so toggling the threads
-  # never rebuilds (or duplicates) workspace crate artifacts.
-  export RUSTC_WORKSPACE_WRAPPER="$repo_root/scripts/rustc-parallel-frontend"
+  export RUSTC_WRAPPER="$repo_root/scripts/rustc-parallel-frontend"
   case "${JCODE_PARALLEL_FRONTEND:-auto}" in
     0|false|no|off)
       parallel_frontend_status="disabled-by-env:wrapper-passthrough"
       return 0
       ;;
   esac
-  parallel_frontend_status="enabled:workspace-wrapper:threads=${JCODE_FRONTEND_THREADS:-auto}"
-  log "using parallel rustc front-end for workspace crates (-Zthreads=${JCODE_FRONTEND_THREADS:-auto})"
+  parallel_frontend_status="enabled:rustc-wrapper:threads=${JCODE_FRONTEND_THREADS:-auto}"
+  log "using parallel rustc front-end for local crates (-Zthreads=${JCODE_FRONTEND_THREADS:-auto})"
 }
 
 configure_linux_linker() {
