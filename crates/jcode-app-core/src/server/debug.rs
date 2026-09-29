@@ -305,6 +305,10 @@ pub(super) async fn handle_debug_client(
                 let event = ServerEvent::Pong {
                     id,
                     native_ssh_protocol: Some(1),
+                    server_version: None,
+                    server_git_hash: None,
+                    server_pid: None,
+                    server_binary_sha256: None,
                 };
                 let json = encode_event(&event);
                 writer.write_all(json.as_bytes()).await?;

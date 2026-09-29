@@ -1526,7 +1526,14 @@ pub(super) async fn handle_client(
             }
 
             Request::Ping { id } => {
-                let json = encode_event(&ServerEvent::Pong { id, native_ssh_protocol: Some(1) });
+                let json = encode_event(&ServerEvent::Pong {
+                    id,
+                    native_ssh_protocol: Some(1),
+                    server_version: None,
+                    server_git_hash: None,
+                    server_pid: None,
+                    server_binary_sha256: None,
+                });
                 let mut w = writer.lock().await;
                 if w.write_all(json.as_bytes()).await.is_err() {
                     break;

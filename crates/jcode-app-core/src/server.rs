@@ -2424,7 +2424,7 @@ impl Server {
     }
 }
 
-pub use self::client_api::{Client, ServerIdentity};
+pub use self::client_api::Client;
 
 #[cfg(test)]
 mod tests;

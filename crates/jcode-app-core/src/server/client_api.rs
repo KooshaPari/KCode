@@ -13,7 +13,7 @@ pub struct Client {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServerIdentity {
+pub struct RuntimeServerIdentity {
     pub version: Option<String>,
     pub git_hash: Option<String>,
     pub pid: Option<u32>,
@@ -117,7 +117,7 @@ impl Client {
         Ok(event)
     }
 
-    pub async fn ping_identity(&mut self) -> Result<Option<ServerIdentity>> {
+    pub async fn ping_identity(&mut self) -> Result<Option<RuntimeServerIdentity>> {
         let id = self.next_id;
         self.next_id += 1;
 
@@ -142,7 +142,7 @@ impl Client {
                     server_pid,
                     server_binary_sha256,
                 } if pong_id == id => {
-                    return Ok(Some(ServerIdentity {
+                    return Ok(Some(RuntimeServerIdentity {
                         version: server_version,
                         git_hash: server_git_hash,
                         pid: server_pid,
