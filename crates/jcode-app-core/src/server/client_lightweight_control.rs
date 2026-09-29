@@ -108,6 +108,9 @@ pub(super) async fn handle_lightweight_control_request(
             &ServerEvent::Pong {
                 id,
                 native_ssh_protocol: Some(1),
+                server_version: Some(jcode_build_meta::version().to_string()),
+                server_git_hash: Some(jcode_build_meta::git_hash().to_string()),
+                server_pid: Some(std::process::id()),
             },
         )
         .await?;

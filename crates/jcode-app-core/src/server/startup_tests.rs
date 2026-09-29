@@ -130,7 +130,15 @@ async fn debug_accept_loop_responds_to_ping_without_affecting_client_count() {
     .expect("debug connect should complete")
     .expect("debug client should connect");
 
-    assert!(client.ping().await.expect("debug ping should succeed"));
+    let identity = client
+        .ping_identity()
+        .await
+        .expect("debug ping should complete")
+        .expect("debug ping should return daemon identity");
+    assert_eq!(identity.version.as_deref(), Some(jcode_build_meta::version()));
+    assert_eq!(identity.git_hash.as_deref(), Some(jcode_build_meta::git_hash()));
+    assert_eq!(identity.pid, Some(std::process::id()));
+    assert_eq!(identity.native_ssh_protocol, Some(1));
     assert_eq!(*server.client_count.read().await, 0);
 
     tokio::time::timeout(Duration::from_secs(1), runtime.shutdown())

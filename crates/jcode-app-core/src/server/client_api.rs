@@ -12,6 +12,14 @@ pub struct Client {
     next_id: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerIdentity {
+    pub version: Option<String>,
+    pub git_hash: Option<String>,
+    pub pid: Option<u32>,
+    pub native_ssh_protocol: Option<u32>,
+}
+
 impl Client {
     pub async fn connect() -> Result<Self> {
         Self::connect_with_path(socket_path()).await
@@ -108,7 +116,7 @@ impl Client {
         Ok(event)
     }
 
-    pub async fn ping(&mut self) -> Result<bool> {
+    pub async fn ping_identity(&mut self) -> Result<Option<ServerIdentity>> {
         let id = self.next_id;
         self.next_id += 1;
 
@@ -125,12 +133,29 @@ impl Client {
             let event: ServerEvent = serde_json::from_str(&line)?;
 
             match event {
-                ServerEvent::Pong { id: pong_id, .. } => return Ok(pong_id == id),
+                ServerEvent::Pong {
+                    id: pong_id,
+                    native_ssh_protocol,
+                    server_version,
+                    server_git_hash,
+                    server_pid,
+                } if pong_id == id => {
+                    return Ok(Some(ServerIdentity {
+                        version: server_version,
+                        git_hash: server_git_hash,
+                        pid: server_pid,
+                        native_ssh_protocol,
+                    }));
+                }
                 ServerEvent::Ack { id: ack_id } if ack_id == id => continue,
-                ServerEvent::Error { id: error_id, .. } if error_id == id => return Ok(false),
-                _ => return Ok(false),
+                ServerEvent::Error { id: error_id, .. } if error_id == id => return Ok(None),
+                _ => return Ok(None),
             }
         }
+    }
+
+    pub async fn ping(&mut self) -> Result<bool> {
+        Ok(self.ping_identity().await?.is_some())
     }
 
     pub async fn get_state(&mut self) -> Result<ServerEvent> {

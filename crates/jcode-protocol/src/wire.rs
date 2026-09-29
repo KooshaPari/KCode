@@ -1068,6 +1068,18 @@ pub enum ServerEvent {
         /// Omitted by older daemons, which a new SSH bridge must reject.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         native_ssh_protocol: Option<u32>,
+        /// Runtime version of the daemon that answered this ping.
+        /// Optional for backward compatibility with older daemons.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server_version: Option<String>,
+        /// Runtime git identity of the daemon that answered this ping.
+        /// Optional for backward compatibility with older daemons.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server_git_hash: Option<String>,
+        /// OS process id of the daemon that answered this ping.
+        /// This distinguishes a newly-built client from a pre-existing server.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server_pid: Option<u32>,
     },
 
     /// Current state (debug)
