@@ -19,3 +19,10 @@ and error detail without completing a different client request. Added synthetic
 two-client equal-ID, failure, disconnected-origin and missing-member tests.
 Hosted test workflow now includes this production routing module. Execution
 pending; local module and formatting checks are source checks only.
+
+Added a separate-process production broker IPC test with short canonical /tmp
+paths and JCODE_SOCKET/JCODE_HOME overrides. It covers mode0600, exclusive
+controller claims, held side-effect-before-approval oracle, allow/deny/cancel,
+wrong-session/invalid-choice/duplicate rejection, timeout cleanup and typed
+elicitation resolution. The process uses no real session or provider. Hosted
+run 36581379368 targeted e52c169f5; later source additions require a new run.

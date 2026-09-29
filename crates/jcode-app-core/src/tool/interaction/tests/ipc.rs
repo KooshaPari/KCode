@@ -22,7 +22,8 @@ fn query(session: &str) -> Value {
 #[tokio::test]
 async fn held_permission_ipc() {
     if std::env::var_os("JCODE_INTERACTION_TEST_CHILD").is_none() {
-        let root = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir_in("/tmp").unwrap();
+        let directory = root.path().canonicalize().unwrap();
         let output = tokio::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
@@ -30,8 +31,8 @@ async fn held_permission_ipc() {
                 "--nocapture",
             ])
             .env("JCODE_INTERACTION_TEST_CHILD", "1")
-            .env("JCODE_SOCKET", root.path().join("daemon.sock"))
-            .env("JCODE_HOME", root.path())
+            .env("JCODE_SOCKET", directory.join("daemon.sock"))
+            .env("JCODE_HOME", &directory)
             .output()
             .await
             .unwrap();
@@ -62,6 +63,9 @@ async fn exercise() {
     for outcome in ["allow-once", "reject-once", "cancel"] {
         let session = format!("isolated-{outcome}");
         assert!(rpc(query(&session)).await.get("error").is_none());
+        let mut competing = query(&session);
+        competing["controller"] = json!("competing-owner");
+        assert!(rpc(competing).await.get("error").is_some());
         let marker = socket_path().with_extension(format!("{outcome}.effect"));
         let operation_session = session.clone();
         let operation_marker = marker.clone();
@@ -127,4 +131,56 @@ async fn exercise() {
                 .is_empty()
         );
     }
+    expires_without_side_effect().await;
+    form_answer_resolves_original_waiter().await;
+}
+
+async fn expires_without_side_effect() {
+    let marker = socket_path().with_extension("timeout.effect");
+    let effect = marker.clone();
+    let operation = tokio::spawn(async move {
+        request("expires", "elicitation/create", json!({}), 1).await?;
+        std::fs::write(effect, "must never execute")?;
+        Ok::<(), anyhow::Error>(())
+    });
+    let held = next_request("expires").await;
+    assert!(!marker.exists());
+    assert!(
+        operation
+            .await
+            .unwrap()
+            .unwrap_err()
+            .to_string()
+            .contains("expired")
+    );
+    assert!(!marker.exists());
+    assert!(rpc(json!({"method":"respond","controller":"isolated-owner","sessionId":"expires","id":held["id"],"result":{"action":"decline"}})).await.get("error").is_some());
+}
+
+async fn next_request(session: &str) -> Value {
+    loop {
+        let response = rpc(query(session)).await;
+        if let Some(request) = response["result"]["requests"].as_array().unwrap().first() {
+            return request.clone();
+        }
+        tokio::task::yield_now().await;
+    }
+}
+
+async fn form_answer_resolves_original_waiter() {
+    let operation = tokio::spawn(request(
+        "form",
+        "elicitation/create",
+        json!({
+            "requestedSchema":{"type":"object","properties":{"value":{"type":"boolean"}},"required":["value"]}
+        }),
+        5,
+    ));
+    let held = next_request("form").await;
+    let answer = |value: Value| json!({"method":"respond","controller":"isolated-owner","sessionId":"form","id":held["id"],"result":{"action":"accept","content":{"value":value}}});
+    assert!(rpc(answer(json!("true"))).await.get("error").is_some());
+    assert!(!operation.is_finished());
+    assert!(rpc(answer(json!(true))).await.get("error").is_none());
+    assert_eq!(operation.await.unwrap().unwrap()["content"]["value"], true);
+    assert!(rpc(answer(json!(true))).await.get("error").is_some());
 }
