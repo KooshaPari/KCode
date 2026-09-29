@@ -502,6 +502,7 @@ impl App {
             background_client_action: None,
             pending_background_client_reload: None,
             restart_requested: None,
+            cloud_handoff_requested: None,
             pasted_contents: Vec::new(),
             pending_images: Vec::new(),
             route_next_prompt_to_new_session: false,
@@ -968,6 +969,7 @@ impl App {
             background_client_action: None,
             pending_background_client_reload: None,
             restart_requested: None,
+            cloud_handoff_requested: None,
             pasted_contents: Vec::new(),
             pending_images: Vec::new(),
             route_next_prompt_to_new_session: false,
@@ -1382,6 +1384,15 @@ impl App {
             app.session.working_dir = None;
             app.resume_session_id = resume_session;
             app.set_status_notice(format!("SSH: {host} (remote server)"));
+            // `/cloud` hands a mid-task session over and asks the new runtime
+            // to keep going without the user retyping anything. One-shot.
+            if let Ok(message) = std::env::var("JCODE_CLOUD_CONTINUE_MESSAGE") {
+                crate::env::remove_var("JCODE_CLOUD_CONTINUE_MESSAGE");
+                if !message.trim().is_empty() {
+                    app.hidden_queued_system_messages.push(message);
+                    app.set_status_notice(format!("Continuing on {host}"));
+                }
+            }
             return app;
         }
 

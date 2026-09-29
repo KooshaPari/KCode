@@ -55,6 +55,7 @@ mod auth_account_picker_saved_accounts;
 mod auth_remote;
 mod catchup;
 mod commands;
+mod commands_cloud;
 mod commands_colors;
 mod commands_dispatch;
 mod commands_goal;
@@ -565,10 +566,25 @@ pub struct RunResult {
     pub update_session: Option<String>,
     /// Session ID to restart (exec into current binary, no build)
     pub restart_session: Option<String>,
+    /// After `/cloud` or `/local`: exec into the session at its new location.
+    pub cloud_handoff: Option<CloudHandoff>,
     /// Exit code to use (for canary wrapper communication)
     pub exit_code: Option<i32>,
     /// The session ID that was active (for resume hints on exit)
     pub session_id: Option<String>,
+}
+
+/// Where to reattach after a machine move.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloudHandoff {
+    /// Attach to the session on a cloud host over SSH.
+    Remote {
+        session_id: String,
+        host: String,
+        working_dir: Option<String>,
+    },
+    /// Resume the (returned) session locally.
+    Local { session_id: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1111,6 +1127,8 @@ pub struct App {
     pending_background_client_reload: Option<(String, crate::bus::ClientMaintenanceAction)>,
     // Restart: if set, exec into current binary with this session ID (no build)
     restart_requested: Option<String>,
+    // `/cloud` or `/local` finished: reattach at the new location on quit.
+    cloud_handoff_requested: Option<CloudHandoff>,
     // Pasted content storage (displayed as placeholders, expanded on submit)
     pasted_contents: Vec<String>,
     // Pending pasted images (media_type, base64_data) attached to next message
