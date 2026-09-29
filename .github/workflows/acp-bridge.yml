@@ -8,6 +8,7 @@ on:
       - 'src/cli/acp/**'
       - 'crates/jcode-app-core/src/tool/**'
       - 'crates/jcode-app-core/src/server.rs'
+      - 'crates/jcode-app-core/src/server/**'
       - 'crates/jcode-base/src/hooks.rs'
       - 'Cargo.lock'
       - '**/Cargo.toml'
@@ -58,6 +59,9 @@ jobs:
       - name: Run ACP adapter tests
         run: |
           cargo test --locked --no-default-features -p jcode --lib cli::acp:: -- --nocapture
+      - name: Run concurrent attachment routing regressions
+        run: |
+          cargo test --locked --no-default-features -p jcode-app-core --lib server::state::request_events:: -- --nocapture
       - name: Run interaction broker negative controls
         run: |
           cargo test --locked --no-default-features -p jcode-app-core --lib tool::interaction:: -- --nocapture
