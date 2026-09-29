@@ -1429,6 +1429,8 @@ pub struct App {
     last_client_focus_session_id: Option<String>,
     // Most recently focused side panel page, used to restore visibility when toggled off.
     last_side_panel_focus_id: Option<String>,
+    // Side panel takes over the whole transcript column (Alt+M cycle: split -> fullscreen -> hidden).
+    side_panel_fullscreen: bool,
     // User explicitly hid the side panel with the side-panel toggle key. While set, incoming snapshots may update
     // pages but must not reopen the panel by restoring focused_page_id.
     side_panel_user_hidden: bool,

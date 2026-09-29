@@ -874,13 +874,23 @@ fn test_local_alt_s_toggles_typing_scroll_lock() {
 }
 
 #[test]
-fn test_local_alt_m_toggles_side_panel_visibility() {
+fn test_local_alt_m_cycles_side_panel_split_fullscreen_hidden() {
     let mut app = create_test_app();
     app.side_panel = test_side_panel_snapshot("plan", "Plan");
     app.last_side_panel_focus_id = Some("plan".to_string());
 
     app.handle_key(KeyCode::Char('m'), KeyModifiers::ALT)
         .unwrap();
+    assert!(app.side_panel_fullscreen);
+    assert_eq!(app.side_panel.focused_page_id.as_deref(), Some("plan"));
+    assert_eq!(
+        app.status_notice(),
+        Some("Side panel: Plan (fullscreen)".to_string())
+    );
+
+    app.handle_key(KeyCode::Char('m'), KeyModifiers::ALT)
+        .unwrap();
+    assert!(!app.side_panel_fullscreen);
     assert_eq!(app.side_panel.focused_page_id, None);
     assert_eq!(app.status_notice(), Some("Side panel: OFF".to_string()));
 
@@ -896,6 +906,8 @@ fn test_local_alt_m_hidden_side_panel_stays_hidden_across_snapshot_update() {
     app.side_panel = test_side_panel_snapshot("plan", "Plan");
     app.last_side_panel_focus_id = Some("plan".to_string());
 
+    app.handle_key(KeyCode::Char('m'), KeyModifiers::ALT)
+        .unwrap();
     app.handle_key(KeyCode::Char('m'), KeyModifiers::ALT)
         .unwrap();
     assert_eq!(app.side_panel.focused_page_id, None);
@@ -947,13 +959,21 @@ fn test_images_do_not_drive_side_panel_visibility() {
 }
 
 #[test]
-fn test_remote_alt_m_toggles_side_panel_visibility() {
+fn test_remote_alt_m_cycles_side_panel_split_fullscreen_hidden() {
     let mut app = create_test_app();
     app.side_panel = test_side_panel_snapshot("plan", "Plan");
     app.last_side_panel_focus_id = Some("plan".to_string());
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
     let mut remote = crate::tui::backend::RemoteConnection::dummy();
+
+    rt.block_on(app.handle_remote_key(KeyCode::Char('m'), KeyModifiers::ALT, &mut remote))
+        .unwrap();
+    assert!(app.side_panel_fullscreen);
+    assert_eq!(
+        app.status_notice(),
+        Some("Side panel: Plan (fullscreen)".to_string())
+    );
 
     rt.block_on(app.handle_remote_key(KeyCode::Char('m'), KeyModifiers::ALT, &mut remote))
         .unwrap();

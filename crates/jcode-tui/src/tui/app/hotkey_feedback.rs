@@ -142,7 +142,7 @@ pub(super) fn build_registry(inputs: &RegistryInputs<'_>) -> Vec<KnownHotkey> {
     push(
         inputs.toggles.side_panel.binding().cloned(),
         "side_panel_toggle",
-        "toggle the side panel",
+        "cycle the side panel (split, fullscreen, hidden)",
     );
     push(
         inputs.toggles.diagram_pane.binding().cloned(),

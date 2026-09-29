@@ -1121,6 +1121,21 @@ impl App {
         }
 
         if self.side_panel.focused_page().is_some() {
+            // Alt+M cycle: split -> fullscreen -> hidden -> split.
+            if !self.side_panel_fullscreen {
+                self.side_panel_fullscreen = true;
+                self.sync_diagram_fit_context();
+                crate::tui::clear_side_panel_render_caches();
+                let title = self
+                    .side_panel
+                    .focused_page()
+                    .map(|page| page.title.clone())
+                    .unwrap_or_default();
+                self.set_status_notice(format!("Side panel: {title} (fullscreen)"));
+                return;
+            }
+            self.side_panel_fullscreen = false;
+            crate::tui::clear_side_panel_render_caches();
             self.last_side_panel_focus_id = self.side_panel.focused_page_id.clone();
             self.side_panel.focused_page_id = None;
             self.side_panel_user_hidden = true;
@@ -1147,6 +1162,7 @@ impl App {
 
         self.side_panel.focused_page_id = Some(restore_id.clone());
         self.last_side_panel_focus_id = Some(restore_id);
+        self.side_panel_fullscreen = false;
         self.side_panel_user_hidden = false;
         self.side_panel_explicit_hidden = false;
         self.sync_diagram_fit_context();
