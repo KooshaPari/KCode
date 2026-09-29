@@ -1099,7 +1099,7 @@ impl App {
                     self.sync_diagram_fit_context();
                     self.set_status_notice("Image side panel: ON");
                 } else {
-                    self.toggle_diagram_pane();
+                    self.notify_no_side_panel_pages();
                 }
                 return;
             }
@@ -1116,7 +1116,7 @@ impl App {
         }
 
         if self.side_panel.pages.is_empty() {
-            self.toggle_diagram_pane();
+            self.notify_no_side_panel_pages();
             return;
         }
 
@@ -1156,7 +1156,7 @@ impl App {
             .or_else(|| self.side_panel.pages.first().map(|page| page.id.clone()));
 
         let Some(restore_id) = restore_id else {
-            self.toggle_diagram_pane();
+            self.notify_no_side_panel_pages();
             return;
         };
 
@@ -1172,6 +1172,13 @@ impl App {
             .map(|page| format!("Side panel: {}", page.title))
             .unwrap_or_else(|| "Side panel: ON".to_string());
         self.set_status_notice(status);
+    }
+
+    fn notify_no_side_panel_pages(&mut self) {
+        let diagram_key = crate::tui::keybind::diagram_pane_visibility_key_label();
+        self.set_status_notice(format!(
+            "Side panel: no pages ({diagram_key} toggles diagrams)"
+        ));
     }
 
     pub(super) fn adjust_diagram_zoom(&mut self, delta: i8) {

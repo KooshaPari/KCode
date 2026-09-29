@@ -923,7 +923,7 @@ fn test_local_alt_m_hidden_side_panel_stays_hidden_across_snapshot_update() {
 }
 
 #[test]
-fn test_local_alt_m_falls_back_to_diagram_pane_when_side_panel_is_empty() {
+fn test_local_alt_m_does_not_toggle_diagram_pane_when_side_panel_is_empty() {
     let mut app = create_test_app();
     app.side_panel = crate::side_panel::SidePanelSnapshot::default();
     app.diagram_pane_enabled = true;
@@ -931,8 +931,31 @@ fn test_local_alt_m_falls_back_to_diagram_pane_when_side_panel_is_empty() {
     app.handle_key(KeyCode::Char('m'), KeyModifiers::ALT)
         .unwrap();
 
+    assert!(app.diagram_pane_enabled);
+    assert!(
+        app.status_notice()
+            .is_some_and(|notice| notice.starts_with("Side panel: no pages")),
+        "notice: {:?}",
+        app.status_notice()
+    );
+}
+
+#[test]
+fn test_local_alt_shift_m_toggles_diagram_pane() {
+    let mut app = create_test_app();
+    app.side_panel = crate::side_panel::SidePanelSnapshot::default();
+    app.diagram_pane_enabled = true;
+
+    app.handle_key(KeyCode::Char('M'), KeyModifiers::ALT | KeyModifiers::SHIFT)
+        .unwrap();
     assert!(!app.diagram_pane_enabled);
     assert_eq!(app.status_notice(), Some("Diagram pane: OFF".to_string()));
+
+    // Legacy terminals send uppercase with only ALT.
+    app.handle_key(KeyCode::Char('M'), KeyModifiers::ALT)
+        .unwrap();
+    assert!(app.diagram_pane_enabled);
+    assert_eq!(app.status_notice(), Some("Diagram pane: ON".to_string()));
 }
 
 #[test]
@@ -1453,6 +1476,13 @@ fn changes_widget_end_to_end_on_real_git_repo() {
     assert_eq!(info.dirty_files[0].path, "src/lib.rs", "newest first");
     assert_eq!(info.dirty_files.last().unwrap().path, "gone.txt", "no mtime sorts last");
     assert_eq!(info.repo_root.as_deref(), Some(root.as_path()));
+    // Commits widget data comes from the same probe against real git output.
+    assert_eq!(info.recent_commits.len(), 1, "{:?}", info.recent_commits);
+    let init = &info.recent_commits[0];
+    assert_eq!(init.subject, "init");
+    assert_eq!((init.added, init.removed), (Some(9), Some(0)), "text lines only");
+    assert!(!init.unpushed, "no upstream means ahead=0");
+    assert!(init.timestamp > 0 && init.hash.len() >= 7);
 
     // Real App frame: transcript edited src/lib.rs relative to the repo.
     crate::tui::app::helpers::seed_git_info_cache_for_tests(Some(info));
@@ -1476,13 +1506,6 @@ fn changes_widget_end_to_end_on_real_git_repo() {
     crate::tui::app::helpers::seed_git_info_cache_for_tests(None);
 
     let row = |needle: &str| {
-    // Commits widget data comes from the same probe against real git output.
-    assert_eq!(info.recent_commits.len(), 1, "{:?}", info.recent_commits);
-    let init = &info.recent_commits[0];
-    assert_eq!(init.subject, "init");
-    assert_eq!((init.added, init.removed), (Some(9), Some(0)), "text lines only");
-    assert!(!init.unpushed, "no upstream means ahead=0");
-    assert!(init.timestamp > 0 && init.hash.len() >= 7);
         frame
             .lines()
             .find(|l| l.contains(needle))
