@@ -32,7 +32,7 @@ class Client:
                 if selector.select(0.1):
                     chunk = os.read(self.process.stdout.fileno(), 65536)
                     if not chunk:
-                        raise AssertionError("ACP closed: " + self.process.stderr.read().decode(errors="replace"))
+                        raise AssertionError("ACP closed before the expected response")
                     self.buffer += chunk
                     while b"\n" in self.buffer:
                         line, self.buffer = self.buffer.split(b"\n", 1)
@@ -69,7 +69,14 @@ def main():
             deadline = time.monotonic() + 40
             while not (root / "ready.json").exists():
                 if fixture.poll() is not None or time.monotonic() > deadline:
-                    raise AssertionError("fixture failed: " + fixture.stderr.read().decode(errors="replace"))
+                    if fixture.poll() is None:
+                        fixture.terminate()
+                    try:
+                        _, stderr = fixture.communicate(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        fixture.kill()
+                        _, stderr = fixture.communicate()
+                    raise AssertionError("fixture failed: " + stderr.decode(errors="replace"))
                 time.sleep(0.05)
             ready = json.loads((root / "ready.json").read_text())
             env = os.environ.copy()
