@@ -108,7 +108,30 @@ async fn prompt_ownership_survives_backpressured_terminal_response() {
         "prompt released before its final response; a successor can be cleared by outer cleanup"
     );
     assert_eq!(*session.active_prompt_id.lock().await, Some(2));
+    let competing_runtime = runtime.clone();
+    let competing = tokio::spawn(async move {
+        competing_runtime.handle_session_prompt(JsonRpcMessage {
+            id: Some(json!(2)), method: None, result: None,
+            params: json!({"sessionId":"backpressure","prompt":[{"type":"text","text":"must not overlap"}]}),
+        }).await
+    });
+    let mut unexpected = String::new();
+    assert!(
+        timeout(
+            Duration::from_millis(200),
+            daemon.read_line(&mut unexpected)
+        )
+        .await
+        .is_err(),
+        "a competing prompt reached the daemon before the first response: {unexpected}"
+    );
+    assert_eq!(*session.active_prompt_id.lock().await, Some(2));
     drop(blocked_stdout);
+    timeout(Duration::from_secs(2), competing)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
     timeout(Duration::from_secs(2), async {
         while session.prompt_running.load(Ordering::SeqCst) {
             tokio::task::yield_now().await;
