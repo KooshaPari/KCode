@@ -138,6 +138,12 @@ async fn debug_accept_loop_responds_to_ping_without_affecting_client_count() {
     assert_eq!(identity.version.as_deref(), Some(jcode_build_meta::version()));
     assert_eq!(identity.git_hash.as_deref(), Some(jcode_build_meta::git_hash()));
     assert_eq!(identity.pid, Some(std::process::id()));
+    let digest = identity
+        .binary_sha256
+        .as_deref()
+        .expect("daemon should report its executable digest");
+    assert_eq!(digest.len(), 64);
+    assert!(digest.bytes().all(|byte| byte.is_ascii_hexdigit()));
     assert_eq!(identity.native_ssh_protocol, Some(1));
     assert_eq!(*server.client_count.read().await, 0);
 

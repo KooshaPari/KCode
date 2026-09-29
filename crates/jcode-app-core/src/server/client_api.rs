@@ -17,6 +17,7 @@ pub struct ServerIdentity {
     pub version: Option<String>,
     pub git_hash: Option<String>,
     pub pid: Option<u32>,
+    pub binary_sha256: Option<String>,
     pub native_ssh_protocol: Option<u32>,
 }
 
@@ -139,11 +140,13 @@ impl Client {
                     server_version,
                     server_git_hash,
                     server_pid,
+                    server_binary_sha256,
                 } if pong_id == id => {
                     return Ok(Some(ServerIdentity {
                         version: server_version,
                         git_hash: server_git_hash,
                         pid: server_pid,
+                        binary_sha256: server_binary_sha256,
                         native_ssh_protocol,
                     }));
                 }

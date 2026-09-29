@@ -1080,6 +1080,11 @@ pub enum ServerEvent {
         /// This distinguishes a newly-built client from a pre-existing server.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         server_pid: Option<u32>,
+        /// SHA-256 of the executable bytes for the daemon that answered.
+        /// This binds runtime observations to an actual installed artifact
+        /// rather than trusting a version or git label alone.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server_binary_sha256: Option<String>,
     },
 
     /// Current state (debug)
