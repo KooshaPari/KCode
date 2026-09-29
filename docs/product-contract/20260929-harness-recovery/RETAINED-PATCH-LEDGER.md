@@ -46,3 +46,6 @@ A later current-upstream source observation at `1jehuang/jcode@de65ade33d514b31a
 
 ### Correction: upstream already has substantial runtime identity
 Further current-upstream inspection found server version/name in state/gateway surfaces, server identity with git hash in debug/server state, UI logic specifically distinguishing client/server versions, and stale-server reload handling. Therefore **runtime identity in general is not KCode differentiation**. The narrower candidate delta in #14 is responder-bound executable SHA-256/PID in the cheap Ping readiness path, plus evidence-policy integration around it. Even that may be better contributed upstream or implemented as a thin adapter; survival requires a matched operational benefit, not merely absence from Pong.
+
+### Provider/subscription pressure
+Current-upstream source searches also find OpenCode Go/provider metadata, Cursor authentication/runtime, account pools/failover, provider profiles, subscription APIs/catalogs and OAuth/account management. Therefore generic subscription/provider breadth is also UPSTREAMED/COMMODITY. Any retained provider patch must identify an exact behavioral contract absent or materially wrong upstream, with a matched negative/positive test. Historical breadth alone no longer supports the deep fork.
