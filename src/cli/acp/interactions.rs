@@ -51,7 +51,7 @@ impl AcpRuntime {
         let runtime = self.clone();
         let target = session.clone();
         let task = tokio::spawn(async move {
-            let mut sent = HashSet::new();
+            let mut sent: HashSet<String> = HashSet::new();
             loop {
                 let query = json!({"method":"list","sessionId":target.session_id,"controller":runtime.controller,
                     "form":runtime.form_elicitation.load(Ordering::SeqCst)});
