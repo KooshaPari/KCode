@@ -108,6 +108,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn observer_terminal_events_do_not_complete_pending_prompt() {
+        let (client, mut server) = crate::transport::stream_pair().unwrap();
+        let (reader, writer) = client.into_split();
+        let session = DaemonSession::new("observer".into(), reader, writer, 2);
+        session.prompt_running.store(true, Ordering::SeqCst);
+        let runtime = AcpRuntime::new(AcpProfile::Standard, ProviderChoice::Jcode, None, None);
+        runtime.register_session(session, false).await.unwrap();
+        let session = runtime.sessions.lock().await["observer"].clone();
+        let pending = session.clone();
+        let mut completion = tokio::spawn(async move { wait_for_done(&pending, 2).await });
+        server.write_all(b"{\"type\":\"done\",\"id\":0}\n{\"type\":\"error\",\"id\":0,\"message\":\"other client failed\"}\n").await.unwrap();
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), &mut completion)
+                .await
+                .is_err()
+        );
+        server
+            .write_all(b"{\"type\":\"done\",\"id\":2}\n")
+            .await
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(2), completion)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        session.stop_pump().await;
+    }
+
+    #[tokio::test]
     async fn pump_preserves_completion_and_disconnect_for_active_consumer() {
         let (client, mut server) = crate::transport::stream_pair().unwrap();
         let (reader, writer) = client.into_split();
