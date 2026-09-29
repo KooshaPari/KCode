@@ -2,7 +2,7 @@ use super::*;
 use std::collections::HashSet;
 
 #[cfg(unix)]
-async fn exchange(path: &std::path::Path, input: Value) -> Result<Value> {
+pub(super) async fn exchange(path: &std::path::Path, input: Value) -> Result<Value> {
     use tokio::io::AsyncReadExt;
     let stream = tokio::net::UnixStream::connect(path).await?;
     let (reader, mut writer) = stream.into_split();
@@ -21,7 +21,7 @@ async fn exchange(path: &std::path::Path, input: Value) -> Result<Value> {
     Ok(result["result"].clone())
 }
 #[cfg(not(unix))]
-async fn exchange(_: &std::path::Path, _: Value) -> Result<Value> {
+pub(super) async fn exchange(_: &std::path::Path, _: Value) -> Result<Value> {
     anyhow::bail!("remote interactions require Unix IPC")
 }
 
@@ -53,9 +53,19 @@ impl AcpRuntime {
         let task = tokio::spawn(async move {
             let mut sent: HashSet<String> = HashSet::new();
             loop {
-                let query = json!({"method":"list","sessionId":target.session_id,"controller":runtime.controller,
+                if !target.interaction_active.load(Ordering::SeqCst) {
+                    break;
+                }
+                let query = json!({"method":"renew","sessionId":target.session_id,"controller":runtime.controller,
                     "form":runtime.form_elicitation.load(Ordering::SeqCst)});
-                if let Ok(result) = exchange(&runtime.broker_path, query).await {
+                let result = match exchange(&runtime.broker_path, query).await {
+                    Ok(result) => result,
+                    Err(_) => {
+                        runtime.lose_interaction_ownership(&target).await;
+                        break;
+                    }
+                };
+                {
                     let requests = result["requests"].as_array().cloned().unwrap_or_default();
                     let current: HashSet<String> = requests
                         .iter()
@@ -63,6 +73,9 @@ impl AcpRuntime {
                         .collect();
                     sent.retain(|id| current.contains(id));
                     for request in requests {
+                        if !target.interaction_active.load(Ordering::SeqCst) {
+                            return;
+                        }
                         let Some(id) = request["id"].as_str() else {
                             continue;
                         };
@@ -118,6 +131,17 @@ impl AcpRuntime {
         let Some(session) = self.interaction_requests.lock().await.get(key).cloned() else {
             return Ok(());
         };
+        let attachment = self.sessions.lock().await.get(&session).cloned();
+        let Some(attachment) = attachment else {
+            return Ok(());
+        };
+        if self
+            .require_interaction_ownership(&attachment)
+            .await
+            .is_err()
+        {
+            return Ok(());
+        }
         let result =
             result.unwrap_or_else(|| json!({"outcome":{"outcome":"cancelled"},"action":"cancel"}));
         let response = exchange(

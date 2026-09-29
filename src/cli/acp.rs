@@ -14,6 +14,7 @@ use tokio::sync::Mutex;
 mod discovery;
 mod interactions;
 mod live;
+mod ownership;
 #[cfg(test)]
 mod lifecycle_tests;
 
@@ -102,6 +103,8 @@ struct DaemonSession {
     events: Mutex<Option<tokio::sync::mpsc::Receiver<Result<ServerEvent>>>>,
     pump: Mutex<Option<tokio::task::AbortHandle>>,
     interaction_pump: Mutex<Option<tokio::task::AbortHandle>>,
+    interaction_requested: AtomicBool,
+    interaction_active: AtomicBool,
 }
 
 /// Session-scoped provider/model state used to surface ACP `configOptions`
@@ -222,6 +225,8 @@ impl DaemonSession {
             events: Mutex::new(None),
             pump: Mutex::new(None),
             interaction_pump: Mutex::new(None),
+            interaction_requested: AtomicBool::new(false),
+            interaction_active: AtomicBool::new(false),
         }
     }
 
@@ -571,6 +576,10 @@ impl AcpRuntime {
             return Ok(());
         };
 
+        if let Err(error) = self.require_interaction_ownership(&session).await {
+            self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string()).await?;
+            return Ok(());
+        }
         if session
             .prompt_running
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -621,6 +630,12 @@ impl AcpRuntime {
             sessions.get(&session_id).cloned()
         };
         if let Some(session) = session {
+            if let Err(error) = self.require_interaction_ownership(&session).await {
+                if let Some(id) = message.id {
+                    self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string()).await?;
+                }
+                return Ok(());
+            }
             self.cancel_interactions(&session_id).await;
             let cancel_id = session.next_id();
             let _ = session.send(&Request::Cancel { id: cancel_id }).await;
@@ -644,7 +659,9 @@ impl AcpRuntime {
             }
         };
         if let Some(session) = self.sessions.lock().await.remove(&session_id) {
-            if session.prompt_running.load(Ordering::SeqCst) {
+            if session.prompt_running.load(Ordering::SeqCst)
+                && self.require_interaction_ownership(&session).await.is_ok()
+            {
                 self.cancel_interactions(&session_id).await;
                 let cancel_id = session.next_id();
                 let _ = session.send(&Request::Cancel { id: cancel_id }).await;
@@ -700,6 +717,10 @@ impl AcpRuntime {
             .await?;
             return Ok(());
         };
+        if let Err(error) = self.require_interaction_ownership(&session).await {
+            self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string()).await?;
+            return Ok(());
+        }
         if session
             .prompt_running
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)

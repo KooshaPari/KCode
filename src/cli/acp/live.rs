@@ -25,6 +25,8 @@ impl AcpRuntime {
         let session = Arc::new(session);
         if control_interactions {
             self.claim_interactions(&session.session_id).await?;
+            session.interaction_requested.store(true, Ordering::SeqCst);
+            session.interaction_active.store(true, Ordering::SeqCst);
         }
         let (sender, receiver) = tokio::sync::mpsc::channel(256);
         *session.events.lock().await = Some(receiver);

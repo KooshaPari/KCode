@@ -41,3 +41,12 @@ assertion to the exact sole capability (still excludes full-profile raw events).
 New observer-pump and same-session prompt/cancel/passive-close tests passed.
 Independent focused suites now continue after a peer test failure when the
 production compile succeeded, preserving all results without hiding failure.
+
+HarnessDesk contract refinement: explicit controller attachments now revalidate
+lease before prompt/cancel/config changes or permission/form answers. Failed
+renewal emits session/update with update.sessionUpdate=session_info_update and
+update._meta["jcode.interactionController"]=false, clears pending response IDs,
+and stops forwarding. Reacquisition requires explicit session reload; passive
+generic ACP prompt semantics are unchanged. Broker renew/respond/cancel reject
+expired/unowned leases; only explicit list/claim can acquire ownership. New
+synthetic socket and broker expiry tests cover these negative cases.

@@ -102,6 +102,13 @@ fn dispatch(input: Value) -> Result<Value> {
             .map_err(|_| anyhow::anyhow!("controller lock poisoned"))?;
         let now = std::time::Instant::now();
         owners.retain(|_, (_, expires, _)| *expires > now);
+        if input["method"] != "list"
+            && !owners
+                .get(session)
+                .is_some_and(|(owner, expires, _)| owner == token && *expires > now)
+        {
+            bail!("interaction controller lease expired or not owned");
+        }
         if owners
             .get(session)
             .is_some_and(|(owner, expires, _)| owner != token && *expires > now)
@@ -137,7 +144,7 @@ fn dispatch(input: Value) -> Result<Value> {
         }
         return Ok(json!({}));
     }
-    if input["method"] == "list" {
+    if input["method"] == "list" || input["method"] == "renew" {
         return Ok(
             json!({"requests":requests.values().filter(|op| op.session == session)
             .map(|op| op.request.clone()).collect::<Vec<_>>()}),

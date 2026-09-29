@@ -1,5 +1,6 @@
 use super::*;
 fn insert(session: &str, id: &str) -> oneshot::Receiver<Value> {
+    dispatch(json!({"method":"list","sessionId":session,"controller":"test-owner"})).unwrap();
     let (response, receiver) = oneshot::channel();
     pending().lock().unwrap().insert(id.into(), Operation {session:session.into(),response,
             request:json!({"method":"session/request_permission","params":{"options":[{"optionId":"allow-once"},{"optionId":"reject-once"}]}})});
@@ -75,6 +76,7 @@ fn controller_lease_is_exclusive_and_reconnect_recovers_pending_request() {
     let session = crate::id::new_id("session");
     let id = crate::id::new_id("test");
     let _receiver = insert(&session, &id);
+    controllers().lock().unwrap().remove(&session);
     let query =
         |owner: &str| json!({"method":"list","sessionId":session,"controller":owner,"form":true});
     assert_eq!(
@@ -137,3 +139,25 @@ async fn ask_without_controller_fails_before_waiting_or_creating_pending_operati
 
 #[cfg(unix)]
 mod ipc;
+
+#[tokio::test]
+async fn expired_lease_cannot_renew_answer_or_cancel_without_explicit_reclaim() {
+    let session = crate::id::new_id("session");
+    let id = crate::id::new_id("test");
+    let mut receiver = insert(&session, &id);
+    controllers().lock().unwrap().get_mut(&session).unwrap().1 =
+        std::time::Instant::now() - std::time::Duration::from_secs(1);
+    assert!(
+        dispatch(json!({"method":"renew","sessionId":session,"controller":"test-owner"})).is_err()
+    );
+    assert!(dispatch(answer(&session, &id, "allow-once")).is_err());
+    assert!(
+        dispatch(json!({"method":"cancel","sessionId":session,"controller":"test-owner"})).is_err()
+    );
+    assert!(receiver.try_recv().is_err());
+    dispatch(json!({"method":"list","sessionId":session,"controller":"new-owner"})).unwrap();
+    let mut response = answer(&session, &id, "allow-once");
+    response["controller"] = json!("new-owner");
+    dispatch(response).unwrap();
+    assert_eq!(receiver.await.unwrap()["outcome"]["optionId"], "allow-once");
+}
