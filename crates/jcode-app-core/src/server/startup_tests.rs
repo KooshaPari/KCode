@@ -7,6 +7,7 @@ use crate::message::{Message, ToolDefinition};
 use crate::provider::{EventStream, Provider};
 use crate::transport::Listener;
 use anyhow::Result;
+use sha2::{Digest, Sha256};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
@@ -142,8 +143,10 @@ async fn debug_accept_loop_responds_to_ping_without_affecting_client_count() {
         .binary_sha256
         .as_deref()
         .expect("daemon should report its executable digest");
-    assert_eq!(digest.len(), 64);
-    assert!(digest.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    let executable = std::fs::read(std::env::current_exe().expect("current executable"))
+        .expect("read current executable");
+    let expected_digest = format!("{:x}", Sha256::digest(&executable));
+    assert_eq!(digest, expected_digest);
     assert_eq!(identity.native_ssh_protocol, Some(1));
     assert_eq!(*server.client_count.read().await, 0);
 
