@@ -433,6 +433,55 @@ pub fn encode_mcp_tools(tools: &[ToolDefinition]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Encode an `ExecClientMessage` answering `McpStateExecArgs` with
+/// `mcp_state_exec_result` (field 36) -> `McpStateSuccess` (case 1).
+///
+/// jcode advertises every bridged tool under one pseudo server,
+/// [`JCODE_TOOL_PROVIDER`]. Report that server as ready with the same tool
+/// definitions sent in `RunRequest.mcp_tools` so Cursor proceeds to the
+/// `McpArgs` call instead of waiting for a server it thinks is still loading.
+pub fn encode_mcp_state_result(
+    id: u32,
+    exec_id: &str,
+    requested: &McpStateExecArgs,
+    tools: &[ToolDefinition],
+) -> Result<Vec<u8>> {
+    let mut success = Vec::new();
+    let wants_bridge = requested.server_identifiers.is_empty()
+        || requested
+            .server_identifiers
+            .iter()
+            .any(|id| id == JCODE_TOOL_PROVIDER);
+    if wants_bridge {
+        // McpStateServer: server_name=1, server_identifier=2, tools=5 (repeated
+        // McpToolDefinition), status=7
+        let mut server = field_str(1, JCODE_TOOL_PROVIDER);
+        server.extend(field_str(2, JCODE_TOOL_PROVIDER));
+        let aliases = mcp_wire_aliases(tools);
+        for tool in tools {
+            let wire_name = aliases
+                .get(&tool.name)
+                .cloned()
+                .unwrap_or_else(|| mcp_wire_name(&tool.name));
+            let def = encode_mcp_tool_definition_with_wire_name(tool, &wire_name)?;
+            server.extend(field_ld(5, &def));
+        }
+        server.extend(field_str(7, "ready"));
+        // McpStateSuccess: servers=1 (repeated)
+        success.extend(field_ld(1, &server));
+    }
+    // McpStateExecResult: success = 1
+    let result = field_ld(1, &success);
+    Ok(encode_exec_client_message(id, exec_id, 36, &result))
+}
+
+/// Encode an `McpStateError` result (case 2) for `McpStateExecArgs`.
+pub fn encode_mcp_state_error(id: u32, exec_id: &str, error: &str) -> Vec<u8> {
+    let err = field_str(1, error);
+    let result = field_ld(2, &err);
+    encode_exec_client_message(id, exec_id, 36, &result)
+}
+
 // --------------------------------------------------------------------------
 // McpArgs & Args Map Decoding
 // --------------------------------------------------------------------------
@@ -596,7 +645,17 @@ pub enum ExecServerMessageVariant {
     RecordScreen(RecordScreenArgs),
     ComputerUse(ComputerUseArgs),
     WriteShellStdin(WriteShellStdinArgs),
+    McpState(McpStateExecArgs),
     Unknown(u64, Vec<u8>),
+}
+
+/// `McpStateExecArgs` (ExecServerMessage field 36). Cursor asks for the state
+/// of the listed MCP servers before it dispatches an `McpArgs` call. Leaving
+/// it unanswered stalls the turn with only heartbeat frames.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct McpStateExecArgs {
+    pub server_identifiers: Vec<String>,
+    pub kick_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -886,6 +945,21 @@ pub fn decode_exec_server_message(bytes: &[u8]) -> Result<ExecServerMessage> {
                 variant = Some(ExecServerMessageVariant::WriteShellStdin(
                     WriteShellStdinArgs { shell_id, stdin },
                 ));
+            }
+            36 => {
+                // McpStateExecArgs (server_identifiers=1 repeated, kick_only=2)
+                let mut args = McpStateExecArgs::default();
+                for f in iter_fields(field.data) {
+                    if f.field == 1
+                        && f.wire == 2
+                        && let Ok(s) = std::str::from_utf8(f.data)
+                    {
+                        args.server_identifiers.push(s.to_string());
+                    } else if f.field == 2 && f.wire == 0 {
+                        args.kick_only = f.varint != 0;
+                    }
+                }
+                variant = Some(ExecServerMessageVariant::McpState(args));
             }
             other => {
                 if variant.is_none() {

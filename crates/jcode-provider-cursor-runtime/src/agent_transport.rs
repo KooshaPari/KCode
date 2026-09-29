@@ -1251,7 +1251,37 @@ pub async fn run_agent_turn(
                         let connect_bytes = crate::wire::connect_frame(&agent_bytes);
                         let _ = outbound_tx.send(connect_bytes).await;
                     }
-                    ExecServerMessageVariant::Unknown(_, _) => {}
+                    ExecServerMessageVariant::McpState(args) => {
+                        stream_debug(format_args!(
+                            "mcp_state requested servers={:?} kick_only={}",
+                            args.server_identifiers, args.kick_only
+                        ));
+                        let res = crate::wire::encode_mcp_state_result(
+                            msg.id,
+                            &msg.exec_id,
+                            &args,
+                            tools,
+                        )
+                        .unwrap_or_else(|error| {
+                            crate::wire::encode_mcp_state_error(
+                                msg.id,
+                                &msg.exec_id,
+                                &format!("jcode could not describe its tools: {error}"),
+                            )
+                        });
+                        let agent_bytes = crate::wire::encode_agent_client_exec_message(&res);
+                        let connect_bytes = crate::wire::connect_frame(&agent_bytes);
+                        let _ = outbound_tx.send(connect_bytes).await;
+                    }
+                    ExecServerMessageVariant::Unknown(field, _) => {
+                        // An unanswered exec request stalls AgentService with
+                        // heartbeat-only frames. Make that visible instead of
+                        // silently waiting out the idle timeout.
+                        jcode_base::logging::warn(&format!(
+                            "Cursor agent sent unsupported exec request field {field}; the turn may stall"
+                        ));
+                        stream_debug(format_args!("unsupported exec field={field}"));
+                    }
                 }
             }
         }
