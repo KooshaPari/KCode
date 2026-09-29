@@ -267,13 +267,9 @@ fn planned_pinned_diagram_mode_label(
     pane_position: crate::config::DiagramPanePosition,
     fit_mode: bool,
     zoom_percent: u8,
-    contain_only: bool,
 ) -> String {
     if !fit_mode {
         return "pan".to_string();
-    }
-    if contain_only {
-        return "fit".to_string();
     }
 
     pinned_diagram_content_area_for_title(area, pane_position)
@@ -792,7 +788,6 @@ pub(crate) fn draw_pinned_diagram(
     zoom_percent: u8,
     pane_position: crate::config::DiagramPanePosition,
     pane_animating: bool,
-    contain_only: bool,
 ) {
     use ratatui::widgets::{Block, BorderType, Borders, Wrap};
 
@@ -810,14 +805,7 @@ pub(crate) fn draw_pinned_diagram(
         ));
     }
     let planned_mode =
-        planned_pinned_diagram_mode_label(
-            diagram,
-            area,
-            pane_position,
-            fit_mode,
-            zoom_percent,
-            contain_only,
-        );
+        planned_pinned_diagram_mode_label(diagram, area, pane_position, fit_mode, zoom_percent);
     let mode_label = format!(" {planned_mode} ");
     title_parts.push(Span::styled(
         mode_label,
@@ -937,20 +925,7 @@ pub(crate) fn draw_pinned_diagram(
                         false,
                     );
                 } else {
-                    // Fullscreen shows the whole diagram; the fill heuristic would crop it.
-                    let plan = if contain_only {
-                        PinnedDiagramFitRenderPlan::Contain {
-                            area: vcenter_fitted_image_with_font(
-                                inner,
-                                diagram.width,
-                                diagram.height,
-                                super::super::mermaid::get_font_size(),
-                            ),
-                        }
-                    } else {
-                        plan_pinned_diagram_fit(inner, diagram.width, diagram.height)
-                    };
-                    match plan {
+                    match plan_pinned_diagram_fit(inner, diagram.width, diagram.height) {
                         PinnedDiagramFitRenderPlan::Contain { area: render_area } => {
                             rendered = super::super::mermaid::render_image_widget_scale(
                                 diagram.hash,
