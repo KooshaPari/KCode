@@ -1746,3 +1746,212 @@ fn compact_page_height_matches_for_cost_based_usage() {
     let lines = super::render_page(InfoPageKind::CompactOnly, &data, inner);
     assert_eq!(lines.len() as u16, layout.pages[0].height);
 }
+
+/// Visual gallery: draws every text widget through the real
+/// `render_single_widget` path. Run with
+/// `cargo test -p jcode-tui --lib widget_gallery -- --ignored --nocapture`.
+#[test]
+#[ignore]
+fn widget_gallery() {
+    use super::{
+        AmbientWidgetData, CompactionInfo, DirtyFile, GitInfo, Side, WidgetPlacement,
+        render_single_widget,
+    };
+    let now = Instant::now();
+    let mut todos = vec![
+        todo_item("a", "wire Framed into render path", "completed", None),
+        todo_item("b", "convert every widget", "completed", None),
+        todo_item("c", "fix tests after refactor", "in_progress", None),
+        todo_item("d", "build and reload", "pending", None),
+        todo_item("e", "show gallery", "pending", None),
+        todo_item("f", "commit", "pending", None),
+        todo_item("g", "celebrate", "pending", None),
+    ];
+    todos[0].completion_confidence = Some(crate::todo::ConfidenceState::from_legacy_score(95));
+    let agent_file = std::path::PathBuf::from("/repo/src/tui/info_widget.rs");
+    let data = InfoWidgetData {
+        todos,
+        memory_info: Some(MemoryInfo {
+            total_count: 42,
+            project_count: 30,
+            global_count: 12,
+            activity: Some(MemoryActivity {
+                state: MemoryState::Idle,
+                state_since: now - Duration::from_secs(40),
+                pipeline: None,
+                recent_events: vec![MemoryEvent {
+                    kind: MemoryEventKind::MemoryInjected {
+                        count: 2,
+                        prompt_chars: 318,
+                        age_ms: 44,
+                        preview: "prefers terse answers".to_string(),
+                        items: Vec::new(),
+                    },
+                    timestamp: now - Duration::from_secs(30),
+                    detail: None,
+                }],
+            }),
+            ..Default::default()
+        }),
+        swarm_info: Some(SwarmInfo {
+            managed_members: vec![
+                managed_member("researcher", "running", Some("coordinator")),
+                managed_member("reviewer", "completed", None),
+                managed_member("builder", "running", None),
+            ],
+            plan_progress: Some((4, 2, 9)),
+            ..Default::default()
+        }),
+        background_info: Some(BackgroundInfo {
+            running_count: 5,
+            running_tasks: vec![
+                "selfdev build".into(),
+                "cargo test -p jcode-tui".into(),
+                "train.py".into(),
+                "download weights".into(),
+                "lint".into(),
+            ],
+            progress_summary: Some("selfdev build".into()),
+            progress_detail: Some("[#####-------] 42% · Building".into()),
+            ..Default::default()
+        }),
+        compaction_info: Some(CompactionInfo {
+            is_compacting: false,
+            compacted_messages: 184,
+            active_messages: 36,
+            summary_chars: 9_800,
+            mode: "semantic".into(),
+        }),
+        ambient_info: Some(AmbientWidgetData {
+            show_widget: true,
+            status: crate::ambient::AmbientStatus::Running {
+                detail: "triaging issues".into(),
+            },
+            queue_count: 3,
+            next_queue_preview: Some("check CI on master".into()),
+            last_run_ago: Some("12m ago".into()),
+            next_wake: Some("in 18m".into()),
+            budget_percent: Some(0.62),
+            reminder_count: 0,
+            next_reminder_preview: None,
+            last_summary: None,
+            next_reminder_wake: None,
+        }),
+        usage_info: Some(UsageInfo {
+            provider: UsageProvider::Anthropic,
+            primary_limit_label: Some("5h".into()),
+            secondary_limit_label: Some("7d".into()),
+            five_hour: 0.34,
+            five_hour_resets_at: Some("2h 10m".into()),
+            seven_day: 0.61,
+            seven_day_resets_at: Some("3d".into()),
+            available: true,
+            ..Default::default()
+        }),
+        cache_hit_info: Some(CacheHitInfo {
+            reported_input_tokens: 20_000,
+            prompt_tokens: Some(38_000),
+            last_prompt_tokens: Some(10_000),
+            read_tokens: 15_000,
+            creation_tokens: 3_000,
+            optimal_input_tokens: 16_667,
+            last_reported_input_tokens: Some(10_000),
+            last_read_tokens: Some(9_400),
+            last_creation_tokens: Some(0),
+            last_optimal_input_tokens: Some(9_895),
+            miss_attributions: vec![
+                CacheMissAttribution {
+                    turn_number: 20,
+                    call_index: 1,
+                    missed_tokens: 69_000,
+                    reason: "provider switch".into(),
+                },
+                CacheMissAttribution {
+                    turn_number: 27,
+                    call_index: 2,
+                    missed_tokens: 12_000,
+                    reason: "system prompt changed".into(),
+                },
+            ],
+        }),
+        provider_name: Some("openai".into()),
+        service_tier: Some("priority".into()),
+        connection_type: Some("websocket".into()),
+        tokens_per_second: Some(61.7),
+        upstream_provider: Some("fireworks".into()),
+        session_name: Some("sunflower".into()),
+        session_count: Some(3),
+        git_info: Some(GitInfo {
+            branch: "master".into(),
+            modified: 9,
+            dirty_files: [
+                ('M', "src/tui/info_widget.rs", 240, 180),
+                ('A', "src/tui/info_widget_frame.rs", 274, 0),
+                ('M', "src/tui/info_widget_todos.rs", 40, 23),
+                ('M', "src/tui/info_widget_git.rs", 120, 46),
+                ('D', "src/tui/old_widget.rs", 0, 88),
+                ('M', "src/tui/info_widget_usage.rs", 30, 16),
+                ('M', "src/tui/info_widget_model.rs", 20, 12),
+            ]
+            .into_iter()
+            .map(|(status, path, a, r)| DirtyFile {
+                status,
+                path: path.into(),
+                added: Some(a),
+                removed: Some(r),
+                ..Default::default()
+            })
+            .collect(),
+            dirty_total: 9,
+            added_total: 760,
+            removed_total: 380,
+            repo_root: Some("/repo".into()),
+            ..Default::default()
+        }),
+        agent_edited: std::sync::Arc::new([agent_file].into_iter().collect()),
+        ..Default::default()
+    };
+
+    let kinds = [
+        WidgetKind::Todos,
+        WidgetKind::MemoryActivity,
+        WidgetKind::SwarmStatus,
+        WidgetKind::BackgroundTasks,
+        WidgetKind::Compaction,
+        WidgetKind::AmbientMode,
+        WidgetKind::UsageLimits,
+        WidgetKind::KvCache,
+        WidgetKind::ModelInfo,
+        WidgetKind::Tips,
+        WidgetKind::GitStatus,
+        WidgetKind::Overview,
+    ];
+    let width = 44u16;
+    for kind in kinds {
+        let cap = if kind == WidgetKind::Overview { 40 } else { 12 };
+        let mut h = calculate_widget_height(kind, &data, width, cap);
+        if h <= 2 {
+            // Ambient/Tips are gated off in layout; draw them anyway.
+            h = 8;
+        }
+        let backend = ratatui::backend::TestBackend::new(width, h);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let placement = WidgetPlacement {
+                    kind,
+                    rect: f.area(),
+                    side: Side::Left,
+                };
+                render_single_widget(f, &placement, &data);
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer().clone();
+        println!("{kind:?}");
+        for y in 0..h {
+            let row: String = (0..width).map(|x| buf[(x, y)].symbol().to_string()).collect();
+            println!("{}", row.trim_end());
+        }
+        println!();
+    }
+}
