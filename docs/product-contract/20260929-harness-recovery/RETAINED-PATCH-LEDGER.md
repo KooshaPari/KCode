@@ -40,3 +40,6 @@ Current-upstream falsification changed the disposition:
 - **Provider/subscription routes, Pine/native-Windows obligations, Pheno integrations**: still require direct source comparison.
 
 This is evidence falsifying several historical differentiation candidates. It does not prove the deep fork has no remaining value.
+
+### Current-upstream runtime identity check
+A later current-upstream source observation at `1jehuang/jcode@de65ade33d514b31a43885318179b3622f321170` shows Pong carries `native_ssh_protocol` and a capabilities vector, but the inspected Pong shape does not carry server version, git hash, PID or executable digest. Upstream does hash binaries in benchmark tooling, so hashing itself is commodity; binding the digest to the daemon that answered a runtime Ping remains a candidate semantic delta. This is source evidence, not a claim that no other upstream endpoint exposes equivalent identity; continue searching before declaring uniqueness.
