@@ -26,3 +26,9 @@ controller claims, held side-effect-before-approval oracle, allow/deny/cancel,
 wrong-session/invalid-choice/duplicate rejection, timeout cleanup and typed
 elicitation resolution. The process uses no real session or provider. Hosted
 run 36581379368 targeted e52c169f5; later source additions require a new run.
+
+Passive-close correction: closing an attachment previously always sent Cancel
+and attempted interaction cancellation. Now only an ACP-owned active prompt
+triggers cancellation; closing a passive observation only disconnects its
+pumps. Added synthetic daemon socket tests for same-session prompt/cancel,
+unrelated-session silence, and passive-close EOF without a Cancel request.

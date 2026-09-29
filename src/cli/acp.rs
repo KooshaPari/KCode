@@ -14,6 +14,8 @@ use tokio::sync::Mutex;
 mod discovery;
 mod interactions;
 mod live;
+#[cfg(test)]
+mod lifecycle_tests;
 
 const ACP_PROTOCOL_VERSION: u64 = 1;
 
@@ -642,9 +644,11 @@ impl AcpRuntime {
             }
         };
         if let Some(session) = self.sessions.lock().await.remove(&session_id) {
-            self.cancel_interactions(&session_id).await;
-            let cancel_id = session.next_id();
-            let _ = session.send(&Request::Cancel { id: cancel_id }).await;
+            if session.prompt_running.load(Ordering::SeqCst) {
+                self.cancel_interactions(&session_id).await;
+                let cancel_id = session.next_id();
+                let _ = session.send(&Request::Cancel { id: cancel_id }).await;
+            }
             session.stop_pump().await;
         }
         self.write_result(id, json!({})).await?;
