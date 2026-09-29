@@ -24,7 +24,9 @@ impl AcpRuntime {
         session: &DaemonSession,
     ) -> Result<()> {
         if !session.interaction_requested.load(Ordering::SeqCst) {
-            return Ok(());
+            anyhow::bail!(
+                "Session is attached for observation; explicitly reload to acquire interaction control"
+            );
         }
         if !session.interaction_active.load(Ordering::SeqCst) {
             anyhow::bail!("Interaction control lost; explicitly reload the session to reacquire");

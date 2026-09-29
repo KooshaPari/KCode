@@ -64,3 +64,13 @@ only applies rustfmt ordering/wrapping to ACP glue and records these receipts.
 Receipt correction: b9638caf6 initially recorded hooks11/0 for both platforms
 before macOS log extraction was reviewed. Actual macOS is10/0; Ubuntu11/0.
 This forward correction preserves history and the original raw hosted logs.
+
+Contract correction (2026-09-29 follow-up): CLIENT-CONTRACT sections2.2/3 require
+existing-session attachments without an explicit control grant to remain
+read-only. The previous interaction-passive behavior still accepted prompt,
+cancel and config changes; this was a real acceptance gap despite green tests.
+Now absent ownership fails these mutations before daemon dispatch. New-session
+interactive default and explicit load/resume acquisition remain unchanged.
+Added passive mutation negative controls, extended lease-loss config rejection,
+and changed the positive routing fixture to acquire through isolated broker IPC.
+Prior artifacts do not qualify this corrected server read-only boundary.

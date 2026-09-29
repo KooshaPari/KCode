@@ -11,7 +11,7 @@ fn ownership_loss_identifies_exact_session_and_revoked_capability() {
 }
 
 #[tokio::test]
-async fn lost_controller_cannot_prompt_cancel_or_keep_pending_responses() {
+async fn lost_controller_cannot_prompt_cancel_config_or_keep_pending_responses() {
     let root = tempfile::tempdir().unwrap();
     let mut runtime = AcpRuntime::new(AcpProfile::Standard, ProviderChoice::Jcode, None, None);
     runtime.broker_path = root.path().join("absent-broker");
@@ -51,6 +51,13 @@ async fn lost_controller_cannot_prompt_cancel_or_keep_pending_responses() {
         params: json!({"sessionId":"owned"}),
     };
     runtime.handle_session_cancel(cancel).await.unwrap();
+    let config = JsonRpcMessage {
+        id: Some(json!(3)),
+        method: None,
+        result: None,
+        params: json!({"sessionId":"owned","configId":"model","value":"must-not-change"}),
+    };
+    runtime.handle_set_config_option(config).await.unwrap();
     let (reader, _writer) = server.into_split();
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
