@@ -74,3 +74,10 @@ interactive default and explicit load/resume acquisition remain unchanged.
 Added passive mutation negative controls, extended lease-loss config rejection,
 and changed the positive routing fixture to acquire through isolated broker IPC.
 Prior artifacts do not qualify this corrected server read-only boundary.
+
+Independent-review race reproduction: added two deterministic regressions before
+changing production behavior. Re-registering an active session must retain the
+original prompt transport/waiter; blocked stdout must keep prompt ownership
+until its terminal RPC response is delivered. Current source aborts the original
+pump and clears prompt state early plus again in the outer task. Hosted red
+execution is required before the lifetime fix; no local heavy build.

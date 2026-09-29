@@ -17,6 +17,8 @@ mod interactions;
 mod lifecycle_tests;
 mod live;
 mod ownership;
+#[cfg(test)]
+mod race_tests;
 
 const ACP_PROTOCOL_VERSION: u64 = 1;
 
