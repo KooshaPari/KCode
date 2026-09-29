@@ -202,6 +202,7 @@ fn is_synthetic(text: &str) -> bool {
         || text.starts_with("Caveat:")
         || text.starts_with("# AGENTS.md")
         || text.starts_with("[Request interrupted")
+        || text.starts_with("[Attached image")
 }
 
 impl Parsed {
@@ -295,6 +296,32 @@ fn anthropic_blocks(
         Some(serde_json::Value::Array(blocks)) => blocks,
         _ => return,
     };
+    // Jcode persists a message's text before its reasoning trace even though
+    // the model thought first. Move each reasoning block ahead of the text
+    // blocks directly before it (never past a tool call) so replays think
+    // before they answer.
+    let is_reasoning = |block: &serde_json::Value| {
+        matches!(
+            block.get("type").and_then(|kind| kind.as_str()),
+            Some("thinking" | "reasoning" | "reasoning_trace")
+        )
+    };
+    let is_text = |block: &serde_json::Value| {
+        block.get("type").and_then(|kind| kind.as_str()) == Some("text")
+    };
+    let mut ordered: Vec<&serde_json::Value> = Vec::with_capacity(blocks.len());
+    for block in blocks {
+        if is_reasoning(block) {
+            let at = ordered
+                .iter()
+                .rposition(|previous| !is_text(previous))
+                .map_or(0, |index| index + 1);
+            ordered.insert(at, block);
+        } else {
+            ordered.push(block);
+        }
+    }
+    let blocks = ordered;
     let str_field = |block: &serde_json::Value, key: &str| {
         block
             .get(key)
@@ -758,6 +785,30 @@ mod tests {
         }
         std::fs::create_dir_all(dir).unwrap();
         std::fs::write(dir.join(format!("{name}.json")), session.to_string()).unwrap();
+    }
+
+    #[test]
+    fn reasoning_stored_after_text_replays_before_it() {
+        let mut parsed = Parsed::new();
+        let mut pending = Pending::default();
+        let content = serde_json::json!([
+            {"type":"text","text":"answer"},
+            {"type":"reasoning_trace","text":"thought"},
+            {"type":"tool_use","id":"t","name":"read","input":{}},
+            {"type":"text","text":"after"},
+            {"type":"thinking","thinking":"late"}
+        ]);
+        anthropic_blocks(&mut parsed, &mut pending, false, Some(&content));
+        let kinds: Vec<_> = parsed
+            .turns
+            .iter()
+            .map(|turn| match turn {
+                SampleTurn::Reasoning(text) | SampleTurn::Assistant(text) => text.as_str(),
+                SampleTurn::Tool { .. } => "tool",
+                SampleTurn::User(_) => "user",
+            })
+            .collect();
+        assert_eq!(kinds, ["thought", "answer", "tool", "late", "after"]);
     }
 
     #[test]
