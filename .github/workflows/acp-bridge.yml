@@ -6,6 +6,7 @@ on:
       - '.github/workflows/acp-bridge.yml'
       - 'src/cli/acp.rs'
       - 'src/cli/acp/**'
+      - 'scripts/qualification/acp_*.py'
       - 'crates/jcode-app-core/src/tool/**'
       - 'crates/jcode-app-core/src/server.rs'
       - 'crates/jcode-app-core/src/server/**'
@@ -73,6 +74,9 @@ jobs:
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         run: |
           cargo test --locked --no-default-features -p jcode-base --lib hooks::tests:: -- --nocapture
+      - name: Qualify real actor reload and held operations
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: python3 scripts/qualification/acp_lifetime.py "$PWD/target/debug/jcode"
       - name: Preserve exact development artifact
         uses: actions/upload-artifact@v4
         with:

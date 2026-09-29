@@ -22,6 +22,51 @@ impl AcpRuntime {
         session: DaemonSession,
         control_interactions: bool,
     ) -> Result<()> {
+        let existing = self.sessions.lock().await.get(&session.session_id).cloned();
+        if let Some(existing) = existing {
+            let live = existing
+                .pump
+                .lock()
+                .await
+                .as_ref()
+                .is_some_and(|pump| !pump.is_finished());
+            if live {
+                if control_interactions {
+                    self.claim_interactions(&existing.session_id).await?;
+                    let renewing = existing.interaction_active.load(Ordering::SeqCst)
+                        && existing
+                            .interaction_pump
+                            .lock()
+                            .await
+                            .as_ref()
+                            .is_some_and(|pump| !pump.is_finished());
+                    if !renewing {
+                        if let Some(pump) = existing.interaction_pump.lock().await.take() {
+                            pump.abort();
+                        }
+                        existing.interaction_requested.store(true, Ordering::SeqCst);
+                        existing.interaction_active.store(true, Ordering::SeqCst);
+                        self.start_interactions(existing.clone()).await;
+                    }
+                } else {
+                    existing.interaction_active.store(false, Ordering::SeqCst);
+                    existing
+                        .interaction_requested
+                        .store(false, Ordering::SeqCst);
+                    if let Some(pump) = existing.interaction_pump.lock().await.take() {
+                        pump.abort();
+                    }
+                    self.interaction_requests
+                        .lock()
+                        .await
+                        .retain(|_, owner| owner != &existing.session_id);
+                }
+                *existing.ui_state.lock().await = session.ui_state.lock().await.clone();
+                // Reload history can use a temporary subscription, but the original
+                // transport owns any in-flight prompt and must stay registered.
+                return Ok(());
+            }
+        }
         let session = Arc::new(session);
         if control_interactions {
             self.claim_interactions(&session.session_id).await?;

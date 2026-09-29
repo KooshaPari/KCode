@@ -81,3 +81,24 @@ original prompt transport/waiter; blocked stdout must keep prompt ownership
 until its terminal RPC response is delivered. Current source aborts the original
 pump and clears prompt state early plus again in the outer task. Hosted red
 execution is required before the lifetime fix; no local heavy build.
+
+Hosted red evidence: run36625615836 / macOS job109601693841 on7182ca385
+executed32ACP tests successfully and reproduced exactly2failures:
+reload_preserves_original_prompt_transport_and_waiter -> daemon disconnected;
+prompt_ownership_survives_backpressured_terminal_response -> ownership released
+before final response. Independent routing/broker/hooks cohorts remained green.
+
+Fix: reload reuses a healthy registered DaemonSession and event pump, renewing
+control without replacing the original prompt owner or callback forwarder. ACP
+subscriptions alone opt into existing continue_on_disconnect handling; explicit
+Cancel still routes through broker cancellation and daemon session control.
+Prompt state cleanup occurs once, after final success/error delivery.
+
+Added scripts/qualification/acp_actor.py (real isolated daemon, loopback provider,
+harmless bootstrap turn for normal persistence) and acp_lifetime.py (original
+question/permission reload, exact tool result, exactly-once approved marker,
+cancellation and late-answer negatives, full ACP disconnect/reacquisition).
+HarnessDesk independently executed actor fixture through its authenticated bridge
+with original callbacks and side-effect oracles; these new lifetime fixes still
+require their own hosted green result. No user sessions or installed channels
+were touched; no heavy local build was run.

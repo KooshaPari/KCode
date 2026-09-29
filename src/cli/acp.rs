@@ -603,7 +603,6 @@ impl AcpRuntime {
             let result = runtime
                 .run_prompt(id.clone(), session.clone(), text, images)
                 .await;
-            cleanup_prompt_state(&session).await;
             if let Err(err) = result {
                 let _ = runtime
                     .write_error_value(
@@ -613,6 +612,7 @@ impl AcpRuntime {
                     )
                     .await;
             }
+            cleanup_prompt_state(&session).await;
         });
         Ok(())
     }
@@ -873,7 +873,7 @@ impl AcpRuntime {
         session
             .send(&Request::Subscribe {
                 crash_on_disconnect: false,
-                continue_on_disconnect: false,
+                continue_on_disconnect: true,
                 id: subscribe_id,
                 working_dir: Some(cwd.display().to_string()),
                 selfdev: None,
@@ -921,7 +921,7 @@ impl AcpRuntime {
         session
             .send(&Request::Subscribe {
                 crash_on_disconnect: false,
-                continue_on_disconnect: false,
+                continue_on_disconnect: true,
                 id: resume_id,
                 working_dir: Some(cwd.display().to_string()),
                 selfdev: None,
@@ -1017,7 +1017,6 @@ impl AcpRuntime {
                 Ok(command) => self.run_session_command(&session, command).await,
                 Err(err) => Err(err),
             };
-            cleanup_prompt_state(&session).await;
             let response = response?;
             self.write_notification(
                 "session/update",
@@ -1038,7 +1037,7 @@ impl AcpRuntime {
             *active = Some(prompt_id);
         }
 
-        let send_result = session
+        session
             .send(&Request::Message {
                 id: prompt_id,
                 content: text,
@@ -1047,22 +1046,12 @@ impl AcpRuntime {
                 active_skill: None,
                 no_reply: false,
             })
-            .await;
-        if let Err(err) = send_result {
-            cleanup_prompt_state(&session).await;
-            return Err(err);
-        }
+            .await?;
 
         let mut stop_reason = "end_turn".to_string();
         let mut turn_usage = TurnUsage::default();
         loop {
-            let event = match session.read_event().await {
-                Ok(event) => event,
-                Err(err) => {
-                    cleanup_prompt_state(&session).await;
-                    return Err(err);
-                }
-            };
+            let event = session.read_event().await?;
             match event {
                 ServerEvent::Ack { .. } => {}
                 ServerEvent::Done { id } if id == prompt_id => break,
@@ -1070,7 +1059,6 @@ impl AcpRuntime {
                     stop_reason = "cancelled".to_string();
                 }
                 ServerEvent::Error { id, message, .. } if id == prompt_id => {
-                    cleanup_prompt_state(&session).await;
                     self.write_error_value(rpc_id, JSONRPC_SERVER_ERROR, message)
                         .await?;
                     return Ok(());
@@ -1144,7 +1132,6 @@ impl AcpRuntime {
             }
         }
 
-        cleanup_prompt_state(&session).await;
         self.write_result(rpc_id, prompt_response(&stop_reason, &turn_usage))
             .await?;
         Ok(())
