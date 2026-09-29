@@ -10,12 +10,6 @@
   ],
   "profile": "--locked --no-default-features",
   "result": "success",
-  "testsPerPlatform": {
-    "acp": 31,
-    "concurrentAttachmentRouting": 4,
-    "interactionBroker": 8,
-    "hookPolicy": 11
-  },
   "artifacts": [
     {
       "id": 11041682687,
@@ -35,5 +29,21 @@
     "No live user sessions touched",
     "No full-feature or whole-workspace qualification",
     "Formatting-only follow-up requires own source receipt"
-  ]
+  ],
+  "tests": {
+    "ubuntu-latest": {
+      "acp": 31,
+      "concurrentAttachmentRouting": 4,
+      "interactionBroker": 8,
+      "hookPolicy": 11,
+      "total": 54
+    },
+    "macos-latest": {
+      "acp": 31,
+      "concurrentAttachmentRouting": 4,
+      "interactionBroker": 8,
+      "hookPolicy": 10,
+      "total": 53
+    }
+  }
 }

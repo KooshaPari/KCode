@@ -54,9 +54,13 @@ synthetic socket and broker expiry tests cover these negative cases.
 Hosted gate passed on both Ubuntu/macOS: run36584965070, headbdcf18d1fba3a12b79dd75f40684234193d981c4.
 Actual checkout25fe77d568b8deffa23f8d0228b6320bb119fc5c is the PR merge; its
 treeb1df121c7d8286c3b10d83e7a44f56167b02f859 exactly equals the source-head tree.
-Each platform: production minimal binary built; ACP31/0, routing4/0, broker8/0,
-hooks11/0. Real isolated IPC, timeout/deny/cancel side-effect controls, typed
+Each platform: production minimal binary built; ACP31/0, routing4/0, broker8/0.
+Ubuntu hooks11/0 (54total); macOS hooks10/0 (53total, platform-specific difference). Real isolated IPC, timeout/deny/cancel side-effect controls, typed
 form response, competing/expired owner and concurrent-ID controls all passed.
 See hosted-qualification.json for exact artifact IDs/digests. No full-feature,
 whole-workspace, physical deployment or live-user-session claims. Final follow-up
 only applies rustfmt ordering/wrapping to ACP glue and records these receipts.
+
+Receipt correction: b9638caf6 initially recorded hooks11/0 for both platforms
+before macOS log extraction was reviewed. Actual macOS is10/0; Ubuntu11/0.
+This forward correction preserves history and the original raw hosted logs.
