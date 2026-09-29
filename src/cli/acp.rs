@@ -13,10 +13,10 @@ use tokio::sync::Mutex;
 
 mod discovery;
 mod interactions;
-mod live;
-mod ownership;
 #[cfg(test)]
 mod lifecycle_tests;
+mod live;
+mod ownership;
 
 const ACP_PROTOCOL_VERSION: u64 = 1;
 
@@ -577,7 +577,8 @@ impl AcpRuntime {
         };
 
         if let Err(error) = self.require_interaction_ownership(&session).await {
-            self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string()).await?;
+            self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string())
+                .await?;
             return Ok(());
         }
         if session
@@ -632,7 +633,8 @@ impl AcpRuntime {
         if let Some(session) = session {
             if let Err(error) = self.require_interaction_ownership(&session).await {
                 if let Some(id) = message.id {
-                    self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string()).await?;
+                    self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string())
+                        .await?;
                 }
                 return Ok(());
             }
@@ -718,7 +720,8 @@ impl AcpRuntime {
             return Ok(());
         };
         if let Err(error) = self.require_interaction_ownership(&session).await {
-            self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string()).await?;
+            self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string())
+                .await?;
             return Ok(());
         }
         if session
