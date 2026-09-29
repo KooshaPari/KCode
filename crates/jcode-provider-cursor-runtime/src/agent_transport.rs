@@ -1388,6 +1388,37 @@ pub async fn run_agent_turn(
                         let connect_bytes = crate::wire::connect_frame(&agent_bytes);
                         let _ = outbound_tx.send(connect_bytes).await;
                     }
+                    ExecServerMessageVariant::McpAllowlistPrecheck {
+                        provider_identifier,
+                    } => {
+                        let allowlisted = provider_identifier == crate::wire::JCODE_TOOL_PROVIDER;
+                        stream_debug(format_args!(
+                            "mcp allowlist precheck provider={provider_identifier} allowlisted={allowlisted}"
+                        ));
+                        let res = crate::wire::encode_allowlist_precheck_result(
+                            msg.id,
+                            &msg.exec_id,
+                            42,
+                            allowlisted,
+                        );
+                        let agent_bytes = crate::wire::encode_agent_client_exec_message(&res);
+                        let _ = outbound_tx
+                            .send(crate::wire::connect_frame(&agent_bytes))
+                            .await;
+                    }
+                    ExecServerMessageVariant::OtherAllowlistPrecheck(field) => {
+                        stream_debug(format_args!("allowlist precheck field={field} denied"));
+                        let res = crate::wire::encode_allowlist_precheck_result(
+                            msg.id,
+                            &msg.exec_id,
+                            field,
+                            false,
+                        );
+                        let agent_bytes = crate::wire::encode_agent_client_exec_message(&res);
+                        let _ = outbound_tx
+                            .send(crate::wire::connect_frame(&agent_bytes))
+                            .await;
+                    }
                     ExecServerMessageVariant::Unknown(field, _) => {
                         // An unanswered exec request stalls AgentService with
                         // heartbeat-only frames. Make that visible instead of

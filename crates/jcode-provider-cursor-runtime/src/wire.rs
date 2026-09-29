@@ -482,6 +482,21 @@ pub fn encode_mcp_state_error(id: u32, exec_id: &str, error: &str) -> Vec<u8> {
     encode_exec_client_message(id, exec_id, 36, &result)
 }
 
+/// Answer an allowlist precheck (`*AllowlistPrecheckResult { allowlisted = 1 }`)
+/// on `response_field` (41 shell, 42 mcp, 43 web fetch). jcode applies its own
+/// permission policy when it executes a bridged tool, so its `ccbridge` MCP
+/// tools are pre-approved. Cursor's native shell/fetch are not (jcode rejects
+/// those exec requests anyway). Leaving a precheck unanswered stalls the turn.
+pub fn encode_allowlist_precheck_result(
+    id: u32,
+    exec_id: &str,
+    response_field: u64,
+    allowlisted: bool,
+) -> Vec<u8> {
+    let result = field_bool(1, allowlisted);
+    encode_exec_client_message(id, exec_id, response_field, &result)
+}
+
 // --------------------------------------------------------------------------
 // McpArgs & Args Map Decoding
 // --------------------------------------------------------------------------
@@ -646,6 +661,13 @@ pub enum ExecServerMessageVariant {
     ComputerUse(ComputerUseArgs),
     WriteShellStdin(WriteShellStdinArgs),
     McpState(McpStateExecArgs),
+    /// `mcp_allowlist_precheck_args` (42): provider_identifier=1, tool_name=2.
+    McpAllowlistPrecheck {
+        provider_identifier: String,
+    },
+    /// `shell_allowlist_precheck_args` (41) / `web_fetch_allowlist_precheck_args`
+    /// (43). Carries the ExecClientMessage response field number.
+    OtherAllowlistPrecheck(u64),
     Unknown(u64, Vec<u8>),
 }
 
@@ -960,6 +982,21 @@ pub fn decode_exec_server_message(bytes: &[u8]) -> Result<ExecServerMessage> {
                     }
                 }
                 variant = Some(ExecServerMessageVariant::McpState(args));
+            }
+            42 => {
+                let provider_identifier = iter_fields(field.data)
+                    .find(|f| f.field == 1 && f.wire == 2)
+                    .and_then(|f| std::str::from_utf8(f.data).ok())
+                    .unwrap_or_default()
+                    .to_string();
+                variant = Some(ExecServerMessageVariant::McpAllowlistPrecheck {
+                    provider_identifier,
+                });
+            }
+            41 | 43 => {
+                variant = Some(ExecServerMessageVariant::OtherAllowlistPrecheck(
+                    field.field,
+                ));
             }
             other => {
                 if variant.is_none() {
