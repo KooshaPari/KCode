@@ -3447,6 +3447,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             app.diagram_zoom(),
             pane_position,
             app.diagram_pane_animating(),
+            diagram_fullscreen,
         );
     }
 
