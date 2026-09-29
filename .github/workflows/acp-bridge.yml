@@ -55,17 +55,22 @@ jobs:
           rustfmt --edition 2024 --check src/cli/acp/discovery.rs src/cli/acp/live.rs src/cli/acp/interactions.rs
           rustfmt --edition 2024 --check crates/jcode-app-core/src/tool/interaction.rs crates/jcode-app-core/src/tool/interaction_form.rs
       - name: Compile minimal production binary
+        id: compile
         run: cargo build --locked --no-default-features -p jcode --bin jcode
       - name: Run ACP adapter tests
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         run: |
           cargo test --locked --no-default-features -p jcode --lib cli::acp:: -- --nocapture
       - name: Run concurrent attachment routing regressions
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         run: |
           cargo test --locked --no-default-features -p jcode-app-core --lib server::state::request_events:: -- --nocapture
       - name: Run interaction broker negative controls
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         run: |
           cargo test --locked --no-default-features -p jcode-app-core --lib tool::interaction:: -- --nocapture
       - name: Run hook policy regression tests
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         run: |
           cargo test --locked --no-default-features -p jcode-base --lib hooks::tests:: -- --nocapture
       - name: Preserve exact development artifact

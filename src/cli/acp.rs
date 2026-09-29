@@ -2029,10 +2029,13 @@ mod tests {
     }
 
     #[test]
-    fn initialize_standard_omits_jcode_meta() {
+    fn initialize_standard_advertises_controller_without_raw_event_extension() {
         let result = initialize_result(&json!({"protocolVersion": 1}), AcpProfile::Standard);
         assert_eq!(result["protocolVersion"], 1);
-        assert!(result["agentCapabilities"].get("_meta").is_none());
+        assert_eq!(
+            result["agentCapabilities"]["_meta"],
+            json!({"jcode.interactionController": cfg!(unix)})
+        );
         assert_eq!(result["agentCapabilities"]["loadSession"], true);
     }
 

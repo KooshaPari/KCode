@@ -32,3 +32,12 @@ and attempted interaction cancellation. Now only an ACP-owned active prompt
 triggers cancellation; closing a passive observation only disconnects its
 pumps. Added synthetic daemon socket tests for same-session prompt/cancel,
 unrelated-session silence, and passive-close EOF without a Cancel request.
+
+Run 36582268979 / source468a9b6e31e6e3e3c2a3576a7fc5f0aa71ec507c:
+Ubuntu production build passed; ACP27passed/1failed. Failure was the previous
+standard initialization assertion requiring no _meta at all, now contradicted
+by the explicitly advertised interaction-controller capability. Updated the
+assertion to the exact sole capability (still excludes full-profile raw events).
+New observer-pump and same-session prompt/cancel/passive-close tests passed.
+Independent focused suites now continue after a peer test failure when the
+production compile succeeded, preserving all results without hiding failure.
