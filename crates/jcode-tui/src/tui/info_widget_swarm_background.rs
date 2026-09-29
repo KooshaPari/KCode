@@ -1,25 +1,33 @@
+use super::frame::{self, Framed};
 use super::{BackgroundInfo, InfoWidgetData, SwarmInfo, truncate_smart};
 use crate::protocol::SwarmMemberStatus;
 use crate::tui::color_support::rgb;
 use ratatui::prelude::*;
 
-pub(super) fn render_swarm_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
+pub(super) fn render_swarm_widget(data: &InfoWidgetData, inner: Rect) -> Framed {
     let Some(info) = &data.swarm_info else {
-        return Vec::new();
+        return Framed::default();
     };
 
-    // Dock mode: this session manages agents, render the compact two-line
-    // summary (agents tally + task-graph node bar).
+    // Dock mode: this session manages agents. The agents tally rides the top
+    // border and the task-graph node bar is the body.
     if !info.managed_members.is_empty() {
-        return crate::tui::info_widget::swarm_gallery::render_swarm_compact_lines(
+        let mut lines = crate::tui::info_widget::swarm_gallery::render_swarm_compact_lines(
             &info.managed_members,
             info.plan_progress,
+            // Border text is laid out against the full inner width.
             inner.width as usize,
-            inner.height as usize,
+            inner.height as usize + 1,
         );
+        if lines.is_empty() {
+            return Framed::default();
+        }
+        let title = lines.remove(0);
+        return Framed::body(lines).title(title);
     }
 
-    let mut lines: Vec<Line> = vec![render_swarm_stats_line(info)];
+    let title = render_swarm_stats_line(info);
+    let mut lines: Vec<Line> = Vec::new();
 
     if info.members.is_empty()
         && let Some(status) = &info.subagent_status
@@ -45,15 +53,27 @@ pub(super) fn render_swarm_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Lin
         }
     }
 
-    lines
+    Framed::body(lines).title(title)
 }
 
-pub(super) fn render_background_widget(data: &InfoWidgetData, inner: Rect) -> Vec<Line<'static>> {
+/// Border layout: `⏳ Background · 3 running` top-left, task rows in the body,
+/// `+N more` bottom-left.
+pub(super) fn render_background_widget(data: &InfoWidgetData, inner: Rect) -> Framed {
     let Some(info) = &data.background_info else {
-        return Vec::new();
+        return Framed::default();
     };
-
-    render_background_lines(info, inner.width as usize)
+    let Some(summary) = background_summary(info) else {
+        return Framed::default();
+    };
+    let (rows, hidden) = background_task_rows(info, inner.width as usize, "• ");
+    let mut framed = Framed::body(rows).title(Line::from(vec![
+        Span::styled("⏳ ", Style::default().fg(rgb(180, 140, 255))),
+        frame::label(summary),
+    ]));
+    if hidden > 0 {
+        framed = framed.footer(frame::more(hidden));
+    }
+    framed
 }
 
 pub(super) fn render_background_compact(info: &BackgroundInfo) -> Vec<Line<'static>> {
@@ -148,8 +168,30 @@ fn render_background_lines(info: &BackgroundInfo, width: usize) -> Vec<Line<'sta
         Span::styled("⏳ ", Style::default().fg(rgb(180, 140, 255))),
         Span::styled(summary, Style::default().fg(rgb(160, 160, 170))),
     ])];
+    let (rows, hidden) = background_task_rows(info, width, "  • ");
+    lines.extend(rows);
+    if hidden > 0 {
+        lines.push(Line::from(vec![
+            Span::styled("   ", Style::default().fg(rgb(100, 100, 110))),
+            Span::styled(
+                format!("+{} more", hidden),
+                Style::default().fg(rgb(140, 140, 150)),
+            ),
+        ]));
+    }
+    lines
+}
 
-    let row_width = width.saturating_sub(4).max(12);
+/// Up to three running-task rows plus how many were left out.
+fn background_task_rows(
+    info: &BackgroundInfo,
+    width: usize,
+    bullet: &'static str,
+) -> (Vec<Line<'static>>, usize) {
+    let mut lines = Vec::new();
+    let row_width = width
+        .saturating_sub(unicode_width::UnicodeWidthStr::width(bullet))
+        .max(12);
     for (index, task) in info.running_tasks.iter().take(3).enumerate() {
         let detail = if index == 0 {
             info.progress_detail.as_deref()
@@ -162,23 +204,12 @@ fn render_background_lines(info: &BackgroundInfo, width: usize) -> Vec<Line<'sta
             truncate_smart(task, row_width)
         };
         lines.push(Line::from(vec![
-            Span::styled("  • ", Style::default().fg(rgb(120, 120, 130))),
+            Span::styled(bullet, Style::default().fg(rgb(120, 120, 130))),
             Span::styled(row_text, Style::default().fg(rgb(180, 180, 190))),
         ]));
     }
 
-    let hidden = info.running_tasks.len().saturating_sub(3);
-    if hidden > 0 {
-        lines.push(Line::from(vec![
-            Span::styled("   ", Style::default().fg(rgb(100, 100, 110))),
-            Span::styled(
-                format!("+{} more", hidden),
-                Style::default().fg(rgb(140, 140, 150)),
-            ),
-        ]));
-    }
-
-    lines
+    (lines, info.running_tasks.len().saturating_sub(3))
 }
 
 fn background_summary(info: &BackgroundInfo) -> Option<String> {

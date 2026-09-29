@@ -1490,7 +1490,7 @@ fn changes_widget_end_to_end_on_real_git_repo() {
     assert!(row("new.rs").contains("+3 −0"), "{frame}");
     assert!(!row("logo.bin").contains('+'), "binary shows no counts:\n{frame}");
     assert!(
-        frame.contains("● edited by agent"),
+        frame.contains("● agent"),
         "legend explains the dot when one is shown:\n{frame}"
     );
 
@@ -1505,6 +1505,6 @@ fn changes_widget_end_to_end_on_real_git_repo() {
     }
     crate::tui::app::helpers::seed_git_info_cache_for_tests(None);
     assert!(frame2.contains("src/lib.rs"), "{frame2}");
-    assert!(!frame2.contains("edited by agent"), "{frame2}");
+    assert!(!frame2.contains("● agent"), "{frame2}");
     assert!(!frame2.contains('●'), "{frame2}");
 }
