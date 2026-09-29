@@ -1,0 +1,42 @@
+{
+  "runId": 36627996741,
+  "sourceHead": "6afaaff2aaee77775d7e925f6579a04941d68d92",
+  "checkoutCommit": "507fea85d002b1d7d7cf7dc2c93eafd530806706",
+  "identicalSourceTree": "cdf93dbf5a84aec329061df45173ad2169f9de0f",
+  "profile": "--locked --no-default-features",
+  "macos": {
+    "jobId": 109610349844,
+    "result": "success",
+    "tests": {
+      "acp": 34,
+      "routing": 4,
+      "broker": 8,
+      "hooks": 10
+    },
+    "lifetimeChecks": [
+      "real_actor",
+      "held_question_reload",
+      "held_permission_reload",
+      "original_tool_result",
+      "exactly_once_marker",
+      "cancel_without_side_effect",
+      "late_approval_rejected",
+      "disconnect_recovers_original_question"
+    ],
+    "artifact": {
+      "id": 11061631382,
+      "name": "acp-development-macos-latest-507fea85d002b1d7d7cf7dc2c93eafd530806706",
+      "digest": "sha256:607dcd961aeda6c297cf27cb62c3a3780832e54a524d492eb6c9d1977d9fd891",
+      "size_in_bytes": 65136077
+    }
+  },
+  "ubuntu": {
+    "jobId": 109610350230,
+    "result": "queued at 2026-09-29T20:53Z"
+  },
+  "limits": [
+    "Development minimal binary only; not installed or released",
+    "No full-feature or whole-workspace qualification",
+    "No live user sessions touched"
+  ]
+}

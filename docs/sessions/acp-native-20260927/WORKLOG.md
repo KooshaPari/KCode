@@ -102,3 +102,11 @@ HarnessDesk independently executed actor fixture through its authenticated bridg
 with original callbacks and side-effect oracles; these new lifetime fixes still
 require their own hosted green result. No user sessions or installed channels
 were touched; no heavy local build was run.
+
+Corrected macOS lifetime gate passed: run36627996741/job109610349844, source
+6afaaff2a, checkout507fea85d; both trees equal cdf93dbf5a84aec329061df45173ad2169f9de0f.
+ACP34/0, routing4/0, broker8/0, hooks10/0 (56 total); real actor held
+question/permission reload, original tool result, exactly-once approval marker,
+cancel/late-answer negatives and full-disconnect original-question recovery all
+passed. Artifact identity and limits are in lifetime-qualification.json. Ubuntu
+job109610350230 remains queued at 2026-09-29T20:53Z; no Ubuntu green claim.
