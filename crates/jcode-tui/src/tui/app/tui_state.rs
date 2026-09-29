@@ -1965,6 +1965,9 @@ impl crate::tui::TuiState for App {
     fn side_panel_fullscreen(&self) -> bool {
         self.side_panel_fullscreen
     }
+    fn diagram_pane_fullscreen(&self) -> bool {
+        self.diagram_pane_fullscreen
+    }
     fn pin_images(&self) -> bool {
         self.pin_images && !self.side_panel_user_hidden
     }

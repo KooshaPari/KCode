@@ -1099,7 +1099,7 @@ impl App {
                     self.sync_diagram_fit_context();
                     self.set_status_notice("Image side panel: ON");
                 } else {
-                    self.toggle_diagram_pane();
+                    self.cycle_diagram_pane();
                 }
                 return;
             }
@@ -1116,7 +1116,7 @@ impl App {
         }
 
         if self.side_panel.pages.is_empty() {
-            self.toggle_diagram_pane();
+            self.cycle_diagram_pane();
             return;
         }
 
@@ -1156,7 +1156,7 @@ impl App {
             .or_else(|| self.side_panel.pages.first().map(|page| page.id.clone()));
 
         let Some(restore_id) = restore_id else {
-            self.toggle_diagram_pane();
+            self.cycle_diagram_pane();
             return;
         };
 
@@ -1188,6 +1188,7 @@ impl App {
         }
         super::super::markdown::set_diagram_mode_override(Some(self.diagram_mode));
         self.diagram_pane_enabled = !self.diagram_pane_enabled;
+        self.diagram_pane_fullscreen = false;
         if !self.diagram_pane_enabled {
             self.diagram_focus = false;
         }
@@ -1197,6 +1198,24 @@ impl App {
             "Diagram pane: OFF"
         };
         self.set_status_notice(status);
+    }
+
+    /// Alt+M fallback when there are no side panel pages:
+    /// split -> fullscreen -> off -> split. Without diagrams it is a plain toggle.
+    pub(super) fn cycle_diagram_pane(&mut self) {
+        let has_diagrams = !crate::tui::mermaid::get_active_diagrams().is_empty();
+        let pinned = self.diagram_mode == crate::config::DiagramDisplayMode::Pinned;
+        if pinned && self.diagram_pane_enabled && has_diagrams && !self.diagram_pane_fullscreen {
+            self.diagram_pane_fullscreen = true;
+            self.handle_diagram_geometry_change();
+            self.set_status_notice("Diagram pane: fullscreen");
+            return;
+        }
+        let was_fullscreen = self.diagram_pane_fullscreen;
+        self.toggle_diagram_pane();
+        if was_fullscreen {
+            self.handle_diagram_geometry_change();
+        }
     }
 
     pub(super) fn toggle_diagram_pane_position(&mut self) {
