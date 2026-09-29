@@ -26,3 +26,17 @@ A deep fork survives only if the RETAIN PATCH set is material enough that upstre
 ## Next pass
 
 Diff the 136-commit owned side semantically by user intent and behavior, not file count. Start with provider/subscription routes, compaction/cache, permission/safety, harness API/SDK, self-dev/server lifecycle, Windows/Pine compatibility and owned integration crates. For each, search current upstream source before calling it unique.
+
+# Retained-patch ledger update — 2026-09-29
+
+Historical assessment at `.audit/jcode-assessment-2026-09-15/ASSESSMENT.md` states that the fork extended upstream with elicitation overlays, swarm coordination enhancements and AGENTS.md governance. Treat this as historical assessment interpretation, not direct current user intent.
+
+Current-upstream falsification changed the disposition:
+- **Harness API/SDK**: current upstream has jcode-harness-api, jcode-harness-api-server, jcode-sdk and TypeScript SDK surfaces. Generic harness API/SDK is UPSTREAMED/COMMODITY unless an owned semantic difference is demonstrated.
+- **Swarm coordination**: current upstream documents implemented swarm coordination and daemon snapshot recovery. Generic swarm functionality is UPSTREAMED/COMMODITY; only behaviorally distinct owned semantics can survive.
+- **Elicitation/discovery**: current upstream contains a current discovery elicitation specification and eval design. The old assessment's generic elicitation claim is no longer sufficient differentiation.
+- **Governance/audit files**: process/support artifacts, not product differentiation.
+- **Runtime evidence identity**: current candidate #14 remains a potentially useful owned patch; current upstream equivalence has not yet been established.
+- **Provider/subscription routes, Pine/native-Windows obligations, Pheno integrations**: still require direct source comparison.
+
+This is evidence falsifying several historical differentiation candidates. It does not prove the deep fork has no remaining value.
