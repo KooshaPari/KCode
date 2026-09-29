@@ -131,22 +131,19 @@ pub fn recent_external_transcripts_in(home: &Path, limit: usize) -> Vec<Transcri
         // Largest first per harness, so a huge Jcode history cannot crowd
         // every other tool out before parsing.
         candidates.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
-        parsed.extend(
-            candidates
-                .into_iter()
-                .take(PARSE_FILES)
-                .filter_map(|(_, modified, path)| {
-                    let session = match format {
-                        Format::ClaudeCode => claude_turns(&path),
-                        Format::Codex => codex_turns(&path),
-                        Format::Cursor => cursor_turns(&path),
-                        Format::Pi => pi_turns(&path),
-                        Format::Jcode => jcode_turns(&path),
-                    }?;
-                    (session.turns.len() >= MIN_TURNS && session.users >= MIN_USER_TURNS)
-                        .then_some((session, modified, format))
-                }),
-        );
+        parsed.extend(candidates.into_iter().take(PARSE_FILES).filter_map(
+            |(_, modified, path)| {
+                let session = match format {
+                    Format::ClaudeCode => claude_turns(&path),
+                    Format::Codex => codex_turns(&path),
+                    Format::Cursor => cursor_turns(&path),
+                    Format::Pi => pi_turns(&path),
+                    Format::Jcode => jcode_turns(&path),
+                }?;
+                (session.turns.len() >= MIN_TURNS && session.users >= MIN_USER_TURNS)
+                    .then_some((session, modified, format))
+            },
+        ));
     }
     // Longest first. The replay is capped, the ranking is not.
     parsed.sort_by(|a, b| b.0.total.cmp(&a.0.total).then(b.1.cmp(&a.1)));
