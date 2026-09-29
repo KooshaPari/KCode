@@ -58,9 +58,6 @@ fn bench_tool_constructors(c: &mut Criterion) {
     group.bench_function("EditTool::new", |b| {
         b.iter(jcode::tool::edit::EditTool::new);
     });
-    group.bench_function("MultiEditTool::new", |b| {
-        b.iter(jcode::tool::multiedit::MultiEditTool::new);
-    });
     group.bench_function("PatchTool::new", |b| {
         b.iter(jcode::tool::patch::PatchTool::new);
     });
@@ -160,8 +157,6 @@ fn bench_all_base_tools(c: &mut Criterion) {
             let _ = jcode::tool::write::WriteTool::new();
             count.fetch_add(1, Ordering::Relaxed);
             let _ = jcode::tool::edit::EditTool::new();
-            count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::multiedit::MultiEditTool::new();
             count.fetch_add(1, Ordering::Relaxed);
             let _ = jcode::tool::patch::PatchTool::new();
             count.fetch_add(1, Ordering::Relaxed);

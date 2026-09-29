@@ -287,7 +287,7 @@ impl Agent {
         true
     }
 
-    fn effective_context_tokens_from_usage(
+    pub(super) fn effective_context_tokens_from_usage(
         &self,
         input_tokens: u64,
         cache_read_input_tokens: Option<u64>,

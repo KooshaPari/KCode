@@ -604,7 +604,7 @@ fn test_queued_file_activity_repaint_does_not_leave_trailing_digit_artifact() {
     app.is_processing = true;
     app.status = ProcessingStatus::Streaming;
     app.pending_soft_interrupts = vec![
-        "▲ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9999"
+        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9999"
             .to_string(),
     ];
     let first = render_and_snap(&app, &mut terminal);
@@ -614,17 +614,17 @@ fn test_queued_file_activity_repaint_does_not_leave_trailing_digit_artifact() {
     );
 
     app.pending_soft_interrupts = vec![
-        "▲ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9"
+        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9"
             .to_string(),
     ];
     let second = render_and_snap(&app, &mut terminal);
 
     assert!(
-        second.contains("▲ File activity:"),
+        second.contains("⚠ File activity:"),
         "expected queued alert to use width-stable warning glyph, got:\n{second}"
     );
     assert!(
-        !second.contains("▲ File activity:"),
+        !second.contains("⚠️ File activity:"),
         "queued alert should not use emoji warning presentation in repaint-sensitive UI:\n{second}"
     );
     assert!(
@@ -1207,6 +1207,8 @@ fn test_chat_overscroll_reveals_status_line_then_rebounds() {
     let _lock = scroll_render_test_lock();
 
     let (mut app, mut terminal) = create_scroll_test_app(80, 14, 0, 36);
+    // Exercise the elastic reveal explicitly (the default pins the line on).
+    app.overscroll_status_mode = crate::config::OverscrollStatusMode::Overscroll;
 
     // Give the app some context so the overscroll line has a percentage to show.
     app.context_info = crate::prompt::ContextInfo {
