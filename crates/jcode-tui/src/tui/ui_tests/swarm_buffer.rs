@@ -463,16 +463,16 @@ fn swarm_dock_widget_full_render_writes_agent_rows_in_margin() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        dock_text.contains("1/2 agents"),
+        dock_text.contains("1/2 active"),
         "expected agents tally inside dock rect, got:\n{dock_text}"
     );
     assert!(
         dock_text.contains("nodes 3/7"),
-        "expected node progress in dock header, got:\n{dock_text}"
+        "expected node progress on dock border, got:\n{dock_text}"
     );
     assert!(
-        dock_text.contains('▁'),
-        "expected plan progress bar inside dock rect, got:\n{dock_text}"
+        dock_text.contains("researcher") && dock_text.contains("reviewer"),
+        "expected one row per agent inside dock rect, got:\n{dock_text}"
     );
     // Nothing from the dock leaked left of its rect.
     for row in &rows[rect.y as usize..(rect.y + rect.height) as usize] {

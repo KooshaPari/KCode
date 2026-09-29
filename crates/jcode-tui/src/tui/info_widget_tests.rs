@@ -1259,23 +1259,68 @@ fn swarm_widget_dock_mode_lists_managed_agents() {
     assert!(data.effective_priority(WidgetKind::SwarmStatus) < WidgetKind::SwarmStatus.priority());
 
     let framed = super::render_swarm_widget(&data, Rect::new(0, 0, 34, 10));
-    let text = lines_text(&framed.all_lines());
-    assert!(text.contains("1/2 agents"), "got: {text}");
-    assert!(text.contains("nodes 3/7"), "got: {text}");
-    // The summary rides the top border; the body is just the plan progress bar.
-    assert_eq!(framed.lines.len(), 1, "dock body is exactly the bar");
-    let bar: String = framed.lines[0]
+    let title = lines_text_concat(framed.title.as_slice());
+    assert!(title.contains("1/2 active"), "got: {title}");
+    let footer = lines_text_concat(framed.footer_right.as_slice());
+    assert!(
+        footer.contains("nodes 3/7"),
+        "plan meter on the border: {footer}"
+    );
+    // One row per agent: working agents before finished ones.
+    assert_eq!(framed.lines.len(), 2, "one row per agent");
+    let rows: Vec<String> = framed
+        .lines
+        .iter()
+        .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())
+        .collect();
+    assert!(rows[0].contains("★ researcher"), "{rows:?}");
+    assert!(
+        rows[0].contains("2/5"),
+        "todo progress on the row: {rows:?}"
+    );
+    assert!(rows[1].starts_with("✓ reviewer"), "{rows:?}");
+    for line in &framed.lines {
+        assert!(line.width() <= 34, "row too wide: {rows:?}");
+    }
+    let h = calculate_widget_height(WidgetKind::SwarmStatus, &data, 36, 20);
+    assert_eq!(h, 4, "2 agent rows + 2 border: {h}");
+}
+
+#[test]
+fn swarm_dock_surfaces_attention_and_collapses_overflow() {
+    let mut failed = managed_member("reviewer", "failed", None);
+    failed.detail = Some("cargo test failed".to_string());
+    let mut members: Vec<_> = (0..8)
+        .map(|i| managed_member(&format!("w{i}"), "completed", None))
+        .collect();
+    members.push(failed);
+    let data = InfoWidgetData {
+        swarm_info: Some(SwarmInfo {
+            managed_members: members,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let framed = super::render_swarm_widget(&data, Rect::new(0, 0, 40, 20));
+    let first: String = framed.lines[0]
         .spans
         .iter()
         .map(|s| s.content.as_ref())
         .collect();
     assert!(
-        bar.chars().all(|c| c == '▁') && !bar.is_empty(),
-        "expected underline bar cells: {bar}"
+        first.contains("reviewer") && first.contains("cargo test failed"),
+        "{first}"
     );
-    // Height: bar + borders.
-    let h = calculate_widget_height(WidgetKind::SwarmStatus, &data, 34, 20);
-    assert_eq!(h, 3, "dock height should be 1 content + 2 border: {h}");
+    assert!(lines_text(framed.title_right.as_slice()).contains("⚠ 1"));
+    assert_eq!(framed.lines.len(), 6, "rows capped");
+    assert!(lines_text(framed.footer.as_slice()).contains("+3 more"));
+    // Tiny sizes never panic or overflow.
+    for (w, h) in [(0, 0), (1, 1), (8, 2), (14, 3)] {
+        let f = super::render_swarm_widget(&data, Rect::new(0, 0, w, h));
+        for line in &f.lines {
+            assert!(line.width() <= usize::from(w), "w={w}");
+        }
+    }
 }
 
 /// Without managed members the legacy session-list rendering is preserved and
@@ -1794,11 +1839,60 @@ fn widget_gallery() {
             ..Default::default()
         }),
         swarm_info: Some(SwarmInfo {
-            managed_members: vec![
-                managed_member("researcher", "running", Some("coordinator")),
-                managed_member("reviewer", "completed", None),
-                managed_member("builder", "running", None),
-            ],
+            managed_members: {
+                let mut m = |id: &str, status: &str, role, detail: Option<&str>, todo, age| {
+                    let mut s = managed_member(id, status, role);
+                    s.detail = detail.map(str::to_string);
+                    s.output_tail = None;
+                    s.todo_progress = todo;
+                    s.status_age_secs = Some(age);
+                    s
+                };
+                vec![
+                    m(
+                        "lead",
+                        "running",
+                        Some("coordinator"),
+                        Some("waiting on reviewer"),
+                        Some((1, 3)),
+                        4,
+                    ),
+                    m(
+                        "builder",
+                        "running",
+                        None,
+                        Some("wiring commits widget"),
+                        Some((2, 5)),
+                        2,
+                    ),
+                    m(
+                        "reviewer",
+                        "failed",
+                        None,
+                        Some("cargo test failed: 3 tests"),
+                        None,
+                        40,
+                    ),
+                    m(
+                        "research",
+                        "completed",
+                        None,
+                        Some("mapped the swarm code"),
+                        None,
+                        300,
+                    ),
+                    m("docs", "ready", None, None, None, 90),
+                    m("lint", "completed", None, Some("clippy clean"), None, 600),
+                    m(
+                        "bench",
+                        "completed",
+                        None,
+                        Some("no regressions"),
+                        None,
+                        900,
+                    ),
+                ]
+            },
             plan_progress: Some((4, 2, 9)),
             ..Default::default()
         }),
@@ -1949,7 +2043,9 @@ fn widget_gallery() {
         let buf = terminal.backend().buffer().clone();
         println!("{kind:?}");
         for y in 0..h {
-            let row: String = (0..width).map(|x| buf[(x, y)].symbol().to_string()).collect();
+            let row: String = (0..width)
+                .map(|x| buf[(x, y)].symbol().to_string())
+                .collect();
             println!("{}", row.trim_end());
         }
         println!();
