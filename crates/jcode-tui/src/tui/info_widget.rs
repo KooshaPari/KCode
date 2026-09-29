@@ -6,6 +6,8 @@
 //! In left-aligned mode, widgets only appear on the right margin.
 
 use super::color_support::rgb;
+#[path = "info_widget_commits.rs"]
+mod commits;
 #[path = "info_widget_frame.rs"]
 pub(crate) mod frame;
 #[path = "info_widget_git.rs"]
@@ -52,6 +54,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthStr;
 
+use commits::{commits_has_data, render_commits_widget};
 use frame::Framed;
 use git::{
     changes_has_data, changes_height, changes_legend, render_changes_framed, render_git_widget,
@@ -111,6 +114,8 @@ pub enum WidgetKind {
     Tips,
     /// Changes: the dirty file list (the status line owns branch and counts)
     GitStatus,
+    /// Commits: recent history on the current branch
+    Commits,
 }
 
 impl WidgetKind {
@@ -128,6 +133,7 @@ impl WidgetKind {
             WidgetKind::Compaction => 9,
             WidgetKind::BackgroundTasks => 10,
             WidgetKind::GitStatus => 11,
+            WidgetKind::Commits => 12,
             WidgetKind::SwarmStatus => 12, // Session list - lower priority
             WidgetKind::AmbientMode => 13, // Scheduled agent - lower priority
             WidgetKind::Tips => 14,        // Did you know - lowest
@@ -151,6 +157,7 @@ impl WidgetKind {
             WidgetKind::ModelInfo => Side::Left,
             WidgetKind::Tips => Side::Left,
             WidgetKind::GitStatus => Side::Left,
+            WidgetKind::Commits => Side::Left,
         }
     }
 
@@ -171,6 +178,7 @@ impl WidgetKind {
             WidgetKind::ModelInfo => 1,
             WidgetKind::Tips => 3,
             WidgetKind::GitStatus => 1,
+            WidgetKind::Commits => 1,
         }
     }
 
@@ -188,6 +196,7 @@ impl WidgetKind {
             WidgetKind::Compaction,
             WidgetKind::BackgroundTasks,
             WidgetKind::GitStatus,
+            WidgetKind::Commits,
             WidgetKind::SwarmStatus,
             WidgetKind::AmbientMode,
             WidgetKind::Tips,
@@ -210,6 +219,7 @@ impl WidgetKind {
             WidgetKind::ModelInfo => "model",
             WidgetKind::Tips => "tips",
             WidgetKind::GitStatus => "git",
+            WidgetKind::Commits => "commits",
         }
     }
 }
@@ -559,6 +569,22 @@ pub struct GitInfo {
     pub removed_total: usize,
     /// Absolute repository root, used to match agent-edited paths.
     pub repo_root: Option<std::path::PathBuf>,
+    /// Most recent commits on HEAD, newest first.
+    pub recent_commits: Vec<RecentCommit>,
+}
+
+/// One commit for the Commits widget.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RecentCommit {
+    /// Abbreviated hash.
+    pub hash: String,
+    pub subject: String,
+    /// Committer time, seconds since the Unix epoch.
+    pub timestamp: i64,
+    /// Not yet on the upstream branch.
+    pub unpushed: bool,
+    pub added: Option<usize>,
+    pub removed: Option<usize>,
 }
 
 /// One dirty path from `git status --porcelain`.
@@ -804,6 +830,11 @@ impl InfoWidgetData {
                 .git_info
                 .as_ref()
                 .map(changes_has_data)
+                .unwrap_or(false),
+            WidgetKind::Commits => self
+                .git_info
+                .as_ref()
+                .map(commits_has_data)
                 .unwrap_or(false),
         }
     }
@@ -1507,6 +1538,7 @@ fn render_widget_content(kind: WidgetKind, data: &InfoWidgetData, inner: Rect) -
         WidgetKind::ModelInfo => render_model_widget(data, inner),
         WidgetKind::Tips => render_tips_widget(inner),
         WidgetKind::GitStatus => render_changes_framed(data, inner),
+        WidgetKind::Commits => render_commits_widget(data, inner),
     };
     framed.settle()
 }

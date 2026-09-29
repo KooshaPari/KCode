@@ -1840,7 +1840,7 @@ fn widget_gallery() {
         }),
         swarm_info: Some(SwarmInfo {
             managed_members: {
-                let mut m = |id: &str, status: &str, role, detail: Option<&str>, todo, age| {
+                let m = |id: &str, status: &str, role, detail: Option<&str>, todo, age| {
                     let mut s = managed_member(id, status, role);
                     s.detail = detail.map(str::to_string);
                     s.output_tail = None;
@@ -2000,6 +2000,59 @@ fn widget_gallery() {
             added_total: 760,
             removed_total: 380,
             repo_root: Some("/repo".into()),
+            ahead: 2,
+            recent_commits: {
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64;
+                [
+                    (
+                        "e4b4d3a",
+                        "tui: swarm dock lists each agent",
+                        120,
+                        true,
+                        363,
+                        35,
+                    ),
+                    (
+                        "fdad464",
+                        "tui: add info widget gallery test",
+                        480,
+                        true,
+                        209,
+                        0,
+                    ),
+                    (
+                        "e205d0f",
+                        "tui: widgets put headers on borders",
+                        900,
+                        false,
+                        906,
+                        503,
+                    ),
+                    (
+                        "4f6bf8e",
+                        "replay reasoning before its text",
+                        4200,
+                        false,
+                        40,
+                        12,
+                    ),
+                    ("a526dd5", "tui: drop dot separators", 9000, false, 6, 9),
+                    ("e34070a", "Revert diagram pane cycle", 12000, false, 30, 44),
+                ]
+                .into_iter()
+                .map(|(hash, subject, ago, unpushed, a, r)| super::RecentCommit {
+                    hash: hash.into(),
+                    subject: subject.into(),
+                    timestamp: now - ago,
+                    unpushed,
+                    added: Some(a),
+                    removed: Some(r),
+                })
+                .collect()
+            },
             ..Default::default()
         }),
         agent_edited: std::sync::Arc::new([agent_file].into_iter().collect()),
@@ -2018,6 +2071,7 @@ fn widget_gallery() {
         WidgetKind::ModelInfo,
         WidgetKind::Tips,
         WidgetKind::GitStatus,
+        WidgetKind::Commits,
         WidgetKind::Overview,
     ];
     let width = 44u16;
