@@ -755,10 +755,6 @@ pub trait TuiState {
     fn side_panel_fullscreen(&self) -> bool {
         false
     }
-    /// Whether the pinned diagram pane replaces the transcript (fullscreen mode).
-    fn diagram_pane_fullscreen(&self) -> bool {
-        false
-    }
     /// Whether to pin read images to a side pane
     fn pin_images(&self) -> bool;
     /// Whether inline transcript images render expanded. When false, each

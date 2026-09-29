@@ -654,46 +654,6 @@ fn test_diagram_focus_toggle_and_pan() {
     crate::tui::mermaid::clear_active_diagrams();
 }
 
-#[test]
-fn test_alt_m_cycles_diagram_pane_split_fullscreen_off() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.side_panel = crate::side_panel::SidePanelSnapshot::default();
-    app.diagram_mode = crate::config::DiagramDisplayMode::Pinned;
-    app.diagram_pane_enabled = true;
-    crate::tui::mermaid::clear_active_diagrams();
-    crate::tui::mermaid::register_active_diagram(0x1, 100, 80, None);
-
-    app.handle_key(KeyCode::Char('m'), KeyModifiers::ALT)
-        .unwrap();
-    assert!(app.diagram_pane_enabled);
-    assert!(app.diagram_pane_fullscreen);
-    assert_eq!(
-        app.status_notice(),
-        Some("Diagram pane: fullscreen".to_string())
-    );
-
-    let backend = ratatui::backend::TestBackend::new(80, 20);
-    let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
-    let _ = render_and_snap(&app, &mut terminal);
-    let layout = crate::tui::ui::last_layout_snapshot().expect("layout");
-    assert_eq!(layout.diagram_area, Some(layout.messages_area));
-    assert_eq!(layout.messages_area.width, 80);
-
-    app.handle_key(KeyCode::Char('m'), KeyModifiers::ALT)
-        .unwrap();
-    assert!(!app.diagram_pane_enabled);
-    assert!(!app.diagram_pane_fullscreen);
-    assert_eq!(app.status_notice(), Some("Diagram pane: OFF".to_string()));
-
-    app.handle_key(KeyCode::Char('m'), KeyModifiers::ALT)
-        .unwrap();
-    assert!(app.diagram_pane_enabled);
-    assert!(!app.diagram_pane_fullscreen);
-
-    crate::tui::mermaid::clear_active_diagrams();
-}
-
 /// Ctrl+L is a terminal-style clear: a viewport-height blank spacer pushes
 /// the transcript up into scrollback and the view snaps to the bottom, so
 /// the screen looks empty while nothing is deleted. Provider context, the
