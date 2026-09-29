@@ -122,7 +122,25 @@ fn desktop_root(cwd: Option<&Path>) -> Result<PathBuf> {
 struct CommandSpec {
     program: String,
     args: Vec<String>,
+    env: Vec<(String, String)>,
     note: String,
+}
+
+/// Unoptimized Desktop builds compile workspace crates through the checkout's
+/// parallel rustc front-end wrapper, matching the Desktop host's own Ctrl+R
+/// path. Cargo hashes the workspace wrapper path into crate metadata, so using
+/// the identical absolute path keeps these builds ABI-compatible with (and
+/// cache-sharing with) hosts built the same way.
+fn parallel_frontend_env(root: &Path, profile: &str) -> Vec<(String, String)> {
+    let wrapper = root.join("scripts").join("rustc-parallel-frontend");
+    if cfg!(unix) && profile == "debug" && wrapper.is_file() {
+        vec![(
+            "RUSTC_WORKSPACE_WRAPPER".into(),
+            wrapper.to_string_lossy().into_owned(),
+        )]
+    } else {
+        Vec::new()
+    }
 }
 
 fn command_spec(
@@ -131,6 +149,7 @@ fn command_spec(
     profile: &str,
     pid: Option<u32>,
 ) -> Result<CommandSpec> {
+    let mut env = Vec::new();
     let (program, args, note) = match input.action.as_str() {
         "build" => {
             let mut args = vec!["build", "-p", "jcode-desktop", "-p", "jcode-desktop-ui"]
@@ -142,6 +161,7 @@ fn command_spec(
             } else if profile != "debug" {
                 args.extend(["--profile".into(), profile.into()]);
             }
+            env = parallel_frontend_env(root, profile);
             (
                 "cargo",
                 args,
@@ -186,6 +206,7 @@ fn command_spec(
     Ok(CommandSpec {
         program: program.into(),
         args,
+        env,
         note,
     })
 }
@@ -448,6 +469,7 @@ async fn run_command(root: &Path, spec: CommandSpec, timeout: u64) -> Result<Too
     let mut command = tokio::process::Command::new(&spec.program);
     command
         .args(&spec.args)
+        .envs(spec.env.iter().map(|(key, value)| (key, value)))
         .current_dir(root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

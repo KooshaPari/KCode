@@ -69,6 +69,32 @@ fn builds_both_desktop_packages_with_matching_profile() {
 }
 
 #[test]
+fn unoptimized_desktop_builds_use_checkout_parallel_frontend_wrapper() {
+    let root = checkout();
+    let scripts = root.path().join("scripts");
+    std::fs::create_dir_all(&scripts).unwrap();
+    let wrapper = scripts.join("rustc-parallel-frontend");
+    std::fs::write(&wrapper, "#!/bin/sh\n").unwrap();
+
+    let debug = command_spec(root.path(), &input("build"), "debug", None).unwrap();
+    if cfg!(unix) {
+        assert_eq!(
+            debug.env,
+            vec![(
+                "RUSTC_WORKSPACE_WRAPPER".to_string(),
+                wrapper.to_string_lossy().into_owned()
+            )]
+        );
+    } else {
+        assert!(debug.env.is_empty());
+    }
+    let release = command_spec(root.path(), &input("build"), "release", None).unwrap();
+    assert!(release.env.is_empty());
+    let test = command_spec(root.path(), &input("test"), "debug", None).unwrap();
+    assert!(test.env.is_empty());
+}
+
+#[test]
 fn reload_actions_never_route_to_cli_or_subprocess() {
     for action in ["reload", "build-reload"] {
         assert!(command_spec(Path::new("/desktop"), &input(action), "debug", None).is_err());

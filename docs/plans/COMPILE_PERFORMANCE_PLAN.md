@@ -940,10 +940,16 @@ selfdev profile):
 - base-edit full-chain rebuild end-to-end: **~16s -> ~10s**
 - Diminishing returns past 4 threads on an 8-core box.
 
-Shipped in `scripts/dev_cargo.sh` (`configure_parallel_frontend`): auto-enabled
-for the `selfdev` profile when a nightly toolchain is installed, isolated to
-`target/selfdev` so it cannot thrash rust-analyzer's `target/debug` cache.
-Controls: `JCODE_PARALLEL_FRONTEND`, `JCODE_FRONTEND_THREADS`, `JCODE_DEV_TOOLCHAIN`.
+Shipped in `scripts/dev_cargo.sh` (`configure_parallel_frontend`): enabled for
+the unoptimized `dev`, `selfdev`, and `test` profiles through Cargo's
+`RUSTC_WORKSPACE_WRAPPER` (`scripts/rustc-parallel-frontend`). Only workspace
+crates get `-Zthreads`, so dependency artifacts never rebuild when it is
+toggled, and the wrapper sets `RUSTC_BOOTSTRAP=1` for those invocations only,
+so the stable toolchain is enough. Optimized compiles pass through untouched.
+Re-measured on a 16-thread Core Ultra X9 388H with `-Zthreads=8` (full
+re-check of one crate): `jcode-base` 29.3s -> 8.8s, `jcode-app-core`
+25.7s -> 8.9s, at ~0.1-0.2 GiB extra RSS.
+Controls: `JCODE_PARALLEL_FRONTEND=0` (off), `JCODE_FRONTEND_THREADS`.
 
 ### WIN 2 — prefer mold over lld for the bin link
 
