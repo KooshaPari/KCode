@@ -76,6 +76,27 @@ pub struct EffectRecoveryContext {
     pub adapter: Arc<dyn EffectRecoveryAdapter>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReconcileDecision {
+    ConfirmedSuccess,
+    RetryAllowed,
+    StillUncertain,
+}
+
+pub fn reconcile_write_postcondition(
+    path: &std::path::Path,
+    expected_content: &str,
+) -> ReconcileDecision {
+    match std::fs::read_to_string(path) {
+        Ok(actual) if actual == expected_content => ReconcileDecision::ConfirmedSuccess,
+        Ok(_) => ReconcileDecision::StillUncertain,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            ReconcileDecision::RetryAllowed
+        }
+        Err(_) => ReconcileDecision::StillUncertain,
+    }
+}
+
 fn protected_effect_tool(name: &str) -> bool {
     matches!(name, "write")
 }
