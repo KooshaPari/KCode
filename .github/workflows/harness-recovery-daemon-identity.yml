@@ -33,9 +33,16 @@ jobs:
       - name: Run daemon identity native test
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          set +e
           output="$(cargo test -p jcode-app-core --lib debug_accept_loop_responds_to_ping_without_affecting_client_count -- --nocapture 2>&1)"
+          test_status=$?
+          set -e
           printf '%s\n' "$output"
+          if [ "$test_status" -ne 0 ]; then
+            echo "Targeted daemon identity test command failed with exit $test_status" >&2
+            exit "$test_status"
+          fi
           if grep -Eq 'running 0 tests|0 passed; 0 failed;.*filtered out' <<<"$output"; then
             echo "Targeted daemon identity test did not execute" >&2
             exit 1
