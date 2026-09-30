@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
@@ -56,6 +56,7 @@ const NATIVE_TOOL_NAMES: &[&str] = &[
 pub struct ForgeCodeProvider {
     config: ForgeCodeCliConfig,
     model: Arc<RwLock<String>>,
+    contract_check: Arc<OnceLock<Result<(), String>>>,
 }
 
 impl ForgeCodeProvider {
@@ -65,6 +66,7 @@ impl ForgeCodeProvider {
         Self {
             config,
             model: Arc::new(RwLock::new(model)),
+            contract_check: Arc::new(OnceLock::new()),
         }
     }
 
@@ -122,6 +124,68 @@ impl ForgeCodeProvider {
     }
 }
 
+
+const REQUIRED_MACHINE_FLAGS: &[&str] = &[
+    "--output-format",
+    "--input-format",
+    "--permission-mode",
+    "--resume",
+    "--tools",
+];
+
+fn validate_machine_contract_help(help: &str) -> Result<()> {
+    let missing: Vec<&str> = REQUIRED_MACHINE_FLAGS
+        .iter()
+        .copied()
+        .filter(|flag| !help.contains(flag))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "Configured ForgeCode executable does not expose the structured machine contract required by KCode. Missing flags: {}. The current official ForgeCode CLI is not assumed compatible with this adapter. Configure JCODE_FORGECODE_CLI_PATH to a versioned compatible shim, or disable the ForgeCode provider until a supported machine interface is integrated.",
+        missing.join(", ")
+    )
+}
+
+impl ForgeCodeProvider {
+    async fn ensure_cli_contract(&self) -> Result<()> {
+        if let Some(result) = self.contract_check.get() {
+            return result
+                .clone()
+                .map_err(anyhow::Error::msg);
+        }
+
+        let output = tokio::time::timeout(
+            Duration::from_secs(5),
+            Command::new(&self.config.cli_path)
+                .arg("--help")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output(),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!(
+            "Timed out probing ForgeCode CLI contract at {}",
+            self.config.cli_path
+        ))?
+        .with_context(|| format!(
+            "Failed to probe ForgeCode CLI contract at {}",
+            self.config.cli_path
+        ))?;
+
+        let help = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let checked = validate_machine_contract_help(&help)
+            .map_err(|e| e.to_string());
+        let _ = self.contract_check.set(checked.clone());
+        checked.map_err(anyhow::Error::msg)
+    }
+}
+
 impl Default for ForgeCodeProvider {
     fn default() -> Self {
         Self::new()
@@ -141,6 +205,7 @@ impl Provider for ForgeCodeProvider {
         system: &str,
         resume_session_id: Option<&str>,
     ) -> Result<EventStream> {
+        self.ensure_cli_contract().await?;
         let tool_names = self.tool_names_for_cli(tools);
         let prompt = self.extract_user_prompt(messages)?;
         let current_model = self
@@ -312,6 +377,7 @@ impl Provider for ForgeCodeProvider {
         Arc::new(ForgeCodeProvider {
             config,
             model: Arc::new(RwLock::new(model)),
+            contract_check: Arc::clone(&self.contract_check),
         })
     }
 }
@@ -646,5 +712,28 @@ mod tests {
         assert!(is_retryable_error("not ready for writing"));
         assert!(is_retryable_error("overloaded"));
         assert!(!is_retryable_error("permission denied"));
+    }
+}
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    #[test]
+    fn current_official_forge_style_help_is_rejected() {
+        let help = "Usage: forge [OPTIONS] [COMMAND]\n  -p, --prompt <PROMPT>\n      --conversation-id <ID>\n      --conversation <PATH>\n      --verbose";
+        let err = validate_machine_contract_help(help).expect_err("must reject incompatible CLI");
+        let msg = err.to_string();
+        assert!(msg.contains("--output-format"));
+        assert!(msg.contains("--input-format"));
+        assert!(msg.contains("--permission-mode"));
+        assert!(msg.contains("--resume"));
+        assert!(msg.contains("--tools"));
+    }
+
+    #[test]
+    fn compatible_versioned_shim_contract_is_accepted() {
+        let help = "--output-format --input-format --permission-mode --resume --tools";
+        validate_machine_contract_help(help).expect("compatible shim should pass");
     }
 }
