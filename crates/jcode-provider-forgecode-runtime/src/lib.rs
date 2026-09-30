@@ -125,6 +125,8 @@ impl ForgeCodeProvider {
 }
 
 
+const MACHINE_CONTRACT_MARKER: &str = "jcode-forgecode-machine-contract-v1";
+
 const REQUIRED_MACHINE_FLAGS: &[&str] = &[
     "--output-format",
     "--input-format",
@@ -134,6 +136,13 @@ const REQUIRED_MACHINE_FLAGS: &[&str] = &[
 ];
 
 fn validate_machine_contract_help(help: &str) -> Result<()> {
+    if !help.contains(MACHINE_CONTRACT_MARKER) {
+        anyhow::bail!(
+            "Configured ForgeCode executable does not declare the required machine contract marker '{}'. A versioned compatibility shim is required; the official ForgeCode CLI is not assumed to implement KCode's structured provider protocol.",
+            MACHINE_CONTRACT_MARKER
+        );
+    }
+
     let missing: Vec<&str> = REQUIRED_MACHINE_FLAGS
         .iter()
         .copied()
@@ -723,17 +732,15 @@ mod contract_tests {
     fn current_official_forge_style_help_is_rejected() {
         let help = "Usage: forge [OPTIONS] [COMMAND]\n  -p, --prompt <PROMPT>\n      --conversation-id <ID>\n      --conversation <PATH>\n      --verbose";
         let err = validate_machine_contract_help(help).expect_err("must reject incompatible CLI");
-        let msg = err.to_string();
-        assert!(msg.contains("--output-format"));
-        assert!(msg.contains("--input-format"));
-        assert!(msg.contains("--permission-mode"));
-        assert!(msg.contains("--resume"));
-        assert!(msg.contains("--tools"));
+        assert!(err.to_string().contains(MACHINE_CONTRACT_MARKER));
     }
 
     #[test]
     fn compatible_versioned_shim_contract_is_accepted() {
-        let help = "--output-format --input-format --permission-mode --resume --tools";
-        validate_machine_contract_help(help).expect("compatible shim should pass");
+        let help = format!(
+            "{} --output-format --input-format --permission-mode --resume --tools",
+            MACHINE_CONTRACT_MARKER
+        );
+        validate_machine_contract_help(&help).expect("compatible shim should pass");
     }
 }
