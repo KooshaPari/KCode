@@ -37,3 +37,9 @@ src/lib.rs reexports jcode_tui and delegates run to cli::startup::run; the crate
 ## Diagnostic evidence boundary
 
 The companion identity-policy model uses synthetic receipts to test wrong daemon, wrong contract/configuration/environment/verifier, missing evidence, skipped cases, stale/conflicting results and collector failure. It is an oracle-design experiment only: no native daemon, cryptographic attestation, real freshness clock, immutable store or policy authorization is implemented or verified by it. Passing the model never qualifies KCode itself.
+
+## K-F008 — Persisted ToolUse does not close the post-effect/pre-result crash window
+
+`crates/jcode-app-core/src/agent/turn_loops.rs` persists the assistant message containing `ToolUse` before local tool execution. It then calls `registry.execute(...)`; on success it adds a `ToolResult` to the in-memory session and only later persists tool results with `session.save()`. This ordering is useful because intent can survive a restart, but it does not tell a replacement worker whether an external side effect committed when the process dies after `registry.execute` reaches the downstream target and before the result save.
+
+The existing session journal/reload recovery protects transcript continuity and corrupted/torn persistence; it is not, from the inspected source, an external-effect reconciliation ledger. This is a source-level ambiguity finding, not a claim that current restart code blindly duplicates every tool. Required resolution: map tool classes by side-effect/reconcilability, persist a durable effect intent/dispatch identity before execution, record confirmed outcome/receipt afterward, and force UNCERTAIN reconciliation before retry when the downstream outcome is unknowable. Never infer exactly-once from session resume alone.
