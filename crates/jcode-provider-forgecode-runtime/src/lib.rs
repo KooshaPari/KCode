@@ -56,7 +56,7 @@ const NATIVE_TOOL_NAMES: &[&str] = &[
 pub struct ForgeCodeProvider {
     config: ForgeCodeCliConfig,
     model: Arc<RwLock<String>>,
-    contract_check: Arc<OnceLock<Result<(), String>>>,
+    contract_check: Arc<OnceLock<std::result::Result<(), String>>>,
 }
 
 impl ForgeCodeProvider {
