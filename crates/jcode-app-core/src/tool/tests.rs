@@ -839,6 +839,7 @@ async fn test_context_guard_small_output_passes_through() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let output = ToolOutput::new("small output");
@@ -854,6 +855,7 @@ async fn test_context_guard_withholds_huge_single_output_by_default() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     // 30% of 1000 = 300 tokens = 1200 chars max for a single output
@@ -892,6 +894,7 @@ async fn test_context_guard_returns_truncated_output_when_caller_accepts() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let big_output = "x".repeat(8000);
@@ -928,6 +931,7 @@ async fn test_context_guard_reports_the_real_cost_and_affordable_size() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let output = ToolOutput::new("x".repeat(360_000)); // ~90k tokens
@@ -974,6 +978,7 @@ async fn test_context_guard_truncates_when_context_nearly_full() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     // Even a modest output should get truncated when context is 95% full
@@ -1000,6 +1005,7 @@ async fn test_context_guard_still_refuses_when_context_is_exhausted() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let payload = "x".repeat(400_000);
@@ -1026,6 +1032,7 @@ async fn test_context_guard_zero_budget_passes_through() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let output = ToolOutput::new("x".repeat(100_000));
@@ -1245,6 +1252,7 @@ async fn test_context_guard_never_spends_more_than_it_reports() {
                         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
                         compaction,
                         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
                     };
 
                     let payload = "x".repeat(payload_tokens * 4);
@@ -1294,6 +1302,7 @@ async fn test_context_guard_refusal_reads_clearly_for_todays_regression() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let result = registry
@@ -1585,6 +1594,7 @@ async fn test_guard_withholds_large_output_on_a_million_token_window() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     // ~233k tokens: the real size of the agentgrep result that started this.
@@ -1617,6 +1627,7 @@ async fn test_single_output_ceiling_is_absolute_not_only_proportional() {
             skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
             compaction,
             search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
         };
 
         // Just over the absolute ceiling, but a trivial fraction of a huge window.
