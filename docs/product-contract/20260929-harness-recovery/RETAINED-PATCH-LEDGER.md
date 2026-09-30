@@ -49,3 +49,6 @@ Further current-upstream inspection found server version/name in state/gateway s
 
 ### Provider/subscription pressure
 Current-upstream source searches also find OpenCode Go/provider metadata, Cursor authentication/runtime, account pools/failover, provider profiles, subscription APIs/catalogs and OAuth/account management. Therefore generic subscription/provider breadth is also UPSTREAMED/COMMODITY. Any retained provider patch must identify an exact behavioral contract absent or materially wrong upstream, with a matched negative/positive test. Historical breadth alone no longer supports the deep fork.
+
+### Windows/Pine correction
+Current upstream documents first-class Windows 11 x64/ARM64 support, native named pipes/process lifecycle, Windows CI/E2E/install verification and release/update machinery. Therefore **Windows support itself is not differentiation**. The accepted user pain is narrower: avoid PowerShell/CMD/WSL as the normal development substrate for POSIX-oriented workflows and integrate with the separately scoped Pine compatibility boundary where useful. This must be specified as command/path/env/PTY/process/cancel semantics and tested against current upstream native Windows behavior; do not create a KCode-local shell-translation subsystem merely to claim differentiation.
