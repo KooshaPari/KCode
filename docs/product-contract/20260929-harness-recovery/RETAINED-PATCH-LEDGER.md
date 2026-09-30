@@ -52,3 +52,23 @@ Current-upstream source searches also find OpenCode Go/provider metadata, Cursor
 
 ### Windows/Pine correction
 Current upstream documents first-class Windows 11 x64/ARM64 support, native named pipes/process lifecycle, Windows CI/E2E/install verification and release/update machinery. Therefore **Windows support itself is not differentiation**. The accepted user pain is narrower: avoid PowerShell/CMD/WSL as the normal development substrate for POSIX-oriented workflows and integrate with the separately scoped Pine compatibility boundary where useful. This must be specified as command/path/env/PTY/process/cancel semantics and tested against current upstream native Windows behavior; do not create a KCode-local shell-translation subsystem merely to claim differentiation.
+
+## Fork-only crate audit — pass 1
+
+Exact crate-name set comparison against current upstream `1jehuang/jcode@de65ade33d514b31a43885318179b3622f321170` finds these owned-snapshot crates absent upstream by name: `jcode-auto-dream`, `jcode-cache-vectors`, `jcode-herdr`, `jcode-micro-compact`, `jcode-permission-bubble`, `jcode-provider-forgecode-runtime`, `jcode-provider-claude-cli-runtime`, `jcode-session-memory`, `jcode-shell-integration`, `jcode-terminal-detect`, `jcode-tool-search`. Name absence is not semantic uniqueness.
+
+First source classification:
+- `jcode-auto-dream`: library explicitly says actual consolidation is TODO and `maybe_dream` only logs that consolidation *would* run. EXPERIMENT/STUB; cannot justify fork survival.
+- `jcode-provider-claude-cli-runtime`: manifest/source labels it deprecated. SUPERSEDED CANDIDATE unless a current accepted consumer proves otherwise.
+- `jcode-provider-forgecode-runtime`: real subprocess provider adapter with tool-name translation, retries and resume handling. CANDIDATE RETAINED INTEGRATION, but architecture preference is external adapter/upstream contribution unless core placement is necessary.
+- `jcode-herdr`: real optional Unix-socket lifecycle/session/screen-manifest adapter; commit history includes concrete race/deadlock fixes. CANDIDATE INTEGRATION, but it is conceptually an external-runtime adapter rather than evidence the jcode core must remain forked.
+- `jcode-cache-vectors`: concrete prompt-cache snapshot/break diagnostic library. CANDIDATE BEHAVIOR; compare upstream cache diagnostics before retention.
+- `jcode-micro-compact`: concrete old-tool-result compaction library. CANDIDATE BEHAVIOR; compare current upstream compaction behavior.
+- `jcode-permission-bubble`: concrete fork-message/cache-prefix/depth-guard data library. CANDIDATE BEHAVIOR; compare current upstream subagent permission/fork semantics.
+- `jcode-session-memory`: structured bounded session-note library. CANDIDATE BEHAVIOR; compare current upstream memory/session summaries.
+- `jcode-shell-integration` and `jcode-terminal-detect`: exported through app-core integration namespace; CANDIDATE UTILITY. Native/Pine contract decides whether retained.
+- `jcode-tool-search`: CANDIDATE BEHAVIOR; current upstream has tool discovery/search surfaces under different names, so semantic comparison required.
+
+Workspace membership or a dependency declaration is not reachability. Code search did not return direct symbol references for several of these libraries; because search indexing can miss references, this is an **unresolved mountedness question**, not proof of dead code. Trace Cargo features, reexports and actual call paths before awarding product value.
+
+Recent master history also contains substantial maintenance/infrastructure commits (clippy, provider catalog parity, HERDR test race/deadlock, host Cargo serialization/sccache). These may be valuable engineering work but are not automatically user-facing differentiation.
