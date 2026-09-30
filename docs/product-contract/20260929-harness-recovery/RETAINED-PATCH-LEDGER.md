@@ -72,3 +72,9 @@ First source classification:
 Workspace membership or a dependency declaration is not reachability. Code search did not return direct symbol references for several of these libraries; because search indexing can miss references, this is an **unresolved mountedness question**, not proof of dead code. Trace Cargo features, reexports and actual call paths before awarding product value.
 
 Recent master history also contains substantial maintenance/infrastructure commits (clippy, provider catalog parity, HERDR test race/deadlock, host Cargo serialization/sccache). These may be valuable engineering work but are not automatically user-facing differentiation.
+## Divergent-file decomposition — pass 2
+Against current-upstream control, Git reports 300 changed files on frozen owned master. 96 are under the historical assessment `.audit/` corpus; 188 are crate files; the rest are root/governance/benchmark artifacts. The crate delta is concentrated in jcode-app-core (68 files), then jcode-tui-render (13), jcode-command-risk (12), jcode-shell-integration (12), jcode-base (11), and smaller extracted capability crates.
+
+Name-level absence upstream is **not uniqueness**. Behavioral searches already find current-upstream equivalents or descendants for several fork-named areas: compaction/micro-compaction, session/memory architecture, cache monitoring/invalidation, discovery/tool search, and permission/approval surfaces. `jcode-command-risk` exists upstream by name. Therefore these candidates require semantic/matched-test comparison before RETAIN PATCH status.
+
+The `.audit/` 96-file corpus is excluded from behavioral retained-patch value. It remains historical evidence only.
