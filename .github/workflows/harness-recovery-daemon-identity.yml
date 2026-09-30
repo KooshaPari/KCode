@@ -31,4 +31,13 @@ jobs:
       - name: Check protocol and server crates
         run: cargo check -p jcode-protocol -p jcode-app-core
       - name: Run daemon identity native test
-        run: cargo test -p jcode-app-core --lib debug_accept_loop_responds_to_ping_without_affecting_client_count -- --exact --nocapture
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(cargo test -p jcode-app-core --lib debug_accept_loop_responds_to_ping_without_affecting_client_count -- --nocapture 2>&1)"
+          printf '%s\n' "$output"
+          if grep -Eq 'running 0 tests|0 passed; 0 failed;.*filtered out' <<<"$output"; then
+            echo "Targeted daemon identity test did not execute" >&2
+            exit 1
+          fi
+          grep -Eq 'test .*debug_accept_loop_responds_to_ping_without_affecting_client_count .* ok' <<<"$output"
