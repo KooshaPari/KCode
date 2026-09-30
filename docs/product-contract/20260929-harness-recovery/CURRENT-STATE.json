@@ -24,7 +24,8 @@
     "K-F002",
     "K-F003",
     "K-F007",
-    "#15_FORGECODE_PROVIDER_MACHINE_CONTRACT"
+    "#15_FORGECODE_PROVIDER_MACHINE_CONTRACT",
+    "K-F008"
   ],
   "gates": {
     "source_ledger_fully_resolved": "OPEN",
@@ -36,10 +37,10 @@
     "ontology_reviewed": "DRAFT",
     "accepted_obligations_complete": "OPEN",
     "quality_properties": "PARTIAL",
-    "journeys": "DRAFT",
+    "journeys": "DRAFT_RECOVERY_EFFECT_SLICE_OPEN",
     "stage_projections": "DRAFT",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments_closed": "PARTIAL_DAEMON_IDENTITY_AND_MACOS_RUNTIME_MUTATION_CLOSED_OTHER_RISKS_OPEN",
+    "high_risk_experiments_closed": "PARTIAL_EXTERNAL_EFFECT_RECOVERY_OPEN",
     "implementation_mapping_complete": "OPEN",
     "traceability_structurally_valid": "NOT_RUN",
     "registry_repo_agreement": "PENDING_READBACK",
@@ -49,7 +50,7 @@
     "no_blocking_findings": "FAIL",
     "independent_fresh_review": "NOT_RUN"
   },
-  "next_bound": "Take ForgeCode provider contract candidate to verdict; validate signed macOS release identity separately; continue retained-patch/external-effect/Pine/journey/traceability gates.",
+  "next_bound": "Take ForgeCode provider contract candidate to verdict; validate signed macOS release identity separately; continue retained-patch/external-effect/Pine/journey/traceability gates. External-effect crash-boundary receipt/reconciliation experiment remains required.",
   "candidate_evidence": {
     "daemon_identity_run": 36686592906,
     "compile": "cargo check -p jcode-protocol -p jcode-app-core passed",
