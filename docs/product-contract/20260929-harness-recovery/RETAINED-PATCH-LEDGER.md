@@ -78,3 +78,11 @@ Against current-upstream control, Git reports 300 changed files on frozen owned 
 Name-level absence upstream is **not uniqueness**. Behavioral searches already find current-upstream equivalents or descendants for several fork-named areas: compaction/micro-compaction, session/memory architecture, cache monitoring/invalidation, discovery/tool search, and permission/approval surfaces. `jcode-command-risk` exists upstream by name. Therefore these candidates require semantic/matched-test comparison before RETAIN PATCH status.
 
 The `.audit/` 96-file corpus is excluded from behavioral retained-patch value. It remains historical evidence only.
+
+## Owned-only capability source inspection — pass 3
+- `jcode-auto-dream`: explicitly a stub at the action boundary (`WouldConsolidate`; TODO actually run consolidation). Its presence is not implemented memory consolidation and earns no mature-product credit.
+- `jcode-provider-forgecode-runtime`: real subprocess provider adapter. It serializes CLI requests, translates tools/messages, extracts only the latest usable user prompt, and fingerprints a canonicalized input. This is a composition adapter, not proof of lossless provider semantics. Retention requires golden history/tool/cancel/resume comparison against direct Forgecode.
+- `jcode-herdr`: real optional terminal-runtime adapter with lifecycle/session reporting and monotonic sequence handling. This is adapter-shaped integration, not core coding-agent differentiation.
+- cache-vectors, micro-compact, session-memory, permission-bubble, shell-integration, terminal-detect and tool-search are substantive libraries by source, but current upstream has behaviorally related cache/compaction/memory/permission/shell/discovery surfaces. They remain SEMANTIC_COMPARE, not RETAIN PATCH.
+
+Architecture implication: adapter-shaped ForgeCode/HERDR functionality can survive without justifying a deep fork if stable extension points exist upstream. Stub functionality must not be counted as product breadth.
