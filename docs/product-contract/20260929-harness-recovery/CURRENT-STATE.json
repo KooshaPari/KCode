@@ -25,7 +25,8 @@
     "K-F003",
     "K-F007",
     "#15_FORGECODE_PROVIDER_MACHINE_CONTRACT",
-    "K-F008"
+    "K-F008",
+    "K-F009"
   ],
   "gates": {
     "source_ledger_fully_resolved": "OPEN",
@@ -40,7 +41,7 @@
     "journeys": "DRAFT_RECOVERY_EFFECT_SLICE_OPEN",
     "stage_projections": "DRAFT",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments_closed": "PARTIAL_EXTERNAL_EFFECT_RECOVERY_OPEN",
+    "high_risk_experiments_closed": "PARTIAL_DAEMON_IDENTITY_AND_MACOS_POLICY_PRIMITIVES_QUALIFIED_EFFECT_RECOVERY_OPEN",
     "implementation_mapping_complete": "OPEN",
     "traceability_structurally_valid": "NOT_RUN",
     "registry_repo_agreement": "PENDING_READBACK",
@@ -68,6 +69,12 @@
       "run": 36701138044,
       "job": 109840593524,
       "result": "macos cargo check --bin jcode + runtime-mutation source guard passed"
+    },
+    "macos_trust_policy": {
+      "candidate": "a9daae12bb102047b3bbb708e516a841af686036",
+      "run": 36712215260,
+      "result": "success",
+      "scope": "compile + opt-in policy/default non-mutating source-path; signed-release mutation experiment still open"
     }
   },
   "qualified_findings": {
