@@ -1935,3 +1935,36 @@ async fn write_effect_hook_marks_uncertain_when_confirmation_fails() {
         ]
     );
 }
+
+
+#[test]
+fn write_reconciliation_confirms_matching_postcondition_without_redispatch() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("effect.txt");
+    std::fs::write(&path, "committed").unwrap();
+    assert_eq!(
+        reconcile_write_postcondition(&path, "committed"),
+        ReconcileDecision::ConfirmedSuccess
+    );
+}
+
+#[test]
+fn write_reconciliation_allows_retry_only_when_target_is_known_absent() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("missing.txt");
+    assert_eq!(
+        reconcile_write_postcondition(&path, "expected"),
+        ReconcileDecision::RetryAllowed
+    );
+}
+
+#[test]
+fn write_reconciliation_fails_closed_on_conflicting_postcondition() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("effect.txt");
+    std::fs::write(&path, "other actor changed it").unwrap();
+    assert_eq!(
+        reconcile_write_postcondition(&path, "expected"),
+        ReconcileDecision::StillUncertain
+    );
+}
