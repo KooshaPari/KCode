@@ -279,6 +279,7 @@ pub(super) struct WeakRegistry {
     skills: Arc<RwLock<SkillRegistry>>,
     compaction: Arc<RwLock<CompactionManager>>,
     search_index: tool_search::ToolSearchIndex,
+    effect_recovery: Option<EffectRecoveryContext>,
 }
 
 impl WeakRegistry {
@@ -302,6 +303,7 @@ impl Clone for Registry {
             // subagents from corrupting each other's message history
             compaction: Arc::new(RwLock::new(CompactionManager::new())),
             search_index: self.search_index.clone(),
+            effect_recovery: self.effect_recovery.clone(),
         }
     }
 }
@@ -313,6 +315,7 @@ impl Registry {
             skills: Arc::clone(&self.skills),
             compaction: Arc::clone(&self.compaction),
             search_index: self.search_index.clone(),
+            effect_recovery: self.effect_recovery.clone(),
         }
     }
 
