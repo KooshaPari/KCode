@@ -257,6 +257,7 @@ fn test_schema_only_requires_tool() {
             crate::compaction::CompactionManager::new(),
         )),
         search_index: super::super::tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
     let schema = BatchTool::new(registry.downgrade()).parameters_schema();
 

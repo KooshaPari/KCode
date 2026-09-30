@@ -1,0 +1,50 @@
+name: Harness Recovery Daemon Identity
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "crates/jcode-protocol/**"
+      - "crates/jcode-app-core/src/server/**"
+      - ".github/workflows/harness-recovery-daemon-identity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUSTUP_TOOLCHAIN: stable
+  CARGO_TERM_COLOR: always
+
+jobs:
+  daemon-identity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: harness-recovery-daemon-identity
+      - name: Check protocol and server crates
+        run: cargo check -p jcode-protocol -p jcode-app-core
+      - name: Run daemon identity native test
+        shell: bash
+        run: |
+          set -uo pipefail
+          set +e
+          output="$(cargo test -p jcode-app-core --lib main_accept_loop_reports_exact_runtime_identity -- --nocapture 2>&1)"
+          test_status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$test_status" -ne 0 ]; then
+            echo "Targeted daemon identity test command failed with exit $test_status" >&2
+            exit "$test_status"
+          fi
+          if grep -Eq 'running 0 tests|0 passed; 0 failed;.*filtered out' <<<"$output"; then
+            echo "Targeted daemon identity test did not execute" >&2
+            exit 1
+          fi
+          grep -Eq 'test .*main_accept_loop_reports_exact_runtime_identity .* ok' <<<"$output"
