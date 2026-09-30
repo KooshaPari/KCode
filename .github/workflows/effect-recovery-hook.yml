@@ -1,0 +1,31 @@
+name: Effect Recovery Hook
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "crates/jcode-app-core/src/tool/**"
+      - ".github/workflows/effect-recovery-hook.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  effect-recovery-hook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: effect-recovery-hook
+      - run: cargo check -p jcode-app-core
+      - name: Run focused effect recovery tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p jcode-app-core --lib write_effect_hook_ -- --nocapture
