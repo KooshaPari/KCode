@@ -16,13 +16,15 @@
     "Synthetic identity-model passes",
     "Generated catalogs",
     "Workflow success with zero effective targeted tests",
-    "Captured test failure whose output was suppressed"
+    "Captured test failure whose output was suppressed",
+    "ForgeCode provider presence until machine-contract compatibility is natively qualified"
   ],
   "blocking_design_unknowns": [
     "K-F001",
     "K-F002",
     "K-F003",
-    "K-F007"
+    "K-F007",
+    "#15_FORGECODE_PROVIDER_MACHINE_CONTRACT"
   ],
   "gates": {
     "source_ledger_fully_resolved": "OPEN",
@@ -47,7 +49,7 @@
     "no_blocking_findings": "FAIL",
     "independent_fresh_review": "NOT_RUN"
   },
-  "next_bound": "Use exact daemon-identity candidate evidence; continue retained-patch semantic comparison, recovery/effect uncertainty, macOS trust policy, Pine adapter, journeys/traceability and independent review.",
+  "next_bound": "Take ForgeCode fail-closed provider candidate to native verdict; continue retained-patch semantic comparison, external-effect recovery, macOS trust/Pine adapter, journeys/traceability and independent review.",
   "candidate_evidence": {
     "daemon_identity_run": 36686592906,
     "compile": "cargo check -p jcode-protocol -p jcode-app-core passed",
