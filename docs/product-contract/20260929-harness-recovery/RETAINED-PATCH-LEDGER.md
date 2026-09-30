@@ -94,3 +94,8 @@ Architecture implication: adapter-shaped ForgeCode/HERDR functionality can survi
 These findings reduce rather than expand the retained patch set: fork-only code that is broken or harms artifact identity is transition debt.
 ### HERDR semantic comparison
 Current upstream has built-in HERDR support despite lacking the fork's `jcode-herdr` crate name: current source/docs include HERDR environment/socket routing, pane/session reporting, headed terminal spawning, TUI agent-state synchronization, and HERDR-specific terminal behavior. Therefore the fork crate name is not unique capability evidence. Classify generic HERDR integration as UPSTREAMED/COMMODITY; retain only a demonstrated behavioral delta after matched tests.
+
+### ForgeCode provider adapter disposition tightened
+Current upstream already exposes an external-provider composition architecture: provider runtimes live in downstream crates and register with `jcode_base::provider::external` at the binary composition root. The owned `jcode-provider-forgecode-runtime` follows the same adapter shape. Therefore its default disposition changes from generic RETAIN candidate to **CONTRIBUTE UPSTREAM / EXTERNAL RUNTIME ADAPTER**, pending semantic tests.
+
+The owned implementation is not automatically lossless: it extracts the latest usable user prompt, maps/filter tool names, translates subprocess output, and carries resume/system metadata through its own adapter. Golden tests must compare system/user/history/tool/cancel/resume semantics against direct Forgecode. Any irreducible semantic gap may justify a retained adapter patch, but not the rest of the deep fork.
