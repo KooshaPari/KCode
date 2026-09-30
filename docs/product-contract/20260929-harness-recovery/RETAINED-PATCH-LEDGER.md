@@ -92,3 +92,5 @@ Architecture implication: adapter-shaped ForgeCode/HERDR functionality can survi
 - **macOS startup self-heal**: frozen fork unconditionally strips provenance/quarantine xattrs and force ad-hoc re-signs the running executable. Current upstream removed this path. This is FORK-SPECIFIC LIABILITY, not differentiation. Draft candidate #18 removes implicit runtime mutation; explicit installer/dev repair may be reintroduced only with scoped evidence.
 
 These findings reduce rather than expand the retained patch set: fork-only code that is broken or harms artifact identity is transition debt.
+### HERDR semantic comparison
+Current upstream has built-in HERDR support despite lacking the fork's `jcode-herdr` crate name: current source/docs include HERDR environment/socket routing, pane/session reporting, headed terminal spawning, TUI agent-state synchronization, and HERDR-specific terminal behavior. Therefore the fork crate name is not unique capability evidence. Classify generic HERDR integration as UPSTREAMED/COMMODITY; retain only a demonstrated behavioral delta after matched tests.
