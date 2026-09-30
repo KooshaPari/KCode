@@ -99,3 +99,10 @@ Current upstream has built-in HERDR support despite lacking the fork's `jcode-he
 Current upstream already exposes an external-provider composition architecture: provider runtimes live in downstream crates and register with `jcode_base::provider::external` at the binary composition root. The owned `jcode-provider-forgecode-runtime` follows the same adapter shape. Therefore its default disposition changes from generic RETAIN candidate to **CONTRIBUTE UPSTREAM / EXTERNAL RUNTIME ADAPTER**, pending semantic tests.
 
 The owned implementation is not automatically lossless: it extracts the latest usable user prompt, maps/filter tool names, translates subprocess output, and carries resume/system metadata through its own adapter. Golden tests must compare system/user/history/tool/cancel/resume semantics against direct Forgecode. Any irreducible semantic gap may justify a retained adapter patch, but not the rest of the deep fork.
+
+## Structural skeleton exclusion — pass 4
+Direct Git comparison against current upstream shows several owned-added crate paths with zero added source lines in the frozen delta. `jcode-terminal-detect` has zero-line Cargo/source entries in the compare; `jcode-tool-search` likewise shows zero-line added files; most `jcode-shell-integration` modules/templates are zero-line skeletons, with substantive content concentrated only in completions/config.
+
+These zero-line skeletons are **excluded from behavioral differentiation and mature-product breadth**. They remain repository-structure/history evidence only. Non-empty shell completions/config may still be evaluated independently, but the crate name cannot stand in for a delivered capability.
+
+This further reduces the 136-commit retained-patch search space without making a product-existence verdict.
