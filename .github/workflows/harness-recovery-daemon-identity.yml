@@ -35,7 +35,7 @@ jobs:
         run: |
           set -uo pipefail
           set +e
-          output="$(cargo test -p jcode-app-core --lib debug_accept_loop_responds_to_ping_without_affecting_client_count -- --nocapture 2>&1)"
+          output="$(cargo test -p jcode-app-core --lib main_accept_loop_reports_exact_runtime_identity -- --nocapture 2>&1)"
           test_status=$?
           set -e
           printf '%s\n' "$output"
@@ -47,4 +47,4 @@ jobs:
             echo "Targeted daemon identity test did not execute" >&2
             exit 1
           fi
-          grep -Eq 'test .*debug_accept_loop_responds_to_ping_without_affecting_client_count .* ok' <<<"$output"
+          grep -Eq 'test .*main_accept_loop_reports_exact_runtime_identity .* ok' <<<"$output"
