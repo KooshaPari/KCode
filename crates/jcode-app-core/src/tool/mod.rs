@@ -49,6 +49,40 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use async_trait::async_trait;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectIntent {
+    pub effect_id: String,
+    pub durable_effort_ref: String,
+    pub worker_attempt_id: String,
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub target_fingerprint: String,
+}
+
+#[async_trait]
+pub trait EffectRecoveryAdapter: Send + Sync {
+    async fn begin(&self, intent: EffectIntent) -> Result<()>;
+    async fn mark_dispatched(&self, effect_id: &str) -> Result<()>;
+    async fn confirm_success(&self, effect_id: &str) -> Result<()>;
+    async fn mark_uncertain(&self, effect_id: &str, reason: &str) -> Result<()>;
+}
+
+#[derive(Clone)]
+pub struct EffectRecoveryContext {
+    pub durable_effort_ref: String,
+    pub worker_attempt_id: String,
+    pub adapter: Arc<dyn EffectRecoveryAdapter>,
+}
+
+fn protected_effect_tool(name: &str) -> bool {
+    matches!(name, "write")
+}
+
+fn effect_id(ctx: &ToolContext, resolved_name: &str) -> String {
+    format!("{}:{}:{}:{}", ctx.session_id, ctx.message_id, ctx.tool_call_id, resolved_name)
+}
 
 pub(crate) fn tool_name_is_allowed(allowed: &HashSet<String>, name: &str) -> bool {
     allowed.contains(name)
@@ -233,6 +267,7 @@ pub struct Registry {
     skills: Arc<RwLock<SkillRegistry>>,
     compaction: Arc<RwLock<CompactionManager>>,
     search_index: tool_search::ToolSearchIndex,
+    effect_recovery: Option<EffectRecoveryContext>,
 }
 
 /// Non-owning handle used by tools stored inside a registry.
@@ -253,6 +288,7 @@ impl WeakRegistry {
             skills: Arc::clone(&self.skills),
             compaction: Arc::clone(&self.compaction),
             search_index: self.search_index.clone(),
+            effect_recovery: self.effect_recovery.clone(),
         })
     }
 }
@@ -312,6 +348,7 @@ impl Registry {
             skills: Arc::new(RwLock::new(SkillRegistry::default())),
             compaction: Arc::new(RwLock::new(CompactionManager::new())),
             search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
         }
     }
 
@@ -458,6 +495,7 @@ impl Registry {
             skills: skills.clone(),
             compaction: compaction.clone(),
             search_index: search_index.clone(),
+            effect_recovery: None,
         };
         let registry_struct_ms = registry_struct_start.elapsed().as_millis();
 
@@ -790,6 +828,11 @@ impl Registry {
         )
     }
 
+    pub fn with_effect_recovery(mut self, context: EffectRecoveryContext) -> Self {
+        self.effect_recovery = Some(context);
+        self
+    }
+
     /// Execute a tool by name
     pub async fn execute(&self, name: &str, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
         // Mark this call in-flight for the whole execution so the missing
@@ -860,6 +903,27 @@ impl Registry {
             Self::tool_lifecycle_fields("start", name, resolved_name, &input, &ctx),
         );
 
+        let effect = if protected_effect_tool(resolved_name) {
+            if let Some(recovery) = self.effect_recovery.as_ref() {
+                let id = effect_id(&ctx, resolved_name);
+                let intent = EffectIntent {
+                    effect_id: id.clone(),
+                    durable_effort_ref: recovery.durable_effort_ref.clone(),
+                    worker_attempt_id: recovery.worker_attempt_id.clone(),
+                    tool_call_id: ctx.tool_call_id.clone(),
+                    tool_name: resolved_name.to_string(),
+                    target_fingerprint: input.to_string(),
+                };
+                recovery.adapter.begin(intent).await?;
+                recovery.adapter.mark_dispatched(&id).await?;
+                Some((id, Arc::clone(&recovery.adapter)))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let started_at = std::time::Instant::now();
         let result = tool.execute(input.clone(), ctx.clone()).await;
         let latency_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
@@ -868,8 +932,23 @@ impl Registry {
         Self::fire_post_tool_hook(resolved_name, &ctx, &result, latency_ms);
 
         let mut output = match result {
-            Ok(output) => output,
+            Ok(output) => {
+                if let Some((effect_id, adapter)) = effect.as_ref() {
+                    if let Err(confirm_error) = adapter.confirm_success(effect_id).await {
+                        let reason = format!(
+                            "tool side effect completed but durable confirmation failed: {confirm_error}"
+                        );
+                        let _ = adapter.mark_uncertain(effect_id, &reason).await;
+                        return Err(anyhow::anyhow!(reason));
+                    }
+                }
+                output
+            }
             Err(error) => {
+                if let Some((effect_id, adapter)) = effect.as_ref() {
+                    let reason = format!("tool execution returned error after dispatch: {error}");
+                    let _ = adapter.mark_uncertain(effect_id, &reason).await;
+                }
                 let mut fields =
                     Self::tool_lifecycle_fields("error", name, resolved_name, &input, &ctx);
                 fields.push(("elapsed_ms".to_string(), latency_ms.to_string()));
