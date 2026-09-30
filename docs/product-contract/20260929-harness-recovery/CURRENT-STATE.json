@@ -39,7 +39,7 @@
     "journeys": "DRAFT",
     "stage_projections": "DRAFT",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments_closed": "PARTIAL_DAEMON_IDENTITY_CLOSED_OTHER_RISKS_OPEN",
+    "high_risk_experiments_closed": "PARTIAL_DAEMON_IDENTITY_AND_MACOS_RUNTIME_MUTATION_CLOSED_OTHER_RISKS_OPEN",
     "implementation_mapping_complete": "OPEN",
     "traceability_structurally_valid": "NOT_RUN",
     "registry_repo_agreement": "PENDING_READBACK",
@@ -49,7 +49,7 @@
     "no_blocking_findings": "FAIL",
     "independent_fresh_review": "NOT_RUN"
   },
-  "next_bound": "Take ForgeCode fail-closed provider candidate to native verdict; continue retained-patch semantic comparison, external-effect recovery, macOS trust/Pine adapter, journeys/traceability and independent review.",
+  "next_bound": "Take ForgeCode provider contract candidate to verdict; validate signed macOS release identity separately; continue retained-patch/external-effect/Pine/journey/traceability gates.",
   "candidate_evidence": {
     "daemon_identity_run": 36686592906,
     "compile": "cargo check -p jcode-protocol -p jcode-app-core passed",
@@ -61,6 +61,15 @@
       "server_git_hash",
       "server_pid",
       "server_binary_sha256"
-    ]
+    ],
+    "macos_trust": {
+      "candidate": "f18881a1ed18ff5d42590ac97982a10160ad63f6",
+      "run": 36701138044,
+      "job": 109840593524,
+      "result": "macos cargo check --bin jcode + runtime-mutation source guard passed"
+    }
+  },
+  "qualified_findings": {
+    "K-F002": "SOURCE_RUNTIME_MUTATION_REMOVED_IN_CANDIDATE_f18881a"
   }
 }
