@@ -36,3 +36,17 @@ The existing ToolUse-before-execute / ToolResult-after-execute transcript orderi
 ## Acceptance
 
 Native test must prove one downstream effect, exact receipt transitions, worker-attempt replacement and session/result behavior. It must include a non-idempotent/non-queryable negative control. A passing standalone contract probe is not sufficient.
+
+## Attempt-B reconciliation API — pinned
+Do not make `Registry::execute` itself decide whether to retry an old uncertain effect. Replacement is a durable-effort decision before a fresh dispatch.
+
+Minimum adapter extension:
+- `load(effect_id) -> EffectRecord?`;
+- `mark_uncertain(effect_id, reason)`;
+- `reconcile(effect_id, ReconcileObservation) -> ReconcileDecision`.
+
+`ReconcileDecision` is one of CONFIRMED_SUCCESS, CONFIRMED_FAILURE, RETRY_ALLOWED, STILL_UNCERTAIN. A runtime may dispatch only on RETRY_ALLOWED or a brand-new effect. STILL_UNCERTAIN fails closed.
+
+For Write, the first reconciler binds target path plus expected content/hash captured in the intent. Attempt A writes then loses durable confirmation. Attempt B loads UNCERTAIN and hashes/reads the file: matching expected postcondition => RECONCILED_SUCCESS and no write; known absence/precondition => RETRY_ALLOWED; conflicting content => STILL_UNCERTAIN or explicit failure according to policy. The downstream effect count/postcondition must prove no duplicate write.
+
+Do not use transcript ToolResult absence as RETRY_ALLOWED. Do not use tool_call_id alone as effect identity or downstream idempotency.
