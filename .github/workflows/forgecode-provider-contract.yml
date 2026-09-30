@@ -1,0 +1,42 @@
+name: ForgeCode Provider Contract
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "crates/jcode-provider-forgecode-runtime/**"
+      - ".github/workflows/forgecode-provider-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUSTUP_TOOLCHAIN: stable
+  CARGO_TERM_COLOR: always
+
+jobs:
+  provider-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: forgecode-provider-contract
+      - name: Check provider crate
+        run: cargo check -p jcode-provider-forgecode-runtime
+      - name: Run compatibility contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="$(cargo test -p jcode-provider-forgecode-runtime contract_tests -- --nocapture 2>&1)"
+          printf '%s\n' "$output"
+          grep -Eq '2 passed; 0 failed' <<<"$output"
+          if grep -Eq 'running 0 tests|0 passed; 0 failed;.*filtered out' <<<"$output"; then
+            echo "ForgeCode contract tests did not execute" >&2
+            exit 1
+          fi
