@@ -1789,3 +1789,149 @@ async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode()
          eligibility rule is too aggressive, a missing name means this list is stale"
     );
 }
+
+
+#[derive(Default)]
+struct RecordingEffectAdapter {
+    events: std::sync::Mutex<Vec<String>>,
+    fail_confirm: bool,
+}
+
+impl RecordingEffectAdapter {
+    fn events(&self) -> Vec<String> {
+        self.events.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl EffectRecoveryAdapter for RecordingEffectAdapter {
+    async fn begin(&self, intent: EffectIntent) -> Result<()> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("intent:{}", intent.effect_id));
+        Ok(())
+    }
+
+    async fn mark_dispatched(&self, effect_id: &str) -> Result<()> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("dispatched:{effect_id}"));
+        Ok(())
+    }
+
+    async fn confirm_success(&self, effect_id: &str) -> Result<()> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("confirm:{effect_id}"));
+        if self.fail_confirm {
+            anyhow::bail!("simulated durable receipt failure");
+        }
+        Ok(())
+    }
+
+    async fn mark_uncertain(&self, effect_id: &str, _reason: &str) -> Result<()> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("uncertain:{effect_id}"));
+        Ok(())
+    }
+}
+
+fn effect_test_context(dir: &std::path::Path) -> ToolContext {
+    ToolContext {
+        session_id: "effect-session".into(),
+        message_id: "effect-message".into(),
+        tool_call_id: "effect-call".into(),
+        working_dir: Some(dir.to_path_buf()),
+        stdin_request_tx: None,
+        graceful_shutdown_signal: None,
+        execution_mode: ToolExecutionMode::Direct,
+    }
+}
+
+#[tokio::test]
+async fn write_effect_hook_records_intent_dispatch_and_confirmation() {
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let adapter = Arc::new(RecordingEffectAdapter::default());
+    let registry = Registry::new(provider)
+        .await
+        .with_effect_recovery(EffectRecoveryContext {
+            durable_effort_ref: "effort-1".into(),
+            worker_attempt_id: "attempt-a".into(),
+            adapter: adapter.clone(),
+        });
+    let dir = tempfile::tempdir().unwrap();
+
+    registry
+        .execute(
+            "write",
+            serde_json::json!({
+                "file_path": "effect.txt",
+                "content": "one",
+                "intent": "effect recovery test"
+            }),
+            effect_test_context(dir.path()),
+        )
+        .await
+        .expect("write should succeed with durable effect hook");
+
+    assert_eq!(std::fs::read_to_string(dir.path().join("effect.txt")).unwrap(), "one");
+    assert_eq!(
+        adapter.events(),
+        vec![
+            "intent:effect-session:effect-message:effect-call:write",
+            "dispatched:effect-session:effect-message:effect-call:write",
+            "confirm:effect-session:effect-message:effect-call:write",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn write_effect_hook_marks_uncertain_when_confirmation_fails() {
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let adapter = Arc::new(RecordingEffectAdapter {
+        fail_confirm: true,
+        ..Default::default()
+    });
+    let registry = Registry::new(provider)
+        .await
+        .with_effect_recovery(EffectRecoveryContext {
+            durable_effort_ref: "effort-1".into(),
+            worker_attempt_id: "attempt-a".into(),
+            adapter: adapter.clone(),
+        });
+    let dir = tempfile::tempdir().unwrap();
+
+    let error = registry
+        .execute(
+            "write",
+            serde_json::json!({
+                "file_path": "effect.txt",
+                "content": "committed",
+                "intent": "effect recovery uncertainty test"
+            }),
+            effect_test_context(dir.path()),
+        )
+        .await
+        .expect_err("missing durable confirmation must not return normal success");
+
+    assert!(error.to_string().contains("durable confirmation failed"));
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("effect.txt")).unwrap(),
+        "committed",
+        "downstream effect really happened before confirmation failed"
+    );
+    assert_eq!(
+        adapter.events(),
+        vec![
+            "intent:effect-session:effect-message:effect-call:write",
+            "dispatched:effect-session:effect-message:effect-call:write",
+            "confirm:effect-session:effect-message:effect-call:write",
+            "uncertain:effect-session:effect-message:effect-call:write",
+        ]
+    );
+}
