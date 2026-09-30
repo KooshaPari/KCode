@@ -7,14 +7,16 @@
   "mature_product_percent": null,
   "requirement_count_target": null,
   "source_denominator_closed": false,
-  "native_product_tests": "COMPILE_PASS_BEHAVIOR_RERUN_REQUIRED",
-  "implementation_candidate": "5a15dd86a685e60f03de64806c913ea544549793",
+  "native_product_tests": "TARGETED_CANDIDATE_IN_PROGRESS",
+  "implementation_candidate": "effe7dcb1491e7a9933475c1c57a81e2c40e08d2",
   "acceptance_exclusions": [
     "Historical handoff percentages",
     "Unqualified README performance claims",
     "Transcript/todo scores",
     "Synthetic identity-model passes",
-    "Generated catalogs"
+    "Generated catalogs",
+    "Workflow success with zero effective targeted tests",
+    "Captured test failure whose output was suppressed"
   ],
   "blocking_design_unknowns": [
     "K-F001",
@@ -26,16 +28,16 @@
     "source_ledger_fully_resolved": "OPEN",
     "alias_history_falsification": "OPEN",
     "sota_research": "PARTIAL",
-    "realistic_alternative_stack": "PROPOSED_NOT_VALIDATED",
+    "realistic_alternative_stack": "DEFINED_CURRENT_UPSTREAM_PLUS_THIN_OVERLAY",
     "bootstrap_decisions": "PARTIAL",
-    "differentiation_survived_attack": "OPEN",
+    "differentiation_survived_attack": "MOST_HISTORICAL_CLAIMS_FALSIFIED_REMAINDER_OPEN",
     "ontology_reviewed": "DRAFT",
     "accepted_obligations_complete": "OPEN",
     "quality_properties": "PARTIAL",
     "journeys": "DRAFT",
     "stage_projections": "DRAFT",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments_closed": "OPEN_ZERO_TEST_FALSE_GREEN_CORRECTED_RERUN_REQUIRED",
+    "high_risk_experiments_closed": "OPEN_DAEMON_IDENTITY_RERUN",
     "implementation_mapping_complete": "OPEN",
     "traceability_structurally_valid": "NOT_RUN",
     "registry_repo_agreement": "PENDING_READBACK",
@@ -45,5 +47,5 @@
     "no_blocking_findings": "FAIL",
     "independent_fresh_review": "NOT_RUN"
   },
-  "next_bound": "Require nonzero native daemon-identity test execution, then continue retained-patch and recovery experiments. No third primary product."
+  "next_bound": "Take observable daemon-identity test to verdict; semantically reduce 136 divergent commits against current upstream; define Pine/Pheno adapters before any core integration."
 }
