@@ -86,3 +86,9 @@ The `.audit/` 96-file corpus is excluded from behavioral retained-patch value. I
 - cache-vectors, micro-compact, session-memory, permission-bubble, shell-integration, terminal-detect and tool-search are substantive libraries by source, but current upstream has behaviorally related cache/compaction/memory/permission/shell/discovery surfaces. They remain SEMANTIC_COMPARE, not RETAIN PATCH.
 
 Architecture implication: adapter-shaped ForgeCode/HERDR functionality can survive without justifying a deep fork if stable extension points exist upstream. Stub functionality must not be counted as product breadth.
+
+## Mounted-liability findings — pass 4
+- **ForgeCode provider runtime**: mounted/user-selectable, but its subprocess launch contract uses flags absent from pinned current official ForgeCode (`--output-format`, `--input-format`, `--permission-mode`, `--resume`, `--tools`). This is BROKEN_CURRENT_INTERFACE until a compatible versioned shim or supported machine interface is qualified. Draft candidate #16 fails closed rather than silently degrading semantics.
+- **macOS startup self-heal**: frozen fork unconditionally strips provenance/quarantine xattrs and force ad-hoc re-signs the running executable. Current upstream removed this path. This is FORK-SPECIFIC LIABILITY, not differentiation. Draft candidate #18 removes implicit runtime mutation; explicit installer/dev repair may be reintroduced only with scoped evidence.
+
+These findings reduce rather than expand the retained patch set: fork-only code that is broken or harms artifact identity is transition debt.
