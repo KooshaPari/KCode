@@ -41,7 +41,7 @@
     "journeys": "DRAFT_RECOVERY_EFFECT_SLICE_OPEN",
     "stage_projections": "DRAFT",
     "oracle_design_complete": "PARTIAL",
-    "high_risk_experiments_closed": "PARTIAL_DAEMON_IDENTITY_AND_MACOS_POLICY_PRIMITIVES_QUALIFIED_EFFECT_RECOVERY_OPEN",
+    "high_risk_experiments_closed": "PARTIAL_DAEMON_IDENTITY_MACOS_POLICY_EFFECT_PRIMITIVES_QUALIFIED_REACHABILITY_OPEN",
     "implementation_mapping_complete": "OPEN",
     "traceability_structurally_valid": "NOT_RUN",
     "registry_repo_agreement": "PENDING_READBACK",
@@ -75,6 +75,18 @@
       "run": 36712215260,
       "result": "success",
       "scope": "compile + opt-in policy/default non-mutating source-path; signed-release mutation experiment still open"
+    },
+    "effect_recovery_primitive": {
+      "candidate": "bac23f8885bb4a5f17bad926ca1451581b1a8b51",
+      "hook_run": 36738409142,
+      "daemon_regression_run": 36738409456,
+      "result": "success",
+      "scope": "optional Write hook + committed-effect uncertainty + pure attempt-B write reconciliation; production durable-adapter reachability still open"
+    },
+    "attempt_replacement_oracle": {
+      "run": 36717831831,
+      "result": "success",
+      "scope": "separate-process contract oracle, not product runtime"
     }
   },
   "qualified_findings": {
