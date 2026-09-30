@@ -13,3 +13,5 @@ The current deep-fork thesis therefore remains OPEN but under strong pressure. C
 The default architectural challenger is current upstream + thin owned overlay/adapters + upstream contributions + the minimum retained patch stack. Do not add new deep-fork features until the retained-patch ledger demonstrates why this challenger fails.
 
 A future decision to retire/rebase KCode would be destructive/product-directional and is not taken by this program without the evidence gate and user authorization.
+## Windows/Pine correction
+Search of the frozen owned source did not surface a Pine/native-shell subsystem, while current upstream has substantial Windows-specific platform, shell, terminal-launch, setup and PowerShell handling. The user's Pine requirement remains accepted external ecosystem intent, but **it is not currently KCode differentiation**. To survive as a retained core patch, KCode must show an implemented behavior or required core hook that current upstream plus a Pine adapter cannot satisfy. Until then classify Pine as a consumer/integration boundary, not a reason for deep-fork ownership.
