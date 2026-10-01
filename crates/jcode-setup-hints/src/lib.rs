@@ -50,9 +50,9 @@ use macos_terminal::launch_script_for_macos_terminal;
 #[cfg(target_os = "macos")]
 use macos_terminal::load_preferred_macos_terminal;
 #[cfg(any(test, target_os = "macos"))]
-use macos_terminal::{MacTerminalKind, effective_macos_terminal, paused_jcode_shell_command};
+use macos_terminal::{MacTerminalKind, effective_macos_terminal};
 #[cfg(target_os = "macos")]
-use macos_terminal::{escape_shell_single_quotes, save_preferred_macos_terminal};
+use macos_terminal::save_preferred_macos_terminal;
 #[cfg(windows)]
 use windows_setup::{
     create_windows_desktop_shortcut, maybe_show_windows_setup_hints, run_setup_hotkey_windows,
