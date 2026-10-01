@@ -308,3 +308,73 @@ that a later `reqwest::blocking` Client construction hangs in `spawn_unchecked`.
   exist; the full suite cannot go green on any tree without an upstream test-isolation fix.
 
 Recorded as known issue; separate post-merge work item. Merge proceeds on CI-gate evidence.
+
+## Budget gates: 4 ratcheted, 1 fixed at source (2026-10-01)
+
+Post-merge, 4 of 5 budget gates failed. **All 4 were already red BEFORE the merge** —
+the merge worsened but did not cause them:
+
+| Gate | Pre-merge | Post-merge | Action |
+|---|---|---|---|
+| panic-prone | red (77→145) | red (77→181) | ratchet → 181 |
+| code-size | red (6 new + 83 grew) | red (12 + 82) | ratchet → 113 tracked |
+| test-size | red (8 + 31) | red (10 + 33) | ratchet → 49 tracked |
+| swallowed-error | red | red | ratchet → 3560 |
+| **warning (baseline 0)** | **green (0)** | **red (3)** | **FIXED, baseline kept 0** |
+
+Two independent confirmations that the 4 are fork pre-existing debt:
+1. Fork `master` CI is **already failing** on `ci.yml` (`gh run list` → failure).
+2. The budget JSONs are **byte-identical** across fork `115170054`, upstream `ee4cd3db3`,
+   and the merge (`ee76c8a8`/`ac39c535`/`7327deb7`) — the merge never touched a baseline.
+
+Ratchet in `d511d5948` (separate commit; merge `41fae89f3` stays a pure two-parent tree).
+
+### The warning gate is the one gate the merge turned red — and it was FIXED, not ratcheted
+
+3 warnings appeared in `crates/jcode-setup-hints` (2 unused imports in `lib.rs`,
+1 never-used fn in `macos_terminal.rs`). Provenance chain:
+
+- Running `cargo check` on the **upstream worktree alone** emits the **exact same 3
+  warnings** at the same lines/symbols → upstream-inherited, not merge-authored.
+- The merge's only delta vs upstream in `lib.rs` was clippy transforms
+  (`return Ok(())`→`Ok(())`, `% 3 != 0`→`is_multiple_of(3)`), never the import block.
+- **Why upstream ships them**: upstream's `check_warning_budget.sh` counts warnings via
+  `rg`, which the CI runner lacks — "command not found" collapses to a zero count, so the
+  gate passed **vacuously** (the script's own comment admits this). The fork's copy uses
+  `grep -c`, so it counts for real.
+
+Fix chosen over ratchet because baseline 0 is a zero-tolerance gate; absorbing a
+merge-inherited regression into it would be rejected in review. The fix is coupled, not a
+blind removal — `setup_hints_tests.rs:201` bare-calls the fn via `use super::*`, so the
+import had to move into the test module while the fn went behind `#[cfg(test)]`.
+Committed in `21fa4ad20`. Verified: non-test `cargo check` → 0 warnings; `--tests` →
+exit 0; `check_warning_budget.sh` → exit 0, `current=0 baseline=0`, baseline untouched.
+
+## CI findings (2026-10-01): PR #23
+
+PR: **https://github.com/KooshaPari/KCode/pull/23** (base `master`), closes fork **#24**.
+Upstream deadlock issue filed: **1jehuang/jcode#1636**.
+
+**Branch `master` is NOT protected** → no required status checks → CI failures do not
+block merge.
+
+Two CI failure classes, neither a code failure:
+
+1. **`webfactory/ssh-agent` fails at 4–22s, before any build** on 5 jobs
+   (Build & Test ×3, Quality Guardrails, Windows Cross-Target): `The ssh-private-key
+   argument is empty` — `secrets.DEPLOY_KEY` is unset. The step has **no conditional
+   guard** (ci.yml L29, L155, L415, plus release.yml). Pre-existing: `master`'s own
+   `ci.yml` also concludes `failure`.
+   **Not fixable by the agent** (repo-secret endpoint returns HTTP 401, admin-only) and
+   **not worth patching in the workflow**: there are no `ssh://` git dependencies and no
+   submodules — all git deps are `https://github.com/...` — so the step is vestigial
+   template weight, but guarding it in 5 places would diverge from upstream and create
+   conflicts on every future sync. Reported to the operator instead.
+2. **`Require Linked Issue`** — satisfied by filing #24 and adding `Closes #24`.
+
+## Verification state at PR creation
+
+- Workspace `--all-targets` green (0 errors).
+- CI's actual `jcode-app-core --lib` gates EXIT=0 (`retention_readiness`, stdin forwarding).
+- All 5 budget gates EXIT=0 on the branch head `d511d5948`.
+- E2E re-verify of the 6 shifting failures launched (`.scratch-e2e-reverify.sh`).
