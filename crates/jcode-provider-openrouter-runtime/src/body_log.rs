@@ -186,7 +186,7 @@ mod sse_log_tests {
 
     #[tokio::test]
     async fn enabled_captures_chunks_to_file() {
-        let temp = tempfile::TempDir::new().unwrap();
+        let temp = super::private_test_directory();
         let dir = temp.path();
         let chunks: Vec<Result<bytes::Bytes, reqwest::Error>> = vec![
             Ok(bytes::Bytes::from_static(b"data: hello\n\n")),
@@ -234,7 +234,7 @@ mod body_log_tests {
 
     #[test]
     fn enabled_writes_timestamped_body() {
-        let temp = tempfile::TempDir::new().unwrap();
+        let temp = super::private_test_directory();
         let dir = temp.path();
         let request = json!({
             "model": "minimax-m3",
@@ -261,7 +261,7 @@ mod body_log_tests {
 
     #[test]
     fn invalid_chars_in_model_are_sanitized() {
-        let temp = tempfile::TempDir::new().unwrap();
+        let temp = super::private_test_directory();
         let dir = temp.path();
         dump_request_body("z-ai/glm:5.3", &json!({"model": "x"}), Some(&dir));
         let entries: Vec<_> = std::fs::read_dir(&dir)
@@ -282,7 +282,7 @@ mod capture_file_tests {
     use super::*;
     #[test]
     fn captures_do_not_overwrite_each_other() {
-        let dir = tempfile::TempDir::new().unwrap();
+        let dir = super::private_test_directory();
         for _ in 0..20 {
             dump_request_body(
                 "model",
@@ -296,7 +296,7 @@ mod capture_file_tests {
     #[test]
     fn captures_are_private() {
         use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::TempDir::new().unwrap();
+        let dir = super::private_test_directory();
         let file = capture_file(dir.path(), "model", ".json").unwrap();
         assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
         assert_eq!(
@@ -308,7 +308,7 @@ mod capture_file_tests {
     #[test]
     fn shared_directory_permissions_are_preserved() {
         use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::TempDir::new().unwrap();
+        let dir = super::private_test_directory();
         std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(capture_file(dir.path(), "model", ".json").is_err());
         assert_eq!(
@@ -329,4 +329,15 @@ mod capture_file_tests {
         assert!(captured.next().await.is_none());
         assert!(captured.next().await.is_none());
     }
+}
+
+#[cfg(test)]
+fn private_test_directory() -> tempfile::TempDir {
+    let dir = tempfile::TempDir::new().unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    dir
 }
