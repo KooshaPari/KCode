@@ -9,6 +9,7 @@ on:
       - 'crates/jcode-tui/src/herdr.rs'
       - 'crates/jcode-tui/src/tui/app/remote/**'
       - 'crates/jcode-tui/src/tui/app/tests/remote_startup_input_03/**'
+      - 'crates/jcode-tui/src/tui/app/tests/remote_events_reload_03/**'
       - 'src/cli/herdr.rs'
   workflow_dispatch:
 permissions:
@@ -46,7 +47,7 @@ jobs:
           cargo test --locked -p jcode-provider-openrouter-runtime --lib body_log::
       - name: TUI lifecycle and launcher fixture
         if: ${{ !cancelled() }}
-        run: cargo test --locked -p jcode-tui --lib -- herdr::tests test_reload_client_after_server_reload_applies_to_non_selfdev
+        run: cargo test --locked -p jcode-tui --lib -- herdr::tests test_reload_client_after_server_reload_applies_to_non_selfdev test_handle_server_event_history_restores_active_resume_processing_state
       - name: CLI compilation
         if: ${{ !cancelled() }}
         run: cargo check --locked --no-default-features -p jcode --bin jcode

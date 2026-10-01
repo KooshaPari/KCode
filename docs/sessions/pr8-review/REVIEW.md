@@ -21,3 +21,11 @@ capture paths, so no global environment mutation remains in capture tests.
 Installed `herdr plugin link --help` confirms `herdr plugin link <PATH>`.
 No local build or tests. Rustfmt and diff whitespace inspection only; free hosted
 review-correction workflow carries the changed-crate, TUI and CLI gates.
+
+
+Independent follow-up: History now reports state after adopting activity instead
+of publishing Idle during reset. The active-resume regression checks the actual
+requested HERDR state using thread-local test-only observation. The focused TUI
+cohort includes it. ACP docs now distinguish handler invocation from compilation.
+Duplicate env mappings in Windows/iOS workflows are consolidated. CI SSH setup
+was removed after verifying no .gitmodules and only public HTTPS git dependencies.
