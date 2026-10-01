@@ -153,9 +153,8 @@ pub(in crate::tui::app) async fn submit_prepared_remote_input(
         title: None,
         tool_data: None,
     });
-    let _ = app
-        .begin_remote_send(remote, prepared.expanded, prepared.images, false)
-        .await;
+    app.begin_remote_send(remote, prepared.expanded, prepared.images, false)
+        .await?;
     // Report HERDR: this pane's remote turn is starting. The turn itself runs
     // in the shared server, so the pane-local client is the only process that
     // knows which pane the work belongs to.

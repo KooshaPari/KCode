@@ -61,16 +61,14 @@ pub(crate) fn run_herdr_status() -> Result<()> {
 /// HERDR `herdr-plugin.toml` plugin manifests that register these
 /// agents with the HERDR loader.
 ///
-/// On Windows this is a no-op file write (we still emit the plugin
-/// manifest so users on mixed OS setups can see what *would* be
-/// installed), but we print a one-line hint that Herdr is Unix-only
-/// and direct the user to WSL2.
+/// On Windows, print the WSL2 guidance without writing files.
 pub(crate) fn run_herdr_install() -> Result<()> {
     if std::env::consts::OS == "windows" {
         println!(
             "Note: HERDR is Unix-only. On Windows, run this command from inside WSL2 \
              (Ubuntu) after installing the Herdr WSL build there."
         );
+        return Ok(());
     }
 
     let dir = herdr_agent_detection_dir()?;
@@ -103,15 +101,28 @@ pub(crate) fn run_herdr_install() -> Result<()> {
     let plugins_dir = herdr_local_plugins_dir()?;
     std::fs::create_dir_all(&plugins_dir)?;
 
-    let jcode_plugin_path = plugins_dir.join("jcode.toml");
+    let jcode_plugin_path = plugins_dir.join("jcode").join("herdr-plugin.toml");
     let jcode_plugin_manifest = jcode_herdr::plugin::jcode_plugin();
     jcode_herdr::plugin::write_plugin(&jcode_plugin_manifest, &jcode_plugin_path)?;
     println!("Installed {}", jcode_plugin_path.display());
 
-    let forgecode_plugin_path = plugins_dir.join("forgecode.toml");
+    let forgecode_plugin_path = plugins_dir.join("forgecode").join("herdr-plugin.toml");
     let forgecode_plugin_manifest = jcode_herdr::plugin::forgecode_plugin();
     jcode_herdr::plugin::write_plugin(&forgecode_plugin_manifest, &forgecode_plugin_path)?;
     println!("Installed {}", forgecode_plugin_path.display());
+
+    for manifest in [&jcode_plugin_path, &forgecode_plugin_path] {
+        let binary = std::env::var_os("HERDR_BIN_PATH").unwrap_or_else(|| "herdr".into());
+        let status = std::process::Command::new(binary)
+            .args(["plugin", "link"])
+            .arg(manifest.parent().expect("plugin directory"))
+            .status()?;
+        anyhow::ensure!(
+            status.success(),
+            "HERDR plugin link failed for {}",
+            manifest.display()
+        );
+    }
 
     println!();
     println!(

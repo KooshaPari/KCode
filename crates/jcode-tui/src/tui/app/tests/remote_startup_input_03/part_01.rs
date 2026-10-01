@@ -668,6 +668,19 @@ fn test_reload_requests_exit_when_newer_binary() {
 #[test]
 fn test_reload_client_after_server_reload_applies_to_non_selfdev() {
     use std::time::{Duration, SystemTime};
+    let _lock = crate::storage::lock_test_env();
+    struct RestoreInstallDir(Option<std::ffi::OsString>);
+    impl Drop for RestoreInstallDir {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => crate::env::set_var("JCODE_INSTALL_DIR", value),
+                None => crate::env::remove_var("JCODE_INSTALL_DIR"),
+            }
+        }
+    }
+    let _restore = RestoreInstallDir(std::env::var_os("JCODE_INSTALL_DIR"));
+    let install = tempfile::TempDir::new().unwrap();
+    crate::env::set_var("JCODE_INSTALL_DIR", install.path());
 
     let exe = crate::build::launcher_binary_path().unwrap();
     let mut created = false;

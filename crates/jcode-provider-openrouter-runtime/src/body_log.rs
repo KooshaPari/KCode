@@ -6,6 +6,8 @@
 //! (e.g. MiniMax-M3 `<function_calls>` markup leaks) where raw SSE bodies are
 //! not otherwise logged.
 //!
+//! Raw captures intentionally retain prompt/tool content for diagnostics. Use a dedicated
+//! private directory; Unix directories/files are restricted to 0700/0600.
 //! Disabled by default: unset or empty `JCODE_PROVIDER_BODY_LOG` writes nothing.
 
 use bytes::Bytes;
@@ -40,66 +42,55 @@ pub fn maybe_dump_request_body(model: &str, request: &Value) {
 /// Disabled by default: unset or empty `JCODE_PROVIDER_SSE_LOG` passes chunks
 /// through untouched. Failures never propagate: capture must not break the
 /// stream.
-pub fn capture_sse_stream<S>(stream: S, model: String) -> impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send
+pub fn capture_sse_stream<S>(
+    stream: S,
+    model: String,
+) -> impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send
 where
     S: futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 {
-    let capture_path = match std::env::var("JCODE_PROVIDER_SSE_LOG") {
-        Ok(dir) if !dir.is_empty() => {
-            let ms = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis())
-                .unwrap_or_default();
-            let safe_model: String = model
-                .chars()
-                .map(|c| {
-                    if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                        c
-                    } else {
-                        '_'
-                    }
-                })
-                .collect();
-            Some(PathBuf::from(dir).join(format!("{ms}-{safe_model}-sse.txt")))
+    let dir = std::env::var_os("JCODE_PROVIDER_SSE_LOG")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from);
+    capture_sse_stream_to(stream, &model, dir.as_deref())
+}
+
+fn capture_sse_stream_to<S>(
+    stream: S,
+    model: &str,
+    dir: Option<&Path>,
+) -> impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send + use<S>
+where
+    S: futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send + 'static,
+{
+    let file = dir.and_then(|dir| match capture_file(dir, model, "-sse.txt") {
+        Ok(file) => Some(file),
+        Err(error) => {
+            jcode_base::logging::warn(&format!("[openrouter] Failed to open SSE capture: {error}"));
+            None
         }
-        _ => None,
-    };
-    let file = capture_path.as_ref().and_then(|p| {
-        if let Some(parent) = p.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        std::fs::OpenOptions::new().create(true).append(true).open(p).ok()
     });
-    if let Some(p) = capture_path.as_ref() {
-        if file.is_some() {
-            jcode_base::logging::info(&format!("[openrouter] Capturing raw SSE to {}", p.display()));
-        } else {
-            jcode_base::logging::info(&format!(
-                "[openrouter] Failed to open SSE capture file {}",
-                p.display()
-            ));
-        }
-    }
 
     let stream = Box::pin(stream);
     // `.fuse()`: a raw `unfold` panics if polled after it returned
     // `Ready(None)`. Fusing makes the tee return `None` forever after EOF, so
     // it cannot take down a consumer that probes for termination.
-    futures::stream::unfold(
-        (stream, file),
-        |(mut stream, file)| async move {
-            match stream.as_mut().next().await {
-                Some(item) => {
-                    if let (Some(f), Ok(bytes)) = (file.as_ref(), item.as_ref()) {
-                        let mut f = f;
-                        let _ = std::io::Write::write_all(&mut f, bytes);
+    futures::stream::unfold((stream, file), |(mut stream, mut file)| async move {
+        match stream.as_mut().next().await {
+            Some(item) => {
+                if let (Some(f), Ok(bytes)) = (file.as_mut(), item.as_ref()) {
+                    if let Err(error) = f.write_all(bytes) {
+                        jcode_base::logging::warn(&format!(
+                            "[openrouter] Disabling failed SSE capture: {error}"
+                        ));
+                        file = None;
                     }
-                    Some((item, (stream, file)))
                 }
-                None => None,
+                Some((item, (stream, file)))
             }
-        },
-    )
+            None => None,
+        }
+    })
     .fuse()
 }
 
@@ -110,51 +101,56 @@ fn dump_request_body(model: &str, request: &Value, dir: Option<&Path>) {
         return;
     };
 
+    let result = (|| -> std::io::Result<()> {
+        let mut file = capture_file(dir, model, ".json")?;
+        serde_json::to_writer_pretty(&mut file, request)?;
+        file.flush()
+    })();
+    if let Err(error) = result {
+        jcode_base::logging::warn(&format!(
+            "[openrouter] Failed to dump request body: {error}"
+        ));
+    }
+}
+
+fn capture_file(dir: &Path, model: &str, suffix: &str) -> std::io::Result<std::fs::File> {
+    std::fs::create_dir_all(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+    }
     let ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .as_millis();
     let safe_model: String = model
         .chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+            if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') {
                 c
             } else {
                 '_'
             }
         })
         .collect();
-    let path = dir.join(format!("{ms}-{safe_model}.json"));
-
-    let write_result = (|| -> std::io::Result<()> {
-        std::fs::create_dir_all(dir)?;
-        let mut f = std::fs::File::create(&path)?;
-        f.write_all(
-            serde_json::to_string_pretty(request)
-                .unwrap_or_default()
-                .as_bytes(),
-        )
-    })();
-
-    match write_result {
-        Ok(()) => {
-            jcode_base::logging::info(&format!(
-                "[openrouter] Dumped request body to {}",
-                path.display()
-            ));
-        }
-        Err(e) => {
-            jcode_base::logging::info(&format!(
-                "[openrouter] Failed to dump request body to {}: {e}",
-                path.display()
-            ));
-        }
+    let path = dir.join(format!(
+        "{ms}-{}-{safe_model}{suffix}",
+        uuid::Uuid::new_v4()
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
     }
+    options.open(path)
 }
 
 #[cfg(test)]
 mod sse_log_tests {
-    use super::capture_sse_stream;
+    use super::capture_sse_stream_to;
     use futures::StreamExt;
 
     #[tokio::test]
@@ -165,7 +161,11 @@ mod sse_log_tests {
             Ok(bytes::Bytes::from_static(b"data: world\n\n")),
         ];
         let mut out: Vec<u8> = Vec::new();
-        let mut s = Box::pin(capture_sse_stream(futures::stream::iter(chunks), "minimax-m3".to_string()));
+        let mut s = Box::pin(capture_sse_stream_to(
+            futures::stream::iter(chunks),
+            "minimax-m3",
+            None,
+        ));
         while let Some(c) = s.next().await {
             out.extend_from_slice(&c.expect("no error expected"));
         }
@@ -174,43 +174,23 @@ mod sse_log_tests {
 
     #[tokio::test]
     async fn enabled_captures_chunks_to_file() {
-        let dir = std::env::temp_dir().join(format!(
-            "jcode-sse-log-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or_default()
-        ));
-        // SAFETY: test-only env var, restored immediately; the single-threaded
-        // current-thread runtime in #[tokio::test] avoids cross-test races.
-        #[allow(unsafe_op_in_unsafe_fn)]
-        unsafe {
-            std::env::set_var("JCODE_PROVIDER_SSE_LOG", &dir);
-        }
+        let temp = tempfile::TempDir::new().unwrap();
+        let dir = temp.path();
         let chunks: Vec<Result<bytes::Bytes, reqwest::Error>> = vec![
             Ok(bytes::Bytes::from_static(b"data: hello\n\n")),
             Ok(bytes::Bytes::from_static(b"data: world\n\n")),
         ];
-        let mut s = Box::pin(capture_sse_stream(futures::stream::iter(chunks), "minimax-m3".to_string()));
+        let mut s = Box::pin(capture_sse_stream_to(
+            futures::stream::iter(chunks),
+            "minimax-m3",
+            Some(dir),
+        ));
         while let Some(_c) = s.next().await {}
-        #[allow(unsafe_op_in_unsafe_fn)]
-        unsafe {
-            std::env::remove_var("JCODE_PROVIDER_SSE_LOG");
-        }
-
         let mut entries: Vec<_> = std::fs::read_dir(&dir)
             .expect("sse capture dir must be created")
             .filter_map(|e| e.ok())
             .collect();
-        assert!(
-            !entries.is_empty(),
-            "at least one sse capture file expected"
-        );
-        // A concurrent run of this binary can share the temp dir when the
-        // pid+nanos name collides; only the files written by *this* invocation
-        // must contain our chunks, so assert on the newest entry rather than
-        // the entry count.
+        assert_eq!(entries.len(), 1, "exactly one capture expected");
         entries.sort_by_key(|e| e.file_name());
         let name = entries
             .last()
@@ -226,7 +206,6 @@ mod sse_log_tests {
             std::fs::read_to_string(entries.last().expect("capture entry").path()).unwrap();
         assert!(written.contains("data: hello"));
         assert!(written.contains("data: world"));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
@@ -243,7 +222,8 @@ mod body_log_tests {
 
     #[test]
     fn enabled_writes_timestamped_body() {
-        let dir = std::env::temp_dir().join(format!("jcode-body-log-test-{}", std::process::id()));
+        let temp = tempfile::TempDir::new().unwrap();
+        let dir = temp.path();
         let request = json!({
             "model": "minimax-m3",
             "messages": [{"role": "user", "content": "hi"}]
@@ -258,25 +238,19 @@ mod body_log_tests {
         entries.sort_by_key(|e| e.file_name());
         let name = entries[0].file_name().to_string_lossy().to_string();
         assert!(
-            name.ends_with("minimax-m3.json") && name.chars().next().is_some_and(|c| c.is_ascii_digit()),
+            name.ends_with("minimax-m3.json")
+                && name.chars().next().is_some_and(|c| c.is_ascii_digit()),
             "timestamped model name expected, got: {name}"
         );
         let written = std::fs::read_to_string(entries[0].path()).unwrap();
         assert!(written.contains("minimax-m3"));
         assert!(!written.contains("Recovered"));
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn invalid_chars_in_model_are_sanitized() {
-        let dir = std::env::temp_dir().join(format!(
-            "jcode-body-log-sanitize-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or_default()
-        ));
+        let temp = tempfile::TempDir::new().unwrap();
+        let dir = temp.path();
         dump_request_body("z-ai/glm:5.3", &json!({"model": "x"}), Some(&dir));
         let entries: Vec<_> = std::fs::read_dir(&dir)
             .expect("body-log dir must be created")
@@ -284,7 +258,50 @@ mod body_log_tests {
             .collect();
         assert_eq!(entries.len(), 1);
         let name = entries[0].file_name().to_string_lossy().to_string();
-        assert!(name.ends_with("z-ai_glm_5.3.json"), "sanitized model expected, got: {name}");
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            name.ends_with("z-ai_glm_5.3.json"),
+            "sanitized model expected, got: {name}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod capture_file_tests {
+    use super::*;
+    #[test]
+    fn captures_do_not_overwrite_each_other() {
+        let dir = tempfile::TempDir::new().unwrap();
+        for _ in 0..20 {
+            dump_request_body(
+                "model",
+                &serde_json::json!({"messages": []}),
+                Some(dir.path()),
+            );
+        }
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 20);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn captures_are_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = capture_file(dir.path(), "model", ".json").unwrap();
+        assert_eq!(file.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            dir.path().metadata().unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+    }
+    #[tokio::test]
+    async fn invalid_capture_destination_preserves_stream() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let stream = futures::stream::iter(vec![Ok(Bytes::from_static(b"data"))]);
+        let mut captured = Box::pin(capture_sse_stream_to(stream, "model", Some(file.path())));
+        assert_eq!(
+            captured.next().await.unwrap().unwrap(),
+            Bytes::from_static(b"data")
+        );
+        assert!(captured.next().await.is_none());
+        assert!(captured.next().await.is_none());
     }
 }

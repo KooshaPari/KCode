@@ -6,7 +6,11 @@
 
 use jcode_herdr::{AgentState, HerdrReporter};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::Mutex;
+
+static SESSION_REVISION: AtomicU64 = AtomicU64::new(0);
+static STATE_REVISION: AtomicU64 = AtomicU64::new(0);
 
 static REPORTER: OnceLock<Mutex<Option<HerdrReporter>>> = OnceLock::new();
 
@@ -20,7 +24,17 @@ pub fn spawn_report(state: AgentState) {
     if tokio::runtime::Handle::try_current().is_err() {
         return;
     }
-    tokio::spawn(report_state(state));
+    let revision = STATE_REVISION.fetch_add(1, Ordering::SeqCst) + 1;
+    tokio::spawn(async move {
+        if let Some(m) = REPORTER.get() {
+            let guard = m.lock().await;
+            if revision == STATE_REVISION.load(Ordering::SeqCst) {
+                if let Some(reporter) = guard.as_ref() {
+                    reporter.set_state(state).await;
+                }
+            }
+        }
+    });
 }
 
 /// Initialize the global HERDR reporter. Safe to call multiple times;
@@ -67,7 +81,17 @@ pub fn spawn_report_session_id(session_id: String) {
     if tokio::runtime::Handle::try_current().is_err() {
         return;
     }
-    tokio::spawn(report_session_id(session_id));
+    let revision = SESSION_REVISION.fetch_add(1, Ordering::SeqCst) + 1;
+    tokio::spawn(async move {
+        if let Some(m) = REPORTER.get() {
+            let guard = m.lock().await;
+            if revision == SESSION_REVISION.load(Ordering::SeqCst) {
+                if let Some(reporter) = guard.as_ref() {
+                    reporter.set_session_id(session_id).await;
+                }
+            }
+        }
+    });
 }
 
 /// Send the initial idle report on session start.
@@ -97,4 +121,13 @@ pub fn is_active() -> bool {
         .and_then(|m| m.try_lock().ok())
         .and_then(|guard| guard.as_ref().map(|r| r.is_active()))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reports_without_runtime_are_noops() {
+        super::spawn_report_session_id("test-session".into());
+        super::spawn_report(jcode_herdr::AgentState::Idle);
+    }
 }
