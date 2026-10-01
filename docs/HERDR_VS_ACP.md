@@ -175,7 +175,7 @@ HERDR is Unix-only because it depends on Unix-domain sockets and
 - `crates/jcode-herdr/src/socket.rs:17-25` is the Unix build path.
 - `crates/jcode-herdr/src/socket.rs:58-63` is the Windows stub,
   emitting `"HERDR is not supported on this platform (Unix-only)"`.
-- `crates/jcode-herdr/src/plugin/mod.rs` exports
+- `crates/jcode-herdr/src/plugin/platforms.rs` defines
   `windows_install_hint()` (referenced from
   `src/cli/herdr.rs::run_herdr_install`) which prints a single line
   directing Windows users to WSL2 + a Herdr WSL build.
