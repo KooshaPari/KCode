@@ -114,11 +114,23 @@ fn dump_request_body(model: &str, request: &Value, dir: Option<&Path>) {
 }
 
 fn capture_file(dir: &Path, model: &str, suffix: &str) -> std::io::Result<std::fs::File> {
-    std::fs::create_dir_all(dir)?;
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dir)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+        if dir.metadata()?.permissions().mode() & 0o077 != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "capture requires a private directory; existing permissions were preserved",
+            ));
+        }
     }
     let ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -291,6 +303,19 @@ mod capture_file_tests {
             dir.path().metadata().unwrap().permissions().mode() & 0o777,
             0o700
         );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn shared_directory_permissions_are_preserved() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(capture_file(dir.path(), "model", ".json").is_err());
+        assert_eq!(
+            dir.path().metadata().unwrap().permissions().mode() & 0o777,
+            0o755
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
     }
     #[tokio::test]
     async fn invalid_capture_destination_preserves_stream() {
