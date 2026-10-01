@@ -56,7 +56,7 @@ a workspace. In this repo it is implemented in `crates/jcode-herdr/`:
   `HerdrEnv` (`crates/jcode-herdr/src/env.rs`),
   `HerdrReporter` (`crates/jcode-herdr/src/reporter.rs`),
   `AgentState` (`crates/jcode-herdr/src/state.rs`),
-  `PluginManifest` (`crates/jcode-herdr/src/plugin.rs`),
+  `PluginManifest` (`crates/jcode-herdr/src/plugin/mod.rs`),
   and the screen-manifest helpers (`crates/jcode-herdr/src/manifest.rs`).
 - `crates/jcode-herdr/src/env.rs` captures the HERDR env (`HERDR_ENV`,
   `HERDR_PANE_ID`, `HERDR_SOCKET_PATH`, `HERDR_BIN_PATH`,
@@ -77,7 +77,7 @@ a workspace. In this repo it is implemented in `crates/jcode-herdr/`:
   (`crates/jcode-herdr/src/manifest.rs:34` for `to_toml`,
   `crates/jcode-herdr/src/manifest.rs:70` for the jcode manifest,
   `crates/jcode-herdr/src/manifest.rs:115` for the ForgeCode manifest).
-- `crates/jcode-herdr/src/plugin.rs` is the in-process `herdr-plugin.toml`
+- `crates/jcode-herdr/src/plugin/mod.rs` is the in-process `herdr-plugin.toml`
   emitter added alongside this doc. It produces the local plugin
   manifest under `~/.config/herdr/plugins/local/` so users do not have
   to clone the upstream community plugins.
@@ -163,8 +163,7 @@ None required. They coexist:
 - A non-ACP user (terminal-only, or a different agent) still gets
   HERDR's value via the screen manifests in
   `~/.config/herdr/agent-detection/*.toml`. No ACP code is loaded on
-  that path — `src/cli/acp.rs` is only compiled into the binary when
-  the user actually invokes the ACP subcommand.
+  that path — the ACP handler in `src/cli/acp.rs` is not invoked.
 
 ## Cross-platform guards
 
@@ -176,7 +175,7 @@ HERDR is Unix-only because it depends on Unix-domain sockets and
 - `crates/jcode-herdr/src/socket.rs:17-25` is the Unix build path.
 - `crates/jcode-herdr/src/socket.rs:58-63` is the Windows stub,
   emitting `"HERDR is not supported on this platform (Unix-only)"`.
-- `crates/jcode-herdr/src/plugin.rs` exports
+- `crates/jcode-herdr/src/plugin/mod.rs` exports
   `windows_install_hint()` (referenced from
   `src/cli/herdr.rs::run_herdr_install`) which prints a single line
   directing Windows users to WSL2 + a Herdr WSL build.
@@ -221,3 +220,16 @@ keeping them separate is what lets each one stay small.
 - `docs/HERDR_INTEGRATION.md` — operational guide for
   `jcode herdr status`, `jcode herdr install`, env vars, the
   reporter protocol, and the screen-manifest format.
+
+## Review corrections
+
+`jcode herdr install` writes each plugin to
+`~/.config/herdr/plugins/local/<name>/herdr-plugin.toml` and registers its
+containing directory through `herdr plugin link`. On native Windows it prints
+WSL guidance without writing files. The plugin IDs remain unchanged.
+
+Diagnostic body and SSE logging remain explicit raw-capture tools: enabling
+these variables intentionally includes prompt, tool, and response content.
+Use a dedicated capture directory. Unix capture directories/files are restricted
+to 0700/0600; unique create-new filenames prevent concurrent-request overwrites.
+Write failures disable that stream's capture without interrupting the response.

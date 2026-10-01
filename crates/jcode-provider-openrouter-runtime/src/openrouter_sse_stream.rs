@@ -382,10 +382,13 @@ async fn stream_response(
 async fn stream_responses_api_response(
     response: reqwest::Response,
     tx: mpsc::Sender<Result<StreamEvent>>,
-    _model: &str,
+    model: &str,
 ) -> Result<()> {
     use futures::StreamExt;
-    let mut bytes_stream = response.bytes_stream();
+    let mut bytes_stream = Box::pin(super::body_log::capture_sse_stream(
+        response.bytes_stream(),
+        model.to_owned(),
+    ));
     let mut buffer = String::new();
     let mut _current_event_type = String::new();
     let mut in_thinking = false;
