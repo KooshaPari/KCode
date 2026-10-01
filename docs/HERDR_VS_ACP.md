@@ -162,8 +162,8 @@ None required. They coexist:
   conflict.
 - A non-ACP user (terminal-only, or a different agent) still gets
   HERDR's value via the screen manifests in
-  `~/.config/herdr/agent-detection/*.toml`. No ACP code is loaded on
-  that path — the ACP handler in `src/cli/acp.rs` is not invoked.
+  `~/.config/herdr/agent-detection/*.toml`. The ACP handler in
+  `src/cli/acp.rs` is not invoked on that path.
 
 ## Cross-platform guards
 
