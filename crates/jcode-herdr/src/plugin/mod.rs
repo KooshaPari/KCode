@@ -225,7 +225,7 @@ pub fn jcode_plugin() -> PluginManifest {
                 description: Some(
                     "Print HERDR env vars, pane id, and reporter activity.".to_string(),
                 ),
-                command: platforms::replace_cmd(install_hint.clone(), "herdr status"),
+                command: platforms::replace_cmd(install_hint.clone(), "status"),
             },
             PluginAction {
                 id: "doctor".to_string(),
@@ -280,7 +280,7 @@ pub fn forgecode_plugin() -> PluginManifest {
                 description: Some(
                     "Print HERDR env vars, pane id, and reporter activity.".to_string(),
                 ),
-                command: platforms::replace_cmd(install_hint, "herdr status"),
+                command: platforms::replace_cmd(install_hint, "status"),
             },
         ],
     }
@@ -289,7 +289,7 @@ pub fn forgecode_plugin() -> PluginManifest {
 /// Write a plugin manifest to the given path. Convenience wrapper that
 /// creates parent directories.
 pub fn write_plugin(manifest: &PluginManifest, path: &std::path::Path) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
+    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(path, manifest.to_toml())
