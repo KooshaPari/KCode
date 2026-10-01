@@ -1056,6 +1056,7 @@ pub(in crate::tui::app) fn handle_server_event(
             app.push_display_message(DisplayMessage::system("Interrupted"));
             app.is_processing = false;
             app.status = ProcessingStatus::Idle;
+            crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
             app.stream_message_ended = false;
             app.processing_started = None;
             app.current_message_id = None;
@@ -1096,10 +1097,6 @@ pub(in crate::tui::app) fn handle_server_event(
             true
         }
         ServerEvent::Done { id } => {
-            // Report HERDR: the remote turn has finished; this pane is ready
-            // for input again. The client owns the pane identity, so it is the
-            // correct place to publish the idle transition.
-            crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
             let mut auto_poked = false;
             let mut completed_current_message = false;
             crate::logging::info(&format!(
@@ -1170,6 +1167,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 crate::tui::mermaid::clear_streaming_preview_diagram();
                 app.is_processing = false;
                 app.status = ProcessingStatus::Idle;
+                crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
                 app.stream_message_ended = false;
                 // Turn completed successfully; drop the saved prompt so a later
                 // unrelated failure cannot restore stale text into the input box.
@@ -1268,6 +1266,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     }
                     app.is_processing = false;
                     app.status = ProcessingStatus::Idle;
+                    crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
                     app.stream_message_ended = false;
                     app.processing_started = None;
                     app.clear_visible_turn_started();
@@ -1303,6 +1302,7 @@ pub(in crate::tui::app) fn handle_server_event(
             });
             app.is_processing = false;
             app.status = ProcessingStatus::Idle;
+            crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
             app.stream_message_ended = false;
             let recovered_local = recover_local_interleave_to_queue(app, "request error");
             crate::tui::mermaid::clear_streaming_preview_diagram();
@@ -1679,6 +1679,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.last_stream_activity = None;
                     app.is_processing = false;
                     app.status = ProcessingStatus::Idle;
+                    crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
                 }
                 app.replay_processing_started_ms = None;
                 app.replay_elapsed_override = None;
@@ -2313,8 +2314,10 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::ModelUsageUpdated { route } => {
             for cached in &mut app.remote_model_options {
-                if cached.model == route.model && cached.provider == route.provider
-                    && cached.api_method == route.api_method {
+                if cached.model == route.model
+                    && cached.provider == route.provider
+                    && cached.api_method == route.api_method
+                {
                     cached.usage = route.usage.clone();
                 }
             }

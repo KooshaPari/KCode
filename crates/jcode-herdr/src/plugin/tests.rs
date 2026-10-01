@@ -29,7 +29,7 @@ fn jcode_plugin_round_trips_as_valid_toml() {
             .get("platforms")
             .and_then(|v| v.as_array())
             .map(|a| a.len()),
-        Some(2)
+        Some(m.platforms.len())
     );
 
     // Agents array has at least one jcode entry.
@@ -178,4 +178,34 @@ fn quote_str_escapes_special_chars() {
         parsed.get("description").and_then(|v| v.as_str()),
         Some(description.as_str())
     );
+}
+
+#[test]
+fn status_action_uses_separate_arguments() {
+    for manifest in [jcode_plugin(), forgecode_plugin()] {
+        let parsed: toml::Value = toml::from_str(&manifest.to_toml()).unwrap();
+        let text = manifest.to_toml();
+        assert!(!text.contains("herdr status"));
+        assert!(parsed.get("actions").is_some());
+    }
+    assert_eq!(
+        platforms::replace_cmd(platforms::install_command_hint(), "status"),
+        vec!["jcode", "herdr", "status"]
+    );
+}
+
+#[test]
+fn write_plugin_accepts_a_bare_filename() {
+    let name = format!("jcode-plugin-test-{}.toml", std::process::id());
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+    let cleanup = Cleanup(name.into());
+    write_plugin(&jcode_plugin(), &cleanup.0).unwrap();
+    let parsed: toml::Value =
+        toml::from_str(&std::fs::read_to_string(&cleanup.0).unwrap()).unwrap();
+    assert_eq!(parsed["id"].as_str(), Some(JCODE_PLUGIN_ID));
 }
