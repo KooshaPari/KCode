@@ -1,0 +1,86 @@
+name: ACP Bridge
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/acp-bridge.yml'
+      - 'src/cli/acp.rs'
+      - 'src/cli/acp/**'
+      - 'scripts/qualification/acp_*.py'
+      - 'crates/jcode-app-core/src/tool/**'
+      - 'crates/jcode-app-core/src/server.rs'
+      - 'crates/jcode-app-core/src/server/**'
+      - 'crates/jcode-base/src/hooks.rs'
+      - 'Cargo.lock'
+      - '**/Cargo.toml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acp-bridge-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  JCODE_CI: '1'
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: '2'
+  CARGO_PROFILE_DEV_DEBUG: '0'
+  CARGO_PROFILE_TEST_DEBUG: '0'
+  RUSTUP_TOOLCHAIN: stable
+
+jobs:
+  bridge:
+    name: ACP source and tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: acp-minimal-${{ matrix.os }}
+      - name: Check module declarations
+        run: python3 scripts/check_module_files.py
+      - name: Check focused module formatting
+        run: |
+          rustfmt --edition 2024 --check src/cli/acp/discovery.rs src/cli/acp/live.rs src/cli/acp/interactions.rs
+          rustfmt --edition 2024 --check crates/jcode-app-core/src/tool/interaction.rs crates/jcode-app-core/src/tool/interaction_form.rs
+      - name: Compile minimal production binary
+        id: compile
+        run: cargo build --locked --no-default-features -p jcode --bin jcode
+      - name: Run ACP adapter tests
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: |
+          cargo test --locked --no-default-features -p jcode --lib cli::acp:: -- --nocapture
+      - name: Run concurrent attachment routing regressions
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: |
+          cargo test --locked --no-default-features -p jcode-app-core --lib server::state::request_events:: -- --nocapture
+      - name: Run interaction broker negative controls
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: |
+          cargo test --locked --no-default-features -p jcode-app-core --lib tool::interaction:: -- --nocapture
+      - name: Run hook policy regression tests
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: |
+          cargo test --locked --no-default-features -p jcode-base --lib hooks::tests:: -- --nocapture
+      - name: Qualify real actor reload and held operations
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        run: python3 scripts/qualification/acp_lifetime.py "$PWD/target/debug/jcode"
+      - name: Preserve exact development artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: acp-development-${{ matrix.os }}-${{ github.sha }}
+          path: target/debug/jcode
+          retention-days: 3
+          if-no-files-found: error

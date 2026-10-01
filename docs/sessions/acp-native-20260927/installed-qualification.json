@@ -1,0 +1,45 @@
+{
+  "exit": 0,
+  "responses": [
+    {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "result": {
+        "agentCapabilities": {
+          "loadSession": true,
+          "mcpCapabilities": {
+            "http": false,
+            "sse": false
+          },
+          "promptCapabilities": {
+            "audio": false,
+            "embeddedContext": true,
+            "image": true
+          },
+          "sessionCapabilities": {
+            "close": {},
+            "resume": {}
+          }
+        },
+        "agentInfo": {
+          "name": "jcode",
+          "title": "Jcode",
+          "version": "0.85.1-k1.1.1"
+        },
+        "authMethods": [],
+        "protocolVersion": 1
+      }
+    },
+    {
+      "error": {
+        "code": -32601,
+        "message": "Unsupported ACP method: session/list"
+      },
+      "id": 2,
+      "jsonrpc": "2.0"
+    }
+  ],
+  "stderrLength": 302,
+  "isolatedHome": true,
+  "promptSent": false
+}
