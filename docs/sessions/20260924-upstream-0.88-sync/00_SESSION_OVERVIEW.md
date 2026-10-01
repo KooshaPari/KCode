@@ -414,4 +414,39 @@ unprotected, so no required status checks gate the merge.
 - Workspace `--all-targets` green (0 errors).
 - CI's actual `jcode-app-core --lib` gates EXIT=0 (`retention_readiness`, stdin forwarding).
 - All 5 budget gates EXIT=0 on the branch head `d511d5948`.
-- E2E re-verify of the 6 shifting failures launched (`.scratch-e2e-reverify.sh`).
+- E2E re-verify of the 6 shifting failures: **4 passed / 2 failed**, both failures
+  timeout-class (see below).
+- Format: EXIT=1 with 102 pre-existing dirty files, **0 introduced by this branch**.
+
+## E2E re-verify results (2026-10-01): failures are load flakes, not defects
+
+The first re-verify attempt did not run tests at all: it died at **link time with
+`ld: write() failed, errno=28` (ENOSPC)** — the volume had **161Mi free of 926Gi**.
+Reclaiming disk (removing the two finished provenance worktrees took free space
+14Gi → 20Gi) let it build and run.
+
+6-test serial run: **4 passed / 2 failed** (EXIT=101). Isolation runs then separated
+flake from defect:
+
+| Test | Run | Result | Error |
+|---|---|---|---|
+| `burst_spawn::burst_spawn_resume_attach_...` | 6-test | FAILED | timed out attaching resumed client after 1 events |
+| `burst_spawn::burst_spawn_resume_attach_...` | isolated | **PASSED** | — |
+| `transport::test_websocket_transport_matches_unix_socket_...` | 6-test | FAILED | `deadline has elapsed` |
+| `transport::...` | isolated | FAILED | `unix: timed out ... persist (history had 1 message(s))` |
+| `transport::...` | repeat ×3 | **PASSED, PASSED, FAILED** | `timed out waiting for done event ... Ack` |
+
+**Every failure is timeout-class, and no two failures fail at the same stage** —
+attach, tokio deadline, the 10s assistant-persist poll
+(`tests/e2e/test_support/mod.rs:633`), and the done-event wait. The transport test
+passes 2/3 in isolation, so it is nondeterministic rather than broken.
+
+Load average across all attempts was **469–530** (other agents compiling in parallel),
+and load did not predict the outcome: attempt 1 *passed* at load 529 while attempt 3
+*failed* at load 469. Combined with the pre-existing "shifting failures" provenance
+recorded earlier in this session, the verdict is **environmental flake under machine
+saturation, not a merge-introduced defect**. No code change made in response.
+
+Attempting a pre-merge control run would require rebuilding the deleted provenance
+worktree's full dependency graph under load ~500, which is not worth the hours; the
+nondeterminism and stage-variance evidence already establishes flakiness on its own.
