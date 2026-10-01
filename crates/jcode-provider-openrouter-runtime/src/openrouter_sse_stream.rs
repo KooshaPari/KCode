@@ -407,11 +407,11 @@ async fn stream_responses_api_response(
                 jcode_base::logging::warn(&format!(
                     "Responses API stream timed out (no data for {}s)\n  model: {}",
                     stream_idle_timeout.as_secs(),
-                    _model
+                    model
                 ));
                 anyhow::bail!(
                     "Responses API stream timeout\n  model: {}\n  timeout: no data received for {} seconds",
-                    _model,
+                    model,
                     stream_idle_timeout.as_secs()
                 );
             }
