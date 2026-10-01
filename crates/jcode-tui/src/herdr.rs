@@ -12,6 +12,16 @@ use tokio::sync::Mutex;
 static SESSION_REVISION: AtomicU64 = AtomicU64::new(0);
 static STATE_REVISION: AtomicU64 = AtomicU64::new(0);
 
+#[cfg(test)]
+thread_local! {
+    static LAST_REQUESTED_STATE: std::cell::Cell<Option<AgentState>> = const { std::cell::Cell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn take_requested_state() -> Option<AgentState> {
+    LAST_REQUESTED_STATE.with(|state| state.take())
+}
+
 static REPORTER: OnceLock<Mutex<Option<HerdrReporter>>> = OnceLock::new();
 
 /// Spawn a [`report_state`] report onto the tokio runtime.
@@ -21,6 +31,8 @@ static REPORTER: OnceLock<Mutex<Option<HerdrReporter>>> = OnceLock::new();
 /// unit tests. Reports are already no-ops without an initialized reporter, so
 /// skipping the spawn entirely outside a runtime is behavior-preserving.
 pub fn spawn_report(state: AgentState) {
+    #[cfg(test)]
+    LAST_REQUESTED_STATE.with(|last| last.set(Some(state)));
     if tokio::runtime::Handle::try_current().is_err() {
         return;
     }
