@@ -49,10 +49,10 @@ use macos_launcher::{install_macos_app_launcher, should_refresh_macos_app_launch
 use macos_terminal::launch_script_for_macos_terminal;
 #[cfg(target_os = "macos")]
 use macos_terminal::load_preferred_macos_terminal;
-#[cfg(any(test, target_os = "macos"))]
-use macos_terminal::{MacTerminalKind, effective_macos_terminal};
 #[cfg(target_os = "macos")]
 use macos_terminal::save_preferred_macos_terminal;
+#[cfg(any(test, target_os = "macos"))]
+use macos_terminal::{MacTerminalKind, effective_macos_terminal};
 #[cfg(windows)]
 use windows_setup::{
     create_windows_desktop_shortcut, maybe_show_windows_setup_hints, run_setup_hotkey_windows,

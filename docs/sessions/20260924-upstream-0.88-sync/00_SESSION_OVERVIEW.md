@@ -372,6 +372,43 @@ Two CI failure classes, neither a code failure:
    conflicts on every future sync. Reported to the operator instead.
 2. **`Require Linked Issue`** — satisfied by filing #24 and adding `Closes #24`.
 
+## Format gate provenance (2026-10-01): PRE-EXISTING, merge introduced zero dirt
+
+`cargo fmt --all -- --check` is EXIT=1 on the branch head — but it was **already red
+before the merge**.
+
+Gold-standard provenance (same worktree method as the budget gates): the identical
+command was run on `jcode-prov-premerge` (detached `115170054`, the merge's fork parent)
+with the same pinned `rustfmt 1.9.0-nightly (d0babd8b6b 2026-07-15)`:
+
+| Tree | Unique dirty files | Result |
+|---|---|---|
+| Pre-merge (`115170054`) | **111** | RED already |
+| Branch head (post-fix) | **102** | RED |
+| dirty in both | 102 | pre-existing fork dirt |
+| dirty pre → clean post | **9** | merge *fixed* these |
+| clean pre → dirty post | **0** | merge introduced none |
+
+**Measurement trap:** the first pre-merge run measured only 99 files because a server
+reload killed the background job mid-write — the output was truncated with no trailing
+newline. Re-running to completion gave 396 diff regions / 111 files. A truncated
+`cargo fmt` output silently undercounts; verify the file ends with a newline before
+trusting a region count.
+
+CI's `Format` job fails on byte-identical diffs (first entry `benches/startup.rs:15`),
+confirming CI and local agree.
+
+**The one file the merge made dirty was mine.** The warning fix in `21fa4ad20` left
+`crates/jcode-setup-hints/src/lib.rs` with `use` statements out of rustfmt's required
+order — the `save_preferred_macos_terminal` statement must precede the
+`{MacTerminalKind, effective_macos_terminal}` group. Fixed with a 4-line reorder;
+re-measure gives `clean_pre_dirty_post = 0`.
+
+**Decision: neither ratcheted nor mass-formatted.** The remaining 102 files are
+pre-existing fork dirt (the operator documented ~402 fmt-dirty files at session start
+and directed against `cargo fmt --all`). The gate does not block: `master` is
+unprotected, so no required status checks gate the merge.
+
 ## Verification state at PR creation
 
 - Workspace `--all-targets` green (0 errors).
