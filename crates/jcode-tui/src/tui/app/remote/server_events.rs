@@ -1056,6 +1056,7 @@ pub(in crate::tui::app) fn handle_server_event(
             app.push_display_message(DisplayMessage::system("Interrupted"));
             app.is_processing = false;
             app.status = ProcessingStatus::Idle;
+            crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
             app.stream_message_ended = false;
             app.processing_started = None;
             app.current_message_id = None;
@@ -1166,6 +1167,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 crate::tui::mermaid::clear_streaming_preview_diagram();
                 app.is_processing = false;
                 app.status = ProcessingStatus::Idle;
+                crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
                 app.stream_message_ended = false;
                 // Turn completed successfully; drop the saved prompt so a later
                 // unrelated failure cannot restore stale text into the input box.
@@ -1264,6 +1266,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     }
                     app.is_processing = false;
                     app.status = ProcessingStatus::Idle;
+                    crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
                     app.stream_message_ended = false;
                     app.processing_started = None;
                     app.clear_visible_turn_started();
@@ -1299,6 +1302,7 @@ pub(in crate::tui::app) fn handle_server_event(
             });
             app.is_processing = false;
             app.status = ProcessingStatus::Idle;
+            crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
             app.stream_message_ended = false;
             let recovered_local = recover_local_interleave_to_queue(app, "request error");
             crate::tui::mermaid::clear_streaming_preview_diagram();
@@ -1410,6 +1414,9 @@ pub(in crate::tui::app) fn handle_server_event(
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
             crate::set_current_session(&session_id);
+            // Report HERDR: native session identity so the pane can be restored
+            // from the sidebar. Mirrors the codex integration's session report.
+            crate::herdr::spawn_report_session_id(session_id.clone());
             app.note_client_focus(true);
             app.update_terminal_title();
             false
@@ -1462,12 +1469,13 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::Reloading { .. } => {
             app.append_reload_message("⟳ Server reload initiated...");
-            // In-process server reloads (self-dev build-reload) keep the same
-            // server PID and never disconnect this client, so the reconnect-time
-            // client re-exec never fires. If a newer client binary is on disk and
-            // we are idle, re-exec now so client-side (TUI) changes also take
-            // effect. No-op for non-selfdev sessions or when already current.
-            app.maybe_self_reload_after_server_reload()
+            // In-process server reloads keep the same server PID and never
+            // disconnect this client, so the reconnect-time client re-exec never
+            // fires. If a newer client binary is on disk and we are idle, re-exec
+            // now so client-side (TUI) changes also take effect. Applies to every
+            // session so a promoted server build reaches all clients; no-op when
+            // already current.
+            app.maybe_reload_client_after_server_reload()
         }
         ServerEvent::ReloadProgress {
             step,
@@ -1617,6 +1625,11 @@ pub(in crate::tui::app) fn handle_server_event(
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
             crate::set_current_session(&session_id);
+            // Adopting the Subscribe snapshot's session id is a binding event
+            // for clients that never see a dedicated `SessionId` message (e.g.
+            // a reconnect whose snapshot predates it). Report it so HERDR
+            // always has an `agent_session`, mirroring the `SessionId` arm.
+            crate::herdr::spawn_report_session_id(session_id.clone());
             app.note_client_focus(true);
             let session_changed = prev_session_id.as_deref() != Some(session_id.as_str());
             // The initial Subscribe snapshot predates an early startup Message
@@ -1838,6 +1851,11 @@ pub(in crate::tui::app) fn handle_server_event(
                 } else {
                     app.remote_resume_activity = None;
                 }
+                crate::herdr::spawn_report(if app.is_processing {
+                    jcode_herdr::AgentState::Working
+                } else {
+                    jcode_herdr::AgentState::Idle
+                });
             }
             if should_apply_history_payload {
                 crate::logging::info(&format!(
@@ -2300,8 +2318,10 @@ pub(in crate::tui::app) fn handle_server_event(
         }
         ServerEvent::ModelUsageUpdated { route } => {
             for cached in &mut app.remote_model_options {
-                if cached.model == route.model && cached.provider == route.provider
-                    && cached.api_method == route.api_method {
+                if cached.model == route.model
+                    && cached.provider == route.provider
+                    && cached.api_method == route.api_method
+                {
                     cached.usage = route.usage.clone();
                 }
             }

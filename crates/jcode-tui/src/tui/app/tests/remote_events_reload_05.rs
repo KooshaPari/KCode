@@ -821,7 +821,25 @@ fn test_gate_digest_is_delivered_at_turn_end_and_rearms_next_cycle() {
                 .is_empty()
         );
 
-        // Simulate the turn running, then the cycle completing.
+        // Simulate the turn running, then the cycle completing. The clean
+        // finish queues the final-response handoff (a completed cycle is not
+        // done until the model has sent its final answer), so this call
+        // returns TRUE with the handoff outstanding.
+        app.queued_messages.clear();
+        app.pending_queued_dispatch = false;
+        assert!(
+            app.schedule_auto_poke_followup_if_needed(),
+            "a clean finish still owes the final-response handoff"
+        );
+        assert!(
+            app.queued_messages
+                .contains(&crate::todo::TODO_FINAL_RESPONSE_CONTINUATION_MESSAGE.to_string()),
+            "final-response continuation must be queued on the clean finish"
+        );
+
+        // With the handoff consumed, the second call has nothing left
+        // outstanding: the cycle finishes and the review re-arms for later
+        // work.
         app.queued_messages.clear();
         app.pending_queued_dispatch = false;
         assert!(
