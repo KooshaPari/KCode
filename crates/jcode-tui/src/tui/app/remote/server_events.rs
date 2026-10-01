@@ -1718,7 +1718,6 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.last_stream_activity = None;
                     app.is_processing = false;
                     app.status = ProcessingStatus::Idle;
-                    crate::herdr::spawn_report(jcode_herdr::AgentState::Idle);
                 }
                 app.replay_processing_started_ms = None;
                 app.replay_elapsed_override = None;
@@ -1892,6 +1891,11 @@ pub(in crate::tui::app) fn handle_server_event(
                 } else {
                     app.remote_resume_activity = None;
                 }
+                crate::herdr::spawn_report(if app.is_processing {
+                    jcode_herdr::AgentState::Working
+                } else {
+                    jcode_herdr::AgentState::Idle
+                });
             }
             if should_apply_history_payload {
                 crate::logging::info(&format!(
