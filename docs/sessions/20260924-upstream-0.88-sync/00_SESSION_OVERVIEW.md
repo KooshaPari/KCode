@@ -496,3 +496,5 @@ were dirty pre-merge as well.
 `master` is unprotected with no required status checks, so these pre-existing reds
 do not block the merge; they were deliberately **not** mass-formatted (operator
 directed against `cargo fmt --all`).
+
+**Acceptance evidence (2026-10-02):** CI step-level proof, built-binary provenance, and coverage denominators → [07_ACCEPTANCE_EVIDENCE.md](07_ACCEPTANCE_EVIDENCE.md).
