@@ -51,7 +51,7 @@
     "no_blocking_findings": "FAIL",
     "independent_fresh_review": "NOT_RUN"
   },
-  "next_bound": "Take ForgeCode provider contract candidate to verdict; validate signed macOS release identity separately; continue retained-patch/external-effect/Pine/journey/traceability gates. External-effect crash-boundary receipt/reconciliation experiment remains required.",
+  "next_bound": "Take ForgeCode provider contract candidate to verdict; validate signed macOS release identity separately; continue retained-patch/external-effect/Pine/journey/traceability gates. External-effect crash-boundary receipt/reconciliation experiment remains required. Re-run retained-patch and thin-upstream existence comparisons against jcode@2df1f77e; prior September upstream comparisons are historical evidence only.",
   "candidate_evidence": {
     "daemon_identity_run": 36686592906,
     "compile": "cargo check -p jcode-protocol -p jcode-app-core passed",
@@ -91,5 +91,12 @@
   },
   "qualified_findings": {
     "K-F002": "SOURCE_RUNTIME_MUTATION_REMOVED_IN_CANDIDATE_f18881a"
+  },
+  "external_baselines": {
+    "jcode_current": {
+      "repository": "1jehuang/jcode",
+      "snapshot": "2df1f77e920c01b4eb7830cc3c9f74d735e98087",
+      "frozen_at": "2026-10-02T03:35:36Z"
+    }
   }
 }
