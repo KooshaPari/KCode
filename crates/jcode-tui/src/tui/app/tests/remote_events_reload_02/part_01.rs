@@ -27,11 +27,11 @@ fn test_remote_poke_queues_when_turn_is_in_progress() {
         app.is_processing = true;
         app.status = ProcessingStatus::Streaming;
         app.current_message_id = Some(42);
-        app.input = "/poke".to_string();
+        app.input = "/poke on".to_string();
         app.cursor_pos = app.input.len();
 
         rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
-            .expect("/poke should queue behind the current turn");
+            .expect("/poke on should queue behind the current turn");
 
         assert!(app.auto_poke_incomplete_todos);
         assert!(app.is_processing);
