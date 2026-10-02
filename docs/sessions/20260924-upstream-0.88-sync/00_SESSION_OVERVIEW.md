@@ -450,3 +450,49 @@ saturation, not a merge-introduced defect**. No code change made in response.
 Attempting a pre-merge control run would require rebuilding the deleted provenance
 worktree's full dependency graph under load ~500, which is not worth the hours; the
 nondeterminism and stage-variance evidence already establishes flakiness on its own.
+
+## CI verification on head `26936d06e` (run `36925706533`, completed)
+
+**11 checks pass**, including the PR-level gate `Require Linked Issue` (re-confirmed
+after the two follow-up commits). Other passes: Kilo Code Review, semgrep,
+TypeScript SDK, Setup Friction Eval, Release Automation, PowerShell Syntax,
+Socket Project Report + PR Alerts.
+
+**6 failures, all accounted for:**
+
+| Job | Time | Cause |
+|---|---|---|
+| Build & Test macos / ubuntu / windows | 18s / 13s / 19s | `##[error]The ssh-private-key argument is empty` |
+| Quality Guardrails | 8s | same ssh-agent error |
+| Windows Cross-Target Check (Linux) | 12s | same ssh-agent error |
+| Format | 22s | pre-existing `cargo fmt` dirt (proven below) |
+
+The 5 ssh-agent failures are the documented empty-`secrets.DEPLOY_KEY` baseline that
+also fails on `master` (admin-only to fix; no `ssh://` git deps exist, so the checkout
+succeeds regardless).
+
+### Format job cross-validation (decisive)
+
+Extracted every `Diff in <path>` from the CI job log (7,873 lines) into a unique file
+set and compared it against the local pre-merge measurement:
+
+| Set | Count |
+|---|---|
+| CI dirty files (Linux, rustfmt **stable**) | **102** |
+| Pre-merge dirty files (local, pinned nightly 1.9.0) | **111** |
+| In CI but **not** pre-merge → **merge-introduced dirt** | **0** |
+| In pre-merge but not CI → fixed by the merge | 9 |
+
+`111 − 9 = 102`, so CI's set is exactly `pre-merge − fixed`. The first CI entry is
+`benches/startup.rs:15`, byte-identical to the local first entry. This is independent
+confirmation across a **different OS and a different rustfmt channel** than the local
+measurement, and it agrees with the local conclusion: **0 merge-introduced format dirt**.
+
+`crates/jcode-setup-hints/src/lib.rs` — the one file my warning-fix edit had made
+dirty — does **not** appear in CI's list (clean), confirming the ordering fix landed.
+The two `setup-hints` entries CI does report (`keymap/mod.rs`, `keymap/report.rs`)
+were dirty pre-merge as well.
+
+`master` is unprotected with no required status checks, so these pre-existing reds
+do not block the merge; they were deliberately **not** mass-formatted (operator
+directed against `cargo fmt --all`).
