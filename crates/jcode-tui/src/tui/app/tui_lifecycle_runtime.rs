@@ -67,10 +67,7 @@ impl App {
                 .as_deref()
                 .or(self.resume_session_id.as_deref())
                 .unwrap_or("connecting");
-            let _ = crossterm::execute!(
-                std::io::stdout(),
-                crossterm::terminal::SetTitle(format!("jcode SSH {host} {session}"))
-            );
+            self.set_terminal_title_base(session, format!("jcode SSH {host} {session}"));
             return;
         }
         let session_id = if self.is_remote {
@@ -126,10 +123,7 @@ impl App {
             Some(&fallback_label),
             is_canary,
         );
-        let _ = crossterm::execute!(
-            std::io::stdout(),
-            crossterm::terminal::SetTitle(window_title)
-        );
+        self.set_terminal_title_base(session_id, window_title);
     }
 
     pub(super) fn reconnect_target_session_id(&self) -> Option<String> {
@@ -212,18 +206,21 @@ impl App {
             .is_some_and(|mtime| mtime > startup_mtime)
     }
 
-    /// After an in-process server reload (e.g. `self-dev build-reload`), the
-    /// server PID is unchanged and connected clients never disconnect, so they
-    /// keep running their old binary and client-side changes never take effect.
-    /// When this is a self-dev session, a newer client binary is on disk, and the
-    /// client is idle, re-exec onto the new binary so TUI-side changes apply too.
+    /// After an in-process server reload (e.g. `/server-reload` or
+    /// `self-dev build-reload`), the server PID is unchanged and connected
+    /// clients never disconnect, so the reconnect-time client re-exec never
+    /// fires and clients keep running their old binary.
+    ///
+    /// When a newer client binary is on disk and the client is idle, re-exec
+    /// onto the new binary so client-side changes take effect for **every**
+    /// session, not just self-dev canary sessions. A `/server-reload` therefore
+    /// restarts each connected session's client binary on top of the default
+    /// HMR-style refresh, which is what makes a promoted server build actually
+    /// reach the clients.
+    ///
     /// Returns true when a client reload was requested.
-    pub(super) fn maybe_self_reload_after_server_reload(&mut self) -> bool {
+    pub(super) fn maybe_reload_client_after_server_reload(&mut self) -> bool {
         if !self.is_remote || crate::tui::is_ssh_remote() {
-            return false;
-        }
-        let is_selfdev_session = self.remote_is_canary.unwrap_or(self.session.is_canary);
-        if !is_selfdev_session {
             return false;
         }
         // Never interrupt an in-flight turn; the reconnect path will catch it later.

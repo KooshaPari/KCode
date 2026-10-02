@@ -121,7 +121,7 @@ pub(super) fn reconnect_status_message(app: &App, state: &RemoteRunState, detail
     };
 
     format!(
-        "⚡ Connection lost - retrying (attempt {}, {}) - {}{}",
+        "◈ Connection lost - retrying (attempt {}, {}) - {}{}",
         state.reconnect_attempts.max(1),
         elapsed_str,
         detail,
@@ -167,7 +167,7 @@ pub(super) fn reload_wait_status_message(
     };
 
     format!(
-        "⚡ Server reload in progress - waiting for handoff ({}) - {}{}",
+        "◈ Server reload in progress - waiting for handoff ({}) - {}{}",
         elapsed_str, detail, resume_hint,
     )
 }
@@ -420,6 +420,9 @@ pub(in crate::tui::app) async fn connect_with_retry(
         }
     } {
         Ok(remote) => {
+            // Request IDs are scoped to a connection. Old acknowledgements cannot
+            // arrive on this new socket and must not swallow a new turn's Done.
+            app.usage_reset.invalidate_requests.clear();
             crate::logging::info(&format!(
                 "[TIMING] remote bootstrap: connected after {}ms (resume={:?}, reconnect_attempts={})",
                 app.app_started.elapsed().as_millis(),
@@ -626,8 +629,9 @@ pub(in crate::tui::app) async fn handle_post_connect<B: ratatui::backend::Backen
         // A real "server reloaded" is signalled by `ServerEvent::Reloading`, which
         // sets `state.server_reload_in_progress = true` *before* the disconnect
         // arrives. That flag is the only correct trigger for a client reload from
-        // the reconnect path. Self-dev idle reloads are handled separately by
-        // `maybe_self_reload_after_server_reload`, which gates on `is_selfdev_session`.
+        // the reconnect path. In-process idle reloads are handled separately by
+        // `maybe_reload_client_after_server_reload`, which fires for every idle
+        // session that has a newer client binary on disk.
         //
         // Bug history: previously this also gated on `app.has_newer_binary()`, which
         // is true whenever the launcher payload has been rebuilt (cargo build in

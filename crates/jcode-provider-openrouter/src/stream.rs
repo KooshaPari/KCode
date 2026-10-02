@@ -52,6 +52,16 @@ pub struct OpenRouterStream {
     reasoning_buffer: String,
     finish_reason: Option<String>,
     message_end_emitted: bool,
+    /// Set once the inner transport reports `Poll::Ready(None)`.
+    ///
+    /// A `Stream` only guarantees to return `None` once; polling a non-fused
+    /// inner stream after that is undefined. The opt-in SSE capture tee
+    /// (`futures::stream::unfold` in `capture_sse_stream`) panics with
+    /// "Unfold must not be polled after it returned `Poll::Ready(None)`".
+    /// `OpenRouterStream` emits its terminal `MessageEnd` at EOF and is then
+    /// polled again by the caller to observe termination, so it must treat the
+    /// inner as fused from that point on.
+    inner_done: bool,
 }
 
 #[derive(Default)]
@@ -60,6 +70,9 @@ struct ToolCallAccumulator {
     name: String,
     arguments: String,
     thought_signature: Option<String>,
+    started: bool,
+    emitted_id: String,
+    emitted_arguments: usize,
 }
 
 impl OpenRouterStream {
@@ -81,6 +94,7 @@ impl OpenRouterStream {
             reasoning_buffer: String::new(),
             finish_reason: None,
             message_end_emitted: false,
+            inner_done: false,
         }
     }
 
@@ -156,23 +170,45 @@ impl OpenRouterStream {
             return;
         }
 
-        // Some OpenAI-compatible providers synthesize a positional fallback when
-        // the model omits a call id. Since the position restarts every response,
-        // accepting it verbatim reuses ids across turns (for example `bash:0`).
-        if tc.id == format!("{}:{index}", tc.name) {
-            tc.id = jcode_core::id::new_id("toolu");
-        }
-
-        self.pending.push_back(StreamEvent::ToolUseStart {
-            id: tc.id,
-            name: tc.name,
+        Self::queue_tool_progress(&mut self.pending, index, &mut tc);
+        self.pending.push_back(StreamEvent::ToolUseEndFor {
+            id: tc.emitted_id.clone(),
         });
-        self.pending
-            .push_back(StreamEvent::ToolInputDelta(tc.arguments));
-        self.pending.push_back(StreamEvent::ToolUseEnd);
         if let Some(signature) = tc.thought_signature.filter(|value| !value.is_empty()) {
-            self.pending
-                .push_back(StreamEvent::ToolUseSignature(signature));
+            self.pending.push_back(StreamEvent::ToolUseSignatureFor {
+                id: tc.emitted_id,
+                signature,
+            });
+        }
+    }
+
+    fn queue_tool_progress(
+        pending: &mut VecDeque<StreamEvent>,
+        index: u64,
+        tc: &mut ToolCallAccumulator,
+    ) {
+        if !tc.started {
+            // Positional fallback IDs restart every response. Keep the raw ID
+            // in the accumulator for repeated-provider-ID comparisons.
+            let id = if tc.id == format!("{}:{index}", tc.name) {
+                jcode_core::id::new_id("toolu")
+            } else {
+                tc.id.clone()
+            };
+            tc.emitted_id = id.clone();
+            pending.push_back(StreamEvent::ToolUseStart {
+                id,
+                name: tc.name.clone(),
+            });
+            tc.started = true;
+        }
+        let delta = &tc.arguments[tc.emitted_arguments..];
+        if !delta.is_empty() {
+            pending.push_back(StreamEvent::ToolInputDeltaFor {
+                id: tc.emitted_id.clone(),
+                delta: delta.to_string(),
+            });
+            tc.emitted_arguments = tc.arguments.len();
         }
     }
 
@@ -229,6 +265,9 @@ impl OpenRouterStream {
 
         if let Some(signature) = thought_signature.filter(|value| !value.is_empty()) {
             tc.thought_signature = Some(signature.to_string());
+        }
+        if !tc.id.trim().is_empty() && !tc.name.trim().is_empty() {
+            Self::queue_tool_progress(&mut self.pending, index, tc);
         }
     }
 
@@ -413,10 +452,9 @@ impl OpenRouterStream {
                         if !finish_reason.is_empty() {
                             self.finish_reason = Some(finish_reason.to_string());
                         }
-                        // Emit any pending tool calls.
-                        self.flush_tool_call_accumulators();
-
-                        // Don't emit MessageEnd here - wait for [DONE]
+                        // Some proxies emit a finish reason after every delta, even
+                        // while tool arguments are still streaming (#1326). Keep the
+                        // accumulators until [DONE] or EOF, just like MessageEnd.
                     }
                 }
             }
@@ -477,6 +515,48 @@ impl OpenRouterStream {
 
         None
     }
+
+    /// Drain the buffered tail and synthesize the terminal `MessageEnd` after the
+    /// inner transport has already returned `Poll::Ready(None)`.
+    ///
+    /// `poll_next` cannot re-poll the inner stream after EOF: a non-fused
+    /// `futures::stream::unfold` (used by the opt-in SSE capture tee in
+    /// `capture_sse_stream`) panics with
+    /// "Unfold must not be polled after it returned `Poll::Ready(None)`".
+    /// This helper is therefore responsible for *all* post-EOF emission:
+    /// flushing a mid-character UTF-8 tail, force-closing a buffer that never
+    /// received a trailing blank line (#609), flushing tool-call
+    /// accumulators, and emitting the terminal `MessageEnd`. It is idempotent
+    /// so that the outer `poll_next` loop can call it until it returns `None`.
+    /// Post-EOF emission is infallible (the inner transport is already closed
+    /// and every step operates on owned buffered data), so the helper returns
+    /// the `Result`-shaped item type expected by `Stream::poll_next`.
+    fn drain_after_eof(&mut self) -> Option<Result<StreamEvent>> {
+        // Flush any bytes held back mid-character. `Utf8StreamDecoder::flush`
+        // returns an empty slice after the first call, so this is idempotent.
+        let tail = self.utf8.flush();
+        if !tail.is_empty() {
+            self.buffer.push_str(&tail);
+        }
+        // Force-close a buffer that never received a trailing blank line
+        // (#609). The check is idempotent: once `\n\n` is appended,
+        // `ends_with` stays true and we never push it twice.
+        if !self.buffer.trim().is_empty() && !self.buffer.ends_with("\n\n") {
+            self.buffer.push_str("\n\n");
+        }
+
+        if let Some(event) = self.parse_next_event() {
+            return Some(Ok(event));
+        }
+
+        // Stream ended - emit any pending tool call, then the terminal
+        // `MessageEnd`. `queue_message_end` is idempotent: a second call after
+        // `MessageEnd` is queued sees `message_end_emitted = true` and returns.
+        self.flush_tool_call_accumulators();
+        self.queue_message_end();
+
+        self.pending.pop_front().map(Ok)
+    }
 }
 
 impl Stream for OpenRouterStream {
@@ -488,6 +568,15 @@ impl Stream for OpenRouterStream {
                 return Poll::Ready(Some(Ok(event)));
             }
 
+            // The inner transport already reported EOF: keep draining the
+            // buffered tail on later polls rather than re-polling a stream that
+            // is only guaranteed to return `None` once. Re-polling a non-fused
+            // inner (the `unfold`-based SSE capture tee) panics inside
+            // futures-util.
+            if self.inner_done {
+                return Poll::Ready(self.drain_after_eof());
+            }
+
             match self.inner.as_mut().poll_next(cx) {
                 Poll::Ready(Some(Ok(bytes))) => {
                     let text = self.utf8.decode(&bytes);
@@ -497,30 +586,8 @@ impl Stream for OpenRouterStream {
                     return Poll::Ready(Some(Err(anyhow::anyhow!("Stream error: {}", e))));
                 }
                 Poll::Ready(None) => {
-                    // Flush any bytes held back mid-character, then force-close a
-                    // buffer that never received a trailing blank line (#609).
-                    let tail = self.utf8.flush();
-                    if !tail.is_empty() {
-                        self.buffer.push_str(&tail);
-                    }
-                    if !self.buffer.trim().is_empty() && !self.buffer.ends_with("\n\n") {
-                        self.buffer.push_str("\n\n");
-                        if let Some(event) = self.parse_next_event() {
-                            return Poll::Ready(Some(Ok(event)));
-                        }
-                    }
-                    // Stream ended - emit any pending tool call
-                    self.flush_tool_call_accumulators();
-                    if let Some(event) = self.pending.pop_front() {
-                        return Poll::Ready(Some(Ok(event)));
-                    }
-                    if !self.message_end_emitted {
-                        self.message_end_emitted = true;
-                        return Poll::Ready(Some(Ok(StreamEvent::MessageEnd {
-                            stop_reason: self.finish_reason.take(),
-                        })));
-                    }
-                    return Poll::Ready(None);
+                    self.inner_done = true;
+                    return Poll::Ready(self.drain_after_eof());
                 }
                 Poll::Pending => {
                     return Poll::Pending;
@@ -649,7 +716,7 @@ mod tests {
 
         let mut args = String::new();
         while let Some(event) = stream.parse_next_event() {
-            if let StreamEvent::ToolInputDelta(delta) = event {
+            if let StreamEvent::ToolInputDeltaFor { delta, .. } = event {
                 args.push_str(&delta);
             }
         }
@@ -787,6 +854,121 @@ mod tests {
         assert!(futures::executor::block_on(stream.next()).is_none());
     }
 
+    fn assert_tool_calls_stream_before_end(repeated_stop: bool, done: bool, parallel: bool) {
+        use futures::FutureExt;
+
+        // Keep the transport open between chunks so premature tool completion
+        // cannot be hidden by collecting an already-finished stream.
+        let (sender, receiver) = futures::channel::mpsc::unbounded();
+        let mut stream = OpenRouterStream::new(
+            receiver,
+            "test-model".to_string(),
+            Arc::new(Mutex::new(None)),
+        );
+        let stop = serde_json::json!({
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]
+        });
+        let send = |payload: Value| {
+            sender
+                .unbounded_send(Ok(Bytes::from(format!("data: {payload}\n\n"))))
+                .unwrap();
+        };
+        let calls = if parallel { 2 } else { 1 };
+        // Index-only argument fragments arrive interleaved, after the proxy's
+        // first stop chunk has already followed the id/name-only delta.
+        for arguments in [None, Some("{\"command\":"), Some("\"echo ok\"}")] {
+            for index in 0..calls {
+                let call = match arguments {
+                    None => serde_json::json!({
+                        "index": index,
+                        "id": format!("call_{index}"),
+                        "function": {"name": "bash"}
+                    }),
+                    Some(arguments) => serde_json::json!({
+                        "index": index,
+                        "function": {"arguments": arguments}
+                    }),
+                };
+                send(serde_json::json!({"choices": [{"delta": {"tool_calls": [call]}}]}));
+                if repeated_stop {
+                    send(stop.clone());
+                }
+                match arguments {
+                    None => assert!(matches!(
+                        stream.next().now_or_never(),
+                        Some(Some(Ok(StreamEvent::ToolUseStart { id, name })))
+                            if id == format!("call_{index}") && name == "bash"
+                    )),
+                    Some(fragment) => assert!(matches!(
+                        stream.next().now_or_never(),
+                        Some(Some(Ok(StreamEvent::ToolInputDeltaFor { id, delta })))
+                            if id == format!("call_{index}") && delta == fragment
+                    )),
+                }
+                assert!(
+                    stream.next().now_or_never().is_none(),
+                    "must not complete before DONE/EOF"
+                );
+            }
+        }
+        let reason = if repeated_stop { "stop" } else { "tool_calls" };
+        send(serde_json::json!({
+            "choices": [{"delta": {}, "finish_reason": reason}]
+        }));
+        assert!(stream.next().now_or_never().is_none());
+
+        // Ordinary text remains incremental while tools are streaming.
+        send(serde_json::json!({"choices": [{"delta": {"content": "ready"}}]}));
+        assert!(matches!(
+            stream.next().now_or_never(),
+            Some(Some(Ok(StreamEvent::TextDelta(text)))) if text == "ready"
+        ));
+
+        if done {
+            sender
+                .unbounded_send(Ok(Bytes::from_static(b"data: [DONE]\n\n")))
+                .unwrap();
+        } else {
+            sender.close_channel();
+        }
+        // For [DONE], the transport is still open. Completion must not wait for
+        // EOF. For EOF, there is no [DONE] and poll_next must flush the calls.
+        for index in 0..calls {
+            assert!(matches!(
+                stream.next().now_or_never(),
+                Some(Some(Ok(StreamEvent::ToolUseEndFor { id }))) if id == format!("call_{index}")
+            ));
+        }
+        assert!(matches!(
+            stream.next().now_or_never(),
+            Some(Some(Ok(StreamEvent::MessageEnd { stop_reason })))
+                if stop_reason.as_deref() == Some(reason)
+        ));
+        assert!(stream.tool_call_accumulators.is_empty());
+        assert!(stream.pending.is_empty());
+        // Closing the transport after [DONE] must not emit the calls or end twice.
+        sender.close_channel();
+        assert!(matches!(stream.next().now_or_never(), Some(None)));
+    }
+
+    #[test]
+    fn repeated_stop_chunks_preserve_tool_arguments_until_done_or_eof() {
+        for done in [true, false] {
+            for parallel in [false, true] {
+                assert_tool_calls_stream_before_end(true, done, parallel);
+            }
+        }
+    }
+
+    #[test]
+    fn normal_tool_streaming_completes_at_done_or_eof() {
+        for done in [true, false] {
+            for parallel in [false, true] {
+                assert_tool_calls_stream_before_end(false, done, parallel);
+            }
+        }
+    }
+
     #[test]
     fn parse_next_event_coalesces_repeated_tool_call_id_chunks() {
         let provider_pin = Arc::new(std::sync::Mutex::new(None));
@@ -840,18 +1022,21 @@ mod tests {
             }
         }
 
-        assert_eq!(events.len(), 4, "events: {events:?}");
+        assert_eq!(events.len(), 5, "events: {events:?}");
         assert!(matches!(
             &events[0],
             StreamEvent::ToolUseStart { id, name } if id == "call_1" && name == "bash"
         ));
         assert!(matches!(
             &events[1],
-            StreamEvent::ToolInputDelta(args) if args == "{\"command\":\"echo ok\"}"
+            StreamEvent::ToolInputDeltaFor { id, delta } if id == "call_1" && delta == "{\"command\""
         ));
-        assert!(matches!(events[2], StreamEvent::ToolUseEnd));
+        assert!(
+            matches!(&events[2], StreamEvent::ToolInputDeltaFor { id, delta } if id == "call_1" && delta == ":\"echo ok\"}")
+        );
+        assert!(matches!(&events[3], StreamEvent::ToolUseEndFor { id } if id == "call_1"));
         assert!(matches!(
-            &events[3],
+            &events[4],
             StreamEvent::MessageEnd { stop_reason } if stop_reason.as_deref() == Some("tool_calls")
         ));
         assert!(stream.tool_call_accumulators.is_empty());
@@ -888,11 +1073,12 @@ mod tests {
                 &events[..],
                 [
                     StreamEvent::ToolUseStart { id, name },
-                    StreamEvent::ToolInputDelta(arguments),
-                    StreamEvent::ToolUseEnd,
-                    StreamEvent::ToolUseSignature(signature),
+                    StreamEvent::ToolInputDeltaFor { id: input_id, delta: arguments },
+                    StreamEvent::ToolUseEndFor { id: end_id },
+                    StreamEvent::ToolUseSignatureFor { id: signature_id, signature },
                     StreamEvent::MessageEnd { stop_reason: Some(reason) },
                 ] if id == "call_vertex"
+                    && input_id == id && end_id == id && signature_id == id
                     && name == "read"
                     && arguments == "{\"path\":\"README.md\"}"
                     && signature == "AY89a1...verbatim"
@@ -900,6 +1086,47 @@ mod tests {
             ),
             "events: {events:?}"
         );
+    }
+
+    #[test]
+    fn split_identity_starts_without_waiting_for_arguments() {
+        let mut stream = test_stream();
+        stream.apply_tool_call_delta(0, None, Some("bash"), None, None);
+        assert!(
+            stream.pending.is_empty(),
+            "must await a provider continuation ID"
+        );
+        stream.apply_tool_call_delta(0, Some("late-id"), None, None, None);
+        assert!(
+            matches!(stream.pending.pop_front(), Some(StreamEvent::ToolUseStart { id, name }) if id == "late-id" && name == "bash")
+        );
+        assert!(stream.pending.is_empty());
+        stream.apply_tool_call_delta(0, Some("late-id"), None, Some("{}"), None);
+        assert!(
+            matches!(stream.pending.pop_front(), Some(StreamEvent::ToolInputDeltaFor { id, delta }) if id == "late-id" && delta == "{}")
+        );
+        stream.flush_tool_call_accumulators();
+        assert!(
+            matches!(stream.pending.pop_front(), Some(StreamEvent::ToolUseEndFor { id }) if id == "late-id")
+        );
+        assert!(stream.pending.is_empty());
+    }
+
+    #[test]
+    fn zero_argument_calls_end_once_without_an_empty_delta() {
+        let mut stream = test_stream();
+        stream.apply_tool_call_delta(0, Some("empty"), Some("noop"), None, None);
+        assert!(
+            matches!(stream.pending.pop_front(), Some(StreamEvent::ToolUseStart { id, .. }) if id == "empty")
+        );
+        stream.apply_tool_call_delta(0, Some("empty"), Some("noop"), Some(""), None);
+        assert!(stream.pending.is_empty());
+        stream.flush_tool_call_accumulators();
+        stream.flush_tool_call_accumulators();
+        assert!(
+            matches!(stream.pending.pop_front(), Some(StreamEvent::ToolUseEndFor { id }) if id == "empty")
+        );
+        assert!(stream.pending.is_empty());
     }
 
     #[test]
@@ -929,5 +1156,484 @@ mod tests {
         let second_turn_id = parse_id();
 
         assert_ne!(first_turn_id, second_turn_id);
+    }
+
+    /// Regression: `OpenRouterStream` synthesizes its terminal `MessageEnd` at
+    /// EOF, i.e. *after* the inner transport has already returned
+    /// `Poll::Ready(None)`, and a caller then polls the stream once more to
+    /// observe termination. That extra poll must not re-poll the dead inner
+    /// stream: `futures::stream::unfold` (used by the opt-in SSE capture tee
+    /// `capture_sse_stream`) panics with
+    /// "Unfold must not be polled after it returned `Poll::Ready(None)`".
+    #[test]
+    fn eof_synthesis_does_not_repoll_a_non_fused_inner_stream() {
+        // A finite unfold yields exactly one chunk and then `Ready(None)`; a
+        // second poll after termination panics inside futures-util.
+        let payload =
+            "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        // Drain to termination exactly like the provider loop does.
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        assert_eq!(events.len(), 2, "events: {events:?}");
+        assert!(matches!(&events[0], Ok(StreamEvent::TextDelta(text)) if text == "hi"));
+        assert!(matches!(
+            &events[1],
+            Ok(StreamEvent::MessageEnd { stop_reason }) if stop_reason.as_deref() == Some("stop")
+        ));
+    }
+
+    /// Same re-poll hazard when the tail arrives without a trailing blank line
+    /// (EOF force-closes the buffer and emits a buffered event after the inner
+    /// stream already returned `None`).
+    #[test]
+    fn eof_tail_flush_does_not_repoll_a_non_fused_inner_stream() {
+        let payload = "data: {\"choices\":[{\"delta\":{\"content\":\"tail\"}}]}";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let text = futures::executor::block_on(async {
+            let mut text = String::new();
+            while let Some(Ok(event)) = stream.next().await {
+                if let StreamEvent::TextDelta(delta) = event {
+                    text.push_str(&delta);
+                }
+            }
+            text
+        });
+
+        assert_eq!(text, "tail");
+    }
+
+    /// FR-B/2: An event without any `finish_reason` field must not hang the
+    /// stream and must still emit exactly one terminal `MessageEnd`.
+    ///
+    /// Per stream.rs:420-433 the `finish_reason` block is gated on the
+    /// field being present *and* non-empty; an absent field leaves
+    /// `self.finish_reason` at `None`, so `queue_message_end` emits
+    /// `MessageEnd { stop_reason: None }`.
+    #[test]
+    fn missing_finish_reason_does_not_hang_stream_and_emits_message_end() {
+        // No `finish_reason` field on the choice; well-formed `\n\n` terminator.
+        let payload = "data: {\"choices\":[{\"delta\":{\"content\":\"x\"}}]}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        let terminal_event: Option<StreamEvent> = events
+            .iter()
+            .find_map(|e| match e {
+                Ok(StreamEvent::MessageEnd { stop_reason }) => {
+                    Some(StreamEvent::MessageEnd { stop_reason: stop_reason.clone() })
+                }
+                _ => None,
+            });
+        let terminal_count = events
+            .iter()
+            .filter(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })))
+            .count();
+
+        assert_eq!(terminal_count, 1, "exactly one MessageEnd, events: {events:?}");
+        assert!(
+            matches!(
+                terminal_event,
+                Some(StreamEvent::MessageEnd { stop_reason: None })
+            ),
+            "terminal_event must equal MessageEnd{{stop_reason: None}}, got: {terminal_event:?}"
+        );
+
+        // After the terminal, the next poll must return None (no hanging).
+        let reentry = futures::executor::block_on(stream.next());
+        assert!(
+            reentry.is_none(),
+            "nonterminal_event_count must remain 0 after the terminal; reentry: {reentry:?}"
+        );
+    }
+
+    /// FR-C/1: A provider 4xx mid-stream (`{"error":{"code":401,...}}`) must
+    /// surface as `StreamEvent::Error` *then* exactly one terminal
+    /// `MessageEnd`, in that order, then `None`.
+    #[test]
+    fn provider_4xx_mid_stream_emits_error_then_message_end_and_terminates() {
+        let payload = "data: {\"error\":{\"code\":401,\"message\":\"bad key\"}}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        // State assertion 1: the observed sequence is exactly
+        // [Error, MessageEnd] in that order.
+        let first_error_idx = events
+            .iter()
+            .position(|e| matches!(e, Ok(StreamEvent::Error { .. })));
+        let first_message_end_idx = events
+            .iter()
+            .position(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })));
+        assert!(
+            first_error_idx.is_some(),
+            "no StreamEvent::Error emitted; events: {events:?}"
+        );
+        assert!(
+            first_message_end_idx.is_some(),
+            "no StreamEvent::MessageEnd emitted; events: {events:?}"
+        );
+        assert!(
+            first_error_idx.unwrap() < first_message_end_idx.unwrap(),
+            "events must equal [Error, MessageEnd] in that order; events: {events:?}"
+        );
+
+        // State assertion 2: nothing after the terminal (no second error,
+        // no repeat MessageEnd).
+        let error_after_message_end = events
+            .iter()
+            .skip(first_message_end_idx.unwrap() + 1)
+            .any(|e| matches!(e, Ok(StreamEvent::Error { .. }) | Ok(StreamEvent::MessageEnd { .. })));
+        assert!(
+            !error_after_message_end,
+            "tail_after_message_end must equal []; events: {events:?}"
+        );
+
+        // State assertion 3: the live stream is now exhausted — the bug
+        // class pinned here would have re-polled the inner and panicked.
+        let tail = futures::executor::block_on(stream.next());
+        assert!(tail.is_none(), "tail_after_message_end must equal [None], got {tail:?}");
+    }
+
+    /// FR-C/2: Same shape as FR-C/1 but with a 5xx code. Pinned because
+    /// providers and transports classify 4xx vs 5xx differently and the
+    /// production error mapper must cover both classes.
+    #[test]
+    fn provider_5xx_mid_stream_emits_error_then_message_end_and_terminates() {
+        let payload = "data: {\"error\":{\"code\":502,\"message\":\"bad gateway\"}}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        let first_error_idx = events
+            .iter()
+            .position(|e| matches!(e, Ok(StreamEvent::Error { .. })));
+        let first_message_end_idx = events
+            .iter()
+            .position(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })));
+        assert!(
+            first_error_idx.is_some(),
+            "no StreamEvent::Error emitted; events: {events:?}"
+        );
+        assert!(
+            first_message_end_idx.is_some(),
+            "no StreamEvent::MessageEnd emitted; events: {events:?}"
+        );
+        assert!(
+            first_error_idx.unwrap() < first_message_end_idx.unwrap(),
+            "events must equal [Error, MessageEnd] in that order; events: {events:?}"
+        );
+
+        let error_after_message_end = events
+            .iter()
+            .skip(first_message_end_idx.unwrap() + 1)
+            .any(|e| matches!(e, Ok(StreamEvent::Error { .. }) | Ok(StreamEvent::MessageEnd { .. })));
+        assert!(
+            !error_after_message_end,
+            "tail_after_message_end must equal []; events: {events:?}"
+        );
+
+        let tail = futures::executor::block_on(stream.next());
+        assert!(tail.is_none(), "tail_after_message_end must equal [None], got {tail:?}");
+    }
+
+    /// FR-D/1: After the terminal `MessageEnd`, a second `poll_next` call
+    /// returns `Poll::Ready(None)` without re-polling a non-fused inner
+    /// stream. This is the literal `unfold` double-poll panic class pinned
+    /// at stream.rs:495-498, asserted as a discrete test (not just by
+    /// exhausting the `while let Some(...)` loop).
+    #[test]
+    fn reentrant_poll_after_terminal_state_returns_none_without_panic() {
+        // Empty delta + finish_reason, no text content, so a single poll
+        // reaches the terminal `MessageEnd` directly (the TextDelta path
+        // is exercised separately by other tests).
+        let payload = "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        // Drive to the terminal MessageEnd via one explicit poll.
+        let first = futures::executor::block_on(stream.next());
+        assert!(
+            matches!(
+                first,
+                Some(Ok(StreamEvent::MessageEnd { stop_reason: Some(ref reason) }))
+                    if reason == "stop"
+            ),
+            "first poll must equal Poll::Ready(Some(Ok(MessageEnd {{ stop_reason: Some(\"stop\") }}))); got {first:?}"
+        );
+
+        // State assertion: second poll must equal Poll::Ready(None) and
+        // must NOT panic, must NOT yield a Terminated message, and must
+        // NOT yield a second MessageEnd.
+        let second = futures::executor::block_on(stream.next());
+        assert!(
+            second.is_none(),
+            "second_poll must equal Poll::Ready(None), got {second:?}"
+        );
+
+        // Belt-and-suspenders: a third poll stays None.
+        let third = futures::executor::block_on(stream.next());
+        assert!(third.is_none(), "third_poll must also equal Poll::Ready(None), got {third:?}");
+    }
+
+    /// FR-B/1: N distinct tool-call ids must coalesce into N `ToolUseStart`
+    /// and N `ToolUseEnd` events, emitted in id order, after the stream
+    /// finishes. Pinned so a future refactor cannot drop or reorder the
+    /// pending-drain produced by the parser + EOF accumulator flush.
+    #[test]
+    fn tool_call_deltas_coalesce_into_exactly_n_final_blocks_by_id() {
+        let mut stream = test_stream();
+        let chunk1 = serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 0,
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "x", "arguments": "{\"k\":1}"}
+                    }]
+                }
+            }]
+        });
+        let chunk2 = serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 1,
+                        "id": "call_2",
+                        "type": "function",
+                        "function": {"name": "y", "arguments": "{\"k\":2}"}
+                    }]
+                }
+            }]
+        });
+        let chunk3 = serde_json::json!({
+            "choices": [{
+                "delta": {
+                    "tool_calls": [{
+                        "index": 2,
+                        "id": "call_3",
+                        "type": "function",
+                        "function": {"name": "z", "arguments": "{\"k\":3}"}
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
+        });
+        stream.buffer = format!(
+            "data: {chunk1}\n\ndata: {chunk2}\n\ndata: {chunk3}\n\ndata: [DONE]\n\n"
+        );
+
+        // Drain parse_next_event to completion. `parse_next_event` flushes
+        // accumulators when it sees `finish_reason` and the trailing [DONE]
+        // queues the terminal MessageEnd, so by the time it returns None
+        // the entire pending drain has been observed.
+        let mut events = Vec::new();
+        for _ in 0..32 {
+            match stream.parse_next_event() {
+                Some(event) => events.push(event),
+                None => break,
+            }
+        }
+
+        let final_tool_use_starts: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::ToolUseStart { id, .. } => Some(id.clone()),
+                _ => None,
+            })
+            .collect();
+
+        // Upstream's parallel-tool-call work (#1326, 0.88.0) replaced the
+        // positional `ToolUseEnd` with the keyed `ToolUseEndFor { id }`, so the
+        // id is now carried on the end event itself instead of being inferred
+        // from an event two positions back. The invariant under test is
+        // unchanged: exactly one end event per call, in call order.
+        let final_tool_use_ends: Vec<String> = events
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::ToolUseEndFor { id } => Some(id.clone()),
+                StreamEvent::ToolUseEnd => None,
+                _ => None,
+            })
+            .collect();
+
+        let expected_ids: Vec<String> =
+            ["call_1", "call_2", "call_3"].iter().map(|s| s.to_string()).collect();
+
+        assert_eq!(
+            final_tool_use_starts, expected_ids,
+            "final_tool_use_starts must equal [call_1, call_2, call_3]; events: {events:?}"
+        );
+        assert_eq!(
+            final_tool_use_ends, expected_ids,
+            "final_tool_use_ends must equal [call_1, call_2, call_3]; events: {events:?}"
+        );
+    }
+
+    /// FR-A/3: A final SSE event that never receives a trailing blank line
+    /// must be force-closed at EOF and produce exactly one terminal
+    /// `MessageEnd` whose `stop_reason` reflects the upstream `finish_reason`.
+    #[test]
+    fn unfinished_sse_buffer_force_close_produces_exactly_one_terminal_message_end() {
+        // Note: the data line is newline-terminated but has no blank-line
+        // terminator. `drain_after_eof` is responsible for appending `\n\n`
+        // so the final event still parses (#609).
+        let payload = "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        let terminals: Vec<Option<String>> = events
+            .iter()
+            .filter_map(|e| match e {
+                Ok(StreamEvent::MessageEnd { stop_reason }) => Some(stop_reason.clone()),
+                _ => None,
+            })
+            .collect();
+        let terminal_event_count = terminals.len();
+        let terminal_stop_reason: Option<String> = terminals.into_iter().flatten().next();
+
+        assert_eq!(
+            terminal_event_count, 1,
+            "exactly one terminal MessageEnd expected, events: {events:?}"
+        );
+        assert_eq!(
+            terminal_stop_reason,
+            Some("stop".to_string()),
+            "stop_reason must be Some(\"stop\")"
+        );
+    }
+
+    /// FR-A/1: A normal upstream `[DONE]` sentinel must emit exactly one
+    /// terminal `MessageEnd`; the next poll after that must return `None`
+    /// without re-polling the non-fused inner stream (the `unfold` panic
+    /// class pinned at stream.rs:495-498).
+    #[test]
+    fn upstream_done_event_emits_message_end_then_terminal_none() {
+        let payload = "data: [DONE]\n\n";
+        let inner = futures::stream::unfold(
+            Some(Bytes::copy_from_slice(payload.as_bytes())),
+            |state| async move { state.map(|bytes| (Ok::<Bytes, reqwest::Error>(bytes), None)) },
+        );
+        let mut stream = OpenRouterStream::new(
+            inner,
+            "test-model".to_string(),
+            Arc::new(std::sync::Mutex::new(None)),
+        );
+
+        let events = futures::executor::block_on(async {
+            let mut events = Vec::new();
+            while let Some(event) = stream.next().await {
+                events.push(event);
+            }
+            events
+        });
+
+        // State assertion: exactly one terminal MessageEnd, terminal_kind ==
+        // MessageEnd.
+        let terminal_kind: &str = match events.last() {
+            Some(Ok(StreamEvent::MessageEnd { .. })) => "MessageEnd",
+            other => panic!("terminal_kind must equal MessageEnd, got tail: {other:?}"),
+        };
+        let message_ends = events
+            .iter()
+            .filter(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })))
+            .count();
+        assert_eq!(terminal_kind, "MessageEnd");
+        assert_eq!(message_ends, 1, "exactly one MessageEnd expected, events: {events:?}");
+
+        // tail_kinds == ["None"]: re-poll after termination must yield
+        // `None` (no panic, no Terminated, no second `MessageEnd`).
+        let tail = futures::executor::block_on(stream.next());
+        assert!(tail.is_none(), "tail_kinds == [None], got {tail:?}");
     }
 }
