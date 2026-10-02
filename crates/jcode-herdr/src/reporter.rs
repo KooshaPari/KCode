@@ -94,7 +94,13 @@ impl HerdrReporter {
     /// If HERDR is not active, all operations are no-ops.
     pub fn new(agent_label: &str) -> Self {
         let env = HerdrEnv::capture();
-        let source = format!("jcode:{agent_label}");
+        // Herdr namespaces its lifecycle reporters as `herdr:{agent}`.
+        // Only that shape reaches the paths that persist a reported resume:
+        // `jcode:{agent}` is silently dropped by `pane.report_agent_session`
+        // (no `agent_resume` is written), so a crash would restore nothing.
+        // Neither jcode nor forge is in Herdr's official-source table, so the
+        // `agent_session` arm stays closed and `resume_argv` carries the restore.
+        let source = format!("herdr:{agent_label}");
         let idle_debounce_ms = parse_duration_env("HERDR_JCODE_IDLE_DEBOUNCE_MS", 250);
         let retry_grace_ms = parse_duration_env("HERDR_JCODE_RETRY_GRACE_MS", 2500);
         Self {
@@ -154,18 +160,34 @@ impl HerdrReporter {
             return;
         }
 
-        {
+        let (state, message) = {
             let mut inner = self.state.lock().await;
             inner.session_id = Some(session_id.clone());
-        }
+            (inner.current, inner.message.clone())
+        };
 
-        let params = serde_json::json!({
+        // Claim the pane with a state report first. Herdr requires the
+        // source to hold the pane before it will accept a resume command,
+        // otherwise it answers `resume_not_accepted` and stores nothing.
+        // The state report carries agent_session_id + resume_argv too, so
+        // this single message is sufficient on its own.
+        self.send_state_report(state, message).await;
+
+        let mut params = serde_json::json!({
             "pane_id": self.env.pane_id(),
             "source": self.source,
             "agent": self.agent_label,
             "agent_session_id": session_id,
             "seq": next_seq(),
         });
+
+        // Herdr 0.9.2+ persists the agent-reported resume command so a
+        // restored pane can relaunch this exact session. Custom agents
+        // (source not in herdr's built-in table) resume ONLY through this
+        // field -- agent_session_id alone is stored but never resumed.
+        if let Some(argv) = Self::resume_argv_for(Some(&session_id)) {
+            params["resume_argv"] = argv;
+        }
 
         let request = serde_json::json!({
             "id": format!("{}:session:{}", self.source, next_seq()),
@@ -202,6 +224,29 @@ impl HerdrReporter {
         });
 
         socket::send_fire_and_forget(self.env.socket_path(), &request).await;
+    }
+
+    /// Resume command Herdr should run to relaunch this session in a
+    /// restored pane.
+    ///
+    /// Herdr only accepts the command when the reporting source holds the
+    /// pane, and only when every argv element is free of apostrophes
+    /// (validation: `resume_argv must not contain apostrophes`). Session
+    /// ids are `session_<name>_<ts>_<hash>`, so this always holds.
+    ///
+    /// Pure helper taking the session id by value: callers already hold
+    /// the reporter lock, and re-locking here would deadlock on a
+    /// non-reentrant tokio Mutex.
+    ///
+    /// Overridable with `JCODE_HERDR_RESUME_CMD` (single token) when the
+    /// binary is not invoked as `jcode` on the restored shell's PATH.
+    fn resume_argv_for(session_id: Option<&str>) -> Option<serde_json::Value> {
+        let sid = session_id?;
+        if sid.is_empty() {
+            return None;
+        }
+        let bin = std::env::var("JCODE_HERDR_RESUME_CMD").unwrap_or_else(|_| "jcode".into());
+        Some(serde_json::json!([bin, "--resume", sid]))
     }
 
     /// Release this agent's authority on the pane.
@@ -310,6 +355,13 @@ impl HerdrReporter {
             let inner = self.state.lock().await;
             if let Some(sid) = &inner.session_id {
                 params["agent_session_id"] = serde_json::Value::String(sid.clone());
+            }
+            // Attach the resume command to every state report: herdr only
+            // accepts it while the source holds the pane, and a state
+            // report is what holds it. This is the path proven to persist
+            // as `agent_resume` and fire exactly once on restore.
+            if let Some(argv) = Self::resume_argv_for(inner.session_id.as_deref()) {
+                params["resume_argv"] = argv;
             }
             if let Some(spath) = &inner.session_path {
                 params["agent_session_path"] = serde_json::Value::String(spath.clone());
@@ -453,7 +505,7 @@ mod tests {
     fn reporter_source_format() {
         let _env_lock = crate::env::test_support::lock_test_env();
         let reporter = HerdrReporter::new("jcode");
-        assert_eq!(reporter.source, "jcode:jcode");
+        assert_eq!(reporter.source, "herdr:jcode");
     }
 
     #[test]
@@ -558,9 +610,45 @@ mod tests {
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        let req = rx.recv().await.expect("expected session request");
-        assert_eq!(req["method"], "pane.report_agent_session");
-        assert_eq!(req["params"]["agent_session_id"], "sess_abc123");
+        // set_session_id claims the pane with a state report first (herdr
+        // rejects a resume command when the source does not hold the pane),
+        // then sends the session report.
+        let state_req = rx.recv().await.expect("expected state request");
+        assert_eq!(state_req["method"], "pane.report_agent");
+        assert_eq!(state_req["params"]["agent_session_id"], "sess_abc123");
+        assert_eq!(
+            state_req["params"]["resume_argv"],
+            serde_json::json!(["jcode", "--resume", "sess_abc123"])
+        );
+
+        let session_req = rx.recv().await.expect("expected session request");
+        assert_eq!(session_req["method"], "pane.report_agent_session");
+        assert_eq!(session_req["params"]["agent_session_id"], "sess_abc123");
+        assert_eq!(
+            session_req["params"]["resume_argv"],
+            serde_json::json!(["jcode", "--resume", "sess_abc123"])
+        );
+
+        reporter.release().await;
+    }
+
+    #[tokio::test]
+    async fn state_reports_omit_resume_argv_without_session_id() {
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let _guard = set_herdr_env(&sock);
+
+        let reporter = HerdrReporter::new("jcode");
+        reporter.set_state(AgentState::Working).await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        let req = rx.recv().await.expect("expected a request");
+        assert_eq!(req["method"], "pane.report_agent");
+        assert!(
+            req["params"].get("resume_argv").is_none(),
+            "must not advertise a resume command before a session id exists"
+        );
 
         reporter.release().await;
     }
