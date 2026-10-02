@@ -1,0 +1,26 @@
+{
+  "observed_on": "2026-09-29",
+  "product": "KooshaPari/KCode",
+  "source_snapshot": "046ea2af5e01e84449f65d086510b51152360215",
+  "recursive_tree_truncated": false,
+  "total_entries": 2539,
+  "total_blobs": 2142,
+  "counts": {
+    "github": 14,
+    "workflows": 10,
+    "docs": 115,
+    "tests_path_heuristic": 444,
+    "benchmarks": 1,
+    "crates": 1330,
+    "sdk": 52,
+    "scripts": 184,
+    "ios": 76,
+    "migrations": 26,
+    "manifests": 104,
+    "markdown": 163,
+    "rust": 1308,
+    "typescript": 17,
+    "yaml": 13
+  },
+  "warning": "Counts are deterministic path inventory, not semantic source resolution. The tests count is a path-name heuristic and must not be used as a verified test denominator."
+}
