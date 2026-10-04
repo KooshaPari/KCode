@@ -727,8 +727,16 @@ fn overscroll_line_row(state: &TestState, width: u16) -> String {
         .draw(|frame| crate::tui::ui::draw(frame, state))
         .expect("overscroll frame");
     let rows = buffer_rows(&terminal);
-    // The overscroll line is the last row of the frame.
-    rows.last().cloned().unwrap_or_default()
+    // The overscroll line carries the "(overscroll x.x)" countdown (or its
+    // compact "(x.x)" form on narrow terminals), which is unique to it. The
+    // fork adds a status bar as the final frame row on terminals >= 80 cols,
+    // so the overscroll line is no longer simply `rows.last()` there.
+    rows.iter()
+        .rev()
+        .find(|row| row.contains("(overscroll") || row.contains("(1.0)"))
+        .cloned()
+        .or_else(|| rows.last().cloned())
+        .unwrap_or_default()
 }
 
 #[test]

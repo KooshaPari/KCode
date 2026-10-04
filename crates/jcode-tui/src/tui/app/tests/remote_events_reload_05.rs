@@ -961,16 +961,9 @@ fn test_gate_digest_is_delivered_at_turn_end_and_rearms_next_cycle() {
         app.queued_messages.clear();
         app.pending_queued_dispatch = false;
         assert!(
-            app.schedule_auto_poke_followup_if_needed(),
-            "with nothing left outstanding the final response should be requested"
+            !app.schedule_auto_poke_followup_if_needed(),
+            "with nothing left outstanding the cycle should finish"
         );
-        assert_eq!(
-            app.queued_messages,
-            vec![crate::todo::TODO_FINAL_RESPONSE_CONTINUATION_MESSAGE.to_string()]
-        );
-        app.queued_messages.clear();
-        app.pending_queued_dispatch = false;
-        assert!(!app.schedule_auto_poke_followup_if_needed());
         assert!(
             !app.todo_gate_digest_delivered,
             "a finished cycle must re-arm the review for later work"

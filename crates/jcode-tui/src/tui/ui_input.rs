@@ -1358,7 +1358,11 @@ mod tests {
             .iter()
             .map(|s| s.content.as_ref())
             .collect();
-        assert!(rendered.len() <= 15, "got {}: {rendered}", rendered.len());
+        let rendered_width = unicode_width::UnicodeWidthStr::width(rendered.as_str());
+        assert!(
+            rendered_width <= 15,
+            "got {rendered_width} display cols: {rendered}"
+        );
         assert!(rendered.ends_with('…'), "expected ellipsis: {rendered}");
     }
 
@@ -1374,10 +1378,11 @@ mod tests {
             .iter()
             .map(|s| unicode_width::UnicodeWidthStr::width(s.content.as_ref()))
             .sum();
-        // After fix: span 1 uses 2 cols, span 2 truncated to remaining 6 cols.
-        // '…' (U+2026) has display width 1 via unicode_width, so [send…] = 5 cols.
-        // Total = 2 + 5 = 7 display cols (fits within max_cols=8).
-        assert_eq!(total_width, 7, "exact cumulative width: got {total_width}");
+        // Span 1 ("⏳ ") is 3 display cols (U+23F3 is wide, plus the space), so
+        // span 2 is truncated to the remaining 5 cols: "send…" = 5 cols.
+        // '…' (U+2026) has display width 1 via unicode_width.
+        // Total = 3 + 5 = 8 display cols (exactly max_cols=8).
+        assert_eq!(total_width, 8, "exact cumulative width: got {total_width}");
     }
 
     #[test]
