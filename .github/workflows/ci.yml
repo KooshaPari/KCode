@@ -251,9 +251,9 @@ jobs:
           python3 .github/scripts/run_with_timeout.py 600 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-provider-openrouter --lib \
+            -- --nocapture \
             eof_synthesis_does_not_repoll_a_non_fused_inner_stream \
-            eof_tail_flush_does_not_repoll_a_non_fused_inner_stream \
-            -- --nocapture
+            eof_tail_flush_does_not_repoll_a_non_fused_inner_stream
 
       - name: Run secret-input pty cohort (all platforms with a pty)
         if: runner.os != 'Windows'

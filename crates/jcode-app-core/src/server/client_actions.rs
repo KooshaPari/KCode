@@ -36,7 +36,11 @@ fn derive_subagent_description(prompt: &str) -> String {
 fn build_input_shell_command(command: &str) -> Command {
     #[cfg(windows)]
     {
-        use crate::shell::detect::Shell;
+        // `jcode-shell-integration` re-exports `detect::Shell` and is already a
+        // dependency of this crate; `crate::shell` never existed here, so this
+        // only failed once a Windows target was actually compiled (fork commit
+        // 08c7a31f5, latent until the CI ssh-agent step stopped killing jobs).
+        use jcode_shell_integration::Shell;
         match Shell::detect() {
             Shell::PowerShell => {
                 let mut cmd = Command::new("pwsh.exe");
