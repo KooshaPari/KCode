@@ -47,6 +47,14 @@ echo "=== Security Preflight ==="
 echo "[1/3] Scanning for likely secrets"
 secret_regex='(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (RSA|OPENSSH|EC|DSA|PGP) PRIVATE KEY-----|AIza[0-9A-Za-z_-]{35})'
 
+# Exact placeholder literals allowed to match the scan. Applied as a
+# post-scan line filter so the detection patterns themselves stay intact
+# and only these verbatim strings are suppressed. Entries must be
+# sequential-alphabet placeholders (never structurally valid credentials).
+secret_allowlist=(
+  'AKIAABCDEFGHIJKLMNOP' # redact_secrets AWS-key fixture in crates/jcode-base/src/message/tests.rs
+)
+
 set +e
 mapfile -d '' tracked_files < <(git ls-files -z)
 scan_status=1
@@ -79,6 +87,14 @@ set -e
 if [[ "$scan_status" -gt 1 ]]; then
   rm -f /tmp/jcode-secret-scan.txt
   die "secret scan failed to execute"
+fi
+
+if [[ -s /tmp/jcode-secret-scan.txt && "${#secret_allowlist[@]}" -gt 0 ]]; then
+  # Drop findings whose line contains an allowlisted placeholder literal.
+  # grep exits 1 when everything is filtered out; that is success here.
+  grep -F -v -f <(printf '%s\n' "${secret_allowlist[@]}") \
+    /tmp/jcode-secret-scan.txt > /tmp/jcode-secret-scan.kept.txt || true
+  mv /tmp/jcode-secret-scan.kept.txt /tmp/jcode-secret-scan.txt
 fi
 
 if [[ -s /tmp/jcode-secret-scan.txt ]]; then
