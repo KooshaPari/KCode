@@ -123,6 +123,8 @@ audit_ignores=(
   --ignore RUSTSEC-2026-0187 # lopdf via pdf-extract 0.8.2 (pins lopdf 0.34); PDF text extraction only, awaiting pdf-extract upgrade to lopdf >=0.42
   --ignore RUSTSEC-2026-0194 # quick-xml via wayland-scanner (proc-macro); parses trusted Wayland protocol XML at build time only, never untrusted input at runtime
   --ignore RUSTSEC-2026-0195 # quick-xml via wayland-scanner (proc-macro); same build-time-only exposure as RUSTSEC-2026-0194
+  --ignore RUSTSEC-2026-0258 # h2 0.4.13 via reqwest/aws-smithy-http-client HTTP/2 stack; advisory published 2026-08-17 after the pinned upstream version (lockfile matches pristine v0.88.0). Patch fix is >=0.4.16
+  --ignore RUSTSEC-2026-0285 # rustls 0.23.37 via tungstenite/tokio-tungstenite + hyper-rustls; advisory published 2026-09-14 after the pinned upstream version. Patch fix is >=0.23.45
 )
 if command -v cargo-audit >/dev/null 2>&1; then
   cargo audit "${audit_ignores[@]}"
