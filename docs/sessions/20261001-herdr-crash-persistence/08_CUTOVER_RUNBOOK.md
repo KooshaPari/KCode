@@ -68,6 +68,29 @@ strategy was DISPROVEN — rationale and evidence in **Appendix A**.
 - [ ] **P0.6 Evidence pointers exist** (rev2 rationale; detail in Appendix A):
       `~/.jcode/scratch/gaps_filled.md`, `~/.jcode/scratch/diag_report_agent.md`,
       `~/.jcode/scratch/binary_fix_proof.md`.
+- [ ] **P0.7 Command-validity preflight — EXECUTED 2026-10-04, ALL PASS**
+      (read-only; every Phases 1–4 command validated BEFORE the gate so no
+      typo is discovered mid-cutover):
+      - `herdr --help` / `herdr server --help`: `herdr server stop` **exists**
+        (no bare `herdr stop`); `herdr server` takes no required subcommand
+        (bare form = run the server).
+      - **Phase 4 start is argv-identical to the live server:** `ps -p 1266` →
+        `/Users/kooshapari/.local/bin/herdr server`, exactly what
+        `nohup "$HOME/.local/bin/herdr" server &` reproduces.
+      - Verify commands respond: `herdr status server` → `status: running,
+        version: 0.9.3, socket ~/.config/herdr/herdr.sock`; `herdr pane list`
+        → rc=0.
+      - Script CLI matches runbook: `cutover_session.py --help` →
+        `[--dry-run | --apply] [--force] [path]` (mutually exclusive
+        dry-run/apply; `--force` doc: "only for --dry-run against a COPY").
+      - Phase 2.1 copy target present (stale copy from prior dry-run,
+        11038 B = live size; `cp` in 2.1 refreshes it regardless).
+      - Live inventory cross-check via `herdr pane list`: w7 holds 12 panes +
+        w8 `Ag Stat` = **13** jcode targets; the 3 probe panes
+        (`PhenoShared`/`Agile`/`ForgeCode`, `probe_devin`/`probe_letta`/
+        `probe_hermes`, status `unknown`) present exactly as the 3 REMOVE
+        targets; 4 w8 codex panes carry their `agent_session` = the 4 KEPT
+        codex entries.
 
 ---
 
