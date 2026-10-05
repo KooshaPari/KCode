@@ -11,6 +11,15 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex;
 
+mod discovery;
+mod interactions;
+#[cfg(test)]
+mod lifecycle_tests;
+mod live;
+mod ownership;
+#[cfg(test)]
+mod race_tests;
+
 const ACP_PROTOCOL_VERSION: u64 = 1;
 
 const JSONRPC_PARSE_ERROR: i64 = -32700;
@@ -54,6 +63,7 @@ struct JsonRpcMessage {
     id: Option<Value>,
     method: Option<String>,
     params: Value,
+    result: Option<Value>,
 }
 
 impl JsonRpcMessage {
@@ -74,6 +84,7 @@ impl JsonRpcMessage {
         }
         Ok(Self {
             id: object.get("id").cloned(),
+            result: object.get("result").cloned(),
             method: object
                 .get("method")
                 .and_then(Value::as_str)
@@ -91,6 +102,11 @@ struct DaemonSession {
     active_prompt_id: Mutex<Option<u64>>,
     prompt_running: AtomicBool,
     ui_state: Mutex<SessionUiState>,
+    events: Mutex<Option<tokio::sync::mpsc::Receiver<Result<ServerEvent>>>>,
+    pump: Mutex<Option<tokio::task::AbortHandle>>,
+    interaction_pump: Mutex<Option<tokio::task::AbortHandle>>,
+    interaction_requested: AtomicBool,
+    interaction_active: AtomicBool,
 }
 
 /// Session-scoped provider/model state used to surface ACP `configOptions`
@@ -208,6 +224,11 @@ impl DaemonSession {
             active_prompt_id: Mutex::new(None),
             prompt_running: AtomicBool::new(false),
             ui_state: Mutex::new(SessionUiState::default()),
+            events: Mutex::new(None),
+            pump: Mutex::new(None),
+            interaction_pump: Mutex::new(None),
+            interaction_requested: AtomicBool::new(false),
+            interaction_active: AtomicBool::new(false),
         }
     }
 
@@ -232,6 +253,18 @@ impl DaemonSession {
     }
 
     async fn read_event(&self) -> Result<ServerEvent> {
+        let mut events = self.events.lock().await;
+        if let Some(receiver) = events.as_mut() {
+            return receiver
+                .recv()
+                .await
+                .unwrap_or_else(|| Err(anyhow::anyhow!("Jcode daemon disconnected")));
+        }
+        drop(events);
+        self.read_raw_event().await
+    }
+
+    async fn read_raw_event(&self) -> Result<ServerEvent> {
         let mut line = String::new();
         let mut reader = self.reader.lock().await;
         let n = reader.read_line(&mut line).await?;
@@ -252,6 +285,10 @@ struct AcpRuntime {
     provider_choice: ProviderChoice,
     model: Option<String>,
     provider_profile: Option<String>,
+    controller: String,
+    broker_path: PathBuf,
+    form_elicitation: Arc<AtomicBool>,
+    interaction_requests: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl AcpRuntime {
@@ -265,6 +302,10 @@ impl AcpRuntime {
             stdout: Arc::new(Mutex::new(tokio::io::stdout())),
             sessions: Arc::new(Mutex::new(HashMap::new())),
             profile,
+            controller: crate::id::new_id("acp"),
+            broker_path: crate::tool::interaction::socket_path(),
+            form_elicitation: Arc::new(AtomicBool::new(false)),
+            interaction_requests: Arc::new(Mutex::new(HashMap::new())),
             provider_choice,
             model,
             provider_profile,
@@ -280,6 +321,9 @@ impl AcpRuntime {
             line.clear();
             let n = reader.read_line(&mut line).await?;
             if n == 0 {
+                for session in self.sessions.lock().await.values() {
+                    session.stop_pump().await;
+                }
                 return Ok(());
             }
             if line.trim().is_empty() {
@@ -306,21 +350,34 @@ impl AcpRuntime {
     async fn handle_message(&self, message: JsonRpcMessage) -> Result<()> {
         let Some(method) = message.method.as_deref() else {
             if let Some(id) = message.id {
-                self.write_error_value(
-                    id,
-                    JSONRPC_INVALID_REQUEST,
-                    "JSON-RPC request missing method".to_string(),
-                )
-                .await?;
+                self.interaction_response(id, message.result).await?;
             }
             return Ok(());
         };
 
         match method {
             "initialize" => {
+                self.form_elicitation.store(
+                    message
+                        .params
+                        .pointer("/clientCapabilities/elicitation/form")
+                        .is_some_and(|v| !v.is_null()),
+                    Ordering::SeqCst,
+                );
                 if let Some(id) = message.id {
                     self.write_result(id, initialize_result(&message.params, self.profile))
                         .await?;
+                }
+            }
+            "session/list" => {
+                if let Some(id) = message.id {
+                    match discovery::list(&message.params) {
+                        Ok(result) => self.write_result(id, result).await?,
+                        Err(error) => {
+                            self.write_error_value(id, JSONRPC_INVALID_PARAMS, error.to_string())
+                                .await?
+                        }
+                    }
                 }
             }
             "session/new" => self.handle_session_new(message).await?,
@@ -395,12 +452,19 @@ impl AcpRuntime {
             Ok(session) => {
                 let session_id = session.session_id.clone();
                 let state = session.ui_state.lock().await.clone();
-                self.sessions
-                    .lock()
-                    .await
-                    .insert(session_id.clone(), Arc::new(session));
+                let control_interactions = interaction_control(&message.params, true);
+                if let Err(error) = self.register_session(session, control_interactions).await {
+                    self.write_error_value(
+                        id,
+                        JSONRPC_SERVER_ERROR,
+                        format!("Interaction ownership failed: {error:#}"),
+                    )
+                    .await?;
+                    return Ok(());
+                }
                 let mut result = json!({ "sessionId": session_id });
                 insert_session_configuration(&mut result, &state);
+                result["_meta"]["jcode.interactionController"] = json!(control_interactions);
                 self.write_result(id, result).await?;
                 self.write_available_commands(&session_id).await?;
             }
@@ -452,12 +516,19 @@ impl AcpRuntime {
         {
             Ok(session) => {
                 let state = session.ui_state.lock().await.clone();
-                self.sessions
-                    .lock()
-                    .await
-                    .insert(session.session_id.clone(), Arc::new(session));
+                let control_interactions = interaction_control(&message.params, false);
+                if let Err(error) = self.register_session(session, control_interactions).await {
+                    self.write_error_value(
+                        id,
+                        JSONRPC_SERVER_ERROR,
+                        format!("Interaction ownership failed: {error:#}"),
+                    )
+                    .await?;
+                    return Ok(());
+                }
                 let mut result = json!({});
                 insert_session_configuration(&mut result, &state);
+                result["_meta"]["jcode.interactionController"] = json!(control_interactions);
                 self.write_result(id, result).await?;
                 self.write_available_commands(&session_id).await?;
             }
@@ -507,6 +578,11 @@ impl AcpRuntime {
             return Ok(());
         };
 
+        if let Err(error) = self.require_interaction_ownership(&session).await {
+            self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string())
+                .await?;
+            return Ok(());
+        }
         if session
             .prompt_running
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -521,9 +597,12 @@ impl AcpRuntime {
             return Ok(());
         }
 
+        session.clear_events().await;
         let runtime = self.clone();
         tokio::spawn(async move {
-            let result = runtime.run_prompt(id.clone(), session, text, images).await;
+            let result = runtime
+                .run_prompt(id.clone(), session.clone(), text, images)
+                .await;
             if let Err(err) = result {
                 let _ = runtime
                     .write_error_value(
@@ -533,6 +612,7 @@ impl AcpRuntime {
                     )
                     .await;
             }
+            cleanup_prompt_state(&session).await;
         });
         Ok(())
     }
@@ -553,6 +633,14 @@ impl AcpRuntime {
             sessions.get(&session_id).cloned()
         };
         if let Some(session) = session {
+            if let Err(error) = self.require_interaction_ownership(&session).await {
+                if let Some(id) = message.id {
+                    self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string())
+                        .await?;
+                }
+                return Ok(());
+            }
+            self.cancel_interactions(&session_id).await;
             let cancel_id = session.next_id();
             let _ = session.send(&Request::Cancel { id: cancel_id }).await;
         }
@@ -575,8 +663,14 @@ impl AcpRuntime {
             }
         };
         if let Some(session) = self.sessions.lock().await.remove(&session_id) {
-            let cancel_id = session.next_id();
-            let _ = session.send(&Request::Cancel { id: cancel_id }).await;
+            if session.prompt_running.load(Ordering::SeqCst)
+                && self.require_interaction_ownership(&session).await.is_ok()
+            {
+                self.cancel_interactions(&session_id).await;
+                let cancel_id = session.next_id();
+                let _ = session.send(&Request::Cancel { id: cancel_id }).await;
+            }
+            session.stop_pump().await;
         }
         self.write_result(id, json!({})).await?;
         Ok(())
@@ -627,7 +721,16 @@ impl AcpRuntime {
             .await?;
             return Ok(());
         };
-        if session.prompt_running.load(Ordering::SeqCst) {
+        if let Err(error) = self.require_interaction_ownership(&session).await {
+            self.write_error_value(id, JSONRPC_SERVER_ERROR, error.to_string())
+                .await?;
+            return Ok(());
+        }
+        if session
+            .prompt_running
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
             self.write_error_value(
                 id,
                 JSONRPC_SERVER_ERROR,
@@ -637,30 +740,34 @@ impl AcpRuntime {
             return Ok(());
         }
 
+        session.clear_events().await;
         let request_id = session.next_id();
-        let apply_result = match config_id.as_str() {
-            CONFIG_ID_MODEL => {
-                session
-                    .send(&Request::SetModel {
-                        id: request_id,
-                        model: value.clone(),
-                    })
-                    .await?;
-                wait_for_model_changed(&session, request_id).await
+        let apply_result = async {
+            match config_id.as_str() {
+                CONFIG_ID_MODEL => {
+                    session
+                        .send(&Request::SetModel {
+                            id: request_id,
+                            model: value.clone(),
+                        })
+                        .await?;
+                    wait_for_model_changed(&session, request_id).await
+                }
+                CONFIG_ID_EFFORT => {
+                    session
+                        .send(&Request::SetReasoningEffort {
+                            id: request_id,
+                            effort: value.clone(),
+                            target_session_id: None,
+                        })
+                        .await?;
+                    wait_for_effort_changed(&session, request_id).await
+                }
+                other => Err(anyhow::anyhow!("Unknown config option id: {other}")),
             }
-            CONFIG_ID_EFFORT => {
-                session
-                    .send(&Request::SetReasoningEffort {
-                        id: request_id,
-                        effort: value.clone(),
-                        target_session_id: None,
-                    })
-                    .await?;
-                wait_for_effort_changed(&session, request_id).await
-            }
-            other => Err(anyhow::anyhow!("Unknown config option id: {other}")),
-        };
-
+        }
+        .await;
+        cleanup_prompt_state(&session).await;
         match apply_result {
             Ok(()) => {
                 let config_options = session_config_options(&*session.ui_state.lock().await);
@@ -761,12 +868,12 @@ impl AcpRuntime {
 
     async fn create_new_session(&self, cwd: PathBuf) -> Result<DaemonSession> {
         let (reader, writer) = self.connect_daemon().await?;
-        let session = DaemonSession::new(String::new(), reader, writer, 2);
+        let mut session = DaemonSession::new(String::new(), reader, writer, 2);
         let subscribe_id = 1;
         session
             .send(&Request::Subscribe {
                 crash_on_disconnect: false,
-                continue_on_disconnect: false,
+                continue_on_disconnect: true,
                 id: subscribe_id,
                 working_dir: Some(cwd.display().to_string()),
                 selfdev: None,
@@ -798,13 +905,8 @@ impl AcpRuntime {
             ),
             other => anyhow::bail!("expected history after session creation, got {other:?}"),
         };
-        Ok(DaemonSession::new(
-            session_id,
-            session.reader.into_inner().into_inner(),
-            session.writer.into_inner(),
-            session.next_request_id.load(Ordering::Relaxed),
-        )
-        .with_ui_state(ui_state))
+        session.session_id = session_id;
+        Ok(session.with_ui_state(ui_state))
     }
 
     async fn attach_existing_session(
@@ -814,12 +916,12 @@ impl AcpRuntime {
         replay_history: bool,
     ) -> Result<DaemonSession> {
         let (reader, writer) = self.connect_daemon().await?;
-        let session = DaemonSession::new(String::new(), reader, writer, 2);
+        let mut session = DaemonSession::new(String::new(), reader, writer, 2);
         let resume_id = 1;
         session
             .send(&Request::Subscribe {
                 crash_on_disconnect: false,
-                continue_on_disconnect: false,
+                continue_on_disconnect: true,
                 id: resume_id,
                 working_dir: Some(cwd.display().to_string()),
                 selfdev: None,
@@ -870,13 +972,8 @@ impl AcpRuntime {
             }
         }
 
-        Ok(DaemonSession::new(
-            attached_id,
-            session.reader.into_inner().into_inner(),
-            session.writer.into_inner(),
-            session.next_request_id.load(Ordering::Relaxed),
-        )
-        .with_ui_state(ui_state))
+        session.session_id = attached_id;
+        Ok(session.with_ui_state(ui_state))
     }
 
     async fn replay_history(
@@ -920,7 +1017,6 @@ impl AcpRuntime {
                 Ok(command) => self.run_session_command(&session, command).await,
                 Err(err) => Err(err),
             };
-            cleanup_prompt_state(&session).await;
             let response = response?;
             self.write_notification(
                 "session/update",
@@ -941,7 +1037,7 @@ impl AcpRuntime {
             *active = Some(prompt_id);
         }
 
-        let send_result = session
+        session
             .send(&Request::Message {
                 id: prompt_id,
                 content: text,
@@ -950,27 +1046,12 @@ impl AcpRuntime {
                 active_skill: None,
                 no_reply: false,
             })
-            .await;
-        if let Err(err) = send_result {
-            cleanup_prompt_state(&session).await;
-            return Err(err);
-        }
+            .await?;
 
-        let mut mapper = EventMapper::new(session.session_id.clone(), self.profile);
         let mut stop_reason = "end_turn".to_string();
         let mut turn_usage = TurnUsage::default();
         loop {
-            let event = match session.read_event().await {
-                Ok(event) => event,
-                Err(err) => {
-                    cleanup_prompt_state(&session).await;
-                    return Err(err);
-                }
-            };
-            if self.profile.is_extended() {
-                self.write_jcode_extension_event(&session.session_id, &event)
-                    .await?;
-            }
+            let event = session.read_event().await?;
             match event {
                 ServerEvent::Ack { .. } => {}
                 ServerEvent::Done { id } if id == prompt_id => break,
@@ -978,7 +1059,6 @@ impl AcpRuntime {
                     stop_reason = "cancelled".to_string();
                 }
                 ServerEvent::Error { id, message, .. } if id == prompt_id => {
-                    cleanup_prompt_state(&session).await;
                     self.write_error_value(rpc_id, JSONRPC_SERVER_ERROR, message)
                         .await?;
                     return Ok(());
@@ -1048,22 +1128,10 @@ impl AcpRuntime {
                         }
                     }
                 }
-                other => {
-                    for update in mapper.map_event(other) {
-                        self.write_notification(
-                            "session/update",
-                            json!({
-                                "sessionId": session.session_id,
-                                "update": update,
-                            }),
-                        )
-                        .await?;
-                    }
-                }
+                _ => {}
             }
         }
 
-        cleanup_prompt_state(&session).await;
         self.write_result(rpc_id, prompt_response(&stop_reason, &turn_usage))
             .await?;
         Ok(())
@@ -1273,7 +1341,12 @@ async fn request_history(session: &DaemonSession) -> Result<ServerEvent> {
 
 async fn request_model_catalog(session: &DaemonSession) -> Result<ServerEvent> {
     let id = session.next_id();
-    session.send(&Request::GetModelCatalog { id, subscribe_usage_updates: false }).await?;
+    session
+        .send(&Request::GetModelCatalog {
+            id,
+            subscribe_usage_updates: false,
+        })
+        .await?;
     loop {
         match session.read_event().await? {
             ServerEvent::Ack { .. } => {}
@@ -1621,6 +1694,13 @@ fn compatibility_option_value(
         })
 }
 
+fn interaction_control(params: &Value, new_session: bool) -> bool {
+    params
+        .pointer("/_meta/jcode.interactionController")
+        .and_then(Value::as_bool)
+        .unwrap_or_else(|| new_session || std::env::var("JCODE_ACP_CONTROL").as_deref() == Ok("1"))
+}
+
 fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
     // We only speak exactly ACP_PROTOCOL_VERSION; the response pins to our
     // version regardless of the `protocolVersion` the client requested.
@@ -1638,6 +1718,7 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
             "sse": false,
         },
         "sessionCapabilities": {
+            "list": {},
             "close": {},
             "resume": {},
         }
@@ -1656,6 +1737,8 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
             }),
         );
     }
+
+    agent_capabilities["_meta"]["jcode.interactionController"] = json!(cfg!(unix));
 
     json!({
         "protocolVersion": protocol_version,
@@ -1959,10 +2042,13 @@ mod tests {
     }
 
     #[test]
-    fn initialize_standard_omits_jcode_meta() {
+    fn initialize_standard_advertises_controller_without_raw_event_extension() {
         let result = initialize_result(&json!({"protocolVersion": 1}), AcpProfile::Standard);
         assert_eq!(result["protocolVersion"], 1);
-        assert!(result["agentCapabilities"].get("_meta").is_none());
+        assert_eq!(
+            result["agentCapabilities"]["_meta"],
+            json!({"jcode.interactionController": cfg!(unix)})
+        );
         assert_eq!(result["agentCapabilities"]["loadSession"], true);
     }
 

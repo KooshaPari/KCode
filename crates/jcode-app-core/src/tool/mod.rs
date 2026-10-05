@@ -19,6 +19,8 @@ pub mod feedback;
 mod gmail;
 mod goal;
 pub mod inflight;
+pub mod interaction;
+mod interaction_form;
 pub mod invalid;
 pub mod jcode_docs;
 pub mod ls;
@@ -844,6 +846,9 @@ impl Registry {
                 &input_json,
             )
             .await;
+            if let crate::hooks::GateDecision::Ask { ref reason } = decision {
+                interaction::permission(&ctx, resolved_name, &input, reason).await?;
+            }
             if let crate::hooks::GateDecision::Block { reason } = decision {
                 let mut fields =
                     Self::tool_lifecycle_fields("blocked", name, resolved_name, &input, &ctx);
