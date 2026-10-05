@@ -336,6 +336,7 @@ async fn run_forgecode_cli(
     tx: mpsc::Sender<Result<StreamEvent>>,
 ) -> Result<()> {
     let mut cmd = Command::new(&config.cli_path);
+    apply_dev_home(&mut cmd);
     cmd.arg("-p")
         .arg("--verbose")
         .arg("--output-format")
@@ -548,6 +549,52 @@ async fn run_forgecode_cli(
     }
 
     Ok(())
+}
+
+fn apply_dev_home(command: &mut Command) {
+    apply_dev_home_values(
+        command,
+        std::env::var_os("JCODE_DEV_NAMESPACE").is_some(),
+        std::env::var_os("JCODE_HOME").as_deref(),
+    );
+}
+
+fn apply_dev_home_values(command: &mut Command, dev: bool, home: Option<&std::ffi::OsStr>) {
+    if !dev {
+        return;
+    }
+    let Some(home) = home.map(PathBuf::from) else {
+        return;
+    };
+    command
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("XDG_CONFIG_HOME", home.join("xdg/config"))
+        .env("XDG_DATA_HOME", home.join("xdg/data"));
+}
+
+#[cfg(test)]
+mod dev_namespace_tests {
+    use super::apply_dev_home_values;
+    use tokio::process::Command;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn forgecode_cli_child_uses_dev_home_and_xdg_sentinel() {
+        let dev_home = "/tmp/jcode-dev-sentinel";
+        let mut command = Command::new("/bin/sh");
+        command.args([
+            "-c",
+            "printf '%s\\n%s\\n%s' \"$HOME\" \"$XDG_CONFIG_HOME\" \"$XDG_DATA_HOME\"",
+        ]);
+        apply_dev_home_values(&mut command, true, Some(std::ffi::OsStr::new(dev_home)));
+        let output = command.output().await.unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            format!("{dev_home}\n{dev_home}/xdg/config\n{dev_home}/xdg/data")
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

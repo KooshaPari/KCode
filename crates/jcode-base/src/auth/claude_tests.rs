@@ -97,6 +97,14 @@ fn sandboxed_jcode_home_is_detected_without_hiding_explicit_env_credentials() {
 }
 
 #[test]
+fn dev_namespace_does_not_discover_inherited_claude_credentials() {
+    let _lock = crate::storage::lock_test_env();
+    let _marker = EnvStringGuard::set("JCODE_DEV_NAMESPACE", "1");
+    let _token = EnvStringGuard::set(CLAUDE_CODE_OAUTH_TOKEN_ENV, "inherited-test-token");
+    assert!(!native_credentials_present());
+}
+
+#[test]
 fn real_jcode_home_is_not_treated_as_a_sandbox() {
     let _lock = crate::storage::lock_test_env();
     let real_home = dirs::home_dir().unwrap().join(".jcode");
@@ -549,6 +557,58 @@ fn env_token_absent_yields_none() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvStringGuard::remove("CLAUDE_CODE_OAUTH_TOKEN");
     assert!(load_claude_code_env_credentials().is_none());
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn dev_namespace_child_cannot_read_native_claude_keychain() {
+    const CHILD_MARKER: &str = "JCODE_TEST_DEV_KEYCHAIN_CHILD";
+    if std::env::var_os(CHILD_MARKER).as_deref() == Some(std::ffi::OsStr::new("1")) {
+        assert!(load_native_credentials().is_err());
+        return;
+    }
+
+    use std::os::unix::fs::PermissionsExt;
+    let _lock = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let home = std::fs::canonicalize(home).unwrap();
+    let dev_home = home.join(".jcode-dev");
+    std::fs::create_dir_all(&dev_home).unwrap();
+    let marker = temp.path().join("security-invoked");
+    let security = temp.path().join("fake-security");
+    std::fs::write(
+        &security,
+        format!(
+            "#!/bin/sh\nprintf invoked > '{}'\nexit 0\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    let mut permissions = std::fs::metadata(&security).unwrap().permissions();
+    permissions.set_mode(0o700);
+    std::fs::set_permissions(&security, permissions).unwrap();
+
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "dev_namespace_child_cannot_read_native_claude_keychain",
+            "--nocapture",
+        ])
+        .env(CHILD_MARKER, "1")
+        .env("JCODE_DEV_NAMESPACE", "1")
+        .env("HOME", &home)
+        .env("JCODE_HOME", &dev_home)
+        .env("JCODE_TEST_SECURITY_BIN", &security)
+        .env_remove(CLAUDE_CODE_OAUTH_TOKEN_ENV)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "child keychain guard failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!marker.exists(), "fake security command was invoked");
 }
 
 /// Live macOS-only check against a real `Claude Code-credentials` Keychain item.

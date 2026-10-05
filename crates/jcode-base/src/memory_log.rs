@@ -27,8 +27,10 @@ struct MemoryLogger {
 impl MemoryLogger {
     fn open(date: &str) -> Option<Self> {
         let dir = log_dir()?;
+        crate::storage::reject_dev_home_symlink_path(&dir).ok()?;
         fs::create_dir_all(&dir).ok()?;
         let path = dir.join(format!("memory-events-{}.jsonl", date));
+        crate::storage::reject_dev_home_symlink_path(&path).ok()?;
         let file = OpenOptions::new()
             .create(true)
             .append(true)
@@ -49,6 +51,9 @@ impl MemoryLogger {
 }
 
 fn log_dir() -> Option<PathBuf> {
+    if let Some(home) = std::env::var_os("JCODE_HOME") {
+        return Some(PathBuf::from(home).join("logs"));
+    }
     dirs::home_dir().map(|h| h.join(".jcode").join("logs"))
 }
 

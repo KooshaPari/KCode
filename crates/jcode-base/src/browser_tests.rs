@@ -157,6 +157,108 @@ fn setup_complete_requires_native_host_binary() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn setup_marker_symlink_is_neither_read_nor_written() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join(".jcode-dev");
+    let stable = temp.path().join("stable-setup-marker");
+    std::fs::create_dir_all(home.join("browser")).unwrap();
+    std::fs::write(&stable, b"stable setup sentinel\n").unwrap();
+    std::fs::set_permissions(&stable, std::fs::Permissions::from_mode(0o640)).unwrap();
+    let before = std::fs::symlink_metadata(&stable).unwrap();
+    let identity = (before.dev(), before.ino(), before.permissions().mode());
+    std::os::unix::fs::symlink(&stable, home.join("browser/.setup-complete")).unwrap();
+    let old_home = std::env::var_os("JCODE_HOME");
+    let old_namespace = std::env::var_os("JCODE_DEV_NAMESPACE");
+    crate::env::set_var("JCODE_HOME", &home);
+    crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
+
+    assert!(!is_setup_complete());
+    assert!(mark_setup_complete().is_err());
+    assert_eq!(std::fs::read(&stable).unwrap(), b"stable setup sentinel\n");
+    let after = std::fs::symlink_metadata(&stable).unwrap();
+    assert_eq!(
+        (after.dev(), after.ino(), after.permissions().mode()),
+        identity
+    );
+    assert!(home.join("browser/.setup-complete").is_symlink());
+
+    if let Some(value) = old_home {
+        crate::env::set_var("JCODE_HOME", value);
+    } else {
+        crate::env::remove_var("JCODE_HOME");
+    }
+    if let Some(value) = old_namespace {
+        crate::env::set_var("JCODE_DEV_NAMESPACE", value);
+    } else {
+        crate::env::remove_var("JCODE_DEV_NAMESPACE");
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn browser_binary_symlink_is_not_launched() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    struct EnvRestore(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            if let Some(value) = self.0.take() {
+                crate::env::set_var("JCODE_HOME", value);
+            } else {
+                crate::env::remove_var("JCODE_HOME");
+            }
+            if let Some(value) = self.1.take() {
+                crate::env::set_var("JCODE_DEV_NAMESPACE", value);
+            } else {
+                crate::env::remove_var("JCODE_DEV_NAMESPACE");
+            }
+        }
+    }
+
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join(".jcode-dev");
+    std::fs::create_dir_all(home.join("browser")).unwrap();
+    let _restore = EnvRestore(
+        std::env::var_os("JCODE_HOME"),
+        std::env::var_os("JCODE_DEV_NAMESPACE"),
+    );
+    crate::env::set_var("JCODE_HOME", &home);
+    crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
+    let target = temp.path().join("stable-browser-cli");
+    let marker = temp.path().join("browser-invoked");
+    let script = format!("#!/bin/sh\nprintf invoked > '{}'\n", marker.display());
+    std::fs::write(&target, &script).unwrap();
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o750)).unwrap();
+    let before = std::fs::symlink_metadata(&target).unwrap();
+    let identity = (before.dev(), before.ino(), before.permissions().mode());
+    std::os::unix::fs::symlink(&target, browser_binary_path()).unwrap();
+
+    assert!(ensure_browser_session("negative-control").is_none());
+    assert!(
+        run_browser_cli_capped(
+            &browser_binary_path(),
+            &["ping"],
+            std::time::Duration::from_secs(1)
+        )
+        .await
+        .is_err()
+    );
+    assert!(!marker.exists());
+    assert_eq!(std::fs::read(&target).unwrap(), script.as_bytes());
+    let after = std::fs::symlink_metadata(&target).unwrap();
+    assert_eq!(
+        (after.dev(), after.ino(), after.permissions().mode()),
+        identity
+    );
+    assert!(browser_binary_path().is_symlink());
+}
+
 #[tokio::test]
 async fn test_inspect_browser_status_without_binary() {
     // Hold the test-env lock: this reads JCODE_HOME-derived paths, and other

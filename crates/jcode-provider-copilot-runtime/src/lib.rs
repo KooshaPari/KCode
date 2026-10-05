@@ -23,6 +23,7 @@ use jcode_provider_copilot::{DEFAULT_MODEL, FALLBACK_MODELS};
 pub use jcode_provider_core::PremiumMode;
 use jcode_provider_core::{EventStream, Provider};
 use serde_json::{Value, json};
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -226,9 +227,10 @@ impl CopilotApiProvider {
     }
 
     fn get_or_create_machine_id() -> String {
-        let machine_id_path = dirs::home_dir()
+        let machine_id_path = std::env::var_os("JCODE_HOME")
+            .map(PathBuf::from)
+            .or_else(|| dirs::home_dir().map(|home| home.join(".jcode")))
             .unwrap_or_default()
-            .join(".jcode")
             .join("machine_id");
         if let Ok(id) = std::fs::read_to_string(&machine_id_path) {
             let id = id.trim().to_string();

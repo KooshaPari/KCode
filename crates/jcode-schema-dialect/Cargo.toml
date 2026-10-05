@@ -21,4 +21,5 @@ test-support = []
 
 [dev-dependencies]
 tempfile = "3"
+jcode-core = { path = "../jcode-core" }
 jcode-schema-dialect = { path = ".", features = ["test-support"] }

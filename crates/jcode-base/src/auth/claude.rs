@@ -728,7 +728,7 @@ fn read_claude_code_keychain_blob() -> Option<String> {
     use std::process::{Command, Stdio};
     use std::time::Duration;
 
-    let mut child = Command::new("/usr/bin/security")
+    let mut child = Command::new(keychain_security_program())
         .args([
             "find-generic-password",
             "-s",
@@ -782,6 +782,9 @@ fn read_claude_code_keychain_blob() -> Option<String> {
 /// reading the secret value. The secret is only read during an approved
 /// import or at runtime load.
 pub fn native_credentials_present() -> bool {
+    if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
+        return false;
+    }
     if std::env::var(CLAUDE_CODE_OAUTH_TOKEN_ENV)
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false)
@@ -799,7 +802,7 @@ pub fn native_credentials_present() -> bool {
 #[cfg(target_os = "macos")]
 fn claude_code_keychain_item_exists() -> bool {
     use std::process::{Command, Stdio};
-    Command::new("/usr/bin/security")
+    Command::new(keychain_security_program())
         .args(["find-generic-password", "-s", CLAUDE_CODE_KEYCHAIN_SERVICE])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -807,6 +810,15 @@ fn claude_code_keychain_item_exists() -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+#[cfg(target_os = "macos")]
+fn keychain_security_program() -> std::path::PathBuf {
+    #[cfg(test)]
+    if let Some(path) = std::env::var_os("JCODE_TEST_SECURITY_BIN") {
+        return path.into();
+    }
+    std::path::PathBuf::from("/usr/bin/security")
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -817,6 +829,9 @@ fn claude_code_keychain_item_exists() -> bool {
 /// Load Claude Code's native (Keychain or env) credentials, preferring the env
 /// token (which Claude Code itself prioritizes), then the Keychain.
 pub fn load_native_credentials() -> Result<ClaudeCredentials> {
+    if crate::storage::running_in_dev_namespace() {
+        anyhow::bail!("Claude Code native credential import is disabled for isolated Jcode homes");
+    }
     if let Some(creds) = load_claude_code_env_credentials() {
         return Ok(creds);
     }

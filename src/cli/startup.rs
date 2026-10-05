@@ -20,6 +20,39 @@ pub async fn run() -> Result<()> {
     // must not harden credential files or create configuration/telemetry state.
     let args = Args::parse();
 
+    if crate::cli::dev_namespace::launcher_requested() {
+        let paths = crate::cli::dev_namespace::validate_environment()?;
+        crate::cli::dev_namespace::isolate_provider_environment(&paths);
+        crate::cli::dev_namespace::validate_socket_override(args.socket.as_deref())?;
+        let command_socket = match args.command.as_ref() {
+            Some(Command::Debug { socket, .. }) => socket.as_deref(),
+            _ => None,
+        };
+        crate::cli::dev_namespace::validate_socket_override(
+            command_socket.or(args.socket.as_deref()),
+        )?;
+        #[cfg(unix)]
+        let api_socket = match args.command.as_ref() {
+            Some(Command::ApiBridge { api_socket, .. }) => api_socket.as_deref(),
+            _ => None,
+        };
+        #[cfg(not(unix))]
+        let api_socket: Option<&str> = None;
+        crate::cli::dev_namespace::validate_api_socket_override(api_socket)?;
+    } else if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
+        anyhow::bail!("JCODE_DEV_NAMESPACE is reserved for the validated jcode-dev launcher");
+    }
+    if matches!(
+        args.command.as_ref(),
+        Some(Command::SelfDev { build: true })
+    ) && !crate::cli::dev_namespace::launcher_requested()
+    {
+        anyhow::bail!(
+            "Refusing to build self-dev into the normal jcode installation. \
+             Use `jcode-dev self-dev --build` to build in ~/.jcode-dev."
+        );
+    }
+
     // Propagate agent mode to env so tool-gating and status bar can read it.
     let resolved_mode = jcode_config_types::AgentMode::parse(&args.mode)
         .unwrap_or(jcode_config_types::AgentMode::Execute);
@@ -145,7 +178,12 @@ pub async fn run() -> Result<()> {
     }
     startup_profile::mark("telemetry_check");
 
-    let args = parse_and_prepare_args(args)?;
+    let mut args = parse_and_prepare_args(args)?;
+    if crate::cli::dev_namespace::launcher_requested() {
+        // Dev builds are local branch builds. Never let a release updater
+        // replace this namespace or fetch a mainline binary over the fork.
+        args.no_update = true;
+    }
     spawn_background_update_check(&args);
 
     // Initialize HERDR terminal runtime reporter. No-op when not inside

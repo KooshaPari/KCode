@@ -324,6 +324,11 @@ pub(super) fn write_output_png_cached_fonts(
         resvg::tiny_skia::Transform::default(),
         &mut pixmap_mut,
     );
+    jcode_storage::reject_dev_home_symlink_path(output)?;
     pixmap.save_png(output)?;
     Ok(())
 }
+
+#[cfg(all(test, feature = "renderer"))]
+#[path = "mermaid_svg_tests.rs"]
+mod mermaid_svg_tests;

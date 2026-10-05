@@ -12,7 +12,7 @@
 use crate::dialect::LearnedQuirks;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -96,7 +96,40 @@ fn cache() -> &'static Mutex<BTreeMap<PathBuf, QuirkFile>> {
     CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
+fn path_is_safe(path: &Path) -> bool {
+    if std::env::var_os("JCODE_DEV_NAMESPACE").as_deref() != Some(std::ffi::OsStr::new("1")) {
+        return true;
+    }
+    let Some(home) = std::env::var_os("JCODE_HOME").map(PathBuf::from) else {
+        return false;
+    };
+    if !home.is_absolute() || !path.is_absolute() || !path.starts_with(&home) {
+        return false;
+    }
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::Prefix(prefix) => current.push(prefix.as_os_str()),
+            std::path::Component::RootDir => current.push(component.as_os_str()),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => return false,
+            std::path::Component::Normal(part) => {
+                current.push(part);
+                if std::fs::symlink_metadata(&current)
+                    .is_ok_and(|metadata| metadata.file_type().is_symlink())
+                {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
 fn load_file(path: &PathBuf) -> QuirkFile {
+    if !path_is_safe(path) {
+        return QuirkFile::default();
+    }
     std::fs::read_to_string(path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
@@ -109,6 +142,9 @@ fn with_store<T>(f: impl FnOnce(&mut QuirkFile) -> (T, bool)) -> T {
     let Some(path) = store_path() else {
         return f(&mut QuirkFile::default()).0;
     };
+    if !path_is_safe(&path) {
+        return f(&mut QuirkFile::default()).0;
+    }
     let mut guard = cache().lock().unwrap_or_else(|e| e.into_inner());
     let file = guard
         .entry(path.clone())
@@ -117,7 +153,9 @@ fn with_store<T>(f: impl FnOnce(&mut QuirkFile) -> (T, bool)) -> T {
     if changed {
         // Best-effort persistence: an unwritable home must not break the turn
         // that just recovered.
-        if let Ok(serialized) = serde_json::to_string_pretty(file) {
+        if path_is_safe(&path)
+            && let Ok(serialized) = serde_json::to_string_pretty(file)
+        {
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
@@ -199,6 +237,64 @@ pub fn reset_cache_for_tests() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct EnvRestore(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            if let Some(value) = self.0.take() {
+                jcode_core::env::set_var("JCODE_HOME", value);
+            } else {
+                jcode_core::env::remove_var("JCODE_HOME");
+            }
+            if let Some(value) = self.1.take() {
+                jcode_core::env::set_var("JCODE_DEV_NAMESPACE", value);
+            } else {
+                jcode_core::env::remove_var("JCODE_DEV_NAMESPACE");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn schema_quirks_read_and_write_reject_a_symlinked_store() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        let _lock = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join(".jcode-dev");
+        std::fs::create_dir_all(&home).unwrap();
+        let target = temp.path().join("stable-schema.json");
+        let contents = br#"{"dialects":{"gemini":{"rejected_keywords":["sentinel"]}}}"#;
+        std::fs::write(&target, contents).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+        let before = std::fs::symlink_metadata(&target).unwrap();
+        let identity = (before.dev(), before.ino(), before.permissions().mode());
+        let store = home.join("schema-quirks.json");
+        std::os::unix::fs::symlink(&target, &store).unwrap();
+        let _restore = EnvRestore(
+            std::env::var_os("JCODE_HOME"),
+            std::env::var_os("JCODE_DEV_NAMESPACE"),
+        );
+        jcode_core::env::set_var("JCODE_HOME", &home);
+        jcode_core::env::set_var("JCODE_DEV_NAMESPACE", "1");
+        use_test_path(store.clone());
+
+        assert!(learned_for("gemini").is_empty());
+        assert!(record_keyword("gemini", "propertyNames"));
+        assert_eq!(std::fs::read(&target).unwrap(), contents);
+        let after = std::fs::symlink_metadata(&target).unwrap();
+        assert_eq!(
+            (after.dev(), after.ino(), after.permissions().mode()),
+            identity
+        );
+        assert!(store.is_symlink());
+        reset_cache_for_tests();
+        TEST_PATH.with(|path| *path.borrow_mut() = None);
+    }
 
     #[test]
     fn learns_persists_and_forgets() {

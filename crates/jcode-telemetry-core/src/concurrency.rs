@@ -93,7 +93,10 @@ impl Record {
 }
 
 fn read_snapshot(dir: &Path) -> io::Result<serde_json::Map<String, Value>> {
-    match std::fs::read(dir.join("registry.json")) {
+    let path = dir.join("registry.json");
+    ensure_private_path(dir)?;
+    ensure_private_path(&path)?;
+    match std::fs::read(path) {
         Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Default::default()),
         Err(error) => Err(error),
@@ -106,6 +109,8 @@ fn write_snapshot(dir: &Path, records: &serde_json::Map<String, Value>) -> io::R
 
 pub(super) fn atomic_private_write(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let temporary = path.with_extension("pending");
+    ensure_private_path(path)?;
+    ensure_private_path(&temporary)?;
     let mut file = private_file(&temporary, false)?;
     file.set_len(0)?;
     file.write_all(bytes)?;
@@ -114,6 +119,7 @@ pub(super) fn atomic_private_write(path: &Path, bytes: &[u8]) -> io::Result<()> 
 }
 
 fn private_file(path: &Path, create_new: bool) -> io::Result<File> {
+    ensure_private_path(path)?;
     let mut options = OpenOptions::new();
     options.read(true).write(true);
     if create_new {
@@ -129,9 +135,15 @@ fn private_file(path: &Path, create_new: bool) -> io::Result<File> {
     options.open(path)
 }
 
+fn ensure_private_path(path: &Path) -> io::Result<()> {
+    storage::reject_dev_home_symlink_path(path)
+        .map_err(|error| io::Error::new(io::ErrorKind::PermissionDenied, error))
+}
+
 /// Never delete the registry lock file: replacing its inode would create two
 /// independent locks. A bounded wait keeps telemetry from hanging startup.
 fn lock_registry(dir: &Path) -> io::Result<FileLock> {
+    ensure_private_path(dir)?;
     std::fs::create_dir_all(dir)?;
     lock_path(&dir.join("registry.lock"))
 }
@@ -167,11 +179,13 @@ pub(super) fn lock_path(path: &Path) -> io::Result<FileLock> {
 /// Only call while holding registry.lock. Successfully acquiring a lease proves
 /// that its owner has exited; a timestamp or a reused PID never proves liveness.
 fn live_records(dir: &Path, exclude: Option<&Path>) -> io::Result<Vec<(String, Record)>> {
+    ensure_private_path(dir)?;
     let mut live = Vec::new();
     let mut stale = Vec::new();
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
+        ensure_private_path(&path)?;
         if Some(path.as_path()) == exclude
             || !entry.file_type()?.is_file()
             || path.extension().and_then(|s| s.to_str()) != Some("lease")
@@ -293,6 +307,7 @@ impl Lease {
             return Err(error);
         }
         let _registry = registry?;
+        ensure_private_path(&self.path)?;
         let peak = (|| {
             live_records(&self.dir, None)?;
             let mut snapshot = read_snapshot(&self.dir)?;

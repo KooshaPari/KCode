@@ -3,7 +3,7 @@ pub mod stream;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Instant, SystemTime};
 
@@ -344,18 +344,19 @@ fn configured_cache_namespace() -> String {
     sanitize_cache_namespace(&raw)
 }
 
-fn cache_path_for_namespace(namespace: &str) -> PathBuf {
-    let namespace = sanitize_cache_namespace(namespace);
+fn jcode_cache_dir() -> PathBuf {
     if let Ok(path) = std::env::var("JCODE_HOME") {
-        return PathBuf::from(path)
-            .join("cache")
-            .join(format!("{}_models.json", namespace));
+        return PathBuf::from(path).join("cache");
     }
-
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".jcode")
         .join("cache")
+}
+
+fn cache_path_for_namespace(namespace: &str) -> PathBuf {
+    let namespace = sanitize_cache_namespace(namespace);
+    jcode_cache_dir()
         .join(format!("{}_models.json", namespace))
 }
 
@@ -363,8 +364,28 @@ fn cache_path() -> PathBuf {
     cache_path_for_namespace(&configured_cache_namespace())
 }
 
-fn disk_cache_modified_at(path: &PathBuf) -> Option<SystemTime> {
+fn disk_cache_modified_at(path: &Path) -> Option<SystemTime> {
+    jcode_storage::reject_dev_home_symlink_path(path).ok()?;
     std::fs::metadata(path).ok()?.modified().ok()
+}
+
+fn read_cache_content(path: &Path) -> Option<String> {
+    jcode_storage::reject_dev_home_symlink_path(path).ok()?;
+    std::fs::read_to_string(path).ok()
+}
+
+fn write_cache_content(path: &Path, content: &str) -> std::io::Result<()> {
+    jcode_storage::reject_dev_home_symlink_path(path)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    use std::io::Write;
+    options.open(path)?.write_all(content.as_bytes())
 }
 
 fn fresh_disk_cache(cache: Option<DiskCache>) -> Option<DiskCache> {
@@ -378,6 +399,7 @@ fn fresh_disk_cache(cache: Option<DiskCache>) -> Option<DiskCache> {
 }
 
 fn load_disk_cache_entry_from_path(path: PathBuf) -> Option<DiskCache> {
+    jcode_storage::reject_dev_home_symlink_path(&path).ok()?;
     let modified_at = disk_cache_modified_at(&path);
 
     if let Ok(memo) = DISK_CACHE_MEMO.lock()
@@ -387,8 +409,7 @@ fn load_disk_cache_entry_from_path(path: PathBuf) -> Option<DiskCache> {
         return fresh_disk_cache(entry.cache.clone());
     }
 
-    let loaded = std::fs::read_to_string(&path)
-        .ok()
+    let loaded = read_cache_content(&path)
         .and_then(|content| serde_json::from_str::<DiskCache>(&content).ok());
 
     if let Ok(mut memo) = DISK_CACHE_MEMO.lock() {
@@ -521,6 +542,9 @@ fn save_disk_cache_with_source_to_path(
     models: &[ModelInfo],
     source_api_base: Option<&str>,
 ) {
+    if jcode_storage::reject_dev_home_symlink_path(&path).is_err() {
+        return;
+    }
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -537,7 +561,7 @@ fn save_disk_cache_with_source_to_path(
     };
 
     if let Ok(content) = serde_json::to_string(&cache) {
-        let _ = std::fs::write(&path, content);
+        let _ = write_cache_content(&path, &content);
     }
 
     if let Ok(mut memo) = DISK_CACHE_MEMO.lock() {
@@ -554,15 +578,13 @@ fn save_disk_cache_with_source_to_path(
 fn endpoints_cache_path(model: &str) -> PathBuf {
     let safe_name = model.replace('/', "__");
     let namespace = configured_cache_namespace();
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".jcode")
-        .join("cache")
+    jcode_cache_dir()
         .join(format!("{}_endpoints_{}.json", namespace, safe_name))
 }
 
 pub fn load_endpoints_disk_cache_public(model: &str) -> Option<(Vec<EndpointInfo>, u64)> {
     let path = endpoints_cache_path(model);
+    jcode_storage::reject_dev_home_symlink_path(&path).ok()?;
     let modified_at = disk_cache_modified_at(&path);
     let cache = if let Ok(memo) = ENDPOINTS_DISK_CACHE_MEMO.lock()
         && let Some(entry) = memo.get(&path)
@@ -570,8 +592,7 @@ pub fn load_endpoints_disk_cache_public(model: &str) -> Option<(Vec<EndpointInfo
     {
         entry.cache.clone()?
     } else {
-        let loaded = std::fs::read_to_string(&path)
-            .ok()
+        let loaded = read_cache_content(&path)
             .and_then(|content| serde_json::from_str::<EndpointsDiskCache>(&content).ok());
         if let Ok(mut memo) = ENDPOINTS_DISK_CACHE_MEMO.lock() {
             memo.insert(
@@ -597,6 +618,7 @@ pub fn load_endpoints_disk_cache_public(model: &str) -> Option<(Vec<EndpointInfo
 
 pub fn load_endpoints_disk_cache(model: &str) -> Option<Vec<EndpointInfo>> {
     let path = endpoints_cache_path(model);
+    jcode_storage::reject_dev_home_symlink_path(&path).ok()?;
     let modified_at = disk_cache_modified_at(&path);
     let cache = if let Ok(memo) = ENDPOINTS_DISK_CACHE_MEMO.lock()
         && let Some(entry) = memo.get(&path)
@@ -604,8 +626,7 @@ pub fn load_endpoints_disk_cache(model: &str) -> Option<Vec<EndpointInfo>> {
     {
         entry.cache.clone()?
     } else {
-        let loaded = std::fs::read_to_string(&path)
-            .ok()
+        let loaded = read_cache_content(&path)
             .and_then(|content| serde_json::from_str::<EndpointsDiskCache>(&content).ok());
         if let Ok(mut memo) = ENDPOINTS_DISK_CACHE_MEMO.lock() {
             memo.insert(
@@ -631,6 +652,9 @@ pub fn load_endpoints_disk_cache(model: &str) -> Option<Vec<EndpointInfo>> {
 
 pub fn save_endpoints_disk_cache(model: &str, endpoints: &[EndpointInfo]) {
     let path = endpoints_cache_path(model);
+    if jcode_storage::reject_dev_home_symlink_path(&path).is_err() {
+        return;
+    }
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -643,7 +667,7 @@ pub fn save_endpoints_disk_cache(model: &str, endpoints: &[EndpointInfo]) {
         endpoints: endpoints.to_vec(),
     };
     if let Ok(content) = serde_json::to_string(&cache) {
-        let _ = std::fs::write(&path, content);
+        let _ = write_cache_content(&path, &content);
     }
 
     if let Ok(mut memo) = ENDPOINTS_DISK_CACHE_MEMO.lock() {
@@ -798,7 +822,6 @@ pub fn rank_providers_from_endpoints(endpoints: &[EndpointInfo]) -> Vec<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn parse_model_spec_handles_provider_aliases_and_auto() {
         let (model, provider) = parse_model_spec("anthropic/claude-sonnet-4@Fireworks");
@@ -930,3 +953,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "dev_namespace_tests.rs"]
+mod dev_namespace_tests;

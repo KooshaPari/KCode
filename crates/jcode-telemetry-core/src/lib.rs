@@ -42,6 +42,12 @@ static TELEMETRY_HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::ne
 #[cfg(test)]
 static TEST_EMITTED_PAYLOADS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 
+#[cfg(test)]
+fn lock_test_env_global() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[derive(Debug, Clone)]
 pub struct DiscoveryTelemetry<'a> {
     pub request_id: &'a str,
@@ -884,6 +890,9 @@ fn update_active_days(id: &str) -> (u32, u32) {
     let Some(path) = active_days_path(id) else {
         return (0, 0);
     };
+    if storage::reject_dev_home_symlink_path(&path).is_err() {
+        return (0, 0);
+    }
     let today = Utc::now().date_naive();
     let mut days = std::fs::read_to_string(&path)
         .ok()

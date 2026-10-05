@@ -550,7 +550,9 @@ where
     let mut command = Command::new(&process.command);
     command
         .args(&process.args)
-        .envs(&process.env)
+        .envs(&process.env);
+    apply_dev_home(&mut command);
+    command
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -610,6 +612,23 @@ where
             error.context(format!("Grok CLI stderr: {stderr}"))
         }
     })
+}
+
+fn apply_dev_home(command: &mut Command) {
+    let home = (std::env::var_os("JCODE_DEV_NAMESPACE").is_some())
+        .then(|| std::env::var_os("JCODE_HOME").map(PathBuf::from))
+        .flatten();
+    apply_dev_home_values(command, home.as_deref());
+}
+
+fn apply_dev_home_values(command: &mut Command, home: Option<&std::path::Path>) {
+    let Some(home) = home else { return };
+    command
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("GROK_HOME", home.join(".grok"))
+        .env("XDG_CONFIG_HOME", home.join("xdg/config"))
+        .env("XDG_DATA_HOME", home.join("xdg/data"));
 }
 
 fn stderr_reports_provider_failure(stderr: &str) -> bool {
@@ -770,6 +789,31 @@ fn cached_login_hint(prefix: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn grok_cli_child_cannot_read_stable_auth_home() {
+        let temp = tempfile::tempdir().unwrap();
+        let stable_home = temp.path().join("stable");
+        let dev_home = temp.path().join(".jcode-dev");
+        let stable_auth = stable_home.join(".grok/auth.json");
+        std::fs::create_dir_all(stable_auth.parent().unwrap()).unwrap();
+        std::fs::write(&stable_auth, br#"{"account":{"key":"stable-secret"}}"#).unwrap();
+
+        let mut command = Command::new("/bin/sh");
+        command
+            .env("HOME", &stable_home)
+            .env("GROK_HOME", stable_home.join(".grok"))
+            .arg("-c")
+            .arg("printf '%s\\n%s\\n' \"$HOME\" \"$GROK_HOME\"; if [ -f \"$HOME/.grok/auth.json\" ]; then echo credential=present; else echo credential=absent; fi");
+        apply_dev_home_values(&mut command, Some(&dev_home));
+        let output = command.output().await.unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            format!("{}\n{}\ncredential=absent\n", dev_home.display(), dev_home.join(".grok").display())
+        );
+    }
 
     #[test]
     fn chooses_cached_subscription_auth_and_rejects_api_key_only() {

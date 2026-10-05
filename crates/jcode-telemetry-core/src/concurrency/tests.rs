@@ -9,6 +9,88 @@ fn start(dir: &Path, child: bool) -> (Lease, Counts) {
     (lease, counts.expect("successful registration"))
 }
 
+#[cfg(unix)]
+struct EnvRestore(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
+
+#[cfg(unix)]
+impl Drop for EnvRestore {
+    fn drop(&mut self) {
+        if let Some(value) = self.0.take() {
+            jcode_core::env::set_var("JCODE_HOME", value);
+        } else {
+            jcode_core::env::remove_var("JCODE_HOME");
+        }
+        if let Some(value) = self.1.take() {
+            jcode_core::env::set_var("JCODE_DEV_NAMESPACE", value);
+        } else {
+            jcode_core::env::remove_var("JCODE_DEV_NAMESPACE");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_namespace_rejects_symlinked_registry_paths_without_touching_targets() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let _lock = crate::lock_test_env_global();
+    let previous_home = std::env::var_os("JCODE_HOME");
+    let previous_namespace = std::env::var_os("JCODE_DEV_NAMESPACE");
+    let _restore = EnvRestore(previous_home, previous_namespace);
+    let temp = tempfile::tempdir().expect("temp dir");
+    let home = temp.path().join(".jcode-dev");
+    let stable_dir = temp.path().join(".jcode/telemetry_concurrency_v2");
+    let stable_file = stable_dir.join("sentinel.json");
+    std::fs::create_dir_all(&stable_dir).expect("stable directory");
+    std::fs::write(&stable_file, b"stable registry sentinel\n").expect("stable file");
+    std::fs::set_permissions(&stable_file, std::fs::Permissions::from_mode(0o640))
+        .expect("stable mode");
+    std::fs::create_dir_all(&home).expect("dev home");
+    jcode_core::env::set_var("JCODE_HOME", &home);
+    jcode_core::env::set_var("JCODE_DEV_NAMESPACE", "1");
+    let dir = home.join("telemetry_concurrency_v2");
+    std::os::unix::fs::symlink(&stable_dir, &dir).expect("registry root symlink");
+
+    let before = std::fs::symlink_metadata(&stable_file).expect("sentinel metadata");
+    let identity = (before.dev(), before.ino(), before.permissions().mode());
+    assert!(read_snapshot(&dir).is_err());
+    assert!(write_snapshot(&dir, &Default::default()).is_err());
+    assert!(lock_registry(&dir).is_err());
+    assert!(live_records(&dir, None).is_err());
+    assert!(Lease::begin(dir.clone(), &uuid::Uuid::new_v4().to_string(), false).is_err());
+    assert_eq!(
+        std::fs::read(&stable_file).expect("sentinel bytes"),
+        b"stable registry sentinel\n"
+    );
+    let after = std::fs::symlink_metadata(&stable_file).expect("sentinel metadata after");
+    assert_eq!(
+        (after.dev(), after.ino(), after.permissions().mode()),
+        identity
+    );
+
+    std::fs::remove_file(&dir).expect("remove root symlink");
+    std::fs::create_dir(&dir).expect("private root");
+    let registry = dir.join("registry.json");
+    std::os::unix::fs::symlink(&stable_file, &registry).expect("registry leaf symlink");
+    assert!(read_snapshot(&dir).is_err());
+    assert!(write_snapshot(&dir, &Default::default()).is_err());
+    std::fs::remove_file(&registry).expect("remove registry symlink");
+
+    let lock = dir.join("registry.lock");
+    std::os::unix::fs::symlink(&stable_file, &lock).expect("lock leaf symlink");
+    assert!(lock_registry(&dir).is_err());
+    std::fs::remove_file(&lock).expect("remove lock symlink");
+
+    let lease = dir.join(format!("{}.lease", uuid::Uuid::new_v4()));
+    std::os::unix::fs::symlink(&stable_file, &lease).expect("lease leaf symlink");
+    assert!(Lease::begin(dir, lease.file_stem().unwrap().to_str().unwrap(), false).is_err());
+    assert!(lease.is_symlink());
+    assert_eq!(
+        std::fs::read(&stable_file).expect("sentinel bytes"),
+        b"stable registry sentinel\n"
+    );
+}
+
 #[test]
 fn idle_owner_remembers_short_lived_peers_and_independent_role_peaks() {
     let home = tempfile::tempdir().unwrap();

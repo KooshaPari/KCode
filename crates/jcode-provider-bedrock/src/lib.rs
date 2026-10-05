@@ -151,7 +151,23 @@ impl BedrockProvider {
 
     #[cfg(feature = "aws-sdk")]
     async fn credentials_from_aws_login_profile(profile: &str) -> Option<Credentials> {
-        let output = tokio::process::Command::new("aws")
+        let mut command = tokio::process::Command::new("aws");
+        if std::env::var_os("JCODE_DEV_NAMESPACE").is_some()
+            && let Some(home) = std::env::var_os("JCODE_HOME")
+        {
+            command
+                .env("HOME", &home)
+                .env("USERPROFILE", &home)
+                .env(
+                    "AWS_SHARED_CREDENTIALS_FILE",
+                    std::path::PathBuf::from(&home).join("external/aws/credentials"),
+                )
+                .env(
+                    "AWS_CONFIG_FILE",
+                    std::path::PathBuf::from(&home).join("external/aws/config"),
+                );
+        }
+        let output = command
             .args([
                 "configure",
                 "export-credentials",

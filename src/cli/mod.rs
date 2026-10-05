@@ -5,6 +5,7 @@ pub mod auth_import;
 pub mod auth_test;
 pub mod commands;
 pub mod debug;
+pub mod dev_namespace;
 pub mod dispatch;
 pub mod hot_exec;
 pub mod login;

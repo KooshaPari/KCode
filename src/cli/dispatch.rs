@@ -81,6 +81,11 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
     // Import is a narrow stdin-only credential operation. Do not trigger config
     // migrations, provider discovery, or unrelated credential imports first.
     if let Some(Command::Auth(AuthCommand::Import { json, .. })) = &args.command {
+        if args.provider == ProviderChoice::Claude {
+            super::dev_namespace::ensure_global_integrations_allowed(
+                "Claude auth import from native credentials",
+            )?;
+        }
         return super::auth_import::run(&args.provider, *json);
     }
     resolve_resume_arg(&mut args)?;
@@ -356,6 +361,11 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             agent.repl().await?;
         }
         Some(Command::Update) => {
+            if super::dev_namespace::launcher_requested() {
+                anyhow::bail!(
+                    "The jcode-dev updater is disabled. Rebuild the selected fork with `jcode-dev self-dev --build`."
+                );
+            }
             hot_exec::run_update()?;
         }
         Some(Command::Version { json }) => {
@@ -367,6 +377,9 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Telemetry(action)) => super::telemetry::run(action)?,
         Some(Command::SelfDev { build }) => {
             selfdev::run_self_dev(build, args.resume).await?;
+        }
+        Some(Command::ImportLegacySession { session_id }) => {
+            super::dev_namespace::import_legacy_session(&session_id)?;
         }
         Some(Command::Debug {
             command,
@@ -474,6 +487,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             listen_windows_hotkey,
             uninstall,
         }) => {
+            super::dev_namespace::ensure_global_integrations_allowed("setup-hotkey")?;
             setup_hints::run_setup_hotkey(
                 listen_macos_hotkey,
                 listen_windows_hotkey,
@@ -482,9 +496,13 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             )?;
         }
         Some(Command::SetupLauncher) => {
+            super::dev_namespace::ensure_global_integrations_allowed("setup-launcher")?;
             setup_hints::run_setup_launcher()?;
         }
         Some(Command::Browser { action }) => {
+            if action == "setup" {
+                super::dev_namespace::ensure_global_integrations_allowed("browser setup")?;
+            }
             commands::run_browser(&action).await?;
         }
         Some(Command::Replay {
@@ -627,12 +645,16 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             RestartCommand::Clear => commands::run_restart_clear_command()?,
         },
         Some(Command::Menubar { once, json }) => {
+            if !once && !json {
+                super::dev_namespace::ensure_global_integrations_allowed("menubar helper")?;
+            }
             commands::run_menubar_command(once, json)?;
         }
         Some(Command::HerdrStatus) => {
             super::herdr::run_herdr_status()?;
         }
         Some(Command::HerdrInstall) => {
+            super::dev_namespace::ensure_global_integrations_allowed("herdr install")?;
             super::herdr::run_herdr_install()?;
         }
         None => run_default_command(args).await?,
@@ -930,6 +952,10 @@ async fn run_default_command(args: Args) -> Result<()> {
     }
 
     let startup_hints = if args.fresh_spawn {
+        None
+    } else if super::dev_namespace::launcher_requested() {
+        // Setup hints can install global hotkeys, LaunchAgents and compositor
+        // shortcuts. Keep all OS-user integration disabled for the dev fork.
         None
     } else {
         // One-time: bake per-repo launch hotkeys from session history into config,

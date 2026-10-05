@@ -178,6 +178,9 @@ fn legacy_state_dir() -> PathBuf {
 /// new dir has none, so an already-migrated dir is never clobbered.
 fn migrate_legacy_state() {
     let new_dir = state_dir();
+    if storage::reject_dev_home_symlink_path(&new_dir).is_err() {
+        return;
+    }
     let has_new_state = std::fs::read_dir(&new_dir)
         .map(|entries| {
             entries
@@ -190,11 +193,17 @@ fn migrate_legacy_state() {
     }
 
     let legacy_dir = legacy_state_dir();
+    if storage::reject_dev_home_symlink_path(&legacy_dir).is_err() {
+        return;
+    }
     let Ok(entries) = std::fs::read_dir(&legacy_dir) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
+        if storage::reject_dev_home_symlink_path(&path).is_err() {
+            continue;
+        }
         if !path.is_file() || path.extension().is_none_or(|ext| ext != "json") {
             continue;
         }
@@ -209,7 +218,11 @@ fn migrate_legacy_state() {
             ));
             return;
         }
-        if let Err(err) = std::fs::copy(&path, new_dir.join(file_name)) {
+        let destination = new_dir.join(file_name);
+        if storage::reject_dev_home_symlink_path(&destination).is_err() {
+            continue;
+        }
+        if let Err(err) = std::fs::copy(&path, destination) {
             crate::logging::warn(&format!(
                 "Failed to migrate legacy swarm state {}: {}",
                 path.display(),
@@ -234,7 +247,11 @@ fn state_path(swarm_id: &str) -> PathBuf {
 }
 
 fn read_primary_version(swarm_id: &str) -> SwarmStateFileVersion {
-    SwarmStateFileVersion(std::fs::read(state_path(swarm_id)).ok())
+    let path = state_path(swarm_id);
+    if storage::reject_dev_home_symlink_path(&path).is_err() {
+        return SwarmStateFileVersion(None);
+    }
+    SwarmStateFileVersion(std::fs::read(path).ok())
 }
 
 pub(super) fn capture_swarm_state_version(swarm_id: &str) -> SwarmStateFileVersion {
@@ -247,6 +264,12 @@ pub(super) fn capture_swarm_state_version(swarm_id: &str) -> SwarmStateFileVersi
 
 fn remove_snapshot_files(swarm_id: &str) -> bool {
     let path = state_path(swarm_id);
+    let backup = path.with_extension("bak");
+    if storage::reject_dev_home_symlink_path(&path).is_err()
+        || storage::reject_dev_home_symlink_path(&backup).is_err()
+    {
+        return false;
+    }
     // First atomically replace the primary with an empty tombstone. The write
     // may rotate the old primary to `.bak`, but load_runtime_state ignores that
     // backup while the tombstone exists. Thus every crash point is safe: before
@@ -269,7 +292,7 @@ fn remove_snapshot_files(swarm_id: &str) -> bool {
     }
 
     let mut removed = true;
-    for candidate in [path.with_extension("bak"), path] {
+    for candidate in [backup, path] {
         if let Err(err) = std::fs::remove_file(&candidate)
             && err.kind() != std::io::ErrorKind::NotFound
         {
@@ -443,6 +466,14 @@ fn from_persisted_member(
 pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
     migrate_legacy_state();
     let dir = state_dir();
+    if storage::reject_dev_home_symlink_path(&dir).is_err() {
+        return LoadedSwarmRuntimeState {
+            plans: HashMap::new(),
+            coordinators: HashMap::new(),
+            members: HashMap::new(),
+            swarms_by_id: HashMap::new(),
+        };
+    }
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return LoadedSwarmRuntimeState {
             plans: HashMap::new(),
@@ -465,6 +496,9 @@ pub(super) fn load_runtime_state() -> LoadedSwarmRuntimeState {
     let mut pruned_plan_swarms: HashSet<String> = HashSet::new();
     for entry in entries.flatten() {
         let path = entry.path();
+        if storage::reject_dev_home_symlink_path(&path).is_err() {
+            continue;
+        }
         if !path.is_file() {
             continue;
         }
@@ -590,6 +624,10 @@ pub(super) fn persist_swarm_state(
     let _guard = file_lock
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let path = state_path(swarm_id);
+    if storage::reject_dev_home_symlink_path(&path).is_err() {
+        return;
+    }
 
     if swarm_plan.is_none() && coordinator_session_id.is_none() && swarm_members.is_empty() {
         let _ = remove_snapshot_files(swarm_id);
@@ -601,7 +639,7 @@ pub(super) fn persist_swarm_state(
     // durable plan. Full member/coordinator ordering is provided by the
     // per-swarm operation lock around load_runtime + this write.
     if let Some(candidate_plan) = swarm_plan
-        && let Ok(current) = storage::read_json::<PersistedSwarmState>(&state_path(swarm_id))
+        && let Ok(current) = storage::read_json::<PersistedSwarmState>(&path)
         && current
             .plan
             .as_ref()
@@ -625,7 +663,7 @@ pub(super) fn persist_swarm_state(
         updated_at_unix_ms: snapshot_unix_ms,
     };
 
-    if let Err(err) = storage::write_json_fast(&state_path(swarm_id), &state) {
+    if let Err(err) = storage::write_json_fast(&path, &state) {
         crate::logging::warn(&format!(
             "Failed to persist swarm state {}: {}",
             swarm_id, err
@@ -656,6 +694,9 @@ pub(super) fn remove_swarm_state_if_version(
     remove_snapshot_files(swarm_id)
 }
 
+#[cfg(all(test, unix))]
+#[path = "swarm_persistence_isolation_tests.rs"]
+mod namespace_isolation_tests;
 #[cfg(test)]
 #[path = "swarm_persistence_tests.rs"]
 mod swarm_persistence_tests;

@@ -4001,9 +4001,12 @@ dependencies = [
  "jcode-logging",
  "jcode-message-types",
  "jcode-schema-dialect",
+ "jcode-storage",
+ "libc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -4044,6 +4047,7 @@ name = "jcode-schema-dialect"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "jcode-core",
  "jcode-schema-dialect",
  "serde",
  "serde_json",
@@ -4323,8 +4327,10 @@ dependencies = [
  "dirs",
  "image",
  "jcode-render-core",
+ "jcode-storage",
  "jcode-tui-mermaid",
  "jcode-tui-workspace",
+ "libc",
  "mdwright-latex",
  "pulldown-cmark",
  "ratatui",
@@ -4346,6 +4352,7 @@ dependencies = [
  "dirs",
  "image",
  "jcode-plan",
+ "jcode-storage",
  "jcode-tui-workspace",
  "mermaid-rs-renderer",
  "ratatui",
@@ -4353,6 +4360,7 @@ dependencies = [
  "resvg 0.46.0",
  "serde",
  "serde_json",
+ "tempfile",
  "usvg 0.46.0",
 ]
 
@@ -4436,10 +4444,13 @@ version = "0.1.0"
 dependencies = [
  "dirs",
  "jcode-logging",
+ "jcode-storage",
+ "libc",
  "ratatui",
  "regex",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

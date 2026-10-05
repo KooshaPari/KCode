@@ -13,5 +13,10 @@ bytes = "1"
 futures = "0.3"
 jcode-core = { path = "../jcode-core" }
 jcode-logging = { path = "../jcode-logging" }
+jcode-storage = { path = "../jcode-storage" }
 jcode-message-types = { path = "../jcode-message-types" }
+libc = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+
+[dev-dependencies]
+tempfile = "3"

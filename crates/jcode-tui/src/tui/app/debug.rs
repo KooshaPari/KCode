@@ -566,6 +566,8 @@ mod debug_bench;
 mod debug_cmds;
 #[path = "debug_profile.rs"]
 mod debug_profile;
+#[path = "debug_recording.rs"]
+mod debug_recording;
 #[path = "debug_script.rs"]
 mod debug_script;
 
@@ -732,11 +734,9 @@ pub(super) fn handle_debug_command(app: &mut App, trimmed: &str) -> bool {
         let json = test_harness::get_recorded_events_json();
         let event_count = json.matches("\"type\"").count();
 
-        let recording_dir = dirs::config_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("jcode")
-            .join("recordings");
-        let _ = std::fs::create_dir_all(&recording_dir);
+        let recording_dir = crate::storage::app_config_dir()
+            .map(|path| path.join("recordings"))
+            .unwrap_or_else(|_| std::path::PathBuf::from(".jcode/recordings"));
 
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -744,11 +744,7 @@ pub(super) fn handle_debug_command(app: &mut App, trimmed: &str) -> bool {
             .unwrap_or(0);
         let filename = format!("recording_{}.json", timestamp);
         let filepath = recording_dir.join(&filename);
-
-        if let Ok(mut file) = std::fs::File::create(&filepath) {
-            use std::io::Write;
-            let _ = file.write_all(json.as_bytes());
-        }
+        let _ = debug_recording::save_recording_to_path(&filepath, &json);
 
         app.push_display_message(DisplayMessage {
             role: "system".to_string(),
@@ -795,3 +791,7 @@ pub(super) fn handle_debug_command(app: &mut App, trimmed: &str) -> bool {
 
     false
 }
+
+#[cfg(test)]
+#[path = "debug_recording_tests.rs"]
+mod debug_recording_tests;

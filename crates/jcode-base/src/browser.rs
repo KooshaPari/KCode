@@ -107,7 +107,7 @@ pub fn ensure_browser_session(session_id: &str) -> Option<String> {
     }
 
     let bin = browser_binary_path();
-    if !bin.exists() {
+    if !bin.exists() || storage::reject_dev_home_symlink_path(&bin).is_err() {
         return None;
     }
 
@@ -124,6 +124,9 @@ pub fn ensure_browser_session(session_id: &str) -> Option<String> {
 }
 
 fn browser_supports_bind_window(bin: &std::path::Path) -> bool {
+    if storage::reject_dev_home_symlink_path(bin).is_err() {
+        return false;
+    }
     std::process::Command::new(bin)
         .args(["session", "start", "--help"])
         .stdin(std::process::Stdio::null())
@@ -140,6 +143,9 @@ fn spawn_browser_session(
     session_name: &str,
     bind_window: bool,
 ) -> Option<String> {
+    if storage::reject_dev_home_symlink_path(bin).is_err() {
+        return None;
+    }
     let mut args = vec!["session", "start", session_name];
     if bind_window {
         args.push("--bind-window");
@@ -206,11 +212,24 @@ pub fn is_browser_command(command: &str) -> bool {
 }
 
 pub fn is_setup_complete() -> bool {
-    setup_marker_path().exists() && browser_binary_path().exists() && host_binary_path().exists()
+    let marker = setup_marker_path();
+    let browser = browser_binary_path();
+    let host = host_binary_path();
+    [
+        storage::reject_dev_home_symlink_path(&marker),
+        storage::reject_dev_home_symlink_path(&browser),
+        storage::reject_dev_home_symlink_path(&host),
+    ]
+    .into_iter()
+    .all(|result| result.is_ok())
+        && marker.exists()
+        && browser.exists()
+        && host.exists()
 }
 
 fn mark_setup_complete() -> Result<()> {
     let marker = setup_marker_path();
+    storage::reject_dev_home_symlink_path(&marker)?;
     std::fs::write(&marker, chrono::Utc::now().to_rfc3339())?;
     Ok(())
 }
@@ -233,6 +252,11 @@ pub fn rewrite_command_with_full_path(command: &str) -> String {
 }
 
 pub async fn ensure_browser_setup() -> Result<String> {
+    if storage::running_in_dev_namespace() {
+        anyhow::bail!(
+            "Browser native-messaging setup is disabled in the jcode-dev namespace because it writes global browser manifests"
+        );
+    }
     let mut log = String::new();
 
     std::fs::create_dir_all(browser_dir())?;
@@ -739,6 +763,7 @@ async fn run_browser_cli_capped(
     args: &[&str],
     timeout: std::time::Duration,
 ) -> Result<Option<std::process::Output>> {
+    storage::reject_dev_home_symlink_path(bin)?;
     let mut cmd = tokio::process::Command::new(bin);
     cmd.args(args).kill_on_drop(true);
 

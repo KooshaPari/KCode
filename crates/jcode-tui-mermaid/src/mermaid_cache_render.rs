@@ -53,12 +53,15 @@ pub(super) struct CachedDiagram {
 
 impl MermaidCache {
     pub(super) fn new() -> Self {
-        let cache_dir = dirs::cache_dir()
-            .unwrap_or_else(std::env::temp_dir)
-            .join("jcode")
-            .join("mermaid");
+        let cache_dir = std::env::var_os("JCODE_HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join("cache").join("mermaid"))
+            .or_else(|| dirs::cache_dir().map(|path| path.join("jcode").join("mermaid")))
+            .unwrap_or_else(|| std::env::temp_dir().join("jcode").join("mermaid"));
 
-        let _ = fs::create_dir_all(&cache_dir);
+        if jcode_storage::reject_dev_home_symlink_path(&cache_dir).is_ok() {
+            let _ = fs::create_dir_all(&cache_dir);
+        }
 
         Self {
             entries: HashMap::new(),
@@ -94,7 +97,8 @@ impl MermaidCache {
                 None
             }
         }) {
-            if existing.path.exists() {
+            let cache_path_is_safe = jcode_storage::reject_dev_home_symlink_path(&existing.path).is_ok();
+            if cache_path_is_safe && existing.path.exists() {
                 super::record_cache_stat_syscall();
                 self.touch(key);
                 return Some(existing);
@@ -123,7 +127,12 @@ impl MermaidCache {
         let key = (hash, profile);
         if let Some(existing) = self.entries.get(&key).cloned() {
             super::record_cache_stat_syscall();
-            if existing.path.exists() && cached_width_satisfies(existing.width, min_width) {
+            let cache_path_is_safe =
+                jcode_storage::reject_dev_home_symlink_path(&existing.path).is_ok();
+            if cache_path_is_safe
+                && existing.path.exists()
+                && cached_width_satisfies(existing.width, min_width)
+            {
                 self.touch(key);
                 return Some(existing);
             }
@@ -258,10 +267,14 @@ impl MermaidCache {
         profile: Option<RenderProfile>,
     ) -> Option<CachedDiagram> {
         let mut candidates: Vec<(PathBuf, u32, RenderProfile)> = Vec::new();
+        jcode_storage::reject_dev_home_symlink_path(&self.cache_dir).ok()?;
         super::record_cache_stat_syscall();
         let entries = fs::read_dir(&self.cache_dir).ok()?;
         for entry in entries.flatten() {
             let path = entry.path();
+            if jcode_storage::reject_dev_home_symlink_path(&path).is_err() {
+                continue;
+            }
             if path.extension().and_then(|e| e.to_str()) != Some("png") {
                 continue;
             }
@@ -650,7 +663,9 @@ fn evict_render_cache_by_hash(hash: u64) {
         .collect();
     for key in keys {
         if let Some(entry) = cache.entries.remove(&key) {
-            let _ = fs::remove_file(&entry.path);
+            if jcode_storage::reject_dev_home_symlink_path(&entry.path).is_ok() {
+                let _ = fs::remove_file(&entry.path);
+            }
         }
         if let Some(pos) = cache.order.iter().position(|entry| *entry == key) {
             cache.order.remove(pos);
@@ -658,10 +673,13 @@ fn evict_render_cache_by_hash(hash: u64) {
     }
     // Also delete on-disk files not resident in memory: `discover_on_disk`
     // would otherwise resurrect them on the next lookup.
-    if let Ok(entries) = fs::read_dir(&cache.cache_dir) {
+    if jcode_storage::reject_dev_home_symlink_path(&cache.cache_dir).is_ok()
+        && let Ok(entries) = fs::read_dir(&cache.cache_dir)
+    {
         for entry in entries.flatten() {
             let path = entry.path();
-            if let Some((file_hash, _, _)) = parse_cache_filename(&path)
+            if jcode_storage::reject_dev_home_symlink_path(&path).is_ok()
+                && let Some((file_hash, _, _)) = parse_cache_filename(&path)
                 && file_hash == hash
             {
                 let _ = fs::remove_file(&path);
@@ -1271,10 +1289,16 @@ fn render_mermaid_sized_internal(
             };
 
             // Ensure parent directory exists
-            if let Some(parent) = png_path_clone.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create cache directory: {}", e))?;
-            }
+            let parent = png_path_clone
+                .parent()
+                .ok_or_else(|| "Mermaid cache path has no parent".to_string())?;
+            jcode_storage::reject_dev_home_symlink_path(parent)
+                .and_then(|()| jcode_storage::reject_dev_home_symlink_path(&png_path_clone))
+                .map_err(|error| format!("Unsafe Mermaid cache path: {error}"))?;
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create cache directory: {}", e))?;
+            jcode_storage::reject_dev_home_symlink_path(&png_path_clone)
+                .map_err(|error| format!("Unsafe Mermaid cache output: {error}"))?;
 
             let png_start = Instant::now();
             write_output_png_cached_fonts(&svg, &png_path_clone, &render_config, &theme)
@@ -1475,3 +1499,7 @@ mod width_selection_tests {
         let _ = fs::remove_dir_all(&cache.cache_dir);
     }
 }
+
+#[cfg(test)]
+#[path = "mermaid_cache_isolation_tests.rs"]
+mod mermaid_cache_isolation_tests;

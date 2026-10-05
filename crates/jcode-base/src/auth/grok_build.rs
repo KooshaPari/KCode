@@ -211,6 +211,15 @@ fn managed_cli_path() -> Result<PathBuf> {
 }
 
 pub fn cli_path() -> PathBuf {
+    if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
+        if let Some(home) = std::env::var_os("JCODE_HOME") {
+            let name = if cfg!(windows) { "grok.exe" } else { "grok" };
+            return PathBuf::from(home)
+                .join("provider-backends")
+                .join("grok-build")
+                .join(name);
+        }
+    }
     if let Some(path) = std::env::var_os(CLI_PATH_ENV)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
@@ -233,6 +242,9 @@ pub fn cli_available() -> bool {
 /// Backend presence alone is not authentication and must not make `/login` or
 /// `jcode auth status` claim that Grok Build is ready.
 pub fn has_cached_login() -> bool {
+    if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
+        return false;
+    }
     if std::env::var("GROK_DEPLOYMENT_KEY")
         .ok()
         .is_some_and(|value| !value.trim().is_empty())
@@ -355,8 +367,34 @@ pub async fn ensure_cli() -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{credentials_json_has_login, ensure_cli, grok_home, valid_version};
+    use super::{
+        CLI_PATH_ENV, TokenResponse, cli_path, credentials_json_has_login, ensure_cli, grok_home,
+        has_cached_login, save_tokens, valid_version,
+    };
     use std::path::PathBuf;
+
+    #[test]
+    fn dev_namespace_does_not_discover_grok_auth_file() {
+        let _lock = crate::storage::lock_test_env();
+        let home = std::env::temp_dir().join(format!("jcode-grok-dev-{}", std::process::id()));
+        let auth = home.join(".grok/auth.json");
+        std::fs::create_dir_all(auth.parent().unwrap()).unwrap();
+        std::fs::write(&auth, br#"{"account":{"key":"inherited-test-token"}}"#).unwrap();
+        let prior_home = std::env::var_os("HOME");
+        let prior_marker = std::env::var_os("JCODE_DEV_NAMESPACE");
+        crate::env::set_var("HOME", &home);
+        crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
+        assert!(!has_cached_login());
+        match prior_home {
+            Some(value) => crate::env::set_var("HOME", value),
+            None => crate::env::remove_var("HOME"),
+        }
+        match prior_marker {
+            Some(value) => crate::env::set_var("JCODE_DEV_NAMESPACE", value),
+            None => crate::env::remove_var("JCODE_DEV_NAMESPACE"),
+        }
+        std::fs::remove_dir_all(home).unwrap();
+    }
 
     #[test]
     fn accepts_only_safe_release_versions() {
@@ -384,6 +422,66 @@ mod tests {
             grok_home(None, None, Some("C:\\Users\\jcode".into())),
             Some(PathBuf::from("C:\\Users\\jcode").join(".grok"))
         );
+    }
+
+    #[test]
+    fn dev_namespace_ignores_external_grok_cli_override() {
+        let _lock = crate::storage::lock_test_env();
+        let prior = ["JCODE_DEV_NAMESPACE", "JCODE_HOME", CLI_PATH_ENV]
+            .map(|name| (name, std::env::var_os(name)));
+        let temp = tempfile::tempdir().unwrap();
+        let dev = temp.path().join(".jcode-dev");
+        crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
+        crate::env::set_var("JCODE_HOME", &dev);
+        crate::env::set_var(CLI_PATH_ENV, "/stable/bin/grok");
+
+        assert_eq!(
+            cli_path(),
+            dev.join("provider-backends/grok-build")
+                .join(if cfg!(windows) { "grok.exe" } else { "grok" })
+        );
+
+        for (name, value) in prior {
+            if let Some(value) = value {
+                crate::env::set_var(name, value);
+            } else {
+                crate::env::remove_var(name);
+            }
+        }
+    }
+
+    #[test]
+    fn dev_namespace_saves_tokens_only_under_private_grok_home() {
+        let _lock = crate::storage::lock_test_env();
+        let prior =
+            ["GROK_HOME", "HOME", "JCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
+        let temp = tempfile::tempdir().unwrap();
+        let stable = temp.path().join("stable/.grok");
+        let private = temp.path().join(".jcode-dev/.grok");
+        crate::env::set_var("HOME", temp.path().join("stable"));
+        crate::env::set_var("GROK_HOME", &private);
+        crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
+
+        save_tokens(TokenResponse {
+            access_token: "not-a-jwt".to_string(),
+            refresh_token: None,
+            expires_in: None,
+        })
+        .unwrap();
+
+        let private_auth = private.join("auth.json");
+        assert!(private_auth.is_file());
+        assert!(!stable.join("auth.json").exists());
+        let content = std::fs::read_to_string(private_auth).unwrap();
+        assert!(content.contains("not-a-jwt"));
+
+        for (name, value) in prior {
+            if let Some(value) = value {
+                crate::env::set_var(name, value);
+            } else {
+                crate::env::remove_var(name);
+            }
+        }
     }
 
     #[tokio::test]
