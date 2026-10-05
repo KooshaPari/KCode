@@ -411,12 +411,12 @@ fn init_tui_terminal(inherited_terminal: bool) -> Result<ratatui::DefaultTermina
     if inherited_terminal {
         init_tui_terminal_resume()
     } else {
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(ratatui::init)).map_err(|payload| {
-            anyhow::anyhow!(
-                "failed to initialize terminal: {}",
-                panic_payload_to_string(payload.as_ref())
-            )
-        })
+        // L3: pre-flight size gate (60x20) + panic-safe ratatui::init via the
+        // shared jcode-terminal-guard crate. See crates/jcode-terminal-guard
+        // for the rationale; the upstream `ratatui-core` 0.1.0 buffer-overflow
+        // panic is mitigated by both the L1 dep bump (0.30.0 -> 0.30.2) and
+        // this short-circuit on degenerate terminals (cricket 2026-09-18).
+        jcode_terminal_guard::init_ratatui_with_size_check()
     }
 }
 
@@ -622,6 +622,13 @@ fn write_session_resume_hint(mut writer: impl Write, session_id: &str) -> io::Re
 
 fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
     use ratatui::{Terminal, backend::CrosstermBackend};
+
+    // L3.resume: same pre-flight size gate as the cold path. `Terminal::new`
+    // does not invoke `ratatui::init`, so the gate is not automatic; the
+    // resume path must enforce it itself to avoid feeding a degenerate
+    // (e.g. 57x1) terminal into `Terminal::new` / `terminal.clear()` and
+    // hitting the same `Buffer::index` panic class.
+    jcode_terminal_guard::check_minimum_terminal_size()?;
 
     crossterm::terminal::enable_raw_mode()
         .map_err(|e| anyhow::anyhow!("failed to enable raw mode on resume: {}", e))?;
