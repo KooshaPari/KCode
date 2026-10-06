@@ -541,36 +541,6 @@ fn test_account_switch_shorthand_switches_openai_account_by_label() {
     with_temp_jcode_home(|| {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
-<<<<<<< HEAD
-        // `account_store::upsert_account` ignores the requested label for a new
-        // account and assigns its own canonical one (`openai-<animal>`), so the
-        // switch has to use the label it actually returns.
-        let open_account = |account_id: &str, email: &str| crate::auth::codex::OpenAiAccount {
-            label: String::new(),
-            access_token: "acc".to_string(),
-            refresh_token: "ref".to_string(),
-            id_token: None,
-            account_id: Some(account_id.to_string()),
-            expires_at: Some(now_ms + 60_000),
-            email: Some(email.to_string()),
-        };
-
-        // Two accounts, because a single account is auto-activated on insert:
-        // switching to the account that is already active would pass even if the
-        // `/account switch` command did nothing. The first insert stays active
-        // and the switch below has to move it to the second.
-        let first = crate::auth::codex::upsert_account(open_account("acct_first", "first@example.com"))
-            .unwrap();
-        let second =
-            crate::auth::codex::upsert_account(open_account("acct_second", "second@example.com"))
-                .unwrap();
-        assert_ne!(first, second, "the two inserts must get distinct labels");
-        assert_eq!(
-            crate::auth::codex::active_account_label().as_deref(),
-            Some(first.as_str()),
-            "the first inserted account is the active one before the switch"
-        );
-=======
         // upsert_account assigns canonical animal labels to new accounts since
         // b28720562 (2026-08-16); the requested "openai2" label is not honored,
         // so switch using the label upsert actually stored.
@@ -585,26 +555,16 @@ fn test_account_switch_shorthand_switches_openai_account_by_label() {
                 email: Some("user2@example.com".to_string()),
             })
             .unwrap();
->>>>>>> 642c4fe76 (test(tui): assert account-switch uses the label upsert actually stored)
 
         let mut app = create_test_app();
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async {
-<<<<<<< HEAD
-            app.input = format!("/account switch {second}");
-=======
             app.input = format!("/account switch {stored_label}");
->>>>>>> 642c4fe76 (test(tui): assert account-switch uses the label upsert actually stored)
             app.submit_input();
 
             assert_eq!(
                 crate::auth::codex::active_account_label().as_deref(),
-<<<<<<< HEAD
-                Some(second.as_str()),
-                "the shorthand must move the active account to the requested label"
-=======
                 Some(stored_label.as_str())
->>>>>>> 642c4fe76 (test(tui): assert account-switch uses the label upsert actually stored)
             );
         });
     });
