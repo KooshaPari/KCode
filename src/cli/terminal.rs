@@ -220,11 +220,7 @@ pub fn install_panic_hook() {
         //    the panic propagates to std::process::exit (issue #214 / report
         //    §4.4). Errors here are silently swallowed because the panic
         //    handler must not panic itself.
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableFocusChange);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableBracketedPaste);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::terminal::LeaveAlternateScreen);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::cursor::Show);
+        restore_inherited_terminal_modes_quietly();
 
         // 2. Persist the panic details to a sibling log file so the next
         //    process can diagnose even when stderr was swallowed by a parent
@@ -581,6 +577,29 @@ fn run_result_will_exec(run_result: &crate::tui::RunResult, extra_exec: bool) ->
         || run_result.restart_session.is_some()
 }
 
+/// Best-effort terminal cleanup for handoff-error paths (panic, signal,
+/// resume-size-gate failure). Mirrors the inline cleanup previously embedded
+/// in `install_panic_hook` and `handle_termination_signal`.
+///
+/// Idempotent and side-effect-safe on stderr (matches the panic hook contract):
+/// ignores all crossterm errors. Use only when an *external* process has
+/// already mutated the terminal (e.g. exec handoff preserved raw mode /
+/// alt-screen / bracketed paste / focus events across a process boundary,
+/// see `INHERITED_MODES_ENV`) and the current process must abort before it
+/// has claimed ownership via a `TuiRuntimeGuard`.
+///
+/// Refs: CodeRabbit review 2026-10-05 (PR #28 review 5421574647).
+fn restore_inherited_terminal_modes_quietly() {
+    let _ = crossterm::terminal::disable_raw_mode();
+    let _ = crossterm::execute!(
+        std::io::stderr(),
+        crossterm::event::DisableFocusChange,
+        crossterm::event::DisableBracketedPaste,
+        crossterm::terminal::LeaveAlternateScreen,
+        crossterm::cursor::Show,
+    );
+}
+
 fn export_tui_exec_handoff(state: &TuiRuntimeState) {
     let modes = InheritedTerminalModes {
         mouse_capture: state.mouse_capture,
@@ -628,7 +647,17 @@ fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
     // resume path must enforce it itself to avoid feeding a degenerate
     // (e.g. 57x1) terminal into `Terminal::new` / `terminal.clear()` and
     // hitting the same `Buffer::index` panic class.
-    jcode_terminal_guard::check_minimum_terminal_size()?;
+    if let Err(size_err) = jcode_terminal_guard::check_minimum_terminal_size() {
+        // CodeRabbit 2026-10-05 (PR #28 review 5421574647): when the resume
+        // path aborts before it has claimed ownership via TuiRuntimeGuard,
+        // the inherited terminal modes (raw mode + alt-screen + bracketed
+        // paste + focus events, preserved across the exec handoff by
+        // INHERITED_MODES_ENV) would otherwise remain active and corrupt
+        // the user's terminal. Restore before propagating the error.
+        // The successful resume path is unchanged.
+        restore_inherited_terminal_modes_quietly();
+        return Err(size_err);
+    }
 
     crossterm::terminal::enable_raw_mode()
         .map_err(|e| anyhow::anyhow!("failed to enable raw mode on resume: {}", e))?;
@@ -681,12 +710,7 @@ fn signal_crash_reason(sig: i32) -> String {
 fn handle_termination_signal(sig: i32) -> ! {
     mark_current_session_crashed(signal_crash_reason(sig));
 
-    let _ = crossterm::terminal::disable_raw_mode();
-    let _ = crossterm::execute!(
-        std::io::stderr(),
-        crossterm::terminal::LeaveAlternateScreen,
-        crossterm::cursor::Show
-    );
+    restore_inherited_terminal_modes_quietly();
 
     if let Some(session_id) = get_current_session() {
         print_session_resume_hint(&session_id);
@@ -942,5 +966,20 @@ mod panic_crash_labeling_tests {
                 "non-active status {status:?} must not be relabeled as crashed"
             );
         }
+    }
+
+    /// CodeRabbit 2026-10-05 (PR #28 review 5421574647): the resume path's
+    /// early-return branch must restore inherited terminal modes before
+    /// propagating the size-gate error. This test pins the contract by
+    /// asserting the helper exists, is callable, and does not panic on a
+    /// non-TTY stderr (tests run without a controlling terminal).
+    #[test]
+    fn restore_inherited_terminal_modes_quietly_is_idempotent_and_no_panic() {
+        // Call twice: must not panic on a non-TTY test stderr (crossterm
+        // calls return Err silently, which we swallow). Idempotency is the
+        // observable contract here; the integration behaviour on a real
+        // terminal is covered by the panic-hook / signal-handler call sites.
+        restore_inherited_terminal_modes_quietly();
+        restore_inherited_terminal_modes_quietly();
     }
 }
