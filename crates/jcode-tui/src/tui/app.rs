@@ -1736,6 +1736,23 @@ pub struct App {
     /// Lazily-loaded persisted cross-session prompt history (oldest first,
     /// deduped). None until first use; see `prompt_history.rs`.
     persisted_prompt_history: Option<Vec<String>>,
+    // ---- KCode-side swarm panel state (stubbed for rebase; semantics TBD) ----
+    /// Set of swarm member indices currently selected for batch ops.
+    pub(crate) swarm_selected_agents: std::collections::HashSet<usize>,
+    /// Whether batch mode is currently active in the swarm panel.
+    pub(crate) swarm_batch_mode: bool,
+    /// Whether the swarm filter input is currently focused.
+    pub(crate) swarm_filter_active: bool,
+    /// The current filter query string.
+    pub(crate) swarm_filter_query: String,
+    /// Whether the rename input is currently focused.
+    pub(crate) swarm_rename_active: bool,
+    /// The buffer for the in-progress rename.
+    pub(crate) swarm_rename_buffer: String,
+    /// The index of the swarm member being renamed, if any.
+    pub(crate) swarm_rename_target_id: Option<usize>,
+    /// Indices of swarm members matching the current filter (empty = unfiltered).
+    pub(crate) filtered_swarm_members: Vec<usize>,
 }
 
 /// Inert provider used by runtime modes whose output is supplied by another source.

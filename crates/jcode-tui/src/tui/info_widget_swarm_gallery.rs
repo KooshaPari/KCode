@@ -8,6 +8,7 @@
 //! [`GalleryMember`] (label + body lines).
 
 use crate::protocol::SwarmMemberStatus;
+use jcode_plan::PlanItem;
 use jcode_tui_core::keybind::alt_chord_lower;
 use jcode_tui_render::swarm_gallery::{
     GalleryMember, SwarmStripHint, display_order, humanize_age, is_active_status, render_gallery,
@@ -90,6 +91,10 @@ pub(crate) fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMe
             auth_method: member.runtime.auth_method.clone(),
             effort: member.runtime.effort.clone(),
             elapsed_secs: member.runtime.elapsed_secs,
+            input_tokens: None,
+            output_tokens: None,
+            cost_cents: None,
+            queue_depth: None,
             todo_items: member
                 .todo_items
                 .iter()
@@ -757,6 +762,7 @@ pub(crate) fn render_swarm_panel_lines(
         focused,
         width,
         max_height,
+        None,
     )
 }
 
@@ -843,6 +849,7 @@ pub(crate) fn render_swarm_strip_lines(
             width,
             SWARM_STRIP_VERTICAL_MAX_ROWS,
             max_height,
+            None,
         ),
         crate::config::SwarmStripLayout::Horizontal => render_swarm_strip(
             &members_to_gallery(members),
@@ -857,6 +864,7 @@ pub(crate) fn render_swarm_strip_lines(
             spinner_frame,
             width,
             max_height,
+            None,
         ),
     }
 }

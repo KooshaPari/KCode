@@ -1832,6 +1832,32 @@ impl crate::tui::TuiState for App {
         }
     }
 
+    fn filtered_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
+        let all = self.inline_swarm_members();
+        if self.swarm_filter_query.is_empty() {
+            return all;
+        }
+        let q = self.swarm_filter_query.to_lowercase();
+        all.into_iter()
+            .filter(|m| {
+                let name = m
+                    .friendly_name
+                    .clone()
+                    .unwrap_or_else(|| m.session_id.clone());
+                let role = m.role.clone().unwrap_or_default();
+                let detail = m.detail.clone().unwrap_or_default();
+                name.to_lowercase().contains(&q)
+                    || role.to_lowercase().contains(&q)
+                    || detail.to_lowercase().contains(&q)
+                    || m.status.to_lowercase().contains(&q)
+            })
+            .collect()
+    }
+
+    fn elicit_overlay(&self) -> Option<&crate::tui::elicitation_types::ElicitOverlayState> {
+        self.elicit_overlay.as_ref()
+    }
+
     fn swarm_panel_focused(&self) -> bool {
         self.swarm_panel_focused
     }
@@ -2352,13 +2378,45 @@ impl App {
 }
 
 /// What a key press should do while the swarm panel is focused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SwarmPanelAction {
     SelectNext,
     SelectPrev,
     PopOut,
     OpenPrompt,
     Exit,
+    /// Toggle selection of the focused member for batch ops.
+    ToggleSelect,
+    /// Select all currently-filtered members.
+    SelectAll,
+    /// Enter batch mode (multiple selection enabled).
+    BatchMode,
+    /// Stop all selected members.
+    BatchStop,
+    /// Restart all selected members.
+    BatchRestart,
+    /// Send the chat prompt to all selected members.
+    BatchPrompt,
+    /// Enter the filter input mode.
+    EnterFilter,
+    /// Add a character to the filter query.
+    FilterChar(char),
+    /// Remove last char from the filter query.
+    FilterBackspace,
+    /// Confirm filter query and exit filter mode.
+    FilterConfirm,
+    /// Cancel filter mode without changing the filter.
+    FilterEscape,
+    /// Begin renaming the focused member.
+    StartRename,
+    /// Add a character to the rename buffer.
+    RenameChar(char),
+    /// Remove last char from the rename buffer.
+    RenameBackspace,
+    /// Confirm the rename.
+    RenameConfirm,
+    /// Cancel the rename.
+    RenameEscape,
 }
 
 /// Map a key to a focused-swarm-panel action.

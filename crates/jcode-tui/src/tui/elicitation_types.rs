@@ -8,7 +8,7 @@ use ratatui::style::Color;
 use tokio::sync::oneshot;
 
 /// Request from agent to display elicitation overlay.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ElicitRequest {
     pub title: String,
     pub field: FieldSpec,
@@ -16,13 +16,13 @@ pub struct ElicitRequest {
     pub question: Option<String>,
     pub notes: Option<NotesSpec>,
     pub buttons: Option<ButtonSpec>,
-    pub request_id: Option<String>,
-    pub timeout_secs: u32,
+    pub request_id: String,
+    pub timeout_secs: Option<u32>,
     pub urgency: Urgency,
 }
 
-/// Discriminated union for input field types.
-#[derive(Debug, Clone)]
+/// Description of a single form field in an elicitation request.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FieldSpec {
     Text {
         label: String,
@@ -58,8 +58,8 @@ pub enum FieldSpec {
     },
 }
 
-/// A single selectable option within a `FieldSpec::Choice` field.
-#[derive(Debug, Clone)]
+/// A single choice option inside a `FieldSpec::Choice` field.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChoiceOption {
     pub label: String,
     pub value: String,
@@ -67,7 +67,7 @@ pub struct ChoiceOption {
 }
 
 /// Which calendar/time picker widget to render.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DateTimeKind {
     Date,
     Time,
@@ -75,7 +75,7 @@ pub enum DateTimeKind {
 }
 
 /// Optional free-text notes area attached to an elicitation request.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NotesSpec {
     pub label: String,
     pub default: Option<String>,
@@ -84,15 +84,15 @@ pub struct NotesSpec {
 }
 
 /// Button labels for the elicitation overlay footer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ButtonSpec {
     pub confirm: String,
     pub cancel: String,
     pub default_is_cancel: bool,
 }
 
-/// Urgency level controlling border color and icon.
-#[derive(Debug, Clone)]
+/// Visual + behavioral urgency hint for the overlay.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Urgency {
     Info,
     Warning,

@@ -775,6 +775,19 @@ impl App {
             workspace_client: crate::tui::workspace_client::WorkspaceClientState::default(),
             prompt_history_search: None,
             persisted_prompt_history: None,
+            swarm_selected_agents: Default::default(),
+            swarm_batch_mode: false,
+            swarm_filter_active: false,
+            swarm_filter_query: String::new(),
+            swarm_rename_active: false,
+            swarm_rename_buffer: String::new(),
+            swarm_rename_target_id: None,
+            filtered_swarm_members: Vec::new(),
+            elicit_overlay: None,
+            elicit_rx: {
+                let (_tx, rx) = tokio::sync::mpsc::unbounded_channel::<Box<jcode_tool_core::ElicitMessage>>();
+                rx
+            },
         };
 
         for notice in app.provider.drain_startup_notices() {
@@ -1234,6 +1247,19 @@ impl App {
             workspace_client: crate::tui::workspace_client::WorkspaceClientState::default(),
             prompt_history_search: None,
             persisted_prompt_history: None,
+            swarm_selected_agents: Default::default(),
+            swarm_batch_mode: false,
+            swarm_filter_active: false,
+            swarm_filter_query: String::new(),
+            swarm_rename_active: false,
+            swarm_rename_buffer: String::new(),
+            swarm_rename_target_id: None,
+            filtered_swarm_members: Vec::new(),
+            elicit_overlay: None,
+            elicit_rx: {
+                let (_tx, rx) = tokio::sync::mpsc::unbounded_channel::<Box<jcode_tool_core::ElicitMessage>>();
+                rx
+            },
         };
 
         for notice in app.provider.drain_startup_notices() {

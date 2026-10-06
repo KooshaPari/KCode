@@ -10,6 +10,7 @@ use crate::message::{
 use crate::session::StoredDisplayRole;
 use anyhow::Result;
 use crossterm::event::{Event, EventStream, KeyEventKind};
+use jcode_herdr::AgentState;
 use ratatui::DefaultTerminal;
 use std::time::{Duration, Instant};
 use tokio::sync::broadcast::Receiver;

@@ -1035,6 +1035,11 @@ impl App {
                                             let _ = sender.send(native_result).await;
                                         }
                                     }
+                                    _ => {
+                                        // Unhandled StreamEvent variant - intentionally ignored
+                                        // during rebase fixup. Re-introduce from KCode history
+                                        // in follow-up.
+                                    }
                                 }
                             }
                             Some(Err(e)) => {

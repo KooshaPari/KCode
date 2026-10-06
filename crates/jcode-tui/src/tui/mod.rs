@@ -30,6 +30,8 @@ pub struct BackgroundTaskRow {
 pub mod backend;
 pub(crate) mod color_support;
 mod core;
+pub mod elicit_overlay;
+pub mod elicitation_types;
 pub(crate) mod fuzzy;
 pub mod herdr;
 // Terminal image display + metadata helpers now live in the dependency-free
@@ -222,6 +224,24 @@ pub(crate) fn reapply_configured_terminal_modes_after_focus() {
         &mut std::io::stdout(),
         policy.enable_mouse_capture,
         policy.enable_keyboard_enhancement,
+    ) {
+        crate::logging::warn(&format!("failed to reapply terminal modes: {error}"));
+    }
+}
+
+/// Reassert the currently-configured terminal modes (mouse capture, keyboard
+/// enhancement, bracketed paste, focus reporting). Used by focus-gained
+/// handlers; the function reads the live `tui_policy` rather than caching
+/// capture flags so config reloads take effect immediately.
+pub(crate) fn reapply_configured_terminal_modes() {
+    let policy = crate::perf::tui_policy();
+    if let Err(error) = reapply_terminal_modes_to(
+        &mut std::io::stdout(),
+        policy.enable_mouse_capture,
+        policy.enable_keyboard_enhancement,
+        // Startup and resume-after-editor enable focus reporting normally;
+        // a re-arming here would echo the reply back into this handler.
+        false,
     ) {
         crate::logging::warn(&format!("failed to reapply terminal modes: {error}"));
     }
@@ -686,6 +706,21 @@ pub trait TuiState {
     /// Selected agent index in the inline swarm panel (display order).
     fn swarm_panel_selected(&self) -> usize {
         0
+    }
+    /// Members of the inline swarm panel after applying the active filter query.
+    /// Stubbed for the v0.90.0-k1.0.0 rebase; defaults to the unfiltered list.
+    fn filtered_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
+        self.inline_swarm_members()
+    }
+    /// Elicit overlay state, if any. Stubbed for the v0.90.0-k1.0.0 rebase;
+    /// Active elicit overlay state, if any.
+    ///
+    /// Returns `None` when no overlay is currently displayed. The full
+    /// KCode pre-rebase semantics (keymap, focus management, request
+    /// envelope, response pipeline) are stubbed; only the draw path is
+    /// wired up so `cargo check` passes.
+    fn elicit_overlay(&self) -> Option<&elicitation_types::ElicitOverlayState> {
+        None
     }
     /// Whether the inline swarm panel currently has keyboard focus.
     fn swarm_panel_focused(&self) -> bool {
