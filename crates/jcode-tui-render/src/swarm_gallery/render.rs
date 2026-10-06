@@ -44,9 +44,6 @@ pub fn members_to_tiles(members: &[GalleryMember]) -> Vec<SwarmTile> {
             if let Some(glyph) = role_glyph(m.role.as_deref()) {
                 tile = tile.with_role_glyph(glyph);
             }
-            if let Some(rc) = role_color(m.role.as_deref()) {
-                tile = tile.with_role_color(rc);
-            }
             tile
         })
         .collect()
@@ -57,7 +54,6 @@ pub fn render_gallery(
     members: &[GalleryMember],
     width: usize,
     max_height: usize,
-    selected: Option<usize>,
 ) -> Vec<Line<'static>> {
     if members.is_empty() {
         return Vec::new();
@@ -70,7 +66,6 @@ pub fn render_gallery(
     let header = gallery_header(members.len(), active);
     let cfg = SwarmGalleryConfig {
         max_height: max_height.saturating_sub(1).max(4),
-        selected,
         ..Default::default()
     };
     let mut out = render_swarm_gallery(&tiles, width, &cfg, Some(header));
