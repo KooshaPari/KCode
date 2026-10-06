@@ -1468,11 +1468,14 @@ impl Registry {
     }
 
     /// Resolve the canonical alias used to dispatch a tool from a given MCP server.
-    /// TODO: re-introduce KCode's alias tabl    /// Stub: returns `None`. The KCode side defined this to look up a remote
-    /// compile tool definition; the v0.90 rebase dropped it. Reintroduce
-    /// semantics from the original KCode commit in a follow-up fixup.
+    /// TODO: re-introduce KCode's alias table-backed resolution.
+    fn mcp_alias(&self, _server: &str, _raw: &str) -> Option<String> {
+        None
+    }
+
+    /// Definition for the synthetic `remote_compile` tool, if enabled.
+    /// TODO: re-introduce KCode's remote-compile feature gate.
     pub async fn remote_compile_definition(&self) -> Option<ToolDefinition> {
-        // TODO: re-introduce from KCode commit that defined `remote_compile_definition`
         None
     }
 
@@ -1496,12 +1499,6 @@ impl Registry {
     /// fetched `(server, tool)` list.
     /// TODO: re-introduce KCode's reconcile-vs-inventory diff logic.
     pub async fn reconcile_mcp_tools(&self, _tools: Vec<(String, Arc<dyn Tool>)>) {}
-
-    /// Definition for the synthetic `remote_compile` tool, if enabled.
-    /// TODO: re-introduce KCode's remote-compile feature gate.
-    pub fn remote_compile_definition(&self) -> Option<ToolDefinition> {
-        None
-    }
 
     /// Look up the `(server, tool)` identity backing a given alias.
     /// TODO: re-introduce KCode's reverse alias table.
