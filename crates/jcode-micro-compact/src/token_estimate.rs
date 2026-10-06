@@ -45,6 +45,7 @@ fn block_tokens(block: &ContentBlock) -> usize {
         ContentBlock::OpenAICompaction { encrypted_content } => {
             rough_token_count(encrypted_content)
         }
+        ContentBlock::ToolReference { .. } | ContentBlock::ProviderNative { .. } => 0,
     }
 }
 
