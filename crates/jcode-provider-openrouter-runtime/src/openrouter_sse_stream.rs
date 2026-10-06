@@ -325,7 +325,7 @@ async fn stream_response(
         .await;
 
     // Responses API models use a different SSE format than chat completions.
-    if needs_responses_api(&model, api_base) {
+    if needs_responses_api(&model, &api_base) {
         return stream_responses_api_response(response, tx, &model).await;
     }
 
