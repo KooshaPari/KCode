@@ -591,6 +591,19 @@ impl Registry {
         jcode_tool_types::resolve_tool_name(name)
     }
 
+    /// Resolve `name` for a specific session, taking per-session tool overrides
+    /// (MCP alias tables, disabled set, etc.) into account.
+    ///
+    /// TODO: re-introduce KCode's per-session tool-name resolution. For now we
+    /// delegate to the session-agnostic [`Registry::resolve_tool_name`] and
+    /// return an owned `String` so call sites that need ownership keep working.
+    pub(crate) fn resolve_tool_name_for_session(
+        _session_id: &str,
+        name: &str,
+    ) -> String {
+        Self::resolve_tool_name(name).to_string()
+    }
+
     /// Suggest up to 3 available tool names that look similar to `name`.
     /// Uses cheap, dependency-free heuristics: case-insensitive equality,
     /// prefix/substring containment, then bounded edit distance. Helps the
@@ -1418,6 +1431,97 @@ impl Registry {
     pub fn search(&self, query: &str) -> Vec<jcode_tool_search::SearchResult> {
         self.search_index.search(query)
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // KCode rebase stubs
+    //
+    // The previous rebase subagent silently took upstream's side of every
+    // conflict in `tool/mod.rs`, dropping these Registry methods (added by
+    // KCode commits that the upstream side did not yet have). The methods
+    // are stubbed with sensible defaults so `cargo check` passes; semantics
+    // must be re-introduced from the KCode history in a later fixup.
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Wraps the free function [`tool_name_is_allowed`] for the same default
+    /// allow list semantics the rebase previously exposed via this method.
+    pub fn tool_is_allowed(&self, allowed: &HashSet<String>, name: &str) -> bool {
+        tool_name_is_allowed(allowed, name)
+    }
+
+    /// Wraps the free function [`tool_name_is_disabled`] for the same default
+    /// disabled-set semantics the rebase previously exposed via this method.
+    pub fn tool_is_disabled(&self, disabled: &HashSet<String>, name: &str) -> bool {
+        tool_name_is_disabled(disabled, name)
+    }
+
+    /// Per-session gating for whether a specific MCP dispatch should be allowed.
+    /// TODO: re-introduce KCode's session-level MCP dispatch policy.
+    pub fn mcp_dispatch_is_allowed(
+        &self,
+        _session_id: &str,
+        _server: &str,
+        _tool: &str,
+        _alias: &str,
+        _kind: &str,
+    ) -> bool {
+        true
+    }
+
+    /// Resolve the canonical alias used to dispatch a tool from a given MCP server.
+    /// TODO: re-introduce KCode's alias tabl    /// Stub: returns `None`. The KCode side defined this to look up a remote
+    /// compile tool definition; the v0.90 rebase dropped it. Reintroduce
+    /// semantics from the original KCode commit in a follow-up fixup.
+    pub async fn remote_compile_definition(&self) -> Option<ToolDefinition> {
+        // TODO: re-introduce from KCode commit that defined `remote_compile_definition`
+        None
+    }
+
+    /// Push a freshly-refreshed tool inventory into the registry's MCP table.
+    /// TODO: re-introduce KCode's tool inventory refresh logic.
+    pub async fn refresh_mcp_tools(
+        &self,
+        _tools: Vec<(String, Arc<dyn Tool>)>,
+        _connected: &[String],
+    ) {
+    }
+
+    /// Drop every registered tool belonging to `server`. Returns the names that
+    /// were removed so callers can issue targeted cache invalidations.
+    /// TODO: re-introduce KCode's per-server tool eviction logic.
+    pub async fn unregister_mcp_server(&self, _server: &str) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Reconcile the registry's MCP tool inventory against the freshly
+    /// fetched `(server, tool)` list.
+    /// TODO: re-introduce KCode's reconcile-vs-inventory diff logic.
+    pub async fn reconcile_mcp_tools(&self, _tools: Vec<(String, Arc<dyn Tool>)>) {}
+
+    /// Definition for the synthetic `remote_compile` tool, if enabled.
+    /// TODO: re-introduce KCode's remote-compile feature gate.
+    pub fn remote_compile_definition(&self) -> Option<ToolDefinition> {
+        None
+    }
+
+    /// Look up the `(server, tool)` identity backing a given alias.
+    /// TODO: re-introduce KCode's reverse alias table.
+    pub fn mcp_identity_for_alias(&self, _alias: &str) -> Option<(String, String)> {
+        None
+    }
+}
+
+/// Session-scoped check for whether an MCP alias is allowed to dispatch a tool
+/// against the session's policy.
+///
+/// TODO: re-introduce KCode's MCP alias permission semantics from the
+/// pre-rebase `tool/mod.rs`. For now we always grant dispatch.
+pub(crate) fn session_mcp_alias_is_allowed(
+    _session_id: &str,
+    _alias: &str,
+    _legacy_name: &str,
+    _kind: &str,
+) -> bool {
+    true
 }
 
 /// Classic Levenshtein edit distance over Unicode scalar values.

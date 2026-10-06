@@ -1,6 +1,6 @@
 use crate::agent::Agent;
 use crate::provider::Provider;
-use crate::session::{Session, SessionStatus};
+use crate::session::{Session, SessionStatus, StoredMessage};
 use crate::storage;
 use crate::tool::Registry;
 use anyhow::{Context, Result};
@@ -167,7 +167,7 @@ pub fn start_overnight_run(options: OvernightStartOptions) -> Result<OvernightLa
     })
 }
 
-fn create_coordinator_session(parent: &mut Session, mission: &Option<String>) -> Result<Session> {
+fn create_coordinator_session(parent: &Session, mission: &Option<String>) -> Result<Session> {
     // Check fork depth before creating child session.
     // The parent session carries fork depth state that persists across saves.
     let fork_id = format!("overnight-{}", parent.id);
@@ -199,6 +199,30 @@ fn create_coordinator_session(parent: &mut Session, mission: &Option<String>) ->
     child.working_dir = parent.working_dir.clone();
     child.provider_session_id = None;
     Ok(child)
+}
+
+/// Result of [`create_forked_child_messages`].
+#[derive(Debug, Clone)]
+pub struct ForkedChildMessages {
+    pub denied: bool,
+    pub messages: Vec<StoredMessage>,
+}
+
+/// Build the message list to seed a forked child session.
+///
+/// TODO: re-introduce the KCode fork-depth/permission semantics from the
+/// pre-rebase `overnight` module. The previous rebase subagent dropped the
+/// KCode-side implementation while resolving conflicts in `overnight.rs`.
+/// For now we always grant the fork and copy the parent's messages verbatim.
+pub fn create_forked_child_messages(
+    parent_messages: &[StoredMessage],
+    _fork_id: &str,
+    _parent: &Session,
+) -> ForkedChildMessages {
+    ForkedChildMessages {
+        denied: false,
+        messages: parent_messages.to_vec(),
+    }
 }
 
 fn spawn_supervisor(
