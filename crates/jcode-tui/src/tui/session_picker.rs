@@ -2344,17 +2344,11 @@ impl SessionPicker {
         }
         // Detect light/dark terminal background before raw mode (OSC 11 query).
         super::theme_detect::init_theme_mode();
-        let mut terminal = std::panic::catch_unwind(std::panic::AssertUnwindSafe(ratatui::init))
-            .map_err(|payload| {
-                let msg = if let Some(s) = payload.downcast_ref::<&str>() {
-                    (*s).to_string()
-                } else if let Some(s) = payload.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    "unknown panic payload".to_string()
-                };
-                anyhow::anyhow!("failed to initialize session picker terminal: {}", msg)
-            })?;
+        // L3: pre-flight size gate (60x20) + panic-safe ratatui::init via the
+        // shared jcode-terminal-guard crate. Replaces the ad-hoc catch_unwind
+        // block; see crates/jcode-terminal-guard/src/lib.rs for rationale.
+        let mut terminal = jcode_terminal_guard::init_ratatui_with_size_check()
+            .map_err(|e| anyhow::anyhow!("failed to initialize session picker terminal: {e}"))?;
         // Initialize mermaid image picker (fast default, optional probe via env)
         super::mermaid::init_picker();
         let perf_policy = crate::perf::tui_policy();
