@@ -1067,6 +1067,7 @@ mod tests {
                 assert_tool_calls_stream_before_end(false, done, parallel);
             }
         }
+    }
 
     /// Regression: `OpenRouterStream` synthesizes its terminal `MessageEnd` at
     /// EOF, i.e. *after* the inner transport has already returned
