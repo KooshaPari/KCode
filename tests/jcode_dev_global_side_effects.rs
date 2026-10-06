@@ -188,7 +188,7 @@ fn dev_auth_status_cannot_reuse_stable_gh_cli_credentials() {
             .permissions(),
     )
     .unwrap();
-    std::os::unix::fs::symlink(versions.join("jcode"), &current).unwrap();
+    std::os::unix::fs::symlink(&installed_binary, &current).unwrap();
     executable(
         &fake_bin.join("gh"),
         &format!(

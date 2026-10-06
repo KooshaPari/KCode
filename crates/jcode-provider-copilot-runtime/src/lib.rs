@@ -24,7 +24,7 @@ pub use jcode_provider_core::PremiumMode;
 use jcode_provider_core::{EventStream, Provider};
 use serde_json::{Value, json};
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
@@ -248,20 +248,12 @@ impl CopilotApiProvider {
     }
 
     fn get_or_create_dev_machine_id(path: &std::path::Path) -> String {
+        let _lock = DEV_MACHINE_ID_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let id = Uuid::new_v4().to_string().replace('-', "");
-        if jcode_base::storage::reject_dev_home_symlink_path(path).is_err() {
-            return id;
-        }
-        let options = dev_machine_id_read_options();
-        if let Ok(mut file) = options.open(path) {
-            use std::io::Read;
-            let mut value = String::new();
-            if file.read_to_string(&mut value).is_ok() {
-                let value = value.trim();
-                if !value.is_empty() {
-                    return value.to_string();
-                }
-            }
+        if let Some(existing) = read_dev_machine_id(path) {
+            return existing;
         }
         let Some(parent) = path.parent() else {
             return id;
@@ -273,13 +265,30 @@ impl CopilotApiProvider {
             return id;
         }
         let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
+        options.write(true).create_new(true);
         add_dev_machine_id_no_follow(&mut options);
-        if let Ok(mut file) = options.open(path) {
-            use std::io::Write;
-            let _ = file.write_all(id.as_bytes());
+        match options.open(path) {
+            Ok(mut file) => {
+                use std::io::Write;
+                if file.write_all(id.as_bytes()).is_ok() && file.flush().is_ok() {
+                    read_dev_machine_id(path).unwrap_or(id)
+                } else {
+                    jcode_base::logging::warn("Copilot dev machine_id could not be written");
+                    id
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                if let Some(winner) = read_dev_machine_id_after_race(path) {
+                    winner
+                } else {
+                    jcode_base::logging::warn(
+                        "Copilot dev machine_id race did not produce a readable ID",
+                    );
+                    id
+                }
+            }
+            Err(_) => id,
         }
-        id
     }
 
     fn is_user_initiated_raw(messages: &[ChatMessage]) -> bool {
@@ -959,6 +968,33 @@ fn dev_machine_id_read_options() -> std::fs::OpenOptions {
     options
 }
 
+fn read_dev_machine_id(path: &std::path::Path) -> Option<String> {
+    jcode_base::storage::reject_dev_home_symlink_path(path).ok()?;
+    let mut file = dev_machine_id_read_options().open(path).ok()?;
+    use std::io::Read;
+    let mut value = String::new();
+    file.read_to_string(&mut value).ok()?;
+    let value = value.trim();
+    (value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| value.to_string())
+}
+
+fn read_dev_machine_id_after_race(path: &std::path::Path) -> Option<String> {
+    for attempt in 0..100 {
+        if let Some(id) = read_dev_machine_id(path) {
+            return Some(id);
+        }
+        let metadata = std::fs::symlink_metadata(path).ok()?;
+        if !metadata.file_type().is_file() {
+            return None;
+        }
+        if attempt < 99 {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+    None
+}
+
 #[cfg(unix)]
 fn add_dev_machine_id_no_follow(options: &mut std::fs::OpenOptions) {
     use std::os::unix::fs::OpenOptionsExt;
@@ -974,6 +1010,8 @@ fn add_dev_machine_id_no_follow(options: &mut std::fs::OpenOptions) {
 
 #[cfg(not(any(unix, windows)))]
 fn add_dev_machine_id_no_follow(_: &mut std::fs::OpenOptions) {}
+
+static DEV_MACHINE_ID_LOCK: Mutex<()> = Mutex::new(());
 
 fn is_retryable_error(error_str: &str) -> bool {
     jcode_provider_core::is_transient_transport_error(error_str)

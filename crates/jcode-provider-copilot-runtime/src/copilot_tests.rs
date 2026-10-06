@@ -1,21 +1,28 @@
 use super::*;
 
 #[cfg(unix)]
+static DEV_NAMESPACE_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(unix)]
 #[test]
 fn dev_machine_id_does_not_follow_symlink() {
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _lock = ENV_LOCK
+    let _lock = DEV_NAMESPACE_ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let prior = ["JCODE_HOME", "JCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
     let temp = tempfile::tempdir().unwrap();
-    let dev = temp.path().join(".jcode-dev");
-    let target = temp.path().join("stable-machine-id");
+    let root = std::fs::canonicalize(temp.path()).unwrap();
+    let dev = root.join(".jcode-dev");
+    let target = root.join("stable-machine-id");
     std::fs::create_dir_all(&dev).unwrap();
     std::fs::write(&target, "stable-machine-id").unwrap();
     std::os::unix::fs::symlink(&target, dev.join("machine_id")).unwrap();
     jcode_base::env::set_var("JCODE_HOME", &dev);
     jcode_base::env::set_var("JCODE_DEV_NAMESPACE", "1");
+    assert_eq!(
+        std::env::var_os("JCODE_HOME").as_deref(),
+        Some(dev.as_os_str())
+    );
 
     let id = CopilotApiProvider::get_or_create_machine_id();
 
@@ -24,6 +31,56 @@ fn dev_machine_id_does_not_follow_symlink() {
     assert_eq!(
         std::fs::read_to_string(target).unwrap(),
         "stable-machine-id"
+    );
+    for (name, value) in prior {
+        if let Some(value) = value {
+            jcode_base::env::set_var(name, value);
+        } else {
+            jcode_base::env::remove_var(name);
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn concurrent_dev_machine_id_creation_returns_one_winner() {
+    let _lock = DEV_NAMESPACE_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let prior = ["JCODE_HOME", "JCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
+    let temp = tempfile::tempdir().unwrap();
+    let dev = std::fs::canonicalize(temp.path())
+        .unwrap()
+        .join(".jcode-dev");
+    jcode_base::env::set_var("JCODE_HOME", &dev);
+    jcode_base::env::set_var("JCODE_DEV_NAMESPACE", "1");
+    assert_eq!(
+        std::env::var_os("JCODE_HOME").as_deref(),
+        Some(dev.as_os_str())
+    );
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+    let threads = (0..8)
+        .map(|_| {
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                CopilotApiProvider::get_or_create_machine_id()
+            })
+        })
+        .collect::<Vec<_>>();
+    let ids = threads
+        .into_iter()
+        .map(|thread| thread.join().unwrap())
+        .collect::<Vec<_>>();
+
+    assert!(
+        ids.iter().all(|id| id == &ids[0]),
+        "JCODE_HOME={dev:?}, ids={ids:?}, persisted={:?}",
+        std::fs::read_to_string(dev.join("machine_id"))
+    );
+    assert_eq!(
+        std::fs::read_to_string(dev.join("machine_id")).unwrap(),
+        ids[0]
     );
     for (name, value) in prior {
         if let Some(value) = value {
