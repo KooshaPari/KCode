@@ -4,12 +4,44 @@ use super::*;
 static DEV_NAMESPACE_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[cfg(unix)]
+struct DevEnvGuard {
+    jcode_home: Option<std::ffi::OsString>,
+    dev_namespace: Option<std::ffi::OsString>,
+}
+
+#[cfg(unix)]
+impl DevEnvGuard {
+    fn set(home: &std::path::Path) -> Self {
+        let guard = Self {
+            jcode_home: std::env::var_os("JCODE_HOME"),
+            dev_namespace: std::env::var_os("JCODE_DEV_NAMESPACE"),
+        };
+        jcode_base::env::set_var("JCODE_HOME", home);
+        jcode_base::env::set_var("JCODE_DEV_NAMESPACE", "1");
+        guard
+    }
+}
+
+#[cfg(unix)]
+impl Drop for DevEnvGuard {
+    fn drop(&mut self) {
+        match self.jcode_home.take() {
+            Some(value) => jcode_base::env::set_var("JCODE_HOME", value),
+            None => jcode_base::env::remove_var("JCODE_HOME"),
+        }
+        match self.dev_namespace.take() {
+            Some(value) => jcode_base::env::set_var("JCODE_DEV_NAMESPACE", value),
+            None => jcode_base::env::remove_var("JCODE_DEV_NAMESPACE"),
+        }
+    }
+}
+
+#[cfg(unix)]
 #[test]
 fn dev_machine_id_does_not_follow_symlink() {
     let _lock = DEV_NAMESPACE_ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let prior = ["JCODE_HOME", "JCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
     let temp = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(temp.path()).unwrap();
     let dev = root.join(".jcode-dev");
@@ -17,8 +49,7 @@ fn dev_machine_id_does_not_follow_symlink() {
     std::fs::create_dir_all(&dev).unwrap();
     std::fs::write(&target, "stable-machine-id").unwrap();
     std::os::unix::fs::symlink(&target, dev.join("machine_id")).unwrap();
-    jcode_base::env::set_var("JCODE_HOME", &dev);
-    jcode_base::env::set_var("JCODE_DEV_NAMESPACE", "1");
+    let _env = DevEnvGuard::set(&dev);
     assert_eq!(
         std::env::var_os("JCODE_HOME").as_deref(),
         Some(dev.as_os_str())
@@ -32,13 +63,6 @@ fn dev_machine_id_does_not_follow_symlink() {
         std::fs::read_to_string(target).unwrap(),
         "stable-machine-id"
     );
-    for (name, value) in prior {
-        if let Some(value) = value {
-            jcode_base::env::set_var(name, value);
-        } else {
-            jcode_base::env::remove_var(name);
-        }
-    }
 }
 
 #[cfg(unix)]
@@ -47,7 +71,6 @@ fn dev_machine_id_lock_symlink_is_rejected() {
     let _lock = DEV_NAMESPACE_ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let prior = ["JCODE_HOME", "JCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
     let temp = tempfile::tempdir().unwrap();
     let root = std::fs::canonicalize(temp.path()).unwrap();
     let dev = root.join(".jcode-dev");
@@ -55,8 +78,7 @@ fn dev_machine_id_lock_symlink_is_rejected() {
     std::fs::create_dir_all(&dev).unwrap();
     std::fs::write(&sentinel, "stable-lock-content").unwrap();
     std::os::unix::fs::symlink(&sentinel, dev.join("machine_id.lock")).unwrap();
-    jcode_base::env::set_var("JCODE_HOME", &dev);
-    jcode_base::env::set_var("JCODE_DEV_NAMESPACE", "1");
+    let _env = DevEnvGuard::set(&dev);
 
     let id = CopilotApiProvider::get_or_create_machine_id();
 
@@ -67,13 +89,6 @@ fn dev_machine_id_lock_symlink_is_rejected() {
         std::fs::read_to_string(&sentinel).unwrap(),
         "stable-lock-content"
     );
-    for (name, value) in prior {
-        if let Some(value) = value {
-            jcode_base::env::set_var(name, value);
-        } else {
-            jcode_base::env::remove_var(name);
-        }
-    }
 }
 
 #[cfg(unix)]
@@ -82,15 +97,13 @@ fn concurrent_dev_machine_id_repair_returns_one_winner() {
     let _lock = DEV_NAMESPACE_ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let prior = ["JCODE_HOME", "JCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
     let temp = tempfile::tempdir().unwrap();
     let dev = std::fs::canonicalize(temp.path())
         .unwrap()
         .join(".jcode-dev");
     std::fs::create_dir_all(&dev).unwrap();
     std::fs::write(dev.join("machine_id"), "invalid-machine-id").unwrap();
-    jcode_base::env::set_var("JCODE_HOME", &dev);
-    jcode_base::env::set_var("JCODE_DEV_NAMESPACE", "1");
+    let _env = DevEnvGuard::set(&dev);
     assert_eq!(
         std::env::var_os("JCODE_HOME").as_deref(),
         Some(dev.as_os_str())
@@ -131,13 +144,30 @@ fn concurrent_dev_machine_id_repair_returns_one_winner() {
             0o600
         );
     }
-    for (name, value) in prior {
-        if let Some(value) = value {
-            jcode_base::env::set_var(name, value);
-        } else {
-            jcode_base::env::remove_var(name);
-        }
-    }
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_env_guard_restores_values_on_unwind() {
+    let _lock = DEV_NAMESPACE_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let prior_home = std::env::var_os("JCODE_HOME");
+    let prior_namespace = std::env::var_os("JCODE_DEV_NAMESPACE");
+    let temp = tempfile::tempdir().unwrap();
+    let home = std::fs::canonicalize(temp.path()).unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = DevEnvGuard::set(&home);
+        assert_eq!(
+            std::env::var_os("JCODE_HOME").as_deref(),
+            Some(home.as_os_str())
+        );
+        assert_eq!(std::env::var("JCODE_DEV_NAMESPACE").as_deref(), Ok("1"));
+        panic!("exercise environment restoration");
+    }));
+    assert!(result.is_err());
+    assert_eq!(std::env::var_os("JCODE_HOME"), prior_home);
+    assert_eq!(std::env::var_os("JCODE_DEV_NAMESPACE"), prior_namespace);
 }
 
 fn make_test_provider(fetched: Vec<String>) -> CopilotApiProvider {
