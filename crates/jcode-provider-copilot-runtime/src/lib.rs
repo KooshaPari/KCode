@@ -252,43 +252,74 @@ impl CopilotApiProvider {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let id = Uuid::new_v4().to_string().replace('-', "");
-        if let Some(existing) = read_dev_machine_id(path) {
-            return existing;
-        }
         let Some(parent) = path.parent() else {
             return id;
         };
         if jcode_base::storage::reject_dev_home_symlink_path(parent).is_err()
             || std::fs::create_dir_all(parent).is_err()
-            || jcode_base::storage::reject_dev_home_symlink_path(path).is_err()
+            || jcode_base::storage::reject_dev_home_symlink_path(parent).is_err()
         {
+            return id;
+        }
+        let Some(_file_lock) = acquire_dev_machine_id_lock(path) else {
+            return id;
+        };
+        if let Some(existing) = read_dev_machine_id(path) {
+            return existing;
+        }
+        if !machine_id_target_is_replaceable(path) {
+            return id;
+        }
+        let temporary = parent.join(format!(
+            "machine_id.tmp-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        if jcode_base::storage::reject_dev_home_symlink_path(&temporary).is_err() {
             return id;
         }
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
-        add_dev_machine_id_no_follow(&mut options);
-        match options.open(path) {
-            Ok(mut file) => {
-                use std::io::Write;
-                if file.write_all(id.as_bytes()).is_ok() && file.flush().is_ok() {
-                    read_dev_machine_id(path).unwrap_or(id)
-                } else {
-                    jcode_base::logging::warn("Copilot dev machine_id could not be written");
-                    id
-                }
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                if let Some(winner) = read_dev_machine_id_after_race(path) {
-                    winner
-                } else {
-                    jcode_base::logging::warn(
-                        "Copilot dev machine_id race did not produce a readable ID",
-                    );
-                    id
-                }
-            }
-            Err(_) => id,
+        prepare_dev_machine_id_create_options(&mut options);
+        let Ok(mut file) = options.open(&temporary) else {
+            return id;
+        };
+        if jcode_base::storage::reject_dev_home_symlink_path(&temporary).is_err()
+            || restrict_dev_machine_id_file(&file, &temporary).is_err()
+        {
+            drop(file);
+            remove_dev_machine_id_temp(&temporary);
+            return id;
         }
+        use std::io::Write;
+        if file.write_all(id.as_bytes()).is_err() || file.sync_all().is_err() {
+            drop(file);
+            remove_dev_machine_id_temp(&temporary);
+            return id;
+        }
+        drop(file);
+        if jcode_base::storage::reject_dev_home_symlink_path(&temporary).is_err()
+            || !machine_id_target_is_replaceable(path)
+        {
+            remove_dev_machine_id_temp(&temporary);
+            return id;
+        }
+        if let Some(existing) = read_dev_machine_id(path) {
+            remove_dev_machine_id_temp(&temporary);
+            return existing;
+        }
+        if !machine_id_target_is_replaceable(path) {
+            remove_dev_machine_id_temp(&temporary);
+            return id;
+        }
+        if atomic_replace_dev_machine_id(&temporary, path).is_err() {
+            remove_dev_machine_id_temp(&temporary);
+            return id;
+        }
+        read_dev_machine_id(path).unwrap_or_else(|| {
+            jcode_base::logging::warn("Copilot dev machine_id replacement could not be read");
+            id
+        })
     }
 
     fn is_user_initiated_raw(messages: &[ChatMessage]) -> bool {
@@ -968,6 +999,153 @@ fn dev_machine_id_read_options() -> std::fs::OpenOptions {
     options
 }
 
+fn acquire_dev_machine_id_lock(path: &std::path::Path) -> Option<std::fs::File> {
+    let lock_path = path.parent()?.join("machine_id.lock");
+    jcode_base::storage::reject_dev_home_symlink_path(&lock_path).ok()?;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true);
+    prepare_dev_machine_id_create_options(&mut options);
+    let file = options.open(&lock_path).ok()?;
+    if !file.metadata().ok()?.is_file()
+        || jcode_base::storage::reject_dev_home_symlink_path(&lock_path).is_err()
+        || restrict_dev_machine_id_file(&file, &lock_path).is_err()
+        || lock_machine_id_file(&file).is_err()
+    {
+        return None;
+    }
+    Some(file)
+}
+
+fn machine_id_target_is_replaceable(path: &std::path::Path) -> bool {
+    if jcode_base::storage::reject_dev_home_symlink_path(path).is_err() {
+        return false;
+    }
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata.file_type().is_file(),
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+    }
+}
+
+fn remove_dev_machine_id_temp(path: &std::path::Path) {
+    if jcode_base::storage::reject_dev_home_symlink_path(path).is_ok() {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn prepare_dev_machine_id_create_options(options: &mut std::fs::OpenOptions) {
+    add_dev_machine_id_no_follow(options);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+}
+
+fn restrict_dev_machine_id_file(
+    file: &std::fs::File,
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        let _ = path;
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+    }
+    #[cfg(windows)]
+    {
+        jcode_base::storage::reject_dev_home_symlink_path(path)?;
+        jcode_base::platform::set_permissions_owner_only(path)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (file, path);
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn lock_machine_id_file(file: &std::fs::File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+fn lock_machine_id_file(file: &std::fs::File) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{LOCKFILE_EXCLUSIVE_LOCK, LockFileEx};
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+    let mut overlapped = unsafe { std::mem::zeroed::<OVERLAPPED>() };
+    let result = unsafe {
+        LockFileEx(
+            file.as_raw_handle(),
+            LOCKFILE_EXCLUSIVE_LOCK,
+            0,
+            1,
+            0,
+            &mut overlapped,
+        )
+    };
+    if result != 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn lock_machine_id_file(_: &std::fs::File) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "advisory file locking is unavailable on this platform",
+    ))
+}
+
+#[cfg(unix)]
+fn atomic_replace_dev_machine_id(
+    from: &std::path::Path,
+    to: &std::path::Path,
+) -> std::io::Result<()> {
+    std::fs::rename(from, to)
+}
+
+#[cfg(windows)]
+fn atomic_replace_dev_machine_id(
+    from: &std::path::Path,
+    to: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MoveFileExW};
+    let from = from
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let to = to
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let result = unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), MOVEFILE_REPLACE_EXISTING) };
+    if result != 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn atomic_replace_dev_machine_id(
+    from: &std::path::Path,
+    to: &std::path::Path,
+) -> std::io::Result<()> {
+    std::fs::rename(from, to)
+}
+
 fn read_dev_machine_id(path: &std::path::Path) -> Option<String> {
     jcode_base::storage::reject_dev_home_symlink_path(path).ok()?;
     let mut file = dev_machine_id_read_options().open(path).ok()?;
@@ -977,22 +1155,6 @@ fn read_dev_machine_id(path: &std::path::Path) -> Option<String> {
     let value = value.trim();
     (value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
         .then(|| value.to_string())
-}
-
-fn read_dev_machine_id_after_race(path: &std::path::Path) -> Option<String> {
-    for attempt in 0..100 {
-        if let Some(id) = read_dev_machine_id(path) {
-            return Some(id);
-        }
-        let metadata = std::fs::symlink_metadata(path).ok()?;
-        if !metadata.file_type().is_file() {
-            return None;
-        }
-        if attempt < 99 {
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-    }
-    None
 }
 
 #[cfg(unix)]

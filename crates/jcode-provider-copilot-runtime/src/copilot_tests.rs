@@ -43,7 +43,42 @@ fn dev_machine_id_does_not_follow_symlink() {
 
 #[cfg(unix)]
 #[test]
-fn concurrent_dev_machine_id_creation_returns_one_winner() {
+fn dev_machine_id_lock_symlink_is_rejected() {
+    let _lock = DEV_NAMESPACE_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let prior = ["JCODE_HOME", "JCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
+    let temp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(temp.path()).unwrap();
+    let dev = root.join(".jcode-dev");
+    let sentinel = root.join("stable-lock");
+    std::fs::create_dir_all(&dev).unwrap();
+    std::fs::write(&sentinel, "stable-lock-content").unwrap();
+    std::os::unix::fs::symlink(&sentinel, dev.join("machine_id.lock")).unwrap();
+    jcode_base::env::set_var("JCODE_HOME", &dev);
+    jcode_base::env::set_var("JCODE_DEV_NAMESPACE", "1");
+
+    let id = CopilotApiProvider::get_or_create_machine_id();
+
+    assert_eq!(id.len(), 32);
+    assert!(!dev.join("machine_id").exists());
+    assert!(dev.join("machine_id.lock").is_symlink());
+    assert_eq!(
+        std::fs::read_to_string(&sentinel).unwrap(),
+        "stable-lock-content"
+    );
+    for (name, value) in prior {
+        if let Some(value) = value {
+            jcode_base::env::set_var(name, value);
+        } else {
+            jcode_base::env::remove_var(name);
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn concurrent_dev_machine_id_repair_returns_one_winner() {
     let _lock = DEV_NAMESPACE_ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -52,6 +87,8 @@ fn concurrent_dev_machine_id_creation_returns_one_winner() {
     let dev = std::fs::canonicalize(temp.path())
         .unwrap()
         .join(".jcode-dev");
+    std::fs::create_dir_all(&dev).unwrap();
+    std::fs::write(dev.join("machine_id"), "invalid-machine-id").unwrap();
     jcode_base::env::set_var("JCODE_HOME", &dev);
     jcode_base::env::set_var("JCODE_DEV_NAMESPACE", "1");
     assert_eq!(
@@ -82,6 +119,18 @@ fn concurrent_dev_machine_id_creation_returns_one_winner() {
         std::fs::read_to_string(dev.join("machine_id")).unwrap(),
         ids[0]
     );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(dev.join("machine_id.lock"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
     for (name, value) in prior {
         if let Some(value) = value {
             jcode_base::env::set_var(name, value);
