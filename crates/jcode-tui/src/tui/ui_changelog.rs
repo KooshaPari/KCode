@@ -206,5 +206,6 @@ fn unseen_changelog_entries(
 }
 
 #[cfg(test)]
+#[cfg(unix)]
 #[path = "ui_changelog_tests.rs"]
 mod namespace_isolation_tests;

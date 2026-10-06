@@ -41,16 +41,37 @@ pub struct GrokBuildProcess {
 
 impl GrokBuildProcess {
     pub fn from_env() -> Self {
-        let command = std::env::var_os("JCODE_GROK_CLI_PATH")
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("grok"));
+        let command = grok_command_from_env(
+            std::env::var_os("JCODE_DEV_NAMESPACE").as_deref() == Some(std::ffi::OsStr::new("1")),
+            std::env::var_os("JCODE_HOME"),
+            std::env::var_os("JCODE_GROK_CLI_PATH"),
+        );
         Self {
             command,
             args: vec!["agent".to_string(), "stdio".to_string()],
             env: BTreeMap::new(),
         }
     }
+}
+
+fn grok_command_from_env(
+    dev_namespace: bool,
+    jcode_home: Option<std::ffi::OsString>,
+    override_path: Option<std::ffi::OsString>,
+) -> PathBuf {
+    if dev_namespace {
+        if let Some(home) = jcode_home {
+            return PathBuf::from(home)
+                .join("provider-backends")
+                .join("grok-build")
+                .join(if cfg!(windows) { "grok.exe" } else { "grok" });
+        }
+        return PathBuf::new();
+    }
+    override_path
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("grok"))
 }
 
 #[derive(Clone)]
@@ -548,9 +569,7 @@ where
     Fut: std::future::Future<Output = Result<T>> + 'static,
 {
     let mut command = Command::new(&process.command);
-    command
-        .args(&process.args)
-        .envs(&process.env);
+    command.args(&process.args).envs(&process.env);
     apply_dev_home(&mut command);
     command
         .stdin(std::process::Stdio::piped())
@@ -790,6 +809,29 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    #[test]
+    fn dev_namespace_ignores_stable_cli_override() {
+        assert_eq!(
+            grok_command_from_env(
+                true,
+                Some(std::ffi::OsString::from("/private/jcode-dev")),
+                Some(std::ffi::OsString::from("/stable/grok")),
+            ),
+            PathBuf::from("/private/jcode-dev")
+                .join("provider-backends/grok-build")
+                .join(if cfg!(windows) { "grok.exe" } else { "grok" })
+        );
+    }
+
+    #[test]
+    fn dev_namespace_fails_closed_without_jcode_home() {
+        assert!(
+            grok_command_from_env(true, None, Some(std::ffi::OsString::from("/stable/grok")),)
+                .as_os_str()
+                .is_empty()
+        );
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn grok_cli_child_cannot_read_stable_auth_home() {
@@ -811,7 +853,11 @@ mod tests {
         assert!(output.status.success());
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
-            format!("{}\n{}\ncredential=absent\n", dev_home.display(), dev_home.join(".grok").display())
+            format!(
+                "{}\n{}\ncredential=absent\n",
+                dev_home.display(),
+                dev_home.join(".grok").display()
+            )
         );
     }
 

@@ -1,5 +1,39 @@
 use super::*;
 
+#[cfg(unix)]
+#[test]
+fn dev_machine_id_does_not_follow_symlink() {
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _lock = ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let prior = ["JCODE_HOME", "JCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
+    let temp = tempfile::tempdir().unwrap();
+    let dev = temp.path().join(".jcode-dev");
+    let target = temp.path().join("stable-machine-id");
+    std::fs::create_dir_all(&dev).unwrap();
+    std::fs::write(&target, "stable-machine-id").unwrap();
+    std::os::unix::fs::symlink(&target, dev.join("machine_id")).unwrap();
+    jcode_base::env::set_var("JCODE_HOME", &dev);
+    jcode_base::env::set_var("JCODE_DEV_NAMESPACE", "1");
+
+    let id = CopilotApiProvider::get_or_create_machine_id();
+
+    assert_ne!(id, "stable-machine-id");
+    assert!(dev.join("machine_id").is_symlink());
+    assert_eq!(
+        std::fs::read_to_string(target).unwrap(),
+        "stable-machine-id"
+    );
+    for (name, value) in prior {
+        if let Some(value) = value {
+            jcode_base::env::set_var(name, value);
+        } else {
+            jcode_base::env::remove_var(name);
+        }
+    }
+}
+
 fn make_test_provider(fetched: Vec<String>) -> CopilotApiProvider {
     CopilotApiProvider {
         client: jcode_base::provider::shared_http_client(),

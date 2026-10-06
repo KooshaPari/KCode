@@ -133,8 +133,7 @@ fn wrapper_payload_sibling(path: &Path) -> Option<PathBuf> {
 fn profile_binary_path(repo_dir: &Path, profile: &str) -> PathBuf {
     let Some(target_dir) = profile_target_dir(
         repo_dir,
-        std::env::var_os("JCODE_DEV_NAMESPACE").as_deref()
-            == Some(std::ffi::OsStr::new("1")),
+        std::env::var_os("JCODE_DEV_NAMESPACE").as_deref() == Some(std::ffi::OsStr::new("1")),
         std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from),
     ) else {
         // Empty means unavailable and makes every existence check fail closed.
@@ -151,7 +150,17 @@ fn profile_target_dir(
     if dev_namespace {
         configured.filter(|path| path.is_absolute())
     } else {
-        Some(repo_dir.join("target"))
+        Some(
+            configured
+                .map(|path| {
+                    if path.is_absolute() {
+                        path
+                    } else {
+                        repo_dir.join(path)
+                    }
+                })
+                .unwrap_or_else(|| repo_dir.join("target")),
+        )
     }
 }
 
@@ -660,16 +669,20 @@ mod tests {
     }
 
     #[test]
-    fn cargo_target_override_is_used_only_in_validated_dev_namespace() {
+    fn cargo_target_override_is_used_in_all_namespaces() {
         let repo = repo_fixture(false);
         let isolated = PathBuf::from("/tmp/jcode-dev/cargo-target");
         assert_eq!(
             profile_target_dir(repo.path(), true, Some(isolated.clone())),
+            Some(isolated.clone())
+        );
+        assert_eq!(
+            profile_target_dir(repo.path(), false, Some(isolated.clone())),
             Some(isolated)
         );
         assert_eq!(
-            profile_target_dir(repo.path(), false, Some(isolated)),
-            Some(repo.path().join("target"))
+            profile_target_dir(repo.path(), false, Some(PathBuf::from("build-target"))),
+            Some(repo.path().join("build-target"))
         );
     }
 

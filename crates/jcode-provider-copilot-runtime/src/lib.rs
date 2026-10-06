@@ -232,6 +232,9 @@ impl CopilotApiProvider {
             .or_else(|| dirs::home_dir().map(|home| home.join(".jcode")))
             .unwrap_or_default()
             .join("machine_id");
+        if std::env::var_os("JCODE_DEV_NAMESPACE").as_deref() == Some(std::ffi::OsStr::new("1")) {
+            return Self::get_or_create_dev_machine_id(&machine_id_path);
+        }
         if let Ok(id) = std::fs::read_to_string(&machine_id_path) {
             let id = id.trim().to_string();
             if !id.is_empty() {
@@ -241,6 +244,41 @@ impl CopilotApiProvider {
         let id = Uuid::new_v4().to_string().replace('-', "");
         let _ = std::fs::create_dir_all(machine_id_path.parent().unwrap_or(&machine_id_path));
         let _ = std::fs::write(&machine_id_path, &id);
+        id
+    }
+
+    fn get_or_create_dev_machine_id(path: &std::path::Path) -> String {
+        let id = Uuid::new_v4().to_string().replace('-', "");
+        if jcode_base::storage::reject_dev_home_symlink_path(path).is_err() {
+            return id;
+        }
+        let options = dev_machine_id_read_options();
+        if let Ok(mut file) = options.open(path) {
+            use std::io::Read;
+            let mut value = String::new();
+            if file.read_to_string(&mut value).is_ok() {
+                let value = value.trim();
+                if !value.is_empty() {
+                    return value.to_string();
+                }
+            }
+        }
+        let Some(parent) = path.parent() else {
+            return id;
+        };
+        if jcode_base::storage::reject_dev_home_symlink_path(parent).is_err()
+            || std::fs::create_dir_all(parent).is_err()
+            || jcode_base::storage::reject_dev_home_symlink_path(path).is_err()
+        {
+            return id;
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        add_dev_machine_id_no_follow(&mut options);
+        if let Ok(mut file) = options.open(path) {
+            use std::io::Write;
+            let _ = file.write_all(id.as_bytes());
+        }
         id
     }
 
@@ -913,6 +951,29 @@ impl CopilotApiProvider {
         Ok(())
     }
 }
+
+fn dev_machine_id_read_options() -> std::fs::OpenOptions {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    add_dev_machine_id_no_follow(&mut options);
+    options
+}
+
+#[cfg(unix)]
+fn add_dev_machine_id_no_follow(options: &mut std::fs::OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.custom_flags(libc::O_NOFOLLOW);
+}
+
+#[cfg(windows)]
+fn add_dev_machine_id_no_follow(options: &mut std::fs::OpenOptions) {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+}
+
+#[cfg(not(any(unix, windows)))]
+fn add_dev_machine_id_no_follow(_: &mut std::fs::OpenOptions) {}
 
 fn is_retryable_error(error_str: &str) -> bool {
     jcode_provider_core::is_transient_transport_error(error_str)

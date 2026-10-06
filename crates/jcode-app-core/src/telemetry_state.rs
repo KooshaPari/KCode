@@ -379,7 +379,6 @@ pub(super) fn mark_milestone_recorded(id: &str, step: &str) {
     }
 }
 
-
 pub(super) fn current_session_id() -> Option<String> {
     SESSION_STATE
         .lock()

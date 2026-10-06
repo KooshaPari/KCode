@@ -97,7 +97,8 @@ impl MermaidCache {
                 None
             }
         }) {
-            let cache_path_is_safe = jcode_storage::reject_dev_home_symlink_path(&existing.path).is_ok();
+            let cache_path_is_safe =
+                jcode_storage::reject_dev_home_symlink_path(&existing.path).is_ok();
             if cache_path_is_safe && existing.path.exists() {
                 super::record_cache_stat_syscall();
                 self.touch(key);

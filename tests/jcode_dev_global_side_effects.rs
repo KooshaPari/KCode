@@ -179,7 +179,15 @@ fn dev_auth_status_cannot_reuse_stable_gh_cli_credentials() {
     std::fs::create_dir_all(dev.join("home")).unwrap();
     std::fs::create_dir_all(&fake_bin).unwrap();
     std::fs::set_permissions(&dev, std::fs::Permissions::from_mode(0o700)).unwrap();
-    std::fs::hard_link(env!("CARGO_BIN_EXE_jcode"), versions.join("jcode")).unwrap();
+    let installed_binary = versions.join("jcode");
+    std::fs::copy(env!("CARGO_BIN_EXE_jcode"), &installed_binary).unwrap();
+    std::fs::set_permissions(
+        &installed_binary,
+        std::fs::metadata(env!("CARGO_BIN_EXE_jcode"))
+            .unwrap()
+            .permissions(),
+    )
+    .unwrap();
     std::os::unix::fs::symlink(versions.join("jcode"), &current).unwrap();
     executable(
         &fake_bin.join("gh"),

@@ -212,13 +212,14 @@ fn managed_cli_path() -> Result<PathBuf> {
 
 pub fn cli_path() -> PathBuf {
     if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
-        if let Some(home) = std::env::var_os("JCODE_HOME") {
-            let name = if cfg!(windows) { "grok.exe" } else { "grok" };
-            return PathBuf::from(home)
-                .join("provider-backends")
-                .join("grok-build")
-                .join(name);
-        }
+        let Some(home) = std::env::var_os("JCODE_HOME") else {
+            return PathBuf::new();
+        };
+        let name = if cfg!(windows) { "grok.exe" } else { "grok" };
+        return PathBuf::from(home)
+            .join("provider-backends")
+            .join("grok-build")
+            .join(name);
     }
     if let Some(path) = std::env::var_os(CLI_PATH_ENV)
         .filter(|value| !value.is_empty())
@@ -329,6 +330,10 @@ async fn download_from_base(client: &reqwest::Client, base: &str) -> Result<Vec<
 /// Return a usable Grok Build ACP backend, downloading the official binary
 /// into Jcode's private data directory when no explicit/system binary exists.
 pub async fn ensure_cli() -> Result<PathBuf> {
+    if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() && std::env::var_os("JCODE_HOME").is_none()
+    {
+        bail!("JCODE_DEV_NAMESPACE requires JCODE_HOME for Grok Build");
+    }
     let existing = cli_path();
     if super::command_exists(existing.to_string_lossy().as_ref()) {
         return Ok(existing);
@@ -440,6 +445,26 @@ mod tests {
             dev.join("provider-backends/grok-build")
                 .join(if cfg!(windows) { "grok.exe" } else { "grok" })
         );
+
+        for (name, value) in prior {
+            if let Some(value) = value {
+                crate::env::set_var(name, value);
+            } else {
+                crate::env::remove_var(name);
+            }
+        }
+    }
+
+    #[test]
+    fn dev_namespace_fails_closed_without_private_home() {
+        let _lock = crate::storage::lock_test_env();
+        let prior = ["JCODE_DEV_NAMESPACE", "JCODE_HOME", CLI_PATH_ENV]
+            .map(|name| (name, std::env::var_os(name)));
+        crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
+        crate::env::remove_var("JCODE_HOME");
+        crate::env::set_var(CLI_PATH_ENV, "/stable/bin/grok");
+
+        assert!(cli_path().as_os_str().is_empty());
 
         for (name, value) in prior {
             if let Some(value) = value {
