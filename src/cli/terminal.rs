@@ -124,6 +124,11 @@ thread_local! {
     /// Counts how many times the guard's `Drop` performed an emergency restore.
     /// Used by tests to verify the error/panic safety net fires exactly once.
     static GUARD_DROP_RESTORES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    /// Counts how many times the outer
+    /// [`restore_inherited_terminal_modes_quietly`] helper ran. Used by tests
+    /// to verify the resume-size-gate early-return path actually invokes the
+    /// helper before propagating its error.
+    static RESTORE_HELPER_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 impl TuiRuntimeGuard {
@@ -581,19 +586,81 @@ fn run_result_will_exec(run_result: &crate::tui::RunResult, extra_exec: bool) ->
 /// resume-size-gate failure). Mirrors the inline cleanup previously embedded
 /// in `install_panic_hook` and `handle_termination_signal`.
 ///
-/// Idempotent and side-effect-safe on stderr (matches the panic hook contract):
-/// ignores all crossterm errors. Use only when an *external* process has
-/// already mutated the terminal (e.g. exec handoff preserved raw mode /
-/// alt-screen / bracketed paste / focus events across a process boundary,
-/// see `INHERITED_MODES_ENV`) and the current process must abort before it
-/// has claimed ownership via a `TuiRuntimeGuard`.
+/// Reads [`INHERITED_MODES_ENV`] to learn which conditional modes the
+/// previous process preserved across the exec handoff (raw mode,
+/// alt-screen, and bracketed paste are always presumed set; mouse capture,
+/// keyboard enhancement, and focus change are not). When the env var is
+/// present and decodes cleanly, disables exactly those conditional modes
+/// in addition to the always-on ones. When the env var is missing or
+/// malformed, falls back to the safe minimum (raw mode + bracketed paste +
+/// alt-screen + cursor show) — we don't know which conditional modes were
+/// set, so we don't try to undo them.
 ///
-/// Refs: CodeRabbit review 2026-10-05 (PR #28 review 5421574647).
+/// All crossterm calls go through stdout, consistent with the enable path
+/// in `init_tui_runtime` and the normal cleanup path in
+/// `cleanup_tui_runtime`. Best-effort: every I/O error is swallowed with
+/// `let _ =`.
+///
+/// Refs: CodeRabbit review 2026-10-05 (PR #28 review 5422560940).
 fn restore_inherited_terminal_modes_quietly() {
+    // Increment the test counter first so a test asserting on
+    // RESTORE_HELPER_CALLS sees the call even if a subsequent step panics.
+    #[cfg(test)]
+    RESTORE_HELPER_CALLS.with(|c| c.set(c.get() + 1));
+
+    // Always do disable_raw_mode first; it is unconditional and does not
+    // depend on what was inherited.
     let _ = crossterm::terminal::disable_raw_mode();
+
+    match std::env::var(INHERITED_MODES_ENV)
+        .ok()
+        .as_deref()
+        .and_then(InheritedTerminalModes::decode)
+    {
+        Some(modes) => restore_inherited_modes_for(&modes),
+        None => {
+            // Safe minimum on stdout: always-on disable bracketed paste,
+            // leave alt-screen, show cursor. We deliberately skip focus /
+            // mouse / keyboard enhancement cleanup because we don't know
+            // whether the previous process left them set.
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::event::DisableBracketedPaste,
+                crossterm::terminal::LeaveAlternateScreen,
+                crossterm::cursor::Show,
+            );
+        }
+    }
+}
+
+/// Mirrors `cleanup_tui_runtime`'s restore side but writes through stdout
+/// (not stderr) and only undoes the modes named in `modes`. Used by
+/// [`restore_inherited_terminal_modes_quietly`] when [`INHERITED_MODES_ENV`]
+/// decoded successfully.
+///
+/// Order matches `cleanup_tui_runtime`: focus → mouse (incl. Windows VT) →
+/// keyboard enhancement. Always-on disable-bracketed-paste / leave-alt-screen /
+/// show-cursor run last so they apply regardless of which conditional flags
+/// were inherited.
+///
+/// Refs: CodeRabbit review 2026-10-05 (PR #28 review 5422560940).
+fn restore_inherited_modes_for(modes: &InheritedTerminalModes) {
+    if modes.focus_change {
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableFocusChange);
+    }
+    if modes.mouse_capture {
+        if let Err(error) = sync_windows_vt_mouse_capture(false) {
+            crate::logging::warn(&format!(
+                "failed to disable Windows VT mouse capture: {error}"
+            ));
+        }
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture);
+    }
+    if modes.keyboard_enhanced {
+        tui::disable_keyboard_enhancement();
+    }
     let _ = crossterm::execute!(
-        std::io::stderr(),
-        crossterm::event::DisableFocusChange,
+        std::io::stdout(),
         crossterm::event::DisableBracketedPaste,
         crossterm::terminal::LeaveAlternateScreen,
         crossterm::cursor::Show,
@@ -639,7 +706,7 @@ fn write_session_resume_hint(mut writer: impl Write, session_id: &str) -> io::Re
     Ok(())
 }
 
-fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
+pub(crate) fn init_tui_terminal_resume() -> Result<ratatui::DefaultTerminal> {
     use ratatui::{Terminal, backend::CrosstermBackend};
 
     // L3.resume: same pre-flight size gate as the cold path. `Terminal::new`
@@ -932,6 +999,13 @@ mod panic_crash_labeling_tests {
     //! server's newer one. Only an `Active` session may be relabeled.
     use super::*;
 
+    /// Serializes tests in this module that read or write
+    /// `INHERITED_MODES_ENV`. Env-var manipulation is process-global and not
+    /// thread-safe; without a mutex, the env-var smoke tests and the
+    /// branch-exercising test would race each other in `--test-threads=N`
+    /// runs.
+    static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn active_session_is_still_labeled_crashed_on_panic() {
         assert!(should_record_panic_as_crash(
@@ -968,18 +1042,88 @@ mod panic_crash_labeling_tests {
         }
     }
 
-    /// CodeRabbit 2026-10-05 (PR #28 review 5421574647): the resume path's
+    /// CodeRabbit 2026-10-05 (PR #28 review 5422560940): the resume path's
     /// early-return branch must restore inherited terminal modes before
-    /// propagating the size-gate error. This test pins the contract by
-    /// asserting the helper exists, is callable, and does not panic on a
-    /// non-TTY stderr (tests run without a controlling terminal).
+    /// propagating the size-gate error. The branch-exercising test below
+    /// pins that contract; the three smoke tests here only assert that the
+    /// helper does not panic on a non-TTY test stdout under the three env-var
+    /// shapes it must tolerate.
     #[test]
-    fn restore_inherited_terminal_modes_quietly_is_idempotent_and_no_panic() {
-        // Call twice: must not panic on a non-TTY test stderr (crossterm
-        // calls return Err silently, which we swallow). Idempotency is the
-        // observable contract here; the integration behaviour on a real
-        // terminal is covered by the panic-hook / signal-handler call sites.
+    fn restore_inherited_terminal_modes_quietly_no_env_var_is_smoke_safe() {
+        // Smoke test that the helper does not panic on a non-TTY test stdout
+        // when INHERITED_MODES_ENV is unset (safe-minimum path: raw mode off,
+        // bracketed paste off, alt-screen left, cursor shown).
+        let _guard = TEST_ENV_LOCK.lock().expect("TEST_ENV_LOCK poisoned");
+        crate::env::remove_var(INHERITED_MODES_ENV);
         restore_inherited_terminal_modes_quietly();
+    }
+
+    #[test]
+    fn restore_inherited_terminal_modes_quietly_with_env_var_is_smoke_safe() {
+        // Smoke test that the helper does not panic when INHERITED_MODES_ENV
+        // decodes cleanly to the full set of inherited flags. The decoded
+        // branch is exercised; we do not assert on the subprocess output,
+        // only that the crossterm / tui calls do not panic on a non-TTY stdout.
+        let _guard = TEST_ENV_LOCK.lock().expect("TEST_ENV_LOCK poisoned");
+        let previous = std::env::var_os(INHERITED_MODES_ENV);
+        crate::env::set_var(INHERITED_MODES_ENV, "mouse=1,keyboard=1,focus=1");
         restore_inherited_terminal_modes_quietly();
+        match previous {
+            Some(value) => crate::env::set_var(INHERITED_MODES_ENV, value),
+            None => crate::env::remove_var(INHERITED_MODES_ENV),
+        }
+    }
+
+    #[test]
+    fn restore_inherited_terminal_modes_quietly_tolerates_malformed_env_var() {
+        // Smoke test that the helper falls back to the safe-minimum path when
+        // INHERITED_MODES_ENV is malformed, rather than panicking or
+        // attempting to undo unknown conditional modes.
+        let _guard = TEST_ENV_LOCK.lock().expect("TEST_ENV_LOCK poisoned");
+        let previous = std::env::var_os(INHERITED_MODES_ENV);
+        crate::env::set_var(INHERITED_MODES_ENV, "garbage");
+        restore_inherited_terminal_modes_quietly();
+        match previous {
+            Some(value) => crate::env::set_var(INHERITED_MODES_ENV, value),
+            None => crate::env::remove_var(INHERITED_MODES_ENV),
+        }
+    }
+
+    #[test]
+    fn init_tui_terminal_resume_size_gate_restores_before_propagating() {
+        // Branch-exercising test for the resume-path size-gate early return.
+        //
+        // In a non-TTY test environment, crossterm::terminal::size() returns
+        // Err (or 0x0), so jcode_terminal_guard::check_minimum_terminal_size()
+        // returns Err and the early-return path in init_tui_terminal_resume
+        // fires. The contract is: restore_inherited_terminal_modes_quietly()
+        // must run exactly once before the error is propagated, so the
+        // inherited terminal modes preserved by the previous jcode process
+        // do not corrupt the user's terminal after a resume-size-gate abort.
+        //
+        // We do not assert on the precise Err text — the size gate has
+        // several legitimate failure modes. We only assert is_err() and that
+        // the restore helper ran exactly once.
+        let _guard = TEST_ENV_LOCK.lock().expect("TEST_ENV_LOCK poisoned");
+        let previous = std::env::var_os(INHERITED_MODES_ENV);
+        crate::env::set_var(INHERITED_MODES_ENV, "mouse=1,keyboard=1,focus=1");
+
+        RESTORE_HELPER_CALLS.with(|c| c.set(0));
+        let result = super::init_tui_terminal_resume();
+        let calls = RESTORE_HELPER_CALLS.with(|c| c.get());
+
+        match previous {
+            Some(value) => crate::env::set_var(INHERITED_MODES_ENV, value),
+            None => crate::env::remove_var(INHERITED_MODES_ENV),
+        }
+
+        assert!(
+            result.is_err(),
+            "init_tui_terminal_resume must propagate the size-gate error in a non-TTY test env"
+        );
+        assert_eq!(
+            calls, 1,
+            "restore_inherited_terminal_modes_quietly must run exactly once before the error is propagated"
+        );
     }
 }
