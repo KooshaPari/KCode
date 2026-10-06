@@ -26,6 +26,10 @@ members = [
     "crates/jcode-compaction-core",
     "crates/jcode-config-types",
     "crates/jcode-command-risk",
+    "crates/jcode-terminal-detect",
+    "crates/jcode-terminal-guard",
+    "crates/jcode-shell-integration",
+
     "crates/jcode-core",
     "crates/jcode-fuzzy",
     "crates/jcode-harness-api",
@@ -188,6 +192,10 @@ jcode-config-types = { path = "crates/jcode-config-types" }
 # so the root feature set fully controls the downstream features (see
 # [features]).
 jcode-tui = { path = "crates/jcode-tui", default-features = false }
+# Pre-flight terminal size gate shared by the root CLI and TUI sub-crates.
+# Prevents the ratatui 0.1.0 buffer-overflow panic class on degenerate
+# terminals (single-row / zero-col) by short-circuiting ratatui::init().
+jcode-terminal-guard = { path = "crates/jcode-terminal-guard" }
 # `jcode provider-doctor` / provider diagnostics; sits downstream of jcode-base
 # so doctor edits do not rebuild the base -> app-core -> tui spine.
 jcode-provider-doctor = { path = "crates/jcode-provider-doctor" }
