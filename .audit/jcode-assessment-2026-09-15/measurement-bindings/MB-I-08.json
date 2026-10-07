@@ -6,10 +6,10 @@
   "created_at": "2026-09-15T06:00:00Z",
   "criterion_id": "PEP-04-01-02",
   "instance_id": "I-08",
-  "subject_scope": "jcode fork: generated views (ASSESSMENT.md, HTML, JSON, YAML).",
+  "subject_scope": "kcode fork: generated views (ASSESSMENT.md, HTML, JSON, YAML).",
   "modality": "OBSERVATIONAL",
   "method": "Source code inspection and cargo check for PEP-04-01-02.",
-  "expected_behavior": "jcode does not generate assessment projections; this applies to the assessment kit itself.",
+  "expected_behavior": "kcode does not generate assessment projections; this applies to the assessment kit itself.",
   "units_or_anchors": "Pass if the stated predicate holds at the assessed scope; otherwise fail or record UNKNOWN.",
   "environment_ref": "Source-level only; no runtime environment.",
   "fixtures": [

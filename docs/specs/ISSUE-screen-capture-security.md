@@ -32,8 +32,8 @@ When agents use `macos_computer_use` (screenshot/OCR), they capture the user's a
 ## Proposed Fixes
 
 ### Immediate (P0)
-- [ ] Add `--no-screenshot` flag to jcode that disables `macos_computer_use` screenshot action
-- [ ] Add environment variable `JCODE_SCREENSHOT_DISABLED=1` to suppress screen capture tools
+- [ ] Add `--no-screenshot` flag to kcode that disables `macos_computer_use` screenshot action
+- [ ] Add environment variable `KCODE_SCREENSHOT_DISABLED=1` to suppress screen capture tools
 - [ ] Log all screenshot captures to an audit file for review
 - [ ] Add warning in AGENTS.md: "Never screenshot the live desktop"
 
@@ -51,7 +51,7 @@ When agents use `macos_computer_use` (screenshot/OCR), they capture the user's a
 
 ## Implementation Notes
 
-The `macos_computer_use` tool in jcode has actions: `screenshot`, `ocr`, `ui`, `click`, `type`, etc. The screenshot action currently captures whatever the user's screen shows. We need:
+The `macos_computer_use` tool in kcode has actions: `screenshot`, `ocr`, `ui`, `click`, `type`, etc. The screenshot action currently captures whatever the user's screen shows. We need:
 
 1. A permission gate before screenshot actions
 2. Scope restrictions (which windows/regions agents can see)

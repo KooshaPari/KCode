@@ -1,7 +1,7 @@
 //! Tests for the `read` tool (file reading, range parsing, schema validation).
 
-use jcode::tool::{Tool, ToolContext, ToolExecutionMode};
-use jcode::tool::read::ReadTool;
+use kcode::tool::{Tool, ToolContext, ToolExecutionMode};
+use kcode::tool::read::ReadTool;
 use serde_json::json;
 
 fn make_ctx(dir: &std::path::Path) -> ToolContext {

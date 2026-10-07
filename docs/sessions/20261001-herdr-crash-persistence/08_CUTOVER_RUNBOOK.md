@@ -45,7 +45,7 @@ call.
       ```
 - [ ] **P0.2 Rollback copy taken**
       ```bash
-      cp ~/.config/herdr/session.json ~/.jcode/scratch/session_pre_apply_$(date +%Y%m%d_%H%M%S).json
+      cp ~/.config/herdr/session.json ~/.kcode/scratch/session_pre_apply_$(date +%Y%m%d_%H%M%S).json
       ```
 - [ ] **P0.3 Record the discovered topology, not an assumed one**
       ```bash
@@ -122,7 +122,7 @@ call.
 
 | Criterion | How to check |
 |---|---|
-| Every discovered jcode pane has a proven `agent_resume` | `add=0` and `replace=0` in a fresh discovery |
+| Every discovered kcode pane has a proven `agent_resume` | `add=0` and `replace=0` in a fresh discovery |
 | No resume storms | duplicate SID rows = 0 |
 | No phantom coverage | `probe_` count = 0, `purge=0` |
 | Nothing fabricated | every `SKIP` has no live proof; no SID appears without one |

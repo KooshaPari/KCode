@@ -1,4 +1,4 @@
-# Specification: Compact Status Bar for Jcode TUI (REVISED)
+# Specification: Compact Status Bar for Kcode TUI (REVISED)
 
 **Date:** 2026-09-14
 **Status:** Final - revised per user feedback
@@ -33,7 +33,7 @@ Add line 5 to `right_fact_lines()`:
 ```
 Line 1: openrouter · API key              (existing)
 Line 2: mimo-v2.5 low                     (existing)
-Line 3: ~/jcode  main                     (existing)
+Line 3: ~/kcode  main                     (existing)
 Line 4: 50k/200k ████████░░               (existing)
 Line 5: ▸ 3 active ● 12 done ✗ 1 failed   (NEW - swarm stats)
 ```
@@ -57,7 +57,7 @@ Format: `── Turn N ── {elapsed} · {tokens} · {tool_count} tools · {sw
 When idle with active agents, show swarm summary in the bottom bar:
 
 ```
-▸ 3 active ● 12 done ✗ 1 failed  · ~/jcode (main)
+▸ 3 active ● 12 done ✗ 1 failed  · ~/kcode (main)
 ```
 
 When idle with no agents, show existing idle behavior (session tip, token count, etc.).
@@ -119,7 +119,7 @@ When idle with no agents, show existing idle behavior (session tip, token count,
 ```
 openrouter · API key
 mimo-v2.5 low
-~/jcode  main
+~/kcode  main
 50k/200k ████░░░░
 ```
 
@@ -127,7 +127,7 @@ mimo-v2.5 low
 ```
 openrouter · API key
 mimo-v2.5 low
-~/jcode  main
+~/kcode  main
 50k/200k ████░░░░
 ▸ 3 active ● 12 done ✗ 1 failed
 ```
@@ -139,7 +139,7 @@ Idle (session: 12k in, 8k out)
 
 ### After (bottom, idle with agents)
 ```
-▸ 3 active ● 12 done ✗ 1 failed  · jcode
+▸ 3 active ● 12 done ✗ 1 failed  · kcode
 ```
 
 ### After (bottom, turn recap)

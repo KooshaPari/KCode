@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Executable production-readiness gate for the jcode iOS app.
+# Executable production-readiness gate for the kcode iOS app.
 # Evaluates every locally checkable item in ../PRODUCTION_CHECKLIST.md.
 # Exit 0 = all local gates pass.
 set -u

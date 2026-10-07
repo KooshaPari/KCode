@@ -1,7 +1,7 @@
 # Research: Elicitation / User Input Tools in AI Coding Agents
 
 **Date**: 2026-09-14
-**Purpose**: Understand how major AI coding agents handle structured user input requests (elicitation) mid-conversation, for TUI polish of Jcode's `elicitate_mcp` tool.
+**Purpose**: Understand how major AI coding agents handle structured user input requests (elicitation) mid-conversation, for TUI polish of Kcode's `elicitate_mcp` tool.
 
 ---
 
@@ -11,9 +11,9 @@
 2. [Claude Code](#2-claude-code)
 3. [Cursor](#3-cursor)
 4. [Codex CLI (OpenAI)](#4-codex-cli-openai)
-5. [Jcode's Current Implementation](#5-jcodes-current-implementation)
+5. [Kcode's Current Implementation](#5-kcodes-current-implementation)
 6. [Common Patterns & UI Mechanisms](#6-common-patterns--ui-mechanisms)
-7. [Recommendations for Jcode](#7-recommendations-for-jcode)
+7. [Recommendations for Kcode](#7-recommendations-for-kcode)
 
 ---
 
@@ -271,11 +271,11 @@ OpenAI's Agents SDK has a "Guardrails / Approvals" concept:
 
 ---
 
-## 5. Jcode's Current Implementation
+## 5. Kcode's Current Implementation
 
 ### The `elicitate_mcp` Tool
 
-Jcode currently has the `mcp__phinbox__elicitate_mcp` (and `mcp__phinbox_mcp__elicitate_mcp`) tool, which is provided by the **Phinbox MCP server** (not by Jcode itself).
+Kcode currently has the `mcp__phinbox__elicitate_mcp` (and `mcp__phinbox_mcp__elicitate_mcp`) tool, which is provided by the **Phinbox MCP server** (not by Kcode itself).
 
 **Tool Name**: `elicitate_mcp`
 **Description**: Render a native OS popup and block until the human operator responds
@@ -320,12 +320,12 @@ The current implementation supports 6 field types:
 
 ### How It Works (Architecture)
 
-1. Jcode agent calls `elicitate_mcp` tool via MCP protocol
+1. Kcode agent calls `elicitate_mcp` tool via MCP protocol
 2. Phinbox MCP server receives the request
 3. Phinbox renders a **native OS popup** (NSAlert on macOS)
 4. User interacts with the popup
-5. Phinbox returns `ElicitResponse` to Jcode
-6. Jcode continues with the response
+5. Phinbox returns `ElicitResponse` to Kcode
+6. Kcode continues with the response
 
 ### Key Design Decision: Blocking
 
@@ -349,7 +349,7 @@ The current implementation is **synchronous/blocking** -- the tool call blocks u
 
 ### Pattern 2: Inline TUI Prompts
 
-**Used by**: Claude Code CLI, Jcode (terminal mode)
+**Used by**: Claude Code CLI, Kcode (terminal mode)
 
 - Renders as inline text in the terminal
 - **Pros**: Stays in the terminal context, non-disruptive
@@ -398,9 +398,9 @@ The current implementation is **synchronous/blocking** -- the tool call blocks u
 
 ---
 
-## 7. Recommendations for Jcode
+## 7. Recommendations for Kcode
 
-### What Jcode Already Does Well
+### What Kcode Already Does Well
 
 1. **Native OS popups** via Phinbox -- works cross-platform, looks native
 2. **Structured input** -- FieldSpec covers common use cases (text, choice, boolean, date)
@@ -425,7 +425,7 @@ The current implementation is **synchronous/blocking** -- the tool call blocks u
 
 ### Architectural Consideration: Tool vs Protocol
 
-Jcode currently has `elicitate_mcp` as an **MCP tool** (Phinbox server). Two approaches:
+Kcode currently has `elicitate_mcp` as an **MCP tool** (Phinbox server). Two approaches:
 
 **Approach A: Keep as MCP tool (current)**
 - Pro: Modular, works with any MCP client
@@ -433,9 +433,9 @@ Jcode currently has `elicitate_mcp` as an **MCP tool** (Phinbox server). Two app
 - Con: Requires Phinbox to be running
 - Con: Tool name is long (`mcp__phinbox__elicitate_mcp`)
 
-**Approach B: Build native elicitation into Jcode**
+**Approach B: Build native elicitation into Kcode**
 - Pro: Works without external MCP server
-- Pro: Can use Jcode's own TUI for rendering
+- Pro: Can use Kcode's own TUI for rendering
 - Pro: Shorter tool name (`elicitate` or `ask_user`)
 - Con: More code to maintain
 - Con: Duplicates Phinbox's functionality

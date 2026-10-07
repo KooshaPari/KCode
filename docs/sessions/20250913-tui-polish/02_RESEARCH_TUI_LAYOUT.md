@@ -1,7 +1,7 @@
 # 02 - Research: TUI Layout Audit for Status Bar
 
 **Date:** 2026-09-14
-**Source:** Direct audit of `crates/jcode-tui/src/tui/`
+**Source:** Direct audit of `crates/kcode-tui/src/tui/`
 
 ---
 
@@ -29,7 +29,7 @@ The TUI already has a comprehensive status system. The task is to **extend** it,
 ```
 Line 1: Provider + Auth method        (e.g., "openrouter · API key")
 Line 2: Model + Reasoning effort      (e.g., "mimo-v2.5 low")
-Line 3: Working dir + Git branch      (e.g., "~/jcode  main")
+Line 3: Working dir + Git branch      (e.g., "~/kcode  main")
 Line 4: Context usage + bar           (e.g., "50k/200k ████████░░")
 ```
 
@@ -110,7 +110,7 @@ Line 5: ▸ 3 active ● 12 done ✗ 1 failed  (NEW)
 ### Option B: Extend draw_status (bottom bar)
 Add swarm stats to the bottom status bar when idle:
 ```
-▸ 3 active ● 12 done ✗ 1 failed  · ~/jcode
+▸ 3 active ● 12 done ✗ 1 failed  · ~/kcode
 ```
 
 **Pros:** Full width, always visible.
