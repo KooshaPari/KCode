@@ -211,7 +211,7 @@ fn managed_cli_path() -> Result<PathBuf> {
 }
 
 pub fn cli_path() -> PathBuf {
-    if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
+    if dev_namespace_enabled() {
         let Some(home) = std::env::var_os("JCODE_HOME") else {
             return PathBuf::new();
         };
@@ -243,7 +243,7 @@ pub fn cli_available() -> bool {
 /// Backend presence alone is not authentication and must not make `/login` or
 /// `jcode auth status` claim that Grok Build is ready.
 pub fn has_cached_login() -> bool {
-    if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
+    if dev_namespace_enabled() {
         return false;
     }
     if std::env::var("GROK_DEPLOYMENT_KEY")
@@ -330,8 +330,7 @@ async fn download_from_base(client: &reqwest::Client, base: &str) -> Result<Vec<
 /// Return a usable Grok Build ACP backend, downloading the official binary
 /// into Jcode's private data directory when no explicit/system binary exists.
 pub async fn ensure_cli() -> Result<PathBuf> {
-    if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() && std::env::var_os("JCODE_HOME").is_none()
-    {
+    if dev_namespace_enabled() && std::env::var_os("JCODE_HOME").is_none() {
         bail!("JCODE_DEV_NAMESPACE requires JCODE_HOME for Grok Build");
     }
     let existing = cli_path();
@@ -370,6 +369,14 @@ pub async fn ensure_cli() -> Result<PathBuf> {
     Ok(destination)
 }
 
+fn dev_namespace_enabled() -> bool {
+    dev_namespace_enabled_value(std::env::var_os("JCODE_DEV_NAMESPACE").as_deref())
+}
+
+fn dev_namespace_enabled_value(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("1"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -377,6 +384,17 @@ mod tests {
         has_cached_login, save_tokens, valid_version,
     };
     use std::path::PathBuf;
+
+    #[test]
+    fn dev_namespace_marker_requires_exact_one() {
+        assert!(super::dev_namespace_enabled_value(Some(
+            std::ffi::OsStr::new("1")
+        )));
+        assert!(!super::dev_namespace_enabled_value(Some(
+            std::ffi::OsStr::new("0")
+        )));
+        assert!(!super::dev_namespace_enabled_value(None));
+    }
 
     #[test]
     fn dev_namespace_does_not_discover_grok_auth_file() {

@@ -15,6 +15,7 @@ use std::path::{Component, Path, PathBuf};
 use super::DevNamespacePaths;
 
 const FILE_SUFFIXES: [&str; 3] = ["json", "bak", "journal.jsonl"];
+static STAGE_NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 pub(super) fn import(paths: &DevNamespacePaths, session_id: &str) -> Result<Vec<PathBuf>> {
     validate_session_id(session_id)?;
@@ -43,26 +44,42 @@ pub(super) fn import(paths: &DevNamespacePaths, session_id: &str) -> Result<Vec<
         bail!("legacy session {session_id} has no JSON session record");
     }
 
-    let stage_name = format!(".import-{session_id}-{}", std::process::id());
-    let stage_name_c = c_string(OsStr::new(&stage_name))?;
-    let created =
-        unsafe { libc::mkdirat(destination_dir.as_raw_fd(), stage_name_c.as_ptr(), 0o700) };
-    if created != 0 {
-        return Err(std::io::Error::last_os_error())
-            .context("creating isolated import staging directory");
-    }
-    let stage_dir = match open_child_directory(&destination_dir, &stage_name, false) {
-        Ok(dir) => dir,
-        Err(error) => {
-            unlink_at(&destination_dir, &stage_name, libc::AT_REMOVEDIR);
-            return Err(error);
-        }
-    };
+    let (stage_name, stage_dir) = create_stage_directory(&destination_dir, session_id)?;
 
     let destination_path = paths.home.join("sessions");
     let result = stage_and_publish(&sources, &stage_dir, &destination_dir, &destination_path);
     cleanup_stage(&stage_dir, &destination_dir, &stage_name, &sources);
     result
+}
+
+fn create_stage_directory(destination_dir: &File, session_id: &str) -> Result<(String, File)> {
+    let base = format!(".import-{session_id}-{}", std::process::id());
+    for attempt in 0..128 {
+        let stage_name = if attempt == 0 {
+            base.clone()
+        } else {
+            let nonce = STAGE_NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            format!("{base}-{nonce}")
+        };
+        let stage_name_c = c_string(OsStr::new(&stage_name))?;
+        let created =
+            unsafe { libc::mkdirat(destination_dir.as_raw_fd(), stage_name_c.as_ptr(), 0o700) };
+        if created != 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                continue;
+            }
+            return Err(error).context("creating isolated import staging directory");
+        }
+        match open_child_directory(destination_dir, &stage_name, false) {
+            Ok(dir) => return Ok((stage_name, dir)),
+            Err(error) => {
+                unlink_at(destination_dir, &stage_name, libc::AT_REMOVEDIR);
+                return Err(error);
+            }
+        }
+    }
+    bail!("could not allocate a unique isolated import staging directory")
 }
 
 fn validate_session_id(session_id: &str) -> Result<()> {

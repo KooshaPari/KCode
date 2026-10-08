@@ -554,9 +554,17 @@ async fn run_forgecode_cli(
 fn apply_dev_home(command: &mut Command) {
     apply_dev_home_values(
         command,
-        std::env::var_os("JCODE_DEV_NAMESPACE").is_some(),
+        dev_namespace_enabled(),
         std::env::var_os("JCODE_HOME").as_deref(),
     );
+}
+
+fn dev_namespace_enabled() -> bool {
+    dev_namespace_enabled_value(std::env::var_os("JCODE_DEV_NAMESPACE").as_deref())
+}
+
+fn dev_namespace_enabled_value(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("1"))
 }
 
 fn apply_dev_home_values(command: &mut Command, dev: bool, home: Option<&std::ffi::OsStr>) {
@@ -575,8 +583,15 @@ fn apply_dev_home_values(command: &mut Command, dev: bool, home: Option<&std::ff
 
 #[cfg(test)]
 mod dev_namespace_tests {
-    use super::apply_dev_home_values;
+    use super::{apply_dev_home_values, dev_namespace_enabled_value};
     use tokio::process::Command;
+
+    #[test]
+    fn namespace_marker_requires_exact_one() {
+        assert!(dev_namespace_enabled_value(Some(std::ffi::OsStr::new("1"))));
+        assert!(!dev_namespace_enabled_value(Some(std::ffi::OsStr::new("0"))));
+        assert!(!dev_namespace_enabled_value(None));
+    }
 
     #[cfg(unix)]
     #[tokio::test]

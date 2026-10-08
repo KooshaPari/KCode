@@ -20,32 +20,37 @@ pub async fn run() -> Result<()> {
     // must not harden credential files or create configuration/telemetry state.
     let args = Args::parse();
 
-    if crate::cli::dev_namespace::launcher_requested() {
-        let paths = crate::cli::dev_namespace::validate_environment()?;
-        crate::cli::dev_namespace::isolate_provider_environment(&paths);
-        crate::cli::dev_namespace::validate_socket_override(args.socket.as_deref())?;
-        let command_socket = match args.command.as_ref() {
-            Some(Command::Debug { socket, .. }) => socket.as_deref(),
-            _ => None,
+    let dev_namespace =
+        if std::env::var_os("JCODE_DEV_NAMESPACE").as_deref() == Some(std::ffi::OsStr::new("1")) {
+            let paths = crate::cli::dev_namespace::validate_environment()?;
+            crate::cli::dev_namespace::isolate_provider_environment(&paths);
+            crate::cli::dev_namespace::validate_socket_override(&paths, args.socket.as_deref())?;
+            let command_socket = match args.command.as_ref() {
+                Some(Command::Debug { socket, .. }) => socket.as_deref(),
+                _ => None,
+            };
+            crate::cli::dev_namespace::validate_socket_override(
+                &paths,
+                command_socket.or(args.socket.as_deref()),
+            )?;
+            #[cfg(unix)]
+            let api_socket = match args.command.as_ref() {
+                Some(Command::ApiBridge { api_socket, .. }) => api_socket.as_deref(),
+                _ => None,
+            };
+            #[cfg(not(unix))]
+            let api_socket: Option<&str> = None;
+            crate::cli::dev_namespace::validate_api_socket_override(&paths, api_socket)?;
+            true
+        } else if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
+            anyhow::bail!("JCODE_DEV_NAMESPACE is reserved for the validated jcode-dev launcher");
+        } else {
+            false
         };
-        crate::cli::dev_namespace::validate_socket_override(
-            command_socket.or(args.socket.as_deref()),
-        )?;
-        #[cfg(unix)]
-        let api_socket = match args.command.as_ref() {
-            Some(Command::ApiBridge { api_socket, .. }) => api_socket.as_deref(),
-            _ => None,
-        };
-        #[cfg(not(unix))]
-        let api_socket: Option<&str> = None;
-        crate::cli::dev_namespace::validate_api_socket_override(api_socket)?;
-    } else if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
-        anyhow::bail!("JCODE_DEV_NAMESPACE is reserved for the validated jcode-dev launcher");
-    }
     if matches!(
         args.command.as_ref(),
         Some(Command::SelfDev { build: true })
-    ) && !crate::cli::dev_namespace::launcher_requested()
+    ) && !dev_namespace
     {
         anyhow::bail!(
             "Refusing to build self-dev into the normal jcode installation. \
@@ -179,7 +184,7 @@ pub async fn run() -> Result<()> {
     startup_profile::mark("telemetry_check");
 
     let mut args = parse_and_prepare_args(args)?;
-    if crate::cli::dev_namespace::launcher_requested() {
+    if dev_namespace {
         // Dev builds are local branch builds. Never let a release updater
         // replace this namespace or fetch a mainline binary over the fork.
         args.no_update = true;

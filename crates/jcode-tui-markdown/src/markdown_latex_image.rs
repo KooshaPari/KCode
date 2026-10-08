@@ -1122,6 +1122,10 @@ mod tests {
     fn uncached_math_returns_immediately_instead_of_blocking_the_draw_path() {
         use std::time::Instant;
 
+        let _env_guard = crate::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
         let source = format!(
             "unique_deferred_probe_{}",
             std::time::SystemTime::now()

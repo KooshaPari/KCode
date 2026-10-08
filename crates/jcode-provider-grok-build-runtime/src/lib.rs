@@ -42,7 +42,7 @@ pub struct GrokBuildProcess {
 impl GrokBuildProcess {
     pub fn from_env() -> Self {
         let command = grok_command_from_env(
-            std::env::var_os("JCODE_DEV_NAMESPACE").as_deref() == Some(std::ffi::OsStr::new("1")),
+            dev_namespace_enabled(),
             std::env::var_os("JCODE_HOME"),
             std::env::var_os("JCODE_GROK_CLI_PATH"),
         );
@@ -633,8 +633,16 @@ where
     })
 }
 
+fn dev_namespace_enabled() -> bool {
+    dev_namespace_enabled_value(std::env::var_os("JCODE_DEV_NAMESPACE").as_deref())
+}
+
+fn dev_namespace_enabled_value(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("1"))
+}
+
 fn apply_dev_home(command: &mut Command) {
-    let home = (std::env::var_os("JCODE_DEV_NAMESPACE").is_some())
+    let home = dev_namespace_enabled()
         .then(|| std::env::var_os("JCODE_HOME").map(PathBuf::from))
         .flatten();
     apply_dev_home_values(command, home.as_deref());
@@ -808,6 +816,15 @@ fn cached_login_hint(prefix: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn namespace_marker_requires_exact_one() {
+        assert!(dev_namespace_enabled_value(Some(std::ffi::OsStr::new("1"))));
+        assert!(!dev_namespace_enabled_value(Some(std::ffi::OsStr::new(
+            "0"
+        ))));
+        assert!(!dev_namespace_enabled_value(None));
+    }
 
     #[test]
     fn dev_namespace_ignores_stable_cli_override() {

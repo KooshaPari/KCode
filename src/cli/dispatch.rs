@@ -379,7 +379,15 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             selfdev::run_self_dev(build, args.resume).await?;
         }
         Some(Command::ImportLegacySession { session_id }) => {
-            super::dev_namespace::import_legacy_session(&session_id)?;
+            let imported = super::dev_namespace::import_legacy_session(&session_id)?;
+            if imported.is_empty() {
+                println!("No legacy session files were imported.");
+            } else {
+                println!("Imported legacy session files:");
+                for path in imported {
+                    println!("  {}", path.display());
+                }
+            }
         }
         Some(Command::Debug {
             command,
@@ -645,7 +653,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             RestartCommand::Clear => commands::run_restart_clear_command()?,
         },
         Some(Command::Menubar { once, json }) => {
-            if !once && !json {
+            if !once && !json && cfg!(target_os = "macos") {
                 super::dev_namespace::ensure_global_integrations_allowed("menubar helper")?;
             }
             commands::run_menubar_command(once, json)?;

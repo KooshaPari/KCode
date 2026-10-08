@@ -186,7 +186,7 @@ pub fn resolve_for_home(_home: &Path) -> Result<DevNamespacePaths> {
 }
 
 pub fn validate_environment() -> Result<DevNamespacePaths> {
-    if !launcher_requested() {
+    if std::env::var_os("JCODE_DEV_NAMESPACE").as_deref() != Some(std::ffi::OsStr::new("1")) {
         bail!("jcode-dev namespace marker is missing; launch through the jcode-dev wrapper");
     }
     let home = std::env::var_os("HOME")
@@ -227,6 +227,8 @@ pub fn isolate_provider_environment(paths: &DevNamespacePaths) {
     let secret_suffixes = [
         "_API_KEY",
         "_KEY",
+        "_BASE_URL",
+        "_API_BASE",
         "_TOKEN",
         "_TOKEN_FILE",
         "_SECRET",
@@ -259,6 +261,8 @@ pub fn isolate_provider_environment(paths: &DevNamespacePaths) {
             let name = name.to_str()?;
             let normalized = name.to_ascii_uppercase();
             (provider_overrides.contains(&normalized.as_str())
+                || normalized == "AWS_ACCESS_KEY_ID"
+                || (normalized.starts_with("JCODE_") && normalized.ends_with("_ENV_FILE"))
                 || secret_suffixes
                     .iter()
                     .any(|suffix| normalized.ends_with(suffix))
@@ -283,25 +287,23 @@ pub fn isolate_provider_environment(paths: &DevNamespacePaths) {
 }
 
 pub fn ensure_global_integrations_allowed(action: &str) -> Result<()> {
-    if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
+    if std::env::var_os("JCODE_DEV_NAMESPACE").as_deref() == Some(std::ffi::OsStr::new("1")) {
         bail!("`{action}` is disabled in the jcode-dev namespace to protect global user settings");
     }
     Ok(())
 }
 
-pub fn validate_socket_override(socket: Option<&str>) -> Result<()> {
+pub fn validate_socket_override(paths: &DevNamespacePaths, socket: Option<&str>) -> Result<()> {
     let Some(socket) = socket else {
         return Ok(());
     };
-    let paths = validate_environment()?;
     validate_socket_path(Path::new(socket), &paths.runtime)
 }
 
-pub fn validate_api_socket_override(socket: Option<&str>) -> Result<()> {
+pub fn validate_api_socket_override(paths: &DevNamespacePaths, socket: Option<&str>) -> Result<()> {
     let Some(socket) = socket else {
         return Ok(());
     };
-    let paths = validate_environment()?;
     validate_socket_path(Path::new(socket), &paths.runtime)
 }
 
