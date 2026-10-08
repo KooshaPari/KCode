@@ -51,6 +51,28 @@ fn dev_namespace_path_guard_rejects_symlink_components_without_touching_target()
 }
 
 #[test]
+fn dev_namespace_path_guard_allows_home_below_symlinked_ancestor() {
+    let _lock = lock_test_env();
+    let temp = tempfile::tempdir().expect("temp dir");
+    let real_parent = temp.path().join("real");
+    std::fs::create_dir_all(&real_parent).expect("real parent");
+    let alias = temp.path().join("alias");
+    std::os::unix::fs::symlink(&real_parent, &alias).expect("ancestor symlink");
+    let home = alias.join(".jcode-dev");
+    std::fs::create_dir_all(&home).expect("dev home");
+    let path = home.join("active_pids/session");
+
+    let _restore = EnvRestore(
+        std::env::var_os("JCODE_HOME"),
+        std::env::var_os("JCODE_DEV_NAMESPACE"),
+    );
+    jcode_core::env::set_var("JCODE_HOME", &home);
+    jcode_core::env::set_var("JCODE_DEV_NAMESPACE", "1");
+
+    assert!(reject_dev_home_symlink_path(&path).is_ok());
+}
+
+#[test]
 fn json_recovery_rejects_a_symlinked_backup_without_reading_or_repairing_it() {
     use serde_json::Value;
 

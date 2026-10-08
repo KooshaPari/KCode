@@ -3,7 +3,7 @@ use crate::protocol::ServerEvent;
 use crate::storage;
 use jcode_swarm_core::{SwarmLifecycleStatus, SwarmMemberRecord};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex as StdMutex, Weak};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -244,6 +244,17 @@ fn state_path(swarm_id: &str) -> PathBuf {
         })
         .collect();
     state_dir().join(format!("{}.json", sanitized))
+}
+
+fn rejected_swarm_persist_path(path: &Path) -> Option<String> {
+    storage::reject_dev_home_symlink_path(path)
+        .err()
+        .map(|error| {
+            format!(
+                "Refusing to persist swarm state {}: {error}",
+                path.display()
+            )
+        })
 }
 
 fn read_primary_version(swarm_id: &str) -> SwarmStateFileVersion {
@@ -625,7 +636,8 @@ pub(super) fn persist_swarm_state(
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = state_path(swarm_id);
-    if storage::reject_dev_home_symlink_path(&path).is_err() {
+    if let Some(message) = rejected_swarm_persist_path(&path) {
+        crate::logging::warn(&message);
         return;
     }
 

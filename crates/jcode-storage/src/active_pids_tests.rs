@@ -24,7 +24,10 @@ impl Drop for RestoreEnv {
 fn session_counts_counts_live_and_streaming_only() {
     let _guard = lock_env();
     let original_home = std::env::var_os("JCODE_HOME");
-    let _restore = RestoreEnv(original_home.clone(), std::env::var_os("JCODE_DEV_NAMESPACE"));
+    let _restore = RestoreEnv(
+        original_home.clone(),
+        std::env::var_os("JCODE_DEV_NAMESPACE"),
+    );
     let temp = tempfile::tempdir().expect("tempdir");
     jcode_core::env::set_var("JCODE_HOME", temp.path());
 
@@ -75,7 +78,10 @@ fn session_counts_counts_live_and_streaming_only() {
 fn streaming_guard_marks_and_clears_on_drop() {
     let _guard = lock_env();
     let original_home = std::env::var_os("JCODE_HOME");
-    let _restore = RestoreEnv(original_home.clone(), std::env::var_os("JCODE_DEV_NAMESPACE"));
+    let _restore = RestoreEnv(
+        original_home.clone(),
+        std::env::var_os("JCODE_DEV_NAMESPACE"),
+    );
     let temp = tempfile::tempdir().expect("tempdir");
     jcode_core::env::set_var("JCODE_HOME", temp.path());
     register_active_pid("session_guard", std::process::id());
@@ -93,7 +99,10 @@ fn streaming_guard_marks_and_clears_on_drop() {
 fn user_session_counts_exclude_internal_sessions() {
     let _guard = lock_env();
     let original_home = std::env::var_os("JCODE_HOME");
-    let _restore = RestoreEnv(original_home.clone(), std::env::var_os("JCODE_DEV_NAMESPACE"));
+    let _restore = RestoreEnv(
+        original_home.clone(),
+        std::env::var_os("JCODE_DEV_NAMESPACE"),
+    );
     let temp = tempfile::tempdir().expect("tempdir");
     jcode_core::env::set_var("JCODE_HOME", temp.path());
     let live = std::process::id();
@@ -166,4 +175,51 @@ fn pid_state_symlinks_never_read_or_write_targets() {
     assert!(!session.streaming);
     assert!(!session.internal);
     assert_eq!(std::fs::read_to_string(&target).unwrap(), pid.to_string());
+}
+
+#[cfg(unix)]
+#[test]
+fn active_pid_open_directory_handle_survives_namespace_replacement_race() {
+    use std::ffi::CString;
+    use std::os::unix::fs::{OpenOptionsExt, symlink};
+
+    let _lock = lock_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let active = temp.path().join(".jcode-dev/active_pids");
+    let moved = temp.path().join("original-active-pids");
+    let stable = temp.path().join("stable-active-pids");
+    std::fs::create_dir_all(&active).unwrap();
+    std::fs::create_dir_all(&stable).unwrap();
+    let sentinel = stable.join("sentinel");
+    std::fs::write(&sentinel, b"stable marker").unwrap();
+
+    let directory = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&active)
+        .unwrap();
+    std::fs::rename(&active, &moved).unwrap();
+    symlink(&stable, &active).unwrap();
+
+    symlink(&sentinel, moved.join("session-link")).unwrap();
+    assert!(
+        super::active_pids::write_marker_in_directory(
+            &directory,
+            &CString::new("session-link").unwrap(),
+            b"overwrite",
+        )
+        .is_err()
+    );
+    assert_eq!(std::fs::read(&sentinel).unwrap(), b"stable marker");
+
+    super::active_pids::write_marker_in_directory(
+        &directory,
+        &CString::new("session-race").unwrap(),
+        b"1234",
+    )
+    .unwrap();
+
+    assert_eq!(std::fs::read(moved.join("session-race")).unwrap(), b"1234");
+    assert_eq!(std::fs::read(&sentinel).unwrap(), b"stable marker");
+    assert!(!stable.join("session-race").exists());
 }

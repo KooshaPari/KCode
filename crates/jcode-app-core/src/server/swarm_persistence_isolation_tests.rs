@@ -76,3 +76,39 @@ fn symlinked_swarm_runtime_roots_are_not_migrated_or_written() {
         identity
     );
 }
+
+#[test]
+fn rejected_swarm_persist_path_message_includes_path_and_guard_error() {
+    let _lock = storage::lock_test_env();
+    let keys = ["JCODE_HOME", "JCODE_RUNTIME_DIR", "JCODE_DEV_NAMESPACE"];
+    let _restore = EnvRestore(
+        keys.into_iter()
+            .map(|key| (key, std::env::var_os(key)))
+            .collect(),
+    );
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join(".jcode-dev");
+    let runtime = home.join("run");
+    let stable = temp.path().join("stable-swarm-state");
+    std::fs::create_dir_all(&runtime).unwrap();
+    std::fs::create_dir_all(&stable).unwrap();
+    let sentinel = stable.join("swarm-123.json");
+    std::fs::write(&sentinel, b"stable swarm sentinel\n").unwrap();
+    crate::env::set_var("JCODE_HOME", &home);
+    crate::env::set_var("JCODE_RUNTIME_DIR", &runtime);
+    crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
+    let state_root = storage::durable_state_dir().join(SWARM_STATE_DIR);
+    std::fs::create_dir_all(state_root.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(&stable, &state_root).unwrap();
+    let path = state_path("swarm-123");
+
+    let message = rejected_swarm_persist_path(&path).expect("symlinked path rejection");
+    assert!(message.contains(&path.display().to_string()));
+    assert!(message.contains("symlink"));
+    persist_swarm_state("swarm-123", None, Some("session-123"), &[]);
+
+    assert_eq!(
+        std::fs::read(&sentinel).unwrap(),
+        b"stable swarm sentinel\n"
+    );
+}

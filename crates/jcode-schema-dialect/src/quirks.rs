@@ -97,33 +97,7 @@ fn cache() -> &'static Mutex<BTreeMap<PathBuf, QuirkFile>> {
 }
 
 fn path_is_safe(path: &Path) -> bool {
-    if std::env::var_os("JCODE_DEV_NAMESPACE").as_deref() != Some(std::ffi::OsStr::new("1")) {
-        return true;
-    }
-    let Some(home) = std::env::var_os("JCODE_HOME").map(PathBuf::from) else {
-        return false;
-    };
-    if !home.is_absolute() || !path.is_absolute() || !path.starts_with(&home) {
-        return false;
-    }
-    let mut current = PathBuf::new();
-    for component in path.components() {
-        match component {
-            std::path::Component::Prefix(prefix) => current.push(prefix.as_os_str()),
-            std::path::Component::RootDir => current.push(component.as_os_str()),
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => return false,
-            std::path::Component::Normal(part) => {
-                current.push(part);
-                if std::fs::symlink_metadata(&current)
-                    .is_ok_and(|metadata| metadata.file_type().is_symlink())
-                {
-                    return false;
-                }
-            }
-        }
-    }
-    true
+    jcode_storage::reject_dev_home_symlink_path(path).is_ok()
 }
 
 fn load_file(path: &PathBuf) -> QuirkFile {
@@ -238,6 +212,13 @@ pub fn reset_cache_for_tests() {
 mod tests {
     use super::*;
 
+    fn lock_test_env() -> std::sync::MutexGuard<'static, ()> {
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     struct EnvRestore(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
 
     impl Drop for EnvRestore {
@@ -260,10 +241,7 @@ mod tests {
     fn schema_quirks_read_and_write_reject_a_symlinked_store() {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-        static ENV_LOCK: Mutex<()> = Mutex::new(());
-        let _lock = ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _lock = lock_test_env();
         let temp = tempfile::tempdir().unwrap();
         let home = temp.path().join(".jcode-dev");
         std::fs::create_dir_all(&home).unwrap();
@@ -296,8 +274,37 @@ mod tests {
         TEST_PATH.with(|path| *path.borrow_mut() = None);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn schema_quirks_persist_beneath_symlinked_home_ancestor() {
+        use std::os::unix::fs::symlink;
+
+        let _lock = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let real_parent = temp.path().join("real");
+        std::fs::create_dir_all(&real_parent).unwrap();
+        let alias = temp.path().join("alias");
+        symlink(&real_parent, &alias).unwrap();
+        let home = alias.join(".jcode-dev");
+        std::fs::create_dir_all(&home).unwrap();
+        let path = home.join("schema-quirks.json");
+        let _restore = EnvRestore(
+            std::env::var_os("JCODE_HOME"),
+            std::env::var_os("JCODE_DEV_NAMESPACE"),
+        );
+        jcode_core::env::set_var("JCODE_HOME", &home);
+        jcode_core::env::set_var("JCODE_DEV_NAMESPACE", "1");
+        use_test_path(path.clone());
+
+        assert!(record_keyword("gemini", "propertyNames"));
+        assert!(path.exists());
+        reset_cache_for_tests();
+        TEST_PATH.with(|slot| *slot.borrow_mut() = None);
+    }
+
     #[test]
     fn learns_persists_and_forgets() {
+        let _lock = lock_test_env();
         let dir = tempfile::tempdir().unwrap();
         use_test_path(dir.path().join("schema-quirks.json"));
 
@@ -329,6 +336,7 @@ mod tests {
     /// to a failed turn.
     #[test]
     fn an_unwritable_store_still_reports_what_it_learned() {
+        let _lock = lock_test_env();
         use_test_path(PathBuf::from("/proc/definitely-not-writable/quirks.json"));
         assert!(record_keyword("gemini", "somethingNew"));
         assert_eq!(
