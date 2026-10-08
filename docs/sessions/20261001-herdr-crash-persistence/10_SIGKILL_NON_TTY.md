@@ -1,9 +1,11 @@
-# SIGKILL on `kcode --resume` from non-TTY — Root cause and fix paths
+# SIGKILL on `kcode --resume` from non-TTY — Root cause and fix
 
 **Date:** 2026-10-08
 **Severity:** P1 (blocks crash-restore verification; the C1 fix `herdr:jcode`
 source namespace is not exercised by any live pane)
-**Status:** Root cause identified, fix pending operator choice.
+**Status:** **Fixed and installed** (`27bd2299c`). New binary at
+`~/.kcode/builds/versions/6e0f0fc9c-dirty/kcode` runs cleanly from non-TTY.
+Launchers (`~/.local/bin/kcode`) now point to the linker-signed build.
 
 ## TL;DR
 
@@ -178,30 +180,123 @@ a fix — it doesn't address the build pipeline's failure to produce
 linker-signed binaries. Defer until we understand why release-lto builds
 sometimes produce linker-signed and sometimes not.
 
-## Recommendation
+## Resolution (chose and shipped PATH B)
 
-**PATH A.** It's the smallest change with the biggest impact. The 0.91.0 build
-has all the herdr fix code (verified via `strings` — `herdr:jcode`,
-`Merge pull request #1696`, etc.) and the live menubar already runs it
-without issues (it powers the 19-pane workspace that's been up for ~17h).
+The operator picked the **long-term durable path**: rebuild HEAD with
+`cargo build --profile release` (no LTO, proven linker-signed) and add a
+post-install verifier to `install_release.sh` so a future LTO regression
+can't ship a SIGKILL-prone binary silently.
 
-PATH B is the "correct" long-term answer, but takes 100 min and is not
-required to verify crash-restore end-to-end. We can run it in the background
-after PATH A is in place.
+### What the rebuild actually surfaced
 
-## Verification plan after PATH A
+After the new build produced a clean `flags=0x20002(adhoc,linker-signed)`
+binary at `target/release/kcode`, the very first launch
+(`./target/release/kcode --version`) printed:
 
-1. Repoint `current` (operator-gated destructive op).
-2. SIGKILL one jcode --resume process (e.g., pane w7:p1A "Port") — herdr
-   daemon will relaunch it via the persisted `agent_resume.argv`.
-3. Within 30 s, the new process should write `agent_resume.source =
-   "herdr:jcode"` to session.json.
-4. Confirm `herdr pane show w7:p1A` reports `agent_resume.source = "herdr:jcode"`.
-5. SIGKILL again and confirm the new relaunch also uses `herdr:jcode` (not
-   bouncing back to `jcode`).
-6. Then test full crash-restore: SIGKILL, then kill the herdr daemon (or
-   restart it), then bring the daemon back, and confirm `agent_resume` is
-   loaded from session.json and the pane is relaunched.
+```
+xattr: ... No such xattr: com.apple.quarantine
+... replacing existing signature
+kcode v0.0.0-dev (6e0f0fc9c, dirty)
+```
+
+After that single launch, `codesign -dvv` showed `flags=0x2(adhoc)` with
+**two rejection hash slots** — the linker-signed attribute was gone.
+This means the linker-placed CS_LINKER_SIGNED attribute is destroyed by
+**every launch** of the binary, not just by the build pipeline.
+
+The culprit is `self_heal_macos_code_signature()` in `src/main.rs`,
+which runs unconditionally at the top of `run_main` and calls
+`codesign --force --deep --sign -`. `--sign -` is an adhoc identity that
+does not carry the `CS_LINKER_SIGNED` attribute the linker placed during
+the build; `--force` overwrites the original signature, deleting the
+linker-signed attribute.
+
+This is why every locally built jcode binary since the self-heal landed
+exhibits the same SIGKILL pattern: the first interactive launch tears
+the signature, and every subsequent non-TTY launch SIGKILLs.
+
+A correct opt-in commit (`51f4e27e8` — "make startup executable re-sign
+repair explicit opt-in") exists on
+`origin/impl/macos-trust-policy-20260930` but was never merged onto
+main. `27bd2299c` re-applies the gate to `feature/herdr-plugin-manifest`:
+
+- New env var `KCODE_MACOS_STARTUP_REPAIR=1` (also accepts
+  `true`/`yes`/`on`) explicitly opts into the historical xattr-strip +
+  re-adhoc-sign path.
+- Default behavior is OFF for release installs; the install pipeline owns
+  quarantine handling.
+- `self_heal_macos_code_signature` → `maybe_repair_macos_code_signature`
+  (rename reflects the new semantics).
+
+### Verification
+
+```
+$ cargo build --profile release --bin kcode
+    Finished `release` profile [optimized] target(s) in 48.77s
+
+$ codesign -dvv target/release/kcode | grep -E 'flags=|hashes='
+CodeDirectory v=20400 size=1070264 flags=0x20002(adhoc,linker-signed) hashes=33442+0
+
+$ ./target/release/kcode --version
+kcode v0.0.0-dev (6e0f0fc9c, dirty)
+   -- (no xattr/codesign lines; opt-in env var unset)
+
+$ codesign -dvv target/release/kcode | grep -E 'flags=|hashes='
+CodeDirectory v=20400 size=1070264 flags=0x20002(adhoc,linker-signed) hashes=33442+0
+   -- (preserved across the launch)
+
+$ ~/.local/bin/kcode --version | cat      # non-TTY pipe
+kcode v0.0.0-dev (6e0f0fc9c, dirty)
+$ echo $?
+0
+
+$ ~/.local/bin/kcode --resume nonexistent_session_id </dev/null  # non-TTY
+Error: No session found matching 'nonexistent_session_id'
+Use `kcode --resume` to list available sessions.
+$ echo $?
+0
+```
+
+### Install
+
+```
+~/.kcode/builds/versions/6e0f0fc9c-dirty/kcode     <- linker-signed, amfid-accept
+~/.kcode/builds/stable/kcode      -> versions/6e0f0fc9c-dirty/kcode
+~/.kcode/builds/current/kcode     -> versions/6e0f0fc9c-dirty/kcode
+~/.local/bin/kcode                -> ~/.kcode/builds/current/kcode
+```
+
+### install_release.sh durability hook
+
+`scripts/install_release.sh` now post-verifies the linker-signed attribute
+on macOS after `install -m 755`:
+
+- `flags=0x20002` (or `CS_LINKER_SIGNED`) → silent (binary is good).
+- `flags=0x2` (or `CS_ADHOC`) → warn loudly, name the file, point at this
+  doc. If `KCODE_REQUIRE_LINKER_SIGNED=1`, abort with `exit 1` and remove
+  the bad install.
+- Default behavior is **warn-and-continue** so CI/dev workflows that
+  intentionally ship LTO-only binaries still install (with a one-line
+  grep-friendly warning); strict-mode is one env-var away.
+
+This is the durable fix: future builds can't silently ship an
+amfid-rejectable binary without an operator seeing the warning or
+explicitly disabling it.
+
+### Open follow-ups
+
+- **Verify C1 `herdr:jcode` source namespace end-to-end.** The 6e0f0fc9c-dirty
+  build contains the C1 fix; any pane launched from it should write
+  `agent_resume.source = "herdr:jcode"` to session.json. SIGKILL one live
+  pane after this commit and confirm herdr daemon relaunches it with the
+  new source.
+- **Push upstream.** Consider opening a PR against `1jehuang/jcode` to
+  merge `51f4e27e8` and the install_release.sh verifier, since the same
+  SIGKILL pattern will hit any downstream KCode consumer on macOS.
+- **Investigate `install_release.sh` rerun behavior.** Two consecutive
+  installs have produced different signature outcomes (Oct 5 stable is
+  linker-signed; Oct 7 dirty is not). Now that the self-heal is gated,
+  this should disappear — but keep the verifier in place.
 
 ## Open questions
 
