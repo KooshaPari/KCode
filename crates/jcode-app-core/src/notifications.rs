@@ -524,6 +524,7 @@ pub fn send_macos_turn_notification(
     }
 }
 
+#[cfg(target_os = "macos")]
 fn remove_queued_notification(path: &std::path::Path) {
     if crate::storage::reject_dev_home_symlink_path(path).is_ok() {
         let _ = std::fs::remove_file(path);

@@ -9,6 +9,73 @@
 use crate::{jcode_dir, reject_dev_home_symlink_path};
 use std::path::{Path, PathBuf};
 
+fn write_marker(dir: &Path, session_id: &str, contents: &[u8]) -> std::io::Result<()> {
+    if session_id.is_empty() || session_id == "." || session_id == ".." || session_id.contains('/')
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "invalid session marker name",
+        ));
+    }
+    let path = dir.join(session_id);
+    if !path_allowed(&path) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "unsafe session marker path",
+        ));
+    }
+    std::fs::create_dir_all(dir)?;
+
+    #[cfg(unix)]
+    {
+        use std::ffi::CString;
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let directory = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(dir)?;
+        let name = CString::new(session_id)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+        write_marker_in_directory(&directory, &name, contents)
+    }
+
+    #[cfg(not(unix))]
+    {
+        use std::io::Write;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)?;
+        file.write_all(contents)
+    }
+}
+
+#[cfg(unix)]
+pub(super) fn write_marker_in_directory(
+    directory: &std::fs::File,
+    name: &std::ffi::CStr,
+    contents: &[u8],
+) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::fd::{AsRawFd, FromRawFd};
+
+    let fd = unsafe {
+        libc::openat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600,
+        )
+    };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let mut file = unsafe { std::fs::File::from_raw_fd(fd) };
+    file.write_all(contents)
+}
+
 fn path_allowed(path: &Path) -> bool {
     reject_dev_home_symlink_path(path).is_ok()
 }
@@ -48,10 +115,7 @@ pub fn set_session_internal(session_id: &str, internal: bool) {
         return;
     }
     if internal {
-        let _ = std::fs::create_dir_all(&dir);
-        if path_allowed(&path) {
-            let _ = std::fs::write(path, "");
-        }
+        let _ = write_marker(&dir, session_id, b"");
     } else {
         let _ = std::fs::remove_file(path);
     }
@@ -68,13 +132,7 @@ pub fn session_is_internal(session_id: &str) -> bool {
 /// Record that `session_id` is owned by process `pid`.
 pub fn register_active_pid(session_id: &str, pid: u32) {
     if let Some(dir) = active_pids_dir() {
-        let path = dir.join(session_id);
-        if path_allowed(&path) {
-            let _ = std::fs::create_dir_all(&dir);
-            if path_allowed(&path) {
-                let _ = std::fs::write(path, pid.to_string());
-            }
-        }
+        let _ = write_marker(&dir, session_id, pid.to_string().as_bytes());
     }
 }
 
@@ -94,13 +152,7 @@ pub fn unregister_active_pid(session_id: &str) {
 /// Mark a session as actively streaming a model response.
 pub fn mark_streaming(session_id: &str) {
     if let Some(dir) = streaming_pids_dir() {
-        let path = dir.join(session_id);
-        if path_allowed(&path) {
-            let _ = std::fs::create_dir_all(&dir);
-            if path_allowed(&path) {
-                let _ = std::fs::write(path, std::process::id().to_string());
-            }
-        }
+        let _ = write_marker(&dir, session_id, std::process::id().to_string().as_bytes());
     }
 }
 

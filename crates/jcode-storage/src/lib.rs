@@ -177,11 +177,13 @@ pub fn reject_dev_home_symlink_path(path: &Path) -> Result<()> {
             path.display()
         );
     }
-    let mut current = PathBuf::new();
-    for component in path.components() {
+    if std::fs::symlink_metadata(&home).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        anyhow::bail!("jcode-dev state path traverses symlink {}", home.display());
+    }
+    let relative = path.strip_prefix(&home)?;
+    let mut current = home;
+    for component in relative.components() {
         match component {
-            std::path::Component::Prefix(prefix) => current.push(prefix.as_os_str()),
-            std::path::Component::RootDir => current.push(component.as_os_str()),
             std::path::Component::CurDir => {}
             std::path::Component::ParentDir => {
                 anyhow::bail!("jcode-dev state path contains '..': {}", path.display());
@@ -196,6 +198,12 @@ pub fn reject_dev_home_symlink_path(path: &Path) -> Result<()> {
                         current.display()
                     );
                 }
+            }
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
+                anyhow::bail!(
+                    "jcode-dev state path is not relative to JCODE_HOME: {}",
+                    path.display()
+                );
             }
         }
     }
