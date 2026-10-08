@@ -166,3 +166,85 @@ duplicate resumes. See **01_RESEARCH.md**.
 - writes atomically via `tmp` + `fsync` + `os.replace`;
 - refuses to run when the byte shape of the file is unfamiliar, and refuses
   discovery+write while the daemon is live.
+## Phase 4 — End-to-end C1 verification (operator-gated, destructive)
+
+This is the only step that exercises the **actual fix end-to-end**:
+SIGKILL a live kcode pane and confirm herdr relaunches it with
+`agent_resume.source = "herdr:kcode"` (the value the C1 fix produces).
+
+**Gating:** this is destructive. SIGKILL on a live pane WILL cause a
+brief interruption of the work in that pane. Pick a low-priority kcode
+pane (e.g. an idle "cockpit" or "byproduct" pane, not a working one).
+
+**Pre-condition (verified 2026-10-08):**
+
+- `~/.local/bin/kcode --version` is `kcode v0.0.0-dev (6e0f0fc9c, dirty)`.
+- `~/.kcode/builds/versions/6e0f0fc9c-dirty/kcode` carries
+  `flags=0x20002(adhoc,linker-signed)` (the C9 fix is in).
+- `cargo test -p kcode-herdr` is 24/24 green (the C1 reporter fix).
+
+**Steps:**
+
+1. Pick a target pane via `herdr pane list` (look for a kcode pane
+   with `agent_status: idle`). Record the `pane_id` and current
+   `label`.
+2. Find the live kcode PID in that pane:
+   ```bash
+   herdr pane process-info <PANE_ID>
+   ```
+   Note the `pid`. Confirm it is the kcode binary, not a child shell:
+   ```bash
+   ps -p <PID> -o pid,command | grep kcode
+   ```
+3. Snapshot the pre-SIGKILL `agent_resume` for that pane:
+   ```bash
+   python3 -c "
+   import json
+   d = json.load(open('$HOME/.config/herdr/session.json'))
+   # walk to the pane; print the current agent_resume
+   for w in d['workspaces']:
+     for t in w['tabs']:
+       for p in t['panes'].values():
+         if p.get('pane_id') == '<PANE_ID>':
+           print(json.dumps(p.get('agent_resume'), indent=2))
+   "
+   ```
+4. **SIGKILL the kcode process** (NOT herdr — the daemon must stay
+   running so it can relaunch the pane):
+   ```bash
+   kill -9 <PID>
+   ```
+5. Wait ~10s for herdr to detect the death and relaunch. Confirm
+   with `herdr pane list` that the pane is back with `agent_status:
+   working`.
+6. Re-snapshot the `agent_resume`:
+   ```bash
+   python3 -c "..."   # same script as step 3
+   ```
+7. **Pass criteria:** the new `agent_resume.source` is `"herdr:kcode"`,
+   `argv[0]` is `"kcode"`, and `argv` ends with `--resume <sid>`.
+8. **Fail criteria:** the new `agent_resume.source` is `"kcode:kcode"`
+   (old code, wrong namespace — the C1 fix is NOT in the running
+   binary) or no `agent_resume` is set at all (herdr didn't auto-launch
+   the resume).
+
+**Rollback:** if the C1 verification fails, do NOT panic. The kcode
+binary at `~/.kcode/builds/versions/6e0f0fc9c-dirty/kcode` is the
+linker-signed build that was verified end-to-end by the C9 install test
+(see `10_SIGKILL_NON_TTY.md`). If the pane fails to relaunch cleanly,
+manually run:
+```bash
+~/.local/bin/kcode --resume <sid>   # in a new Ghostty tab
+```
+
+**Lesson on destructive ops:** this step is the only one in the
+cutover that requires explicit operator GO. Every other step is
+verifiable from the file + pane list. SIGKILL of a live pane is
+**always** the operator's call, never the agent's.
+
+## Appendix C — Phase 4 cross-references
+
+- C1 fix: `crates/kcode-herdr/src/reporter.rs` `format!("herdr:{agent_label}")`.
+- Test: `crates/kcode-herdr/src/reporter.rs::tests::reporter_source_format`.
+- C9 fix (binary): `27bd2299c` (opt-in gate) + `bfbcf898f` (install verifier).
+- Full SIGKILL write-up: `10_SIGKILL_NON_TTY.md`.
