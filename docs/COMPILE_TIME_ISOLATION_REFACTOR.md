@@ -14,29 +14,29 @@ The workspace already has many crates, but the critical path is dominated by a s
 
 ```mermaid
 graph LR
-    base["jcode-base\n~100k+ LOC"] --> appcore["jcode-app-core\n~100k LOC"]
-    appcore --> tui["jcode-tui\n~100k+ LOC"]
-    tui --> rootlib["jcode lib"]
-    rootlib --> bin["jcode bin"]
+    base["kcode-base\n~100k+ LOC"] --> appcore["kcode-app-core\n~100k LOC"]
+    appcore --> tui["kcode-tui\n~100k+ LOC"]
+    tui --> rootlib["kcode lib"]
+    rootlib --> bin["kcode bin"]
     small["50+ smaller crates"] -. mostly parallel .-> base
 ```
 
 From the last available Cargo timing report parsed with `scripts/compile_time_probe.sh --skip-build`:
 
 - Cargo timing wall: **16.00s**
-- Known jcode serial stack span: **14.72s**
-- Known jcode serial stack summed unit time: **17.36s**
-- Known jcode serial stack frontend time: **11.99s**
+- Known kcode serial stack span: **14.72s**
+- Known kcode serial stack summed unit time: **17.36s**
+- Known kcode serial stack frontend time: **11.99s**
 
 Slowest units from that timing report:
 
 | Unit | Total | Frontend | Codegen |
 |---|---:|---:|---:|
-| `jcode-app-core` | 4.73s | 3.82s | 0.91s |
-| `jcode-base` | 4.34s | 3.63s | 0.71s |
-| `jcode-tui` | 4.18s | 3.14s | 1.04s |
-| `jcode` bin | 2.34s | n/a | n/a |
-| `jcode` lib | 1.77s | 1.40s | 0.37s |
+| `kcode-app-core` | 4.73s | 3.82s | 0.91s |
+| `kcode-base` | 4.34s | 3.63s | 0.71s |
+| `kcode-tui` | 4.18s | 3.14s | 1.04s |
+| `kcode` bin | 2.34s | n/a | n/a |
+| `kcode` lib | 1.77s | 1.40s | 0.37s |
 
 This means the main bottleneck is rustc front-end serialization in a few mega-crates, not linker choice or third-party cold compile.
 
@@ -46,15 +46,15 @@ Use the focused timing probe for each phase:
 
 ```bash
 scripts/compile_time_probe.sh --json target/compile-time-probe.json
-scripts/compile_time_probe.sh --touch crates/jcode-tui/src/tui/app/input.rs
-scripts/compile_time_probe.sh --touch crates/jcode-app-core/src/server.rs
-scripts/compile_time_probe.sh --touch crates/jcode-base/src/provider/mod.rs
+scripts/compile_time_probe.sh --touch crates/kcode-tui/src/tui/app/input.rs
+scripts/compile_time_probe.sh --touch crates/kcode-app-core/src/server.rs
+scripts/compile_time_probe.sh --touch crates/kcode-base/src/provider/mod.rs
 ```
 
 For broader repeated measurements, continue using:
 
 ```bash
-scripts/bench_compile.sh selfdev-jcode --runs 3 --touch <path> --json
+scripts/bench_compile.sh selfdev-kcode --runs 3 --touch <path> --json
 scripts/bench_selfdev_checkpoints.sh --skip-cold --touch <path> --runs 1
 ```
 
@@ -62,7 +62,7 @@ Track at least:
 
 1. Full-feature selfdev build wall time.
 2. Cargo timing wall time.
-3. `jcode-base -> jcode-app-core -> jcode-tui -> jcode lib -> jcode bin` stack span.
+3. `kcode-base -> kcode-app-core -> kcode-tui -> kcode lib -> kcode bin` stack span.
 4. Sum of frontend time in the serial stack.
 5. Incremental rebuild after touching representative high-churn files.
 6. Static report drift from `scripts/compile_isolation_report.py`: LOC, inline tests, `async_trait`, and target-state dependency advisories.
@@ -71,27 +71,27 @@ Track at least:
 
 ```mermaid
 graph TD
-    bin["jcode binary\ntiny composition root"] --> cli["jcode-cli"]
-    bin --> tui["jcode-tui"]
-    bin --> server["jcode-server"]
+    bin["kcode binary\ntiny composition root"] --> cli["kcode-cli"]
+    bin --> tui["kcode-tui"]
+    bin --> server["kcode-server"]
     bin --> providers["provider leaf crates"]
     bin --> tools["tool leaf crates"]
 
-    cli --> api["jcode-client-api / app-api"]
+    cli --> api["kcode-client-api / app-api"]
     tui --> api
     server --> api
 
     api --> protocol["protocol + view models"]
     protocol --> types["small stable type crates"]
 
-    server --> agent["jcode-agent"]
-    server --> registry["jcode-tool-registry"]
-    server --> auth["jcode-auth-core"]
-    server --> session["jcode-session-core"]
-    server --> memory["jcode-memory-core"]
+    server --> agent["kcode-agent"]
+    server --> registry["kcode-tool-registry"]
+    server --> auth["kcode-auth-core"]
+    server --> session["kcode-session-core"]
+    server --> memory["kcode-memory-core"]
 
-    providers --> provider_core["jcode-provider-core"]
-    tools --> tool_core["jcode-tool-core"]
+    providers --> provider_core["kcode-provider-core"]
+    tools --> tool_core["kcode-tool-core"]
 ```
 
 Rules:
@@ -126,34 +126,34 @@ Split the three long-pole crates into sibling domain crates. Priority is widenin
 
 Likely first splits:
 
-- From `jcode-base`:
-  - `jcode-auth-core`
-  - `jcode-session-core`
-  - `jcode-memory-core`
+- From `kcode-base`:
+  - `kcode-auth-core`
+  - `kcode-session-core`
+  - `kcode-memory-core`
   - provider implementation crates, especially Bedrock/AWS as a leaf
-- From `jcode-app-core`:
-  - `jcode-server`
-  - `jcode-agent`
-  - `jcode-tool-registry`
+- From `kcode-app-core`:
+  - `kcode-server`
+  - `kcode-agent`
+  - `kcode-tool-registry`
   - service crates for background/swarm/update/selfdev as needed
-- From `jcode-tui`:
-  - `jcode-client-api` / view-model boundary first
+- From `kcode-tui`:
+  - `kcode-client-api` / view-model boundary first
   - then move reusable client-side state logic out of the terminal rendering crate only when it creates a real parallel unit
 
 Success criteria:
 
 - Touching common TUI code no longer recompiles app-core/provider/server implementation crates.
 - Touching a provider implementation no longer recompiles TUI or broad base code.
-- Cargo timing shows multiple medium-sized Jcode crates running in parallel instead of one 4-deep mega-crate ladder.
+- Cargo timing shows multiple medium-sized Kcode crates running in parallel instead of one 4-deep mega-crate ladder.
 
 ### Phase 2: kill glob re-export ladders
 
 Current compatibility layering preserves the old monolith shape:
 
 ```rust
-pub use jcode_base::*;
-pub use jcode_app_core::*;
-pub use jcode_tui::*;
+pub use kcode_base::*;
+pub use kcode_app_core::*;
+pub use kcode_tui::*;
 ```
 
 Migration approach:
@@ -210,7 +210,7 @@ Before committing a phase:
 scripts/compile_time_probe.sh --skip-build
 scripts/compile_isolation_report.py
 scripts/check_dependency_boundaries.py
-cargo check --profile selfdev -p jcode --bin jcode
+cargo check --profile selfdev -p kcode --bin kcode
 ```
 
 For code-moving phases, also run the relevant targeted tests for the moved domain, plus one full selfdev build through the coordinated selfdev path when practical:

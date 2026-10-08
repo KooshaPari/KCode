@@ -6,7 +6,7 @@
   "created_at": "2026-09-15T06:00:00Z",
   "criterion_id": "PEP-01-01-02",
   "instance_id": "I-02",
-  "subject_scope": "jcode fork: KooshaPari/jcode. Agent tool execution and mutation boundaries.",
+  "subject_scope": "kcode fork: KooshaPari/jcode. Agent tool execution and mutation boundaries.",
   "modality": "OBSERVATIONAL",
   "method": "Source code inspection and cargo check for PEP-01-01-02.",
   "expected_behavior": "Coding agents must distinguish read from write operations.",

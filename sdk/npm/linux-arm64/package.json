@@ -1,7 +1,7 @@
 {
   "name": "@1jehuang/jcode-linux-arm64",
   "version": "1.2.0",
-  "description": "Jcode runtime binary for linux arm64",
+  "description": "Kcode runtime binary for linux arm64",
   "license": "MIT",
   "os": [
     "linux"

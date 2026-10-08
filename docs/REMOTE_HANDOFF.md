@@ -6,7 +6,7 @@ replay interfaces below are not implemented.
 
 ## The idea
 
-A session is currently pinned to the machine whose `jcode` server owns it. Remote
+A session is currently pinned to the machine whose `kcode` server owns it. Remote
 handoff means: **move a live session, mid-turn if needed, from one host to another**,
 without losing transcript, tool state, or the user's attention.
 
@@ -35,7 +35,7 @@ Most of the value is in attach. Migration is the hard, rarer one.
 | Unix socket protocol | `server/socket.rs`, `client_api.rs` | Line-delimited JSON `Request`/`ServerEvent`. Transport-agnostic in shape, not in code. |
 | Reload handoff | `server/reload.rs`, `restart_snapshot.rs` | Already serializes live server state across a process swap. This is migration, minus the network. |
 | Relay | `server/jade_relay.rs` | Long-poll bridge to a remote control plane; the phone/web path. |
-| Harness API | `jcode-harness-api{,-server}` | A second, more structured client surface. |
+| Harness API | `kcode-harness-api{,-server}` | A second, more structured client surface. |
 
 The important observation: **reload already solves the state-transfer half of
 migration**, and **takeover already solves the ownership half of attach**. Remote
@@ -48,9 +48,9 @@ handoff is mostly plumbing those two through a transport that is not a local soc
 Today clients dial `socket_path()`. Introduce a `SessionTransport` with three impls:
 
 - `Local(UnixStream)` — today's path, zero behavior change.
-- `Ssh(profile)` — `ssh -S <control-socket> <target> jcode serve --stdio`, framed over
+- `Ssh(profile)` — `ssh -S <control-socket> <target> kcode serve --stdio`, framed over
   stdin/stdout. Reuses the existing verified ControlMaster, so no new auth surface and
-  no credential handling in jcode.
+  no credential handling in kcode.
 - `Relay` — existing jade relay framing, for hosts that cannot be SSH'd into.
 
 Everything above this layer keeps speaking the same `Request`/`ServerEvent` JSON. This
@@ -77,7 +77,7 @@ event cursor. A future replay design would need monotonic per-session event IDs.
 
 `/handoff desktop --move`. Sequence:
 
-1. **Preflight** on the target: jcode present and version-compatible, workspace path
+1. **Preflight** on the target: kcode present and version-compatible, workspace path
    exists, git remote/commit matches, provider credentials available. Refuse loudly
    rather than half-migrating. Version skew is the most likely real-world failure.
 2. **Quiesce**: finish or checkpoint the current turn. Reuse the graceful-shutdown

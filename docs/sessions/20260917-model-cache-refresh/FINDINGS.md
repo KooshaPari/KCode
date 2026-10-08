@@ -43,13 +43,13 @@ The caches have been refreshed by a recent process/session. The "142.5h old" sta
 
 | Constant | Value | File:Line |
 |---|---|---|
-| `MODEL_CATALOG_SOFT_REFRESH_SECS` | 15 min | `jcode-provider-openrouter-runtime/src/lib.rs:71` |
-| `MODEL_CATALOG_REFRESH_RETRY_SECS` | 60s | `jcode-provider-openrouter-runtime/src/lib.rs:73` |
-| `STANDARD_OPENROUTER_CATALOG_TTL_SECS` | 24h | `jcode-provider-openrouter-runtime/src/lib.rs:76` |
-| `OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS` | 15 min | `jcode-base/src/provider/mod.rs:143` |
-| `CACHE_TTL_SECS` (disk cache) | 24h | `jcode-provider-openrouter/src/lib.rs:10` |
-| `SWEEP_INTERVAL` | 60s | `jcode-base/src/provider/catalog_scheduler.rs:28` |
-| `INITIAL_SWEEP_DELAY` | 10s | `jcode-base/src/provider/catalog_scheduler.rs:33` |
+| `MODEL_CATALOG_SOFT_REFRESH_SECS` | 15 min | `kcode-provider-openrouter-runtime/src/lib.rs:71` |
+| `MODEL_CATALOG_REFRESH_RETRY_SECS` | 60s | `kcode-provider-openrouter-runtime/src/lib.rs:73` |
+| `STANDARD_OPENROUTER_CATALOG_TTL_SECS` | 24h | `kcode-provider-openrouter-runtime/src/lib.rs:76` |
+| `OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS` | 15 min | `kcode-base/src/provider/mod.rs:143` |
+| `CACHE_TTL_SECS` (disk cache) | 24h | `kcode-provider-openrouter/src/lib.rs:10` |
+| `SWEEP_INTERVAL` | 60s | `kcode-base/src/provider/catalog_scheduler.rs:28` |
+| `INITIAL_SWEEP_DELAY` | 10s | `kcode-base/src/provider/catalog_scheduler.rs:33` |
 
 ---
 
@@ -215,10 +215,10 @@ Process starts
 
 ## Evidence Files
 
-- Cache files: `~/.jcode/cache/*_models.json`
-- Refresh logic: `crates/jcode-provider-openrouter-runtime/src/lib.rs`
-- Disk cache layer: `crates/jcode-provider-openrouter/src/lib.rs`
-- Sweeper: `crates/jcode-base/src/provider/catalog_scheduler.rs`
-- Profile catalog: `crates/jcode-base/src/provider_catalog.rs`
+- Cache files: `~/.kcode/cache/*_models.json`
+- Refresh logic: `crates/kcode-provider-openrouter-runtime/src/lib.rs`
+- Disk cache layer: `crates/kcode-provider-openrouter/src/lib.rs`
+- Sweeper: `crates/kcode-base/src/provider/catalog_scheduler.rs`
+- Profile catalog: `crates/kcode-base/src/provider_catalog.rs`
 - Composition root: `src/cli/startup.rs`
-- Provider init: `crates/jcode-base/src/provider/startup.rs`
+- Provider init: `crates/kcode-base/src/provider/startup.rs`

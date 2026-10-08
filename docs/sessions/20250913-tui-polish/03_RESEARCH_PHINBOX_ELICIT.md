@@ -1,4 +1,4 @@
-# Research: Phinbox Elicitate MCP Tool for Jcode TUI Integration
+# Research: Phinbox Elicitate MCP Tool for Kcode TUI Integration
 
 **Date:** 2026-09-14  
 **Status:** Research only - no code changes  
@@ -10,7 +10,7 @@
 
 ### Tool Definitions
 
-The jcode agent has access to two MCP tool endpoints, both rendering native OS popups:
+The kcode agent has access to two MCP tool endpoints, both rendering native OS popups:
 
 #### `mcp__phinbox__elicitate_mcp` / `mcp__phinbox_mcp__elicitate_mcp`
 
@@ -60,22 +60,22 @@ The jcode agent has access to two MCP tool endpoints, both rendering native OS p
 
 ---
 
-## 2. Current Integration Points in Jcode
+## 2. Current Integration Points in Kcode
 
 ### Phinbox References in Codebase
 
-**Zero references found** in jcode source code:
+**Zero references found** in kcode source code:
 - No mentions of `phinbox` or `elicitate` in any `.rs`, `.toml`, `.json`, `.yaml`, or `.md` file (except this research doc)
 - The tool is purely an external MCP server, registered via the standard MCP configuration
-- Tools appear as `mcp__phinbox__elicitate_mcp` via jcode's MCP proxy system (`dispatch_name()` in `crates/jcode-base/src/mcp/tool.rs`)
+- Tools appear as `mcp__phinbox__elicitate_mcp` via kcode's MCP proxy system (`dispatch_name()` in `crates/kcode-base/src/mcp/tool.rs`)
 
-### Existing User-Input Patterns in Jcode
+### Existing User-Input Patterns in Kcode
 
-Jcode already has several patterns for tool-initiated user interaction:
+Kcode already has several patterns for tool-initiated user interaction:
 
 #### Pattern 1: `StdinInputRequest` (bash command stdin)
 
-**Location:** `crates/jcode-tool-core/src/lib.rs`
+**Location:** `crates/kcode-tool-core/src/lib.rs`
 
 ```rust
 pub struct StdinInputRequest {
@@ -94,7 +94,7 @@ pub struct StdinInputRequest {
 
 #### Pattern 2: `RequestPermissionTool` (ambient sessions)
 
-**Location:** `crates/jcode-app-core/src/tool/ambient.rs:383`
+**Location:** `crates/kcode-app-core/src/tool/ambient.rs:383`
 
 **Purpose:** Ambient sessions request approval before code changes. Sends structured permission requests with action, description, rationale, urgency, and context.
 
@@ -102,7 +102,7 @@ pub struct StdinInputRequest {
 
 #### Pattern 3: MCP Tool Proxy
 
-**Location:** `crates/jcode-base/src/mcp/tool.rs`
+**Location:** `crates/kcode-base/src/mcp/tool.rs`
 
 ```rust
 pub struct McpTool {
@@ -118,7 +118,7 @@ pub struct McpTool {
 
 ### MCP Protocol Implementation
 
-**Location:** `crates/jcode-base/src/mcp/protocol.rs`
+**Location:** `crates/kcode-base/src/mcp/protocol.rs`
 
 **Current capabilities:**
 - JSON-RPC 2.0 request/response/notification
@@ -147,7 +147,7 @@ Elicitation is a **client feature** in MCP - servers request additional informat
 ### Protocol Flow
 
 ```
-Server                          Client (jcode)                   User
+Server                          Client (kcode)                   User
   |                                |                               |
   |--- tools/call request -------->|                               |
   |                                |--- render UI ---------------->|
@@ -263,7 +263,7 @@ Elicitation is the correct mechanism for structured user input. `createMessage` 
 
 ### Current State
 
-Jcode's MCP infrastructure treats all MCP tools as external proxies. The `phinbox` elicitation tool is:
+Kcode's MCP infrastructure treats all MCP tools as external proxies. The `phinbox` elicitation tool is:
 - Spawned as a separate process
 - Communicates over stdio JSON-RPC
 - Tool call -> proxy -> external process -> OS popup -> response -> proxy -> tool result
@@ -272,7 +272,7 @@ This adds latency and complexity for what could be a native capability.
 
 ### Architecture Analysis
 
-#### How Jcode MCP Tools Work
+#### How Kcode MCP Tools Work
 
 ```
 Tool call
@@ -295,10 +295,10 @@ Tool call
 
 ### Proposed: Native Elicitation Tool
 
-Could be implemented as a native `Tool` in `crates/jcode-app-core/src/tool/`:
+Could be implemented as a native `Tool` in `crates/kcode-app-core/src/tool/`:
 
 ```rust
-// crates/jcode-app-core/src/tool/elicitation.rs
+// crates/kcode-app-core/src/tool/elicitation.rs
 
 pub struct ElicitationTool {
     // For macOS: use NSAlert/NSPanel via objc2
@@ -316,7 +316,7 @@ impl Tool for ElicitationTool {
     
     fn parameters_schema(&self) -> Value {
         // Map from MCP elicitation/create schema
-        // to jcode's native tool schema format
+        // to kcode's native tool schema format
     }
     
     async fn execute(&self, input: Value, ctx: ToolContext) -> Result<ToolOutput> {
@@ -339,7 +339,7 @@ impl Tool for ElicitationTool {
 - No external process dependency
 - Full control over UX
 - Works offline
-- Integrates with jcode's existing permission/notification system
+- Integrates with kcode's existing permission/notification system
 
 **Cons:**
 - Platform-specific code (need conditional compilation)
@@ -347,8 +347,8 @@ impl Tool for ElicitationTool {
 - Separate implementation from the MCP version
 
 **Implementation:**
-- `crates/jcode-app-core/src/tool/elicitation.rs` (new tool)
-- `crates/jcode-platform/` (new crate for OS-specific dialogs)
+- `crates/kcode-app-core/src/tool/elicitation.rs` (new tool)
+- `crates/kcode-platform/` (new crate for OS-specific dialogs)
 - macOS: `objc2` bindings to AppKit
 - Linux: subprocess calls to `zenity`/`kdialog`
 - Windows: Win32 API via `windows` crate
@@ -374,7 +374,7 @@ impl Tool for ElicitationTool {
 **Pros:**
 - Follows MCP spec closely
 - Any MCP server can use elicitation
-- jcode becomes a proper MCP elicitation client
+- kcode becomes a proper MCP elicitation client
 
 **Cons:**
 - Only works with MCP servers, not native tools
@@ -393,8 +393,8 @@ impl Tool for ElicitationTool {
 
 1. **Immediate value**: No external dependency for the most common case
 2. **Follows existing patterns**: Same as `RequestPermissionTool` and `StdinInputRequest`
-3. **TUI integration**: jcode's overlay system already supports session picker, login picker, account picker, changelog overlay - an elicitation overlay would fit naturally
-4. **Platform story**: jcode already has `#[cfg(target_os = "macos")]` conditional compilation (see `computer/mod.rs`)
+3. **TUI integration**: kcode's overlay system already supports session picker, login picker, account picker, changelog overlay - an elicitation overlay would fit naturally
+4. **Platform story**: kcode already has `#[cfg(target_os = "macos")]` conditional compilation (see `computer/mod.rs`)
 5. **Incremental**: Can add MCP elicitation support later as a separate enhancement
 
 ### What the TUI Architecture Would Look Like
@@ -416,10 +416,10 @@ User types prompt -> Agent generates tool_use: elicit({...})
 ```
 
 The TUI already has:
-- **Overlay system**: `crates/jcode-tui/src/tui/ui_overlays.rs` - draws changelog, help, model status, session picker overlays
-- **Picker widgets**: `crates/jcode-tui-session-picker/` - full-featured picker component
+- **Overlay system**: `crates/kcode-tui/src/tui/ui_overlays.rs` - draws changelog, help, model status, session picker overlays
+- **Picker widgets**: `crates/kcode-tui-session-picker/` - full-featured picker component
 - **Input channel**: `StdinInputRequest` pattern with oneshot response channel
-- **State management**: `crates/jcode-tui/src/tui/app/tui_state.rs` - manages overlay visibility
+- **State management**: `crates/kcode-tui/src/tui/app/tui_state.rs` - manages overlay visibility
 
 ---
 
@@ -461,7 +461,7 @@ The TUI already has:
 ### OpenCode
 
 **Interactive prompts approach:**
-- OpenCode (the project jcode is forked from) uses TUI-native prompts
+- OpenCode (the project kcode is forked from) uses TUI-native prompts
 - Tool permission requests are inline
 - No MCP elicitation support
 - Uses terminal UI for all interaction
@@ -470,7 +470,7 @@ The TUI already has:
 
 | Agent | MCP Elicitation | Native OS Dialog | TUI/Inline Prompt | Protocol |
 |-------|----------------|------------------|-------------------|----------|
-| Jcode (current) | Via external MCP (phinbox) | Via external MCP | StdinInput, RequestPermission | Custom JSON-RPC |
+| Kcode (current) | Via external MCP (phinbox) | Via external MCP | StdinInput, RequestPermission | Custom JSON-RPC |
 | Claude Code | Yes (client feature) | No | Terminal inline | MCP spec |
 | Codex CLI | No | No | Terminal inline | Custom |
 | Cursor | No | No | IDE UI | Custom |
@@ -482,18 +482,18 @@ The TUI already has:
 
 ### Critical Facts
 
-1. **Phinbox is an external MCP server** - zero references in jcode source code
-2. **Jcode's MCP protocol is incomplete** - no `InputRequiredResult` or elicitation support
-3. **Jcode already has user-input patterns** - `StdinInputRequest` and `RequestPermissionTool` prove the architecture works
+1. **Phinbox is an external MCP server** - zero references in kcode source code
+2. **Kcode's MCP protocol is incomplete** - no `InputRequiredResult` or elicitation support
+3. **Kcode already has user-input patterns** - `StdinInputRequest` and `RequestPermissionTool` prove the architecture works
 4. **The MCP elicitation spec (2026-07-28)** defines both form mode and URL mode with structured schemas
 5. **No other coding agent uses native OS dialogs** for elicitation - they all stay in-terminal
 6. **The `Tool` trait is simple** - just `name()`, `description()`, `parameters_schema()`, `execute()`
-7. **jcode's TUI overlay system** is mature and could host an elicitation UI
+7. **kcode's TUI overlay system** is mature and could host an elicitation UI
 
 ### Architectural Gaps to Fill
 
-1. **No elicitation tool exists in jcode** - needs new `ElicitationTool` in `crates/jcode-app-core/src/tool/`
-2. **No platform dialog abstraction** - needs `crates/jcode-platform/` or similar for OS-specific dialogs
+1. **No elicitation tool exists in kcode** - needs new `ElicitationTool` in `crates/kcode-app-core/src/tool/`
+2. **No platform dialog abstraction** - needs `crates/kcode-platform/` or similar for OS-specific dialogs
 3. **MCP protocol types are incomplete** - need `InputRequiredResult`, `inputResponses`, client capabilities
 4. **TUI overlay for elicitation** - optional enhancement for inline form rendering
 
@@ -512,9 +512,9 @@ The TUI already has:
 
 If proceeding with native elicitation:
 
-1. **Create `crates/jcode-platform/`** - OS dialog abstraction layer
-2. **Create `crates/jcode-app-core/src/tool/elicitation.rs`** - native `ElicitationTool`
-3. **Add TUI overlay** - `crates/jcode-tui/src/tui/ui/elicitation_overlay.rs`
+1. **Create `crates/kcode-platform/`** - OS dialog abstraction layer
+2. **Create `crates/kcode-app-core/src/tool/elicitation.rs`** - native `ElicitationTool`
+3. **Add TUI overlay** - `crates/kcode-tui/src/tui/ui/elicitation_overlay.rs`
 4. **Wire into `ToolRegistry`** - register alongside other tools
 5. **Optionally enhance MCP protocol** - add `InputRequiredResult` support for full MCP elicitation client
 

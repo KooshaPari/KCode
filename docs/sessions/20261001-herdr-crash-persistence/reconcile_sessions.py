@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reconcile herdr session.json so every live jcode pane has agent_resume.
+"""Reconcile herdr session.json so every live kcode pane has agent_resume.
 
 WHY THIS REPLACES THE HARDCODED cutover_session.py
 --------------------------------------------------
@@ -27,8 +27,8 @@ DESIGN RULES
 1. Never invent a sid. A pane gets agent_resume ONLY if a live process proves
    it. Unprovable panes are reported, never fabricated.
 2. Never touch agent_session on a pane whose agent is real (codex etc.).
-3. Only jcode panes are considered; a jcode pane carrying a probe_* session is
-   a phantom (those probes were injected into jcode panes and never used).
+3. Only kcode panes are considered; a kcode pane carrying a probe_* session is
+   a phantom (those probes were injected into kcode panes and never used).
 4. All writes are atomic (tmp + os.replace) and byte-shape preserving.
 5. Refuses to run while a herdr server is live (it would overwrite us).
    --force exists ONLY for --dry-run against a copy.
@@ -55,9 +55,9 @@ HERDR_BIN = os.path.expanduser("~/.local/bin/herdr")
 # shape of an agent_resume record. Slots, labels, pane_ids and sids are NEVER
 # hardcoded -- they are discovered.
 PROBE_VALUES = frozenset({"probe_devin", "probe_letta", "probe_hermes"})
-RESUME_SOURCE = "herdr:jcode"
-RESUME_AGENT = "jcode"
-RESUME_ARGV0 = "jcode"
+RESUME_SOURCE = "herdr:kcode"
+RESUME_AGENT = "kcode"
+RESUME_ARGV0 = "kcode"
 SID_RE = re.compile(r"session_[a-z0-9_]+_\d+_[0-9a-f]{16}")
 PANE_ID_RE = re.compile(r"HERDR_PANE_ID=(\S+)")
 LABEL_MAX = 64
@@ -117,7 +117,7 @@ def _sids_from_ps():
         sid = SID_RE.search(line)
         if not (pane and sid):
             continue
-        if "--resume" not in line and "jcode.real" not in line:
+        if "--resume" not in line and "kcode.real" not in line:
             continue
         candidates.setdefault(pane.group(1), set()).add(sid.group(0))
     return {p: next(iter(s)) for p, s in candidates.items() if len(s) == 1}
@@ -165,7 +165,7 @@ def _sids_from_process_info(pane_ids):
 
 
 def live_sids_by_pane():
-    """pane_id -> the single jcode sid currently running in that pane.
+    """pane_id -> the single kcode sid currently running in that pane.
 
     Panes with zero or >1 candidate sids are intentionally omitted: the caller
     must not guess which session a pane should resume.
@@ -180,7 +180,7 @@ def live_sids_by_pane():
 def pane_table():
     """Return the running server's pane records (authoritative, no filtering).
 
-    Labels are NOT required: many panes (the w8 codex/jcode ones) have no
+    Labels are NOT required: many panes (the w8 codex/kcode ones) have no
     label at all, and dropping them would make those panes uncorrelatable --
     which is exactly how an orphaned resume entry goes unnoticed. Every field
     herdr exposes is kept so callers can correlate by cwd when label is absent.
@@ -290,7 +290,7 @@ def build_plan(doc):
         by_label.setdefault(key, pid)
     for key, pid in sid_map.items():
         by_label.setdefault(key, pid)
-    log(f"discovered: {len(live)} panes with exactly one live jcode sid; "
+    log(f"discovered: {len(live)} panes with exactly one live kcode sid; "
         f"correlated {len(label_map)} slots by label, {len(cwd_map)} by cwd, "
         f"{len(sid_map)} by unique sid")
     for wi, slot, label, cwd, n, stored in ambiguous:
@@ -303,7 +303,7 @@ def build_plan(doc):
     replace = []  # panes whose stored sid is wrong/dead
     keep = []     # panes already correct
     purge = []    # phantom probe_* agent_session to drop
-    unverifiable = []  # jcode panes with no provable sid
+    unverifiable = []  # kcode panes with no provable sid
 
     for wi, ti, slot, wsid, pane in iter_panes(doc):
         resume = pane.get("agent_resume")
@@ -319,7 +319,7 @@ def build_plan(doc):
                 "wi": wi, "ti": ti, "slot": slot, "ws": wsid,
                 "label": pane.get("label"), "value": asess.get("value"),
             })
-            # A pane can carry BOTH a phantom agent_session and a live jcode
+            # A pane can carry BOTH a phantom agent_session and a live kcode
             # process. Purging with `continue` alone would discard that pane's
             # resume guarantee in the same transaction -- the exact coverage
             # loss that caused the original cutover to regress. Resolve the
@@ -384,9 +384,9 @@ def build_plan(doc):
             unverifiable.append({
                 "wi": wi, "ti": ti, "slot": slot, "ws": wsid,
                 "label": label, "sid": None,
-                "why": ("live jcode process exists but its pane_id has no "
+                "why": ("live kcode process exists but its pane_id has no "
                         "label mapping")
-                if (pid and pid in live) else "no live jcode process proves a sid",
+                if (pid and pid in live) else "no live kcode process proves a sid",
             })
 
     return {

@@ -38,15 +38,15 @@ assume a stopped server persists. Detection uses `ps`/`lsof` only.
 
 ## Wrong turn worth recording
 
-I briefly repointed `~/.jcode/builds/current/jcode` after concluding the
+I briefly repointed `~/.kcode/builds/current/kcode` after concluding the
 build was broken from `spctl: invalid signature`. **That was a wrong
-diagnosis**: the same directory backs `stable/jcode`, which is the binary
+diagnosis**: the same directory backs `stable/kcode`, which is the binary
 of the *running, healthy* server (pid 4603, up 3 days), and the binary
 passes `--version` (rc=0). The signature complaint is expected for an
 adhoc-signed local build and is not the cause of anything.
 
 The real SIGKILL is narrower: it happens when the binary tries to start a
-**server in a non-TTY context** (`jcode --resume <sid>` with stdin from
+**server in a non-TTY context** (`kcode --resume <sid>` with stdin from
 /dev/null -> "Server exited before signalling ready (signal: 9)"). That is
 pre-existing and unrelated to session.json reconciliation. The pointer was
 restored to its original target.

@@ -1,7 +1,7 @@
 name: Update weekly stars chart
 
 env:
-  JCODE_CI: "1"
+  KCODE_CI: "1"
 
 on:
   schedule:

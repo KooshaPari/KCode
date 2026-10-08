@@ -1,11 +1,11 @@
 # HERDR Integration
 
-HERDR terminal runtime integration for jcode and ForgeCode.
+HERDR terminal runtime integration for kcode and ForgeCode.
 
 ## Overview
 
 HERDR is a terminal runtime that monitors agent state through socket-based
-lifecycle reporting. jcode reports its state (working, idle, blocked) to HERDR
+lifecycle reporting. kcode reports its state (working, idle, blocked) to HERDR
 via Unix socket JSON-RPC, enabling HERDR to manage screen real estate, session
 restore, and multi-agent coordination.
 
@@ -13,7 +13,7 @@ restore, and multi-agent coordination.
 
 ```
 ┌──────────┐    Unix Socket     ┌──────────┐
-│  jcode   │ ────────────────── │  HERDR   │
+│  kcode   │ ────────────────── │  HERDR   │
 │ (reporter)│  JSON-RPC msgs    │ (daemon) │
 └──────────┘                    └──────────┘
      │                               │
@@ -24,30 +24,30 @@ restore, and multi-agent coordination.
 
 ## CLI Commands
 
-### `jcode --herdr`
+### `kcode --herdr`
 
 Force HERDR integration for testing outside a real HERDR pane:
 
 ```bash
-jcode --herdr
+kcode --herdr
 ```
 
-### `jcode --herdr-kind <KIND>`
+### `kcode --herdr-kind <KIND>`
 
 Specify agent type for HERDR reporting:
 
 ```bash
-jcode --herdr --herdr-kind jcode      # default
-jcode --herdr --herdr-kind forge       # ForgeCode
-jcode --herdr --herdr-kind forgecode   # ForgeCode (alias)
+kcode --herdr --herdr-kind kcode      # default
+kcode --herdr --herdr-kind forge       # ForgeCode
+kcode --herdr --herdr-kind forgecode   # ForgeCode (alias)
 ```
 
-### `jcode herdr status`
+### `kcode herdr status`
 
 Show current HERDR environment and reporter state:
 
 ```bash
-$ jcode herdr status
+$ kcode herdr status
 HERDR Pane Status
 ─────────────────
   HERDR_ENV          1
@@ -61,17 +61,17 @@ HERDR Pane Status
   Reporter active    yes
 ```
 
-### `jcode herdr install`
+### `kcode herdr install`
 
 Write screen detection manifests:
 
 ```bash
-$ jcode herdr install
-Installed ~/.config/herdr/agent-detection/jcode.toml
+$ kcode herdr install
+Installed ~/.config/herdr/agent-detection/kcode.toml
 Installed ~/.config/herdr/agent-detection/forgecode.toml
 
 Screen manifests written to ~/.config/herdr/agent-detection/
-HERDR will use these rules to detect jcode and ForgeCode agent state from terminal output.
+HERDR will use these rules to detect kcode and ForgeCode agent state from terminal output.
 ```
 
 ## Environment Variables
@@ -84,8 +84,8 @@ HERDR will use these rules to detect jcode and ForgeCode agent state from termin
 | `HERDR_BIN_PATH` | (unset) | Path to HERDR binary |
 | `HERDR_WORKSPACE_ID` | (unset) | Workspace identifier |
 | `HERDR_TAB_ID` | (unset) | Tab identifier |
-| `HERDR_JCODE_IDLE_DEBOUNCE_MS` | `250` | Debounce delay before idle transition |
-| `HERDR_JCODE_RETRY_GRACE_MS` | `2500` | Grace period for error-hold retry |
+| `HERDR_KCODE_IDLE_DEBOUNCE_MS` | `250` | Debounce delay before idle transition |
+| `HERDR_KCODE_RETRY_GRACE_MS` | `2500` | Grace period for error-hold retry |
 
 ## State Transitions
 
@@ -117,31 +117,31 @@ Screen manifests are TOML files that tell HERDR how to detect agent state
 from terminal output. They define text patterns that HERDR matches against
 the pane's bottom buffer.
 
-Example jcode manifest (`~/.config/herdr/agent-detection/jcode.toml`):
+Example kcode manifest (`~/.config/herdr/agent-detection/kcode.toml`):
 
 ```toml
-agent = "jcode"
+agent = "kcode"
 version = "1"
 
 [[rules]]
 state = "working"
 patterns = ["●"]
-description = "jcode spinner active (working)"
+description = "kcode spinner active (working)"
 
 [[rules]]
 state = "working"
 patterns = ["Thinking..."]
-description = "jcode thinking state"
+description = "kcode thinking state"
 
 [[rules]]
 state = "blocked"
 patterns = ["❯", "Yes", "No"]
-description = "jcode permission prompt"
+description = "kcode permission prompt"
 
 [[rules]]
 state = "idle"
 patterns = ["❯"]
-description = "jcode input prompt (idle)"
+description = "kcode input prompt (idle)"
 ```
 
 ## Reporter Protocol
@@ -152,7 +152,7 @@ The reporter sends JSON-RPC requests over the Unix socket:
 {
   "method": "agent.state",
   "params": {
-    "agent": "jcode",
+    "agent": "kcode",
     "pane_id": "pane-abc-123",
     "state": "working",
     "seq": 42,
@@ -167,7 +167,7 @@ Release on exit:
 {
   "method": "agent.release",
   "params": {
-    "agent": "jcode",
+    "agent": "kcode",
     "pane_id": "pane-abc-123",
     "seq": 43
   }
@@ -177,7 +177,7 @@ Release on exit:
 ## Crate Structure
 
 ```
-crates/jcode-herdr/
+crates/kcode-herdr/
   src/
     lib.rs         # Public API (11 tests)
     env.rs         # HERDR environment capture
@@ -190,6 +190,6 @@ crates/jcode-herdr/
 ## Integration Points
 
 1. **Startup** (`src/cli/startup.rs`): Reporter initialized before TUI launch
-2. **TUI** (`crates/jcode-tui/src/tui/app/local.rs`): Working→idle transitions wired
+2. **TUI** (`crates/kcode-tui/src/tui/app/local.rs`): Working→idle transitions wired
 3. **CLI** (`src/cli/args.rs`): `--herdr`, `--herdr-kind` flags
 4. **Subcommands** (`src/cli/herdr.rs`): `herdr status`, `herdr install`

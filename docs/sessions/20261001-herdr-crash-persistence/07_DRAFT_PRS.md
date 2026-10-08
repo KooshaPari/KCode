@@ -32,8 +32,8 @@ failed:
 
 Control case — the proven live consumption path (works):
 
-    herdr pane report-agent <PANE> --source herdr:jcode --agent jcode \
-        --state idle --seq 1800000000000000000 -- jcode --resume <sid>
+    herdr pane report-agent <PANE> --source herdr:kcode --agent kcode \
+        --state idle --seq 1800000000000000000 -- kcode --resume <sid>
 
 `.agent_resume` is persisted into `session.json`; restore prefers
 `reported_resume` over `agent_session` (`restore.rs:459/537`).
@@ -54,7 +54,7 @@ Control case — the proven live consumption path (works):
   with no detected agent the second branch can never hold, so a reporter
   without hook authority gets `resume_argv` rejected (case a).
 - `is_official_agent_source` is NOT the blocker: the report-agent ->
-  `.agent_resume` path works for non-official sources — jcode persists fine in
+  `.agent_resume` path works for non-official sources — kcode persists fine in
   the control case.
 - Sequence checks compare `--seq` against reporter values in the micros-epoch
   regime (~1.78e15); a lower seq is dropped as stale, but the call still
@@ -215,8 +215,8 @@ never persisted across ~10 min of polling.
 
 Exact call used (the only mutation performed):
 
-    herdr pane report-agent <pane> --source herdr:jcode --agent jcode \
-        --state idle --seq 1800000000000000000 -- jcode --resume <sid>
+    herdr pane report-agent <pane> --source herdr:kcode --agent kcode \
+        --state idle --seq 1800000000000000000 -- kcode --resume <sid>
 
 Then re-read `~/.config/herdr/session.json` **immediately** after the call,
 and again ~2 min later. The two reads disagree:
@@ -241,7 +241,7 @@ and again ~2 min later. The two reads disagree:
   liveness probe.
 
 Coverage caveat: `coverage_check.py`'s denominator drifted **10 → 13**
-during the run (live jcode procs were also detected in `w7:p1C`, `w7:p1G`,
+during the run (live kcode procs were also detected in `w7:p1C`, `w7:p1G`,
 `w7:p1H`, whose slots carry phantom `agent_session` values), so cross-run
 coverage figures are **not comparable**: `7/10` against the original
 10-pane set is reported as `7/13` in the final run.
@@ -255,7 +255,7 @@ coverage figures are **not comparable**: `7/10` against the original
   `agent_resume` for `w7:2` was written and then pruned by a later session
   rewrite, defeating pane restore.
 - Forced workaround: a server-stopped, file-level transaction
-  (`~/.jcode/scratch/cutover_session.py`) — i.e. mutating `session.json`
+  (`~/.kcode/scratch/cutover_session.py`) — i.e. mutating `session.json`
   with the server down — because no runtime API offers a durable,
   verifiable write.
 
@@ -284,39 +284,39 @@ herdr 0.9.3, macOS Apple Silicon (aarch64).
 
 ---
 
-## jcode upstream issues
+## kcode upstream issues
 
 ### Issue 1
 
-**Title:** herdr reporter source namespace must be `herdr:{agent}`, not `jcode:{agent}` (silent no-op against herdr 0.9.3)
+**Title:** herdr reporter source namespace must be `herdr:{agent}`, not `kcode:{agent}` (silent no-op against herdr 0.9.3)
 
 **Body:**
 
 ```
 ## Summary
 
-`crates/jcode-herdr` built its report source as
-`source = format!("jcode:{agent_label}")`. herdr 0.9.3 only accepts sources
+`crates/kcode-herdr` built its report source as
+`source = format!("kcode:{agent_label}")`. herdr 0.9.3 only accepts sources
 starting with `herdr:`, so every `pane report-agent` call from the reporter
 was a silent no-op — no `.agent_resume` was persisted and crash-restore
 resume silently did nothing.
 
 ## Fix
 
-Changed in `crates/jcode-herdr/src/reporter.rs`:
+Changed in `crates/kcode-herdr/src/reporter.rs`:
 
-    source = format!("herdr:{agent_label}")   // was: format!("jcode:{agent_label}")
+    source = format!("herdr:{agent_label}")   // was: format!("kcode:{agent_label}")
 
 with an explanatory comment documenting the required namespace. Added a test
-asserting the exact source string `"herdr:jcode"`.
+asserting the exact source string `"herdr:kcode"`.
 
 ## Validation
 
-- `cargo test -p jcode-herdr` → 24/24 pass.
+- `cargo test -p kcode-herdr` → 24/24 pass.
 - Release build via `scripts/install_release.sh` (profile `release-lto`) so the
   fix lands in the installed binary.
-- Verified end-to-end: `herdr pane report-agent <pane> --source herdr:jcode
-  --agent jcode --state <s> --seq <n> -- jcode --resume <sid>` persists
+- Verified end-to-end: `herdr pane report-agent <pane> --source herdr:kcode
+  --agent kcode --state <s> --seq <n> -- kcode --resume <sid>` persists
   `.agent_resume`, and restore prefers `reported_resume` over `agent_session`
   (restore.rs:459/537).
 
@@ -331,14 +331,14 @@ the call site (or requesting a herdr-side warning on unknown source).
 
 ### Issue 2
 
-**Title:** Detect terminal-level keybind conflicts (Ghostty `super+enter` vs jcode cmd+enter alternate-send)
+**Title:** Detect terminal-level keybind conflicts (Ghostty `super+enter` vs kcode cmd+enter alternate-send)
 
 **Body:**
 
 ```
 ## Summary
 
-jcode's alternate-send/queue binding is cmd+enter, which a kitty-protocol TUI
+kcode's alternate-send/queue binding is cmd+enter, which a kitty-protocol TUI
 sees as `SUPER+Enter`. Ghostty ships `keybind = super+enter=toggle_fullscreen`,
 which consumes the chord before it ever reaches the app. Herdr has no
 super+enter binding, so the terminal is the sole consumer — pressing
@@ -347,9 +347,9 @@ cmd+enter toggles Ghostty fullscreen instead of queueing a message.
 ## Evidence
 
 - `ghostty +list-keybinds` showed `super+enter=toggle_fullscreen`.
-- jcode keymap snapshot showed the chord arriving as
+- kcode keymap snapshot showed the chord arriving as
   `{action: toggle_fullscreen, source: terminal}` — i.e. resolved by the
-  terminal, never reaching jcode's input path.
+  terminal, never reaching kcode's input path.
 
 ## Workaround (applied)
 
@@ -360,14 +360,14 @@ Appended `keybind = super+enter=unbind` to
 
 ## Proposal
 
-Extend jcode's setup-hint conflict detection to cover terminal-level bindings,
-reusing the existing infra in `crates/jcode-setup-hints/src/keymap/conflicts.rs`
-(`detect_conflicts`, `jcode_bindings`):
+Extend kcode's setup-hint conflict detection to cover terminal-level bindings,
+reusing the existing infra in `crates/kcode-setup-hints/src/keymap/conflicts.rs`
+(`detect_conflicts`, `kcode_bindings`):
 
-1. Enumerate a small table of known terminal defaults that shadow common jcode
+1. Enumerate a small table of known terminal defaults that shadow common kcode
    chords (Ghostty: `super+enter=toggle_fullscreen`; analogous
    kitty/Alacritty/iTerm2 entries where applicable).
-2. When a jcode binding collides with a known terminal default, emit a setup
+2. When a kcode binding collides with a known terminal default, emit a setup
    hint naming the terminal config file and the exact line to add
    (e.g. `keybind = super+enter=unbind`).
 3. Ideally: detect the active terminal (via `TERM_PROGRAM` / env) and check its
@@ -375,5 +375,5 @@ reusing the existing infra in `crates/jcode-setup-hints/src/keymap/conflicts.rs`
 
 ## Environment
 
-jcode (dev build), Ghostty (stock keybinds), macOS 26, aarch64.
+kcode (dev build), Ghostty (stock keybinds), macOS 26, aarch64.
 ```
