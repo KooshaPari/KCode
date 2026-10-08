@@ -41,7 +41,7 @@ call.
 
 - [ ] **P0.1 Syntax gate**
       ```bash
-      python3 -c "import ast;ast.parse(open('reconcile_sessions.py').read());print('PARSE_OK')"
+      python3 -c "import ast;[ast.parse(open(p).read()) for p in ('reconcile_sessions.py','reconcile_sessions_discovery.py','reconcile_sessions_plan.py')];print('PARSE_OK')"
       ```
 - [ ] **P0.2 Rollback copy taken**
       ```bash
