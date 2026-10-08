@@ -11,6 +11,9 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# shellcheck source=scripts/lib_install_signature.sh
+. "$repo_root/scripts/lib_install_signature.sh"
+
 # Profile default: `release` (no LTO) for macOS linker-signed reliability.
 # LTO + high `codegen-units` is known-fragile for Apple's CS_LINKER_SIGNED
 # attribute (it sometimes produces flags=0x2 instead of 0x20002, which
@@ -123,26 +126,9 @@ install -m 755 "$bin" "$version_dir/kcode"
 #
 # See docs/sessions/20261001-herdr-crash-persistence/10_SIGKILL_NON_TTY.md.
 if [ "$(uname -s)" = "Darwin" ] && [ -x "$version_dir/kcode" ]; then
-  sig_flags="$(codesign -dvv "$version_dir/kcode" 2>&1 | awk '/^CodeDirectory/ {for (i=1;i<=NF;i++) if ($i ~ /^flags=/) {print $i; exit}}')"
-  case "$sig_flags" in
-    *0x20002*|*CS_LINKER_SIGNED*)
-      : # ok - linker-signed, amfid will accept
-      ;;
-    *0x2*|*CS_ADHOC*)
-      echo "WARNING: $version_dir/kcode is adhoc-only (${sig_flags:-unknown}), not linker-signed." >&2
-      echo "         amfid will SIGKILL this binary on non-TTY launches (e.g. crash restore)." >&2
-      echo "         Build with --profile release (no LTO) or set KCODE_RELEASE_PROFILE=release." >&2
-      echo "         See docs/sessions/20261001-herdr-crash-persistence/10_SIGKILL_NON_TTY.md." >&2
-      if [ "${KCODE_REQUIRE_LINKER_SIGNED:-0}" = "1" ]; then
-        echo "Aborting per KCODE_REQUIRE_LINKER_SIGNED=1." >&2
-        rm -f "$version_dir/kcode"
-        exit 1
-      fi
-      ;;
-    *)
-      echo "WARNING: could not determine signature flags for $version_dir/kcode (got: ${sig_flags:-empty})." >&2
-      ;;
-  esac
+  # Classifier lives in scripts/lib_install_signature.sh (unit-tested by
+  # tests/install_release_signature_test.sh).
+  install_signature_check "$version_dir"
 fi
 
 # Update stable symlink
