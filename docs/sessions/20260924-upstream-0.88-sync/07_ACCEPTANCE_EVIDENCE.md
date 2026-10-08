@@ -26,20 +26,26 @@ failed, so steps #6 `module-check`, #7 `cargo fmt`, and #8 check-all-targets wer
 its step #5 `cargo fmt --all -- --check` failed on the pre-existing dirt documented
 in `00_SESSION_OVERVIEW.md`.
 
-## B) The 5 ssh-agent failures are structural, not content-dependent
+## B) The 5 ssh-agent failures were structural (now guarded)
 
 `gh secret list --repo KooshaPari/KCode` returns **EMPTY** (zero secrets
-configured), while `.github/workflows/ci.yml:29-32` runs `webfactory/ssh-agent`
-with `ssh-private-key: ${{ secrets.DEPLOY_KEY }}` unguarded as an early step.
-Therefore **every** branch that runs `ci.yml` fails those 5 jobs regardless of
-branch content.
+configured), and `webfactory/ssh-agent` runs `ssh-private-key: ${{ secrets.DEPLOY_KEY }}`.
+At the time this section was first written the step was unguarded, so **every** branch that
+ran `ci.yml` failed those 5 jobs regardless of branch content. That condition no longer holds
+in HEAD: commit `3c96175f6` added the job-level guard
+`if: env.DEPLOY_KEY_PRESENT == 'true'` (`.github/workflows/ci.yml:38`, `:172`, `:441`, `:703`;
+env declared at `:24`, `:148`, `:427`, `:689`), so on this PR the 5 jobs now SKIP Configure
+SSH and proceed to compile. The "actual HEAD is `ba7c2e14b`" line in the original draft was
+already stale when written (3c96175f6 was in HEAD at that point); current HEAD is
+`e6135802a` (`git rev-parse HEAD`, verified).
 
 ## C) Built binary proven post-merge (the `--version` stamp is misleading but cosmetic)
 
 - `./target/debug/jcode --version` -> `v0.0.0-dev (115170054, dirty)`
 - `jcode version --json` -> git_hash `115170054`, git_tag
   `v0.85.1-k1.1.0-59-g115170054`
-- Actual HEAD is `ba7c2e14b`.
+- Actual HEAD at this writing is `e6135802a` (`git rev-parse HEAD`, verified); the binary's
+  embedded stamp `115170054` is the pre-merge tree and lags by design (see below).
 
 **Root cause is INTENTIONAL** and documented at
 `crates/jcode-build-meta/build.rs:145-165`: the build script deliberately does
@@ -64,7 +70,7 @@ entirely by the merge (97 files added).
 
 | Denominator | Value |
 |---|---|
-| `#[test]` / `#[tokio::test]` attributes workspace-wide | **8,964** |
+| `#[test]` / `#[tokio::test]` attributes workspace-wide | **8,964** (measured at head `d76fb0882`; producing command was not recorded — TODO: record the exact command in a follow-up issue) |
 | Tests in `tests/e2e` (13 files) | **69** |
 | E2E re-verify executed | **6 of 69 (8.7%)** |
 
@@ -90,7 +96,8 @@ result actually observed at that moment.
 | EOF cohort arg-order defect | ran old arg order locally | exit 1, "test_filter_error: unexpected argument 'eof_tail_flush_does_not_repoll_a_non_fused_inner_stream' found" | reproduced CI exactly; fixed in `1eb94968a` (filters after `--`); new order exit 0, "2 passed; 0 failed" |
 | Product path exercised | run built binary: `--version`, `--help`, `version --json` | all exit 0 | closed |
 | Product path currency | `git grep` merge-only symbols in binary output and tree; same grep on pre-merge tree `115170054` | present at HEAD, absent pre-merge | fork's code rides along |
-| Coverage widened | run test targets | 1551 passed serial in jcode-base, 147 in setup-hints; workspace lists 8,964 tests | recorded |
+| Coverage widened | run test targets | 1551 passed serial in jcode-base, 147 in setup-hints; workspace lists 8,964 test attributes (producing command not recorded — see §D TODO) | recorded |
+| Coverage denominator re-derivation | `grep -rF '#[test]' --include='*.rs' . \| grep -v '/target/' \| wc -l` plus the `#[tokio::test]` equivalent, at HEAD `e6135802a` | 8020 + 950 = **8,970** at current HEAD (6 higher than the 8,964 recorded at `d76fb0882`, consistent with test/docs commits added since); original 8,964 command remains unrecorded | recorded |
 | Known accepted failures | classification of remaining 8 serial + 1 hints failure | all also fail on pristine upstream `ee4cd3db3` | not merge-caused |
 
 **Open loop**
