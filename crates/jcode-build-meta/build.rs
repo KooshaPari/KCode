@@ -29,9 +29,19 @@ fn main() {
         pkg_version.clone()
     });
     let (major, minor, patch) = parse_semver(&build_semver).unwrap_or(base_version);
-    let base_semver = format!("{}.{}.{}", base_version.0, base_version.1, base_version.2);
+    // Both base and update semvers must carry the fork's prerelease channel
+    // (`0.88.0-k1.2.0`, not `0.88.0`). Update comparisons and the installer
+    // verifier rely on the channel to distinguish a fork build from a plain
+    // upstream version; dropping it (Kilo-review CRITICAL #4) let a channel-less
+    // binary pass identity checks. `explicit_build_semver_override` still decides
+    // whether a release override's numeric core wins, but the channel suffix from
+    // the root package version is always re-applied.
+    let base_semver = format!(
+        "{}.{}.{}{}",
+        base_version.0, base_version.1, base_version.2, pkg_suffix
+    );
     let update_semver = if explicit_build_semver_override().is_some() {
-        build_semver.clone()
+        format!("{}.{}.{}{}", major, minor, patch, pkg_suffix)
     } else {
         base_semver.clone()
     };
@@ -335,4 +345,37 @@ fn metadata_value(key: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_semver, prerelease_suffix};
+
+    #[test]
+    fn parse_semver_returns_numeric_core_only() {
+        // The fork package version carries a `-k<major>.<minor>.<patch>` channel;
+        // the numeric core must be extracted and the channel ignored.
+        assert_eq!(parse_semver("0.88.0-k1.2.0"), Some((0, 88, 0)));
+        assert_eq!(parse_semver("v0.88.0"), Some((0, 88, 0)));
+        assert_eq!(parse_semver("1.2.3+build.4"), Some((1, 2, 3)));
+        assert_eq!(parse_semver("not-semver"), None);
+    }
+
+    #[test]
+    fn prerelease_suffix_includes_leading_dash() {
+        assert_eq!(prerelease_suffix("0.88.0-k1.2.0"), "-k1.2.0");
+        assert_eq!(prerelease_suffix("v0.88.0-k1.2.0"), "-k1.2.0");
+        // Upstream versions have no channel.
+        assert_eq!(prerelease_suffix("0.88.0"), "");
+    }
+
+    #[test]
+    fn base_semver_round_trips_channel() {
+        let (major, minor, patch) = parse_semver("0.88.0-k1.2.0").unwrap();
+        let suffix = prerelease_suffix("0.88.0-k1.2.0");
+        assert_eq!(
+            format!("{}.{}.{}{}", major, minor, patch, suffix),
+            "0.88.0-k1.2.0"
+        );
+    }
 }
