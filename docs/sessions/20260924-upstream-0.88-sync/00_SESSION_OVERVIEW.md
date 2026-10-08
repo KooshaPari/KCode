@@ -362,14 +362,16 @@ Two CI failure classes, neither a code failure:
 
 1. **`webfactory/ssh-agent` fails at 4–22s, before any build** on 5 jobs
    (Build & Test ×3, Quality Guardrails, Windows Cross-Target): `The ssh-private-key
-   argument is empty` — `secrets.DEPLOY_KEY` is unset. The step has **no conditional
-   guard** (ci.yml L29, L155, L415, plus release.yml). Pre-existing: `master`'s own
-   `ci.yml` also concludes `failure`.
-   **Not fixable by the agent** (repo-secret endpoint returns HTTP 401, admin-only) and
-   **not worth patching in the workflow**: there are no `ssh://` git dependencies and no
-   submodules — all git deps are `https://github.com/...` — so the step is vestigial
-   template weight, but guarding it in 5 places would diverge from upstream and create
-   conflicts on every future sync. Reported to the operator instead.
+   argument is empty` — `secrets.DEPLOY_KEY` is unset. This was observed before the guard
+   landed. The ssh-agent step is now guarded by `if: env.DEPLOY_KEY_PRESENT == 'true'`
+   (commit `3c96175f6`; `.github/workflows/ci.yml:38`, `:172`, `:441`, `:703`; the
+   `DEPLOY_KEY_PRESENT` env is set at `:24`, `:148`, `:427`, `:689`), so the
+   empty-`DEPLOY_KEY` failure mode is now skipped on this PR. Historical note: `master`'s own
+   `ci.yml` (unguarded at the time) also concluded `failure`.
+   **Not fixable by the agent** (repo-secret endpoint returns HTTP 401, admin-only); the guard
+   was added by workflow edit rather than by setting the secret. There are no `ssh://` git
+   dependencies and no submodules — all git deps are `https://github.com/...` — so the step is
+   vestigial template weight, now skipped when the key is absent.
 2. **`Require Linked Issue`** — satisfied by filing #24 and adding `Closes #24`.
 
 ## Format gate provenance (2026-10-01): PRE-EXISTING, merge introduced zero dirt
@@ -469,7 +471,8 @@ Socket Project Report + PR Alerts.
 
 The 5 ssh-agent failures are the documented empty-`secrets.DEPLOY_KEY` baseline that
 also fails on `master` (admin-only to fix; no `ssh://` git deps exist, so the checkout
-succeeds regardless).
+succeeds regardless). On this PR branch the step is now guarded by
+`if: env.DEPLOY_KEY_PRESENT == 'true'` (commit `3c96175f6`), so the failure mode is skipped.
 
 ### Format job cross-validation (decisive)
 
