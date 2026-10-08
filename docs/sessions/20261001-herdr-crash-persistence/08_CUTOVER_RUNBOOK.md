@@ -5,13 +5,15 @@ phase must be ✓ before starting the next phase.
 
 **Plan of record (rev3):** `reconcile_sessions.py` in this directory.
 
-Rev3 supersedes rev2 in full. Rev2 drove a fixed-topology script
-(`cutover_session.py`) that hardcoded pane slots, labels, pane IDs and
-session IDs. Live evidence disproved that assumption repeatedly: slots
-migrated (Omni 8→7, ForgeCode 9→8), a labeled pane (`Cons`) vanished, a
-new one (`Cockpit`) appeared, and an orphaned SID moved between pane and
-slot representations between two consecutive runs. Rev2 also asserted a
-fixed `13/13` coverage figure that the live topology does not support.
+Rev3 supersedes rev2 in full. Rev2 was a fixed-topology script
+(`superseded/cutover_session.py` in this directory — preserved for history;
+rev3's `reconcile_sessions.py` is the live plan of record) that hardcoded
+pane slots, labels, pane IDs and session IDs. Live evidence disproved that
+assumption repeatedly: slots migrated (Omni 8→7, ForgeCode 9→8), a labeled
+pane (`Cons`) vanished, a new one (`Cockpit`) appeared, and an orphaned SID
+moved between pane and slot representations between two consecutive runs.
+Rev2 also asserted a fixed `13/13` coverage figure that the live topology
+does not support.
 
 Rev3 therefore discovers **everything** at runtime and refuses to guess.
 
