@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-    Uninstall jcode on Windows.
+    Uninstall kcode on Windows.
 .DESCRIPTION
-    Removes the per-user launcher at %LOCALAPPDATA%\jcode\bin\jcode.exe,
-    installed build binaries, and the jcode launcher directory from the user PATH.
-    By default user data under %USERPROFILE%\.jcode is kept.
+    Removes the per-user launcher at %LOCALAPPDATA%\kcode\bin\kcode.exe,
+    installed build binaries, and the kcode launcher directory from the user PATH.
+    By default user data under %USERPROFILE%\.kcode is kept.
 
     One-liner uninstall:
-      irm https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/uninstall.ps1 | iex
+      irm https://raw.githubusercontent.com/1jehuang/kcode/master/scripts/uninstall.ps1 | iex
 .PARAMETER InstallDir
-    Override the launcher directory (default: $env:LOCALAPPDATA\jcode\bin)
+    Override the launcher directory (default: $env:LOCALAPPDATA\kcode\bin)
 .PARAMETER Purge
-    Also delete user data in $env:JCODE_HOME or %USERPROFILE%\.jcode.
+    Also delete user data in $env:KCODE_HOME or %USERPROFILE%\.kcode.
 .PARAMETER DryRun
     Print what would be removed without deleting anything.
 .PARAMETER Yes
@@ -41,7 +41,7 @@ function Get-JcodeLocalAppDataDir {
 }
 
 function Get-DefaultJcodeInstallDir {
-    return (Join-Path (Get-JcodeLocalAppDataDir) "jcode\bin")
+    return (Join-Path (Get-JcodeLocalAppDataDir) "kcode\bin")
 }
 
 function Get-JcodeRoamingAppDataDir {
@@ -55,15 +55,15 @@ function Get-JcodeRoamingAppDataDir {
 }
 
 function Get-JcodeStartupShortcutPath {
-    return (Join-Path (Get-JcodeRoamingAppDataDir) "Microsoft\Windows\Start Menu\Programs\Startup\jcode-hotkey.lnk")
+    return (Join-Path (Get-JcodeRoamingAppDataDir) "Microsoft\Windows\Start Menu\Programs\Startup\kcode-hotkey.lnk")
 }
 
 function Get-JcodeHotkeyArtifactPaths([string]$UserDataDir) {
     $hotkeyDir = Join-Path $UserDataDir "hotkey"
     return @(
-        (Join-Path $hotkeyDir "jcode-hotkey.ps1"),
-        (Join-Path $hotkeyDir "jcode-hotkey-launcher.vbs"),
-        (Join-Path $hotkeyDir "jcode-hotkey-shortcut.ps1")
+        (Join-Path $hotkeyDir "kcode-hotkey.ps1"),
+        (Join-Path $hotkeyDir "kcode-hotkey-launcher.vbs"),
+        (Join-Path $hotkeyDir "kcode-hotkey-shortcut.ps1")
     )
 }
 
@@ -113,7 +113,7 @@ function Test-JcodeSafePurgePath([string]$PathValue) {
         return $false
     }
 
-    if ($pathKey -eq $rootKey -or $leafName -notmatch '(?i)^\.?jcode(?:[-_ ].*)?$') {
+    if ($pathKey -eq $rootKey -or $leafName -notmatch '(?i)^\.?kcode(?:[-_ ].*)?$') {
         return $false
     }
 
@@ -148,7 +148,7 @@ function Test-JcodeManagedExecutablePath([string]$ExecutablePath, [string]$Launc
     $launcherDirKey = ConvertTo-JcodePathKey (Split-Path -Parent $LauncherPath)
     $executableDirKey = ConvertTo-JcodePathKey (Split-Path -Parent $ExecutablePath)
     $executableName = Split-Path -Leaf $ExecutablePath
-    if ($launcherDirKey -and $executableDirKey -eq $launcherDirKey -and $executableName -like '.jcode-launcher-old-*.exe') {
+    if ($launcherDirKey -and $executableDirKey -eq $launcherDirKey -and $executableName -like '.kcode-launcher-old-*.exe') {
         return $true
     }
 
@@ -210,7 +210,7 @@ function Resolve-JcodePathRemoval {
 }
 
 function Send-JcodeEnvironmentChangedBroadcast {
-    if ($env:JCODE_DISABLE_ENV_BROADCAST -eq "1") { return $false }
+    if ($env:KCODE_DISABLE_ENV_BROADCAST -eq "1") { return $false }
     if (-not ("Jcode.EnvironmentBroadcast" -as [type])) {
         Add-Type -TypeDefinition @"
 using System;
@@ -277,26 +277,26 @@ function Invoke-JcodeUninstall {
 
 if (-not $InstallDir) { $InstallDir = Get-DefaultJcodeInstallDir }
 
-$localJcodeRoot = Join-Path (Get-JcodeLocalAppDataDir) "jcode"
-$launcherPath = Join-Path $InstallDir "jcode.exe"
+$localJcodeRoot = Join-Path (Get-JcodeLocalAppDataDir) "kcode"
+$launcherPath = Join-Path $InstallDir "kcode.exe"
 $buildsDir = Join-Path $localJcodeRoot "builds"
-$userDataDir = if ($env:JCODE_HOME) {
-    $env:JCODE_HOME
+$userDataDir = if ($env:KCODE_HOME) {
+    $env:KCODE_HOME
 } elseif ($env:USERPROFILE) {
-    Join-Path $env:USERPROFILE ".jcode"
+    Join-Path $env:USERPROFILE ".kcode"
 } else {
-    Join-Path ([Environment]::GetFolderPath("UserProfile")) ".jcode"
+    Join-Path ([Environment]::GetFolderPath("UserProfile")) ".kcode"
 }
 $startupShortcutPath = Get-JcodeStartupShortcutPath
 $hotkeyArtifactPaths = @(Get-JcodeHotkeyArtifactPaths -UserDataDir $userDataDir)
 $launcherBackupPaths = if (Test-Path -LiteralPath $InstallDir) {
-    @(Get-ChildItem -LiteralPath $InstallDir -Filter '.jcode-launcher-old-*.exe' -File -Force -ErrorAction SilentlyContinue |
+    @(Get-ChildItem -LiteralPath $InstallDir -Filter '.kcode-launcher-old-*.exe' -File -Force -ErrorAction SilentlyContinue |
         ForEach-Object { $_.FullName })
 } else {
     @()
 }
 if ($Purge -and -not (Test-JcodeSafePurgePath $userDataDir)) {
-    Write-Err "Refusing to purge unsafe JCODE_HOME path '$userDataDir'. Use a dedicated .jcode or jcode-* directory."
+    Write-Err "Refusing to purge unsafe KCODE_HOME path '$userDataDir'. Use a dedicated .kcode or kcode-* directory."
 }
 
 $targets = @()
@@ -315,7 +315,7 @@ if ($userPathPreview.RemovedManagedEntries -gt 0) {
 }
 
 if ($targets.Count -eq 0) {
-    Write-Info "Nothing to uninstall: no jcode installation found."
+    Write-Info "Nothing to uninstall: no kcode installation found."
     return 0
 }
 
@@ -339,7 +339,7 @@ if (-not $Yes) {
 }
 
 try {
-    $managedProcessIds = @(Get-CimInstance Win32_Process -Filter "Name = 'jcode.exe'" -ErrorAction SilentlyContinue |
+    $managedProcessIds = @(Get-CimInstance Win32_Process -Filter "Name = 'kcode.exe'" -ErrorAction SilentlyContinue |
         Where-Object { Test-JcodeManagedExecutablePath -ExecutablePath $_.ExecutablePath -LauncherPath $launcherPath -BuildsDir $buildsDir } |
         ForEach-Object { $_.ProcessId })
     foreach ($processId in $managedProcessIds) {
@@ -400,17 +400,17 @@ if ($Purge) {
 
 $pathUpdate = Remove-JcodeUserPath -InstallDir $InstallDir
 if ($pathUpdate.Changed) {
-    Write-Info "Removed $($pathUpdate.RemovedManagedEntries) jcode entr$(if ($pathUpdate.RemovedManagedEntries -eq 1) { 'y' } else { 'ies' }) from user PATH"
+    Write-Info "Removed $($pathUpdate.RemovedManagedEntries) kcode entr$(if ($pathUpdate.RemovedManagedEntries -eq 1) { 'y' } else { 'ies' }) from user PATH"
 }
 
-Write-Info "jcode uninstalled."
-Write-Info "Reinstall with: irm https://jcode.sh/install.ps1 | iex"
+Write-Info "kcode uninstalled."
+Write-Info "Reinstall with: irm https://kcode.sh/install.ps1 | iex"
 
 
     return 0
 }
 
-if ($env:JCODE_UNINSTALL_PS1_IMPORT_ONLY -ne "1") {
+if ($env:KCODE_UNINSTALL_PS1_IMPORT_ONLY -ne "1") {
     $exitCode = Invoke-JcodeUninstall -InstallDir $InstallDir -Purge:$Purge -DryRun:$DryRun -Yes:$Yes
     if ($null -ne $exitCode -and [int]$exitCode -ne 0) {
         if ($MyInvocation.MyCommand.Path) { exit ([int]$exitCode) }

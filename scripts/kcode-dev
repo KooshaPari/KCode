@@ -1,0 +1,47 @@
+#!/bin/sh
+# kcode-dev — isolated development wrapper
+#
+# Uses separate config and runtime dirs so `cargo build` doesn't interrupt
+# production kcode sessions. See docs/sessions/20260916-kcode-dev-isolation/
+# for the full design.
+#
+# Usage:
+#   kcode-dev          # same args as kcode
+#   kcode-dev chat     # chat in dev mode
+#
+# The wrapper sets KCODE_RUNTIME_DIR and KCODE_HOME to isolate sockets,
+# config, and session history from the production kcode instance.
+
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Resolve the kcode binary. Prefer cargo-built debug binary, fall back to PATH.
+find_kcode_bin() {
+    # Check for cargo-built binary first
+    if [ -x "$SCRIPT_DIR/target/debug/kcode" ]; then
+        echo "$SCRIPT_DIR/target/debug/kcode"
+        return
+    fi
+    # Fall back to kcode in PATH
+    if command -v kcode >/dev/null 2>&1; then
+        command -v kcode
+        return
+    fi
+    echo "error: kcode binary not found. Build with: cargo build --bin kcode" >&2
+    exit 1
+}
+
+KCODE_BIN="$(find_kcode_bin)"
+
+# Isolate runtime (sockets live here). Backwards-compat: also accept
+# JCODE_RUNTIME_DIR so users with jcode in their env still get isolation.
+export KCODE_RUNTIME_DIR="${KCODE_RUNTIME_DIR:-${JCODE_RUNTIME_DIR:-$(mktemp -d)/kcode-dev-$(id -u)}}"
+
+# Isolate config and session data. Backwards-compat: JCODE_HOME → KCODE_HOME.
+export KCODE_HOME="${KCODE_HOME:-${JCODE_HOME:-$HOME/.kcode-dev}}"
+
+# Ensure the runtime dir exists
+mkdir -p "$KCODE_RUNTIME_DIR" "$KCODE_HOME"
+
+exec "$KCODE_BIN" "$@"
