@@ -368,7 +368,7 @@ async fn run_auth_doctor_validation(
         Ok(Ok(())) => "validation passed".to_string(),
         Ok(Err(err)) => err.to_string(),
         Err(_) => format!(
-            "validation timed out after {}s; run `jcode auth-test --provider {}` for detailed output",
+            "validation timed out after {}s; run `kcode auth-test --provider {}` for detailed output",
             AUTH_DOCTOR_VALIDATION_TIMEOUT_SECS, provider.id
         ),
     }
@@ -435,16 +435,16 @@ pub(super) async fn run_provider_current_command(
 
 pub(super) fn run_version_command(emit_json: bool) -> Result<()> {
     let report = VersionReport {
-        version: jcode_build_meta::version().to_string(),
-        semver: jcode_build_meta::semver().to_string(),
-        base_semver: jcode_build_meta::base_semver().to_string(),
-        update_semver: jcode_build_meta::update_semver().to_string(),
-        git_hash: jcode_build_meta::git_hash().to_string(),
-        git_tag: jcode_build_meta::git_tag().to_string(),
+        version: kcode_build_meta::version().to_string(),
+        semver: kcode_build_meta::semver().to_string(),
+        base_semver: kcode_build_meta::base_semver().to_string(),
+        update_semver: kcode_build_meta::update_semver().to_string(),
+        git_hash: kcode_build_meta::git_hash().to_string(),
+        git_tag: kcode_build_meta::git_tag().to_string(),
         build_time: crate::build::current_binary_build_time_string()
             .unwrap_or_else(|| "unknown".to_string()),
-        git_date: jcode_build_meta::git_date().to_string(),
-        release_build: jcode_build_meta::is_release_build(),
+        git_date: kcode_build_meta::git_date().to_string(),
+        release_build: kcode_build_meta::is_release_build(),
     };
 
     if emit_json {
@@ -480,8 +480,8 @@ pub(super) async fn run_usage_command(emit_json: bool) -> Result<()> {
         println!("No connected providers");
         println!();
         println!("Next steps:");
-        println!("- Use `jcode login --provider claude` to connect Claude OAuth.");
-        println!("- Use `jcode login --provider openai` to connect ChatGPT / Codex OAuth.");
+        println!("- Use `kcode login --provider claude` to connect Claude OAuth.");
+        println!("- Use `kcode login --provider openai` to connect ChatGPT / Codex OAuth.");
         return Ok(());
     }
 
@@ -540,7 +540,7 @@ fn select_auth_doctor_providers(
         let provider =
             crate::provider_catalog::resolve_login_provider(provider_arg).ok_or_else(|| {
                 anyhow::anyhow!(
-                    "Unknown provider '{}'. Use `jcode provider list` to see valid provider ids.",
+                    "Unknown provider '{}'. Use `kcode provider list` to see valid provider ids.",
                     provider_arg
                 )
             })?;
@@ -823,14 +823,14 @@ mod tests {
         assert_eq!(before_doctor_provider.status, "not_configured");
         assert!(before_doctor_provider.needs_attention);
         assert!(before_doctor_provider.diagnostics.iter().any(|line| {
-            line == &format!("{} is not configured for jcode yet.", provider.display_name)
+            line == &format!("{} is not configured for kcode yet.", provider.display_name)
         }));
         assert!(
             before_doctor_provider
                 .recommended_actions
                 .iter()
                 .any(|line| {
-                    line == &format!("Connect it: jcode login --provider {}", provider.id)
+                    line == &format!("Connect it: kcode login --provider {}", provider.id)
                 })
         );
 
@@ -894,7 +894,7 @@ mod tests {
                 .iter()
                 .any(|line| {
                     line == &format!(
-                        "Run runtime verification: jcode auth-test --provider {}",
+                        "Run runtime verification: kcode auth-test --provider {}",
                         provider.id
                     )
                 })
@@ -903,7 +903,7 @@ mod tests {
             after_doctor_provider
                 .recommended_actions
                 .iter()
-                .any(|line| { line == "Review current state: jcode auth status --json" })
+                .any(|line| { line == "Review current state: kcode auth status --json" })
         );
     }
 }
