@@ -88,6 +88,49 @@ version_dir="$builds_dir/versions/$hash"
 mkdir -p "$version_dir"
 install -m 755 "$bin" "$version_dir/kcode"
 
+# Post-install signature verification (macOS):
+#
+# macOS `amfid` rejects binaries that are only adhoc-signed (flags=0x2) when
+# launched from a non-TTY context, sending SIGKILL. Binaries produced with
+# LTO (`lto = "thin"` or fat-LTO) and the LLVM linker-plugin path take that
+# path. The reliable signals we want are:
+#
+#   flags=0x20002(adhoc,linker-signed)  -- produced by `cargo build --release`
+#                                          (no LTO) and by older upstream release
+#                                          builds. amfid accepts.
+#   flags=0x2(adhoc)                    -- produced when LTO is enabled and the
+#                                          build skips linkersigned output.
+#                                          amfid REJECTS, SIGKILL on launch.
+#
+# Detect the bad case, surface it loudly, and let the install either continue
+# (default) or abort (when KCODE_REQUIRE_LINKER_SIGNED=1 is set). The default
+# keeps the install green for CI/dev workflows that intentionally ship
+# LTO-only binaries, but prints a one-line warning that is grep-friendly.
+#
+# See docs/sessions/20261001-herdr-crash-persistence/10_SIGKILL_NON_TTY.md.
+if [ "$(uname -s)" = "Darwin" ] && [ -x "$version_dir/kcode" ]; then
+  sig_flags="$(codesign -dvv "$version_dir/kcode" 2>&1 | awk '/^CodeDirectory/ {for (i=1;i<=NF;i++) if ($i ~ /^flags=/) {print $i; exit}}')"
+  case "$sig_flags" in
+    *0x20002*|*CS_LINKER_SIGNED*)
+      : # ok - linker-signed, amfid will accept
+      ;;
+    *0x2*|*CS_ADHOC*)
+      echo "WARNING: $version_dir/kcode is adhoc-only (${sig_flags:-unknown}), not linker-signed." >&2
+      echo "         amfid will SIGKILL this binary on non-TTY launches (e.g. crash restore)." >&2
+      echo "         Build with --profile release (no LTO) or set KCODE_RELEASE_PROFILE=release." >&2
+      echo "         See docs/sessions/20261001-herdr-crash-persistence/10_SIGKILL_NON_TTY.md." >&2
+      if [ "${KCODE_REQUIRE_LINKER_SIGNED:-0}" = "1" ]; then
+        echo "Aborting per KCODE_REQUIRE_LINKER_SIGNED=1." >&2
+        rm -f "$version_dir/kcode"
+        exit 1
+      fi
+      ;;
+    *)
+      echo "WARNING: could not determine signature flags for $version_dir/kcode (got: ${sig_flags:-empty})." >&2
+      ;;
+  esac
+fi
+
 # Update stable symlink
 stable_dir="$builds_dir/stable"
 mkdir -p "$stable_dir"
