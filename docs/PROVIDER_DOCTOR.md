@@ -62,7 +62,7 @@ when all of them pass on the `full` tier.
 9. `tool_call_parse` - the model emitted a parseable tool call (full tier)
 10. `tool_execution_loop` - the tool-call loop ran (full tier)
 11. `tool_result_followup` - the tool result was fed back (full tier)
-12. `real_jcode_tool_smoke` - an end-to-end tool smoke passed (full tier)
+12. `real_kcode_tool_smoke` - an end-to-end tool smoke passed (full tier)
 
 (Checkpoints 1-2 plus the auth-lifecycle stages are pre-flight; 7-12 are the
 API-dependent ones gated behind `--tier full`.)

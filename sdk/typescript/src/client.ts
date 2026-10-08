@@ -80,7 +80,7 @@ export function unixSocketTransport(socketPath: string): Promise<Transport> {
     // not on the path itself.
     const socket = net.createConnection(transportEndpoint(socketPath));
     socket.setNoDelay(true);
-    // A bare `connect ENOENT /run/user/1000/jcode-api.sock` names the syscall
+    // A bare `connect ENOENT /run/user/1000/kcode-api.sock` names the syscall
     // and hides the actual cause: the bridge is not running. The first thing
     // anyone does with this SDK is connect, so this is the error most likely
     // to be someone's first impression of it. Say what to do about it.
@@ -126,7 +126,7 @@ function connectError(socketPath: string, cause: NodeJS.ErrnoException): Harness
   const hint =
     code === "ENOENT"
       ? `no harness API socket at ${socketPath}. Start the bridge with ` +
-        "`jcode api-bridge`, or set JCODE_API_SOCKET to its path."
+        "`kcode api-bridge`, or set KCODE_API_SOCKET to its path."
       : code === "ECONNREFUSED"
         ? `nothing is listening on ${socketPath}; a stale socket file is left over ` +
           "from a bridge that exited. Restart the bridge."
@@ -231,7 +231,7 @@ export class JcodeClient extends EventEmitter {
     (error) => this.emitSafe("error", error),
   );
 
-  /** Server identity from the handshake, e.g. "jcode-harness-api-bridge/0.1.0". */
+  /** Server identity from the handshake, e.g. "kcode-harness-api-bridge/0.1.0". */
   server = "";
   /** Capability strings advertised by the server. */
   capabilities: string[] = [];
@@ -269,15 +269,15 @@ export class JcodeClient extends EventEmitter {
 
   /** State directory of the instance this client launched, if any. */
   get instanceHome(): string | undefined {
-    return this.instance?.jcodeHome;
+    return this.instance?.kcodeHome;
   }
 
   /**
-   * Start a private jcode instance and connect to it.
+   * Start a private kcode instance and connect to it.
    *
-   * This is the entry point for embedding jcode as an agent engine. The
+   * This is the entry point for embedding kcode as an agent engine. The
    * instance has its own state directory, its own sessions, and its own
-   * sockets, so it cannot see or disturb the jcode the user runs
+   * sockets, so it cannot see or disturb the kcode the user runs
    * interactively. `close()` shuts it down.
    *
    * Provider logins are inherited from the user by default, because an
@@ -302,17 +302,17 @@ export class JcodeClient extends EventEmitter {
   }
 
   /**
-   * Connect to the jcode already running on this machine.
+   * Connect to the kcode already running on this machine.
    *
-   * Use this to automate the user's own jcode: an editor plugin, a status
+   * Use this to automate the user's own kcode: an editor plugin, a status
    * dashboard, a hotkey tool. It shares the user's live sessions, so anything
-   * done here is visible in their terminal. To embed jcode as an engine
+   * done here is visible in their terminal. To embed kcode as an engine
    * instead, use {@link JcodeClient.launch}.
    */
   static async connect(options: ConnectOptions = {}): Promise<JcodeClient> {
     const socketPath = options.transport ? undefined : (options.socketPath ?? apiSocketPath());
     const transport = options.transport ?? (await unixSocketTransport(socketPath!));
-    const clientName = options.clientName ?? "jcode-sdk-ts";
+    const clientName = options.clientName ?? "kcode-sdk-ts";
     const client = new JcodeClient(
       transport,
       options.requestTimeoutMs ?? 30_000,
@@ -493,7 +493,7 @@ export class JcodeClient extends EventEmitter {
 
   private requireSessionTools(): void {
     if (!this.supports("session_tools")) {
-      throw new HarnessError("unsupported", "This harness does not support session_tools. Update the jcode runtime and API bridge.");
+      throw new HarnessError("unsupported", "This harness does not support session_tools. Update the kcode runtime and API bridge.");
     }
   }
 
@@ -756,7 +756,7 @@ export class JcodeClient extends EventEmitter {
     };
   }
 
-  /** Persist an API key in jcode's owner-only provider store and hot-reload it. */
+  /** Persist an API key in kcode's owner-only provider store and hot-reload it. */
   async setApiKey(provider: string, apiKey: string): Promise<void> {
     await this.expectReply({ req: "set_api_key", provider, api_key: apiKey }, "credential_updated");
   }

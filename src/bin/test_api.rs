@@ -1,7 +1,7 @@
 use futures::StreamExt;
-use jcode::message::{ContentBlock, Message, ToolDefinition};
-use jcode::provider::Provider;
-use jcode_provider_anthropic_runtime::AnthropicProvider;
+use kcode::message::{ContentBlock, Message, ToolDefinition};
+use kcode::provider::Provider;
+use kcode_provider_anthropic_runtime::AnthropicProvider;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -9,7 +9,7 @@ async fn main() -> anyhow::Result<()> {
     let provider = AnthropicProvider::new();
 
     let messages = vec![Message {
-        role: jcode::message::Role::User,
+        role: kcode::message::Role::User,
         content: vec![ContentBlock::Text {
             text: "Say hello in exactly 5 words.".to_string(),
             cache_control: None,

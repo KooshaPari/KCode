@@ -15,7 +15,7 @@ Applies to all three primary repos per docs-3 dossiers.
 | HeliosCLI owned build | KooshaPari/HeliosCLI | v0.2.1 | Built, tested 28/28 |
 | Upstream ForgeCode | tailcallhq/forgecode | NEEDS PIN | Not cloned |
 | Upstream Codex CLI | openai/codex | NEEDS PIN | Not cloned |
-| Upstream jcode | 1jehuang/jcode | NEEDS PIN | Not cloned |
+| Upstream kcode | 1jehuang/kcode | NEEDS PIN | Not cloned |
 | Direct model/tool runner | N/A (design stub) | N/A | Not implemented |
 
 ### Fork Deltas (what each repo adds over upstream)
@@ -144,7 +144,7 @@ All pilots use the same long-running coding + transport-fault corpus as defined 
 
 | Blocker | Impact | Resolution |
 |---------|--------|------------|
-| Upstream repos not cloned | Cannot build comparator baselines | Clone tailcallhq/forgecode, openai/codex, 1jehuang/jcode |
+| Upstream repos not cloned | Cannot build comparator baselines | Clone tailcallhq/forgecode, openai/codex, 1jehuang/kcode |
 | Fixture repo not created | Cannot run controlled tasks | Create minimal coding task fixture |
 | Mutation tracker not built | Cannot measure forbidden writes | Build or reuse existing audit tool |
 | Memory profiler not installed | Cannot measure memory | Install heaptrack or use jemalloc profiling |

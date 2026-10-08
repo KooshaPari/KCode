@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UI efficiency analyzer for jcode iOS screenshots.
+"""UI efficiency analyzer for kcode iOS screenshots.
 
 Turns "this looks ugly" into hill-climbable numbers. Given a PNG screenshot
 (from `xcrun simctl io ... screenshot`), it scores the rendered UI on

@@ -2,8 +2,8 @@
  * Opt-in acceptance check using the real SDK, private daemon, bridge, provider,
  * and bash tool. Requires a working provider login. No mocks or shared daemon.
  *
- * Usage: node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/jcode
- * Optional: JCODE_SDK_TEST_MODEL (defaults to the daemon's chosen route).
+ * Usage: node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/kcode
+ * Optional: KCODE_SDK_TEST_MODEL (defaults to the daemon's chosen route).
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,8 +11,8 @@ import os from "node:os";
 import path from "node:path";
 import { JcodeClient } from "../dist/index.js";
 
-const binary = path.resolve(process.argv[2] ?? "target/selfdev/jcode");
-const workingDir = fs.mkdtempSync(path.join(process.env.JCODE_SCRATCH_DIR ?? os.tmpdir(), "guy-live-"));
+const binary = path.resolve(process.argv[2] ?? "target/selfdev/kcode");
+const workingDir = fs.mkdtempSync(path.join(process.env.KCODE_SCRATCH_DIR ?? os.tmpdir(), "guy-live-"));
 const client = await JcodeClient.launch({
   binary,
   workingDir,
@@ -20,10 +20,10 @@ const client = await JcodeClient.launch({
   inheritStderr: true,
   wakeMode: "external",
   env: {
-    JCODE_NO_TELEMETRY: "1",
-    JCODE_MEMORY_ENABLED: "0",
-    JCODE_MEMORY_SIDECAR_ENABLED: "0",
-    JCODE_ACTIVE_PROVIDER: "",
+    KCODE_NO_TELEMETRY: "1",
+    KCODE_MEMORY_ENABLED: "0",
+    KCODE_MEMORY_SIDECAR_ENABLED: "0",
+    KCODE_ACTIVE_PROVIDER: "",
   },
 });
 const home = client.instanceHome;
@@ -37,10 +37,10 @@ try {
   assert.ok(client.capabilities.includes("text_framing"), "new bridge must advertise text framing");
   assert.equal((await client.listSessions()).length, 0, "instance must be isolated");
   const session = await client.createSession(workingDir);
-  if (process.env.JCODE_SDK_TEST_MODEL) {
-    await client.setModel(session.session_id, process.env.JCODE_SDK_TEST_MODEL);
+  if (process.env.KCODE_SDK_TEST_MODEL) {
+    await client.setModel(session.session_id, process.env.KCODE_SDK_TEST_MODEL);
   }
-  console.log(`Session created, model ${process.env.JCODE_SDK_TEST_MODEL ?? "default"}`);
+  console.log(`Session created, model ${process.env.KCODE_SDK_TEST_MODEL ?? "default"}`);
   const probes = [];
   const metrics = [];
   let terminalAt;

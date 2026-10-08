@@ -65,7 +65,7 @@ Test names below are in `crates/kcode-app-core/src/tool/`.
 ## Real-site feedback: demonstrated improvement
 
 Same task and read-only context, default interaction confidence 0.8, max 15 actions:
-find/open `CONTRIBUTING.md` in `1jehuang/jcode`, and finish only with the actual
+find/open `CONTRIBUTING.md` in `1jehuang/kcode`, and finish only with the actual
 contribution guidelines visible. No exact scripts, site-specific action candidates,
 or parent-directed clicks/scrolls were supplied.
 
@@ -77,7 +77,7 @@ or parent-directed clicks/scrolls were supplied.
 | Fresh repository tab, 09:40:16 through 09:40:21 UTC | Repeated single handoff scrolled at 0.74, clicked the contribution file at 1.0, returned done. No parent intervention during the task. |
 
 Both successful final observations had URL
-`https://github.com/1jehuang/jcode/blob/master/CONTRIBUTING.md` and text stating
+`https://github.com/1jehuang/kcode/blob/master/CONTRIBUTING.md` and text stating
 that pull requests from everyone are welcome and review is based on correctness,
 tests, security, architecture, maintainability and project fit rather than author
 status. Only read-only navigation and observation actions were executed.

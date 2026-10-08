@@ -8,7 +8,7 @@
   "improvements": [],
   "fixes": [
     "Switching a session to Cursor with /model no longer leaves MCP tool calls stuck: tool results are sent back to Cursor",
-    "jcode answers Cursor's MCP server state and tool allowlist checks, so the model's tool call actually reaches jcode",
+    "kcode answers Cursor's MCP server state and tool allowlist checks, so the model's tool call actually reaches kcode",
     "Cursor model names resolve against Cursor's live model list, so Grok 4.6, Claude Opus 5/5.5, and GPT-5.6 Sol no longer fail with 'Model name is not valid'"
   ]
 }

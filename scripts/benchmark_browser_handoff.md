@@ -27,12 +27,12 @@ from the optional natural-default trigger experiment.
 ```bash
 python3 scripts/benchmark_browser_handoff.py --self-test
 python3 scripts/benchmark_browser_handoff.py \
-  --binary "$PWD/target/selfdev/jcode" \
+  --binary "$PWD/target/selfdev/kcode" \
   --model 'openai-api:gpt-6-astra' \
-  --jcode-home "$JCODE_SCRATCH_DIR/prepared-browser-benchmark-home" \
+  --kcode-home "$KCODE_SCRATCH_DIR/prepared-browser-benchmark-home" \
   --tab-id 123 \
   --trials 3 --timeout 240 \
-  --output "$JCODE_SCRATCH_DIR/browser-handoff-$(date +%s)"
+  --output "$KCODE_SCRATCH_DIR/browser-handoff-$(date +%s)"
 ```
 
 Use an available model/route, not necessarily the example above. If needed,
@@ -45,19 +45,19 @@ are fixed regression holdouts, not secret/unseen tasks or a generalization proof
 Use `--tasks navigation` for the old six-session scale with `--phase discovery`.
 Fewer than three pairs are permitted for smoke checks but cannot meet the target.
 The output directory must not already exist. Each trial starts a new daemon on
-its own private `--socket`, runs a fresh `jcode run --ndjson` in a new workspace,
+its own private `--socket`, runs a fresh `kcode run --ndjson` in a new workspace,
 and terminates only that daemon/process group. Shared Jcode daemons are not
 restarted or repointed. The caller-prepared isolated home is used without copying credentials into
 reports. Browser-session and provider environment settings are inherited. Startup probing and daemon shutdown are excluded from elapsed time.
 Browser setup is a coordinator prerequisite, not a measured step. The harness
-enables `JCODE_DEBUG_CONTROL=1` only in its isolated daemon/client environment
+enables `KCODE_DEBUG_CONTROL=1` only in its isolated daemon/client environment
 for `debug --socket <trial-socket> server:info` readiness checks. Startup failures
 include the last probe response and the exact daemon log path.
 
 `--arm jev` explicitly asks the parent to delegate the whole task and supplied
 text to Jev. `--arm normal` instead measures natural-default routing and never
 mentions handoff in that arm's prompt. Do not pool these experiments. The direct
-arm prohibits handoff in its prompt and sets `JCODE_BROWSER_HANDOFF_DISABLED=1`
+arm prohibits handoff in its prompt and sets `KCODE_BROWSER_HANDOFF_DISABLED=1`
 in **both daemon and client** environments. Other arms set it to `0`. The runtime
 guard activates only for the exact value `1`: it removes handoff and its task-only
 fields from the schema, replaces the handoff-default guidance with direct-action
@@ -114,7 +114,7 @@ statistical guarantee. Preserve failed runs and report both phases separately.
   prose saying “handoff” does not count. Unknown/missing actions invalidate a
   trial for speed comparison. Tool errors remain visible in the trace. Handoff result status and the number
   of `action_trace` steps marked `executed` are captured per call and per trial. Actual
-  handoff `decision_provider` receipts must equal `jcode` by default. For explicit
+  handoff `decision_provider` receipts must equal `kcode` by default. For explicit
   BYOK comparisons use `--expected-handoff-provider openrouter`. Missing or
   mismatched provider metadata invalidates the trial, rather than silently
   reporting subscription success.

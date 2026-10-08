@@ -1,4 +1,4 @@
--- Daily dollar value of tokens flowing through jcode, one row per day.
+-- Daily dollar value of tokens flowing through kcode, one row per day.
 --
 -- Usage:
 --   npm run token-value:daily

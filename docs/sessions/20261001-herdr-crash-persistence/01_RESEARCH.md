@@ -71,7 +71,7 @@ Two separable claims, with separate confidence:
 - `voice-activate` state: `last_recognized = 2026-08-08`, `command_count = 4`.
 
 ### shell / environment
-- `~/.zshrc` role gate + `_jcode_ensure_wrapper` only repair the wrapper symlink
+- `~/.zshrc` role gate + `_kcode_ensure_wrapper` only repair the wrapper symlink
   (`ln -sf`); **nothing runs kcode at shell startup**.
 - Ambient queue `~/.kcode/ambient/queue.json` is a scheduled-task queue (future
   `scheduled_for`, created Sep 29–Oct 1) with no pane-write capability.

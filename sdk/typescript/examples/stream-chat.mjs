@@ -2,7 +2,7 @@
  * Streaming chat example.
  *
  * Requires a running bridge:
- *   jcode api-bridge
+ *   kcode api-bridge
  *
  * Usage: node examples/stream-chat.mjs "your prompt"
  */

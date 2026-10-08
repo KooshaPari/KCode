@@ -3,7 +3,7 @@
   "date": "2026-09-29",
   "title": "Cursor provider fixes, Commits widget, and a dedicated diagram pane key",
   "highlights": [
-    "The Cursor provider works again: jcode tools run over Cursor's native MCP bridge, fast/high/thinking model ids resolve correctly, /fast works, and reasoning models no longer stop mid-answer",
+    "The Cursor provider works again: kcode tools run over Cursor's native MCP bridge, fast/high/thinking model ids resolve correctly, /fast works, and reasoning models no longer stop mid-answer",
     "A new Commits info widget shows recent commits with line counts and marks unpushed ones",
     "The swarm dock lists each agent with its status, current activity, and todo progress"
   ],

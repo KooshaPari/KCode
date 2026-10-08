@@ -3,13 +3,13 @@ on:
   pull_request:
     paths:
       - '.github/workflows/pr8-review.yml'
-      - 'crates/jcode-herdr/**'
-      - 'crates/jcode-provider-openrouter/**'
-      - 'crates/jcode-provider-openrouter-runtime/**'
-      - 'crates/jcode-tui/src/herdr.rs'
-      - 'crates/jcode-tui/src/tui/app/remote/**'
-      - 'crates/jcode-tui/src/tui/app/tests/remote_startup_input_03/**'
-      - 'crates/jcode-tui/src/tui/app/tests/remote_events_reload_03/**'
+      - 'crates/kcode-herdr/**'
+      - 'crates/kcode-provider-openrouter/**'
+      - 'crates/kcode-provider-openrouter-runtime/**'
+      - 'crates/kcode-tui/src/herdr.rs'
+      - 'crates/kcode-tui/src/tui/app/remote/**'
+      - 'crates/kcode-tui/src/tui/app/tests/remote_startup_input_03/**'
+      - 'crates/kcode-tui/src/tui/app/tests/remote_events_reload_03/**'
       - 'src/cli/herdr.rs'
   workflow_dispatch:
 permissions:
@@ -18,7 +18,7 @@ concurrency:
   group: review-correction-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 env:
-  JCODE_CI: '1'
+  KCODE_CI: '1'
   CARGO_BUILD_JOBS: '2'
   CARGO_PROFILE_DEV_DEBUG: '0'
   CARGO_PROFILE_TEST_DEBUG: '0'
@@ -37,17 +37,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: HERDR manifests
-        run: cargo test --locked -p jcode-herdr --lib
+        run: cargo test --locked -p kcode-herdr --lib
       - name: OpenRouter request and EOF regressions
         if: ${{ !cancelled() }}
-        run: cargo test --locked -p jcode-provider-openrouter --lib
+        run: cargo test --locked -p kcode-provider-openrouter --lib
       - name: Private diagnostic capture
         if: ${{ !cancelled() }}
         run: |
-          cargo test --locked -p jcode-provider-openrouter-runtime --lib body_log::
+          cargo test --locked -p kcode-provider-openrouter-runtime --lib body_log::
       - name: TUI lifecycle and launcher fixture
         if: ${{ !cancelled() }}
-        run: cargo test --locked --no-default-features -p jcode-tui --lib -- herdr::tests test_reload_client_after_server_reload_applies_to_non_selfdev test_handle_server_event_history_restores_active_resume_processing_state
+        run: cargo test --locked --no-default-features -p kcode-tui --lib -- herdr::tests test_reload_client_after_server_reload_applies_to_non_selfdev test_handle_server_event_history_restores_active_resume_processing_state
       - name: CLI compilation
         if: ${{ !cancelled() }}
-        run: cargo check --locked --no-default-features -p jcode --bin jcode
+        run: cargo check --locked --no-default-features -p kcode --bin kcode

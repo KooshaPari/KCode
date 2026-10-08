@@ -60,8 +60,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 // allowlisted origins are echoed back explicitly so the policy keeps working
 // if ALLOWED_ORIGIN is ever narrowed.
 const WEB_ALLOWED_ORIGINS = new Set([
-  "https://jcode.sh",
-  "https://www.jcode.sh",
+  "https://kcode.sh",
+  "https://www.kcode.sh",
   "https://solosystems.dev",
   "https://www.solosystems.dev",
   "https://solosystems.pages.dev",
@@ -166,7 +166,7 @@ const FIREHOSE_SCHEMA = {
 };
 
 // ---------------------------------------------------------------------------
-// Web/subscription firehose (`jcode_web_firehose` dataset).
+// Web/subscription firehose (`kcode_web_firehose` dataset).
 //
 // FIREHOSE_SCHEMA above is append-only AND full: Analytics Engine caps a data
 // point at 20 blobs + 20 doubles, and both arrays are at capacity. The new
@@ -236,7 +236,7 @@ const FIREHOSE_INSTALL_SCHEMA = {
   doubles: [],
 };
 
-// Coarse geography (`jcode_geo_firehose` dataset). The main and web datasets
+// Coarse geography (`kcode_geo_firehose` dataset). The main and web datasets
 // are both at Analytics Engine's 20-blob limit, so the country dimension gets
 // its own dataset instead of repurposing a position. Country only: no IP,
 // city, region, coordinates, or timezone is read from request.cf.

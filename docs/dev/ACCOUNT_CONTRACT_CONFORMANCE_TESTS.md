@@ -118,7 +118,7 @@ Checkout/portal are web-only today; the client hands off at
 - CK-04 (backend) portal cancel flows set `status:"canceled"` while keeping
   the key valid until period end; client vector ME-05 covers rendering.
 - CK-05 (client) tier==none/empty after login prints the pricing prompt
-  (`login_jcode_device_flow` tail) — snapshot test on stderr text.
+  (`login_kcode_device_flow` tail) — snapshot test on stderr text.
 
 ## 5. Webhook ordering (backend-owned)
 

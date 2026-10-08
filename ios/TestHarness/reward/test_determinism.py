@@ -28,8 +28,8 @@ def find_a_screenshot() -> str | None:
     import os
     candidates = []
     for base in (os.environ.get("TMPDIR", "/tmp"), "/tmp"):
-        candidates += glob.glob(os.path.join(base, "jcode-ui-matrix", "*.png"))
-        candidates += glob.glob(os.path.join(base, "jcode_ios_*.png"))
+        candidates += glob.glob(os.path.join(base, "kcode-ui-matrix", "*.png"))
+        candidates += glob.glob(os.path.join(base, "kcode_ios_*.png"))
     return candidates[0] if candidates else None
 
 

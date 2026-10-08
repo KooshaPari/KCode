@@ -13,7 +13,7 @@
     "Voice input starts recording immediately without waiting for the Nari connection, keeps your first words, and recognizes Jcode product vocabulary",
     "Unclear voice requests are routed to the coding agent instead of being dropped as uncertain",
     "Importing credentials from other tools never overrides logins Jcode already has",
-    "Add OrcaRouter as a provider choice for jcode login and --provider",
+    "Add OrcaRouter as a provider choice for kcode login and --provider",
     "Parallel tool calls stream their names and inputs as soon as they arrive",
     "Rust and TypeScript SDK clients can set per-session system prompts, enforce tool policies, and receive structured reasons for abnormal turn stops",
     "The auth badge updates immediately when switching between OAuth and API-key routes",

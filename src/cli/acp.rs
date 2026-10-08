@@ -867,7 +867,7 @@ impl AcpRuntime {
                 }
                 other => {
                     if self.profile.is_extended() {
-                        self.write_jcode_extension_event(&attached_id, &other)
+                        self.write_kcode_extension_event(&attached_id, &other)
                             .await?;
                     }
                 }
@@ -972,7 +972,7 @@ impl AcpRuntime {
                 }
             };
             if self.profile.is_extended() {
-                self.write_jcode_extension_event(&session.session_id, &event)
+                self.write_kcode_extension_event(&session.session_id, &event)
                     .await?;
             }
             match event {
@@ -1212,13 +1212,13 @@ impl AcpRuntime {
         .await
     }
 
-    async fn write_jcode_extension_event(
+    async fn write_kcode_extension_event(
         &self,
         session_id: &str,
         event: &ServerEvent,
     ) -> Result<()> {
         self.write_notification(
-            "_jcode/server_event",
+            "_kcode/server_event",
             json!({
                 "sessionId": session_id,
                 "event": serde_json::to_value(event).unwrap_or(Value::Null),
@@ -1659,7 +1659,7 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
         object.insert(
             "_meta".to_string(),
             json!({
-                "jcode": {
+                "kcode": {
                     "profile": profile.as_str(),
                     "extensions": ["raw_server_event"]
                 }
@@ -1671,9 +1671,9 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
         "protocolVersion": protocol_version,
         "agentCapabilities": agent_capabilities,
         "agentInfo": {
-            "name": "jcode",
+            "name": "kcode",
             "title": "Jcode",
-            "version": jcode_build_meta::pkg_version(),
+            "version": kcode_build_meta::pkg_version(),
         },
         "authMethods": [],
     })
@@ -1870,10 +1870,10 @@ pub(crate) async fn run_acp_command(
     provider_profile: Option<String>,
     explicit_tool_profile: bool,
 ) -> Result<()> {
-    crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
+    crate::env::set_var("KCODE_NON_INTERACTIVE", "1");
     let acp_config = crate::config::config().acp.clone();
     if !explicit_tool_profile {
-        crate::env::set_var("JCODE_TOOL_PROFILE", acp_config.tool_profile.trim());
+        crate::env::set_var("KCODE_TOOL_PROFILE", acp_config.tool_profile.trim());
         crate::config::invalidate_config_cache();
     }
     let profile = AcpProfile::parse(&acp_config.profile);
@@ -1969,7 +1969,7 @@ mod tests {
     }
 
     #[test]
-    fn initialize_standard_omits_jcode_meta() {
+    fn initialize_standard_omits_kcode_meta() {
         let result = initialize_result(&json!({"protocolVersion": 1}), AcpProfile::Standard);
         assert_eq!(result["protocolVersion"], 1);
         assert!(result["agentCapabilities"].get("_meta").is_none());
@@ -1977,10 +1977,10 @@ mod tests {
     }
 
     #[test]
-    fn initialize_full_advertises_jcode_extension_meta() {
+    fn initialize_full_advertises_kcode_extension_meta() {
         let result = initialize_result(&json!({"protocolVersion": 1}), AcpProfile::Full);
         assert_eq!(
-            result["agentCapabilities"]["_meta"]["jcode"]["profile"],
+            result["agentCapabilities"]["_meta"]["kcode"]["profile"],
             "full"
         );
     }

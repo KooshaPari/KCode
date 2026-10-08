@@ -299,7 +299,7 @@ Request:
 {
   "client_session_id": "kcode_session_123",
   "browser_preference": "auto",
-  "isolation": "per_jcode_session",
+  "isolation": "per_kcode_session",
   "attach": "prefer",
   "persist": true,
   "metadata": {
@@ -317,7 +317,7 @@ Response:
   "browser_family": "firefox",
   "browser_label": "Firefox",
   "attached_to_existing_browser": true,
-  "isolation": "per_jcode_session",
+  "isolation": "per_kcode_session",
   "default_page_id": "page_1"
 }
 ```

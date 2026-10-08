@@ -1,17 +1,17 @@
-/** Opt-in real daemon/provider test: JCODE_SDK_TEST_BINARY=/absolute/jcode node test/live-tools.mjs */
+/** Opt-in real daemon/provider test: KCODE_SDK_TEST_BINARY=/absolute/kcode node test/live-tools.mjs */
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { JcodeClient } from "../dist/index.js";
 
-const binary = process.env.JCODE_SDK_TEST_BINARY;
-assert.ok(binary, "Set JCODE_SDK_TEST_BINARY to the freshly built jcode binary");
-const root = await fs.mkdtemp(path.join(process.env.JCODE_SCRATCH_DIR ?? os.tmpdir(), "sdk-tools-live-"));
+const binary = process.env.KCODE_SDK_TEST_BINARY;
+assert.ok(binary, "Set KCODE_SDK_TEST_BINARY to the freshly built kcode binary");
+const root = await fs.mkdtemp(path.join(process.env.KCODE_SCRATCH_DIR ?? os.tmpdir(), "sdk-tools-live-"));
 const client = await JcodeClient.launch({
-  binary, jcodeHome: path.join(root, "home"), workingDir: root,
+  binary, kcodeHome: path.join(root, "home"), workingDir: root,
   startupTimeoutMs: 60_000, requestTimeoutMs: 30_000,
-  env: { JCODE_DISABLE_TELEMETRY: "1" },
+  env: { KCODE_DISABLE_TELEMETRY: "1" },
 });
 const deadline = setTimeout(() => { console.error("live tool test timed out"); void client.close(); }, 180_000);
 try {

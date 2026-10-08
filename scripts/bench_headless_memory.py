@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Headless multi-turn memory benchmark: jcode vs Claude Code.
+"""Headless multi-turn memory benchmark: kcode vs Claude Code.
 
 Swarm workers run headless, so this measures what matters for swarms: total
 PSS of every process involved after N concurrent headless sessions have each
 completed K real model turns (including tool calls).
 
-jcode:  one isolated `jcode serve` daemon, N headless sessions created over the
+kcode:  one isolated `kcode serve` daemon, N headless sessions created over the
         debug socket, turns sent with `message:` commands.
 Claude: N persistent `claude -p --input-format stream-json` processes, turns
         sent as stream-json user messages.
@@ -46,7 +46,7 @@ def log(msg: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# jcode
+# kcode
 # ---------------------------------------------------------------------------
 
 def debug_cmd(sock_path: str, cmd: str, session_id: str | None = None, timeout: float = 600) -> str:
@@ -79,34 +79,34 @@ def debug_cmd(sock_path: str, cmd: str, session_id: str | None = None, timeout: 
     raise TimeoutError(cmd[:40])
 
 
-def run_jcode(sessions: int, turns: int, cwd: str, model: str, memory: bool) -> dict:
-    jcode = shutil.which("jcode") or str(Path.home() / ".local/bin/jcode")
-    temp_root = tempfile.mkdtemp(prefix="jcode-headless-bench-")
+def run_kcode(sessions: int, turns: int, cwd: str, model: str, memory: bool) -> dict:
+    kcode = shutil.which("kcode") or str(Path.home() / ".local/bin/kcode")
+    temp_root = tempfile.mkdtemp(prefix="kcode-headless-bench-")
     home = Path(temp_root) / "home"
     run = Path(temp_root) / "run"
     home.mkdir()
     run.mkdir()
-    real = Path.home() / ".jcode"
+    real = Path.home() / ".kcode"
     for name in ("auth.json", "anthropic-auth.json", "openai-auth.json", "config.toml", "models"):
         if (real / name).exists():
             (home / name).symlink_to(real / name)
     env = os.environ.copy()
     env.update(
         {
-            "JCODE_HOME": str(home),
-            "JCODE_RUNTIME_DIR": str(run),
-            "JCODE_TEMP_SERVER": "1",
-            "JCODE_SERVER_OWNER_PID": str(os.getpid()),
-            "JCODE_NO_TELEMETRY": "1",
-            "JCODE_DEBUG_CONTROL": "1",
-            "JCODE_MEMORY_ENABLED": "1" if memory else "0",
-            "JCODE_EMBEDDING_IDLE_UNLOAD_SECS": "86400",
+            "KCODE_HOME": str(home),
+            "KCODE_RUNTIME_DIR": str(run),
+            "KCODE_TEMP_SERVER": "1",
+            "KCODE_SERVER_OWNER_PID": str(os.getpid()),
+            "KCODE_NO_TELEMETRY": "1",
+            "KCODE_DEBUG_CONTROL": "1",
+            "KCODE_MEMORY_ENABLED": "1" if memory else "0",
+            "KCODE_EMBEDDING_IDLE_UNLOAD_SECS": "86400",
         }
     )
     main_sock = str(run / "bench.sock")
     dbg_sock = str(run / "bench-debug.sock")
     server = subprocess.Popen(
-        [jcode, "--no-update", "--no-selfdev", "serve", "--socket", main_sock],
+        [kcode, "--no-update", "--no-selfdev", "serve", "--socket", main_sock],
         cwd=cwd,
         env=env,
         stdin=subprocess.DEVNULL,
@@ -118,7 +118,7 @@ def run_jcode(sessions: int, turns: int, cwd: str, model: str, memory: bool) -> 
     samples = []
     try:
         if not wait_for_socket(dbg_sock, 30):
-            raise RuntimeError("jcode debug socket not ready")
+            raise RuntimeError("kcode debug socket not ready")
         ids = []
         for _ in range(sessions):
             out = debug_cmd(dbg_sock, f"create_session:{cwd}", timeout=120)
@@ -136,7 +136,7 @@ def run_jcode(sessions: int, turns: int, cwd: str, model: str, memory: bool) -> 
             embeddings_status = "memory disabled"
         time.sleep(1.0)
         samples.append(("idle", *sum_tree_pss([server.pid], [pgid])))
-        log(f"jcode sessions={sessions} idle pss={samples[-1][1]} MB")
+        log(f"kcode sessions={sessions} idle pss={samples[-1][1]} MB")
         errors: list[str] = []
         for t in range(turns):
             prompt = TURNS[t % len(TURNS)]
@@ -154,8 +154,8 @@ def run_jcode(sessions: int, turns: int, cwd: str, model: str, memory: bool) -> 
                 th.join()
             time.sleep(1.0)
             samples.append((f"turn{t + 1}", *sum_tree_pss([server.pid], [pgid])))
-            log(f"jcode sessions={sessions} turn {t + 1} pss={samples[-1][1]} MB")
-        version = subprocess.run([jcode, "--version"], capture_output=True, text=True).stdout.strip()
+            log(f"kcode sessions={sessions} turn {t + 1} pss={samples[-1][1]} MB")
+        version = subprocess.run([kcode, "--version"], capture_output=True, text=True).stdout.strip()
         checks = {"embeddings": embeddings_status}
         try:
             hist = json.loads(debug_cmd(dbg_sock, "history", ids[0], timeout=30))
@@ -165,7 +165,7 @@ def run_jcode(sessions: int, turns: int, cwd: str, model: str, memory: bool) -> 
             checks["last_response"] = debug_cmd(dbg_sock, "last_response", ids[0], timeout=30)[:200]
         except Exception as exc:  # noqa: BLE001
             checks["error"] = str(exc)[:200]
-        return {"tool": "jcode" + ("" if memory else " (memory off)"), "sessions": sessions,
+        return {"tool": "kcode" + ("" if memory else " (memory off)"), "sessions": sessions,
                 "samples": samples, "errors": errors, "version": version, "checks": checks}
     finally:
         terminate_pgroup(pgid)
@@ -255,8 +255,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sessions", type=int, nargs="+", default=[1, 5, 10, 20])
     ap.add_argument("--turns", type=int, default=5)
-    ap.add_argument("--tools", nargs="+", default=["jcode", "claude"])
-    ap.add_argument("--jcode-model", default="claude-sonnet-4-6")
+    ap.add_argument("--tools", nargs="+", default=["kcode", "claude"])
+    ap.add_argument("--kcode-model", default="claude-sonnet-4-6")
     ap.add_argument("--claude-model", default="claude-sonnet-4-6")
     ap.add_argument("--cwd", default=os.getcwd())
     ap.add_argument("--json-out")
@@ -265,10 +265,10 @@ def main() -> int:
     results = []
     for n in args.sessions:
         for tool in args.tools:
-            if tool == "jcode":
-                results.append(run_jcode(n, args.turns, args.cwd, args.jcode_model, memory=True))
-            elif tool == "jcode_memory_off":
-                results.append(run_jcode(n, args.turns, args.cwd, args.jcode_model, memory=False))
+            if tool == "kcode":
+                results.append(run_kcode(n, args.turns, args.cwd, args.kcode_model, memory=True))
+            elif tool == "kcode_memory_off":
+                results.append(run_kcode(n, args.turns, args.cwd, args.kcode_model, memory=False))
             elif tool == "claude":
                 results.append(run_claude(n, args.turns, args.cwd, args.claude_model))
             print(json.dumps(results[-1]), flush=True)

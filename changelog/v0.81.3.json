@@ -7,6 +7,6 @@
   ],
   "fixes": [
     "Session attachments are correlated to the correct connection when multiple clients connect concurrently",
-    "Closing a macOS terminal window no longer leaves its jcode session running unexpectedly"
+    "Closing a macOS terminal window no longer leaves its kcode session running unexpectedly"
   ]
 }

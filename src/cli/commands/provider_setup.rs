@@ -251,7 +251,7 @@ pub(crate) fn configure_provider_profile(
         auth_test_command: format!(
             "kcode --provider-profile {} auth-test --prompt {}",
             shell_quote(&name),
-            shell_quote("Reply exactly KCODE_PROVIDER_SETUP_OK")
+            shell_quote("Reply exactly JCODE_PROVIDER_SETUP_OK")
         ),
     })
 }
@@ -401,7 +401,7 @@ fn derived_api_key_env(name: &str) -> String {
             }
         })
         .collect::<String>();
-    format!("KCODE_PROVIDER_{}_API_KEY", suffix)
+    format!("JCODE_PROVIDER_{}_API_KEY", suffix)
 }
 
 fn append_profile_section(
@@ -668,7 +668,7 @@ mod tests {
         let _lock = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("temp dir");
         let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
-        let _key = EnvVarGuard::remove("KCODE_PROVIDER_MY_API_API_KEY");
+        let _key = EnvVarGuard::remove("JCODE_PROVIDER_MY_API_API_KEY");
         let config_path = temp.path().join("config.toml");
         std::fs::write(
             &config_path,
@@ -694,7 +694,7 @@ mod tests {
         assert_eq!(profile.default_model.as_deref(), Some("model-a"));
         assert_eq!(
             profile.api_key_env.as_deref(),
-            Some("KCODE_PROVIDER_MY_API_API_KEY")
+            Some("JCODE_PROVIDER_MY_API_API_KEY")
         );
         assert_eq!(profile.env_file.as_deref(), Some("provider-my-api.env"));
         assert_eq!(profile.models[0].context_window, Some(128_000));
@@ -705,7 +705,7 @@ mod tests {
             .join("kcode")
             .join("provider-my-api.env");
         let env_content = std::fs::read_to_string(env_file).expect("env file");
-        assert!(env_content.contains("KCODE_PROVIDER_MY_API_API_KEY=secret-test-key"));
+        assert!(env_content.contains("JCODE_PROVIDER_MY_API_API_KEY=secret-test-key"));
     }
 
     #[test]

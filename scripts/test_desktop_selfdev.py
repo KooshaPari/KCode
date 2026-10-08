@@ -2,10 +2,10 @@
 """Headless, no-inference acceptance through the actual Rust SDK and private daemons.
 
 Build first:
-  scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode
-  scripts/dev_cargo.sh build --profile selfdev -p jcode-harness-api-server --bin jcode-harness-api-bridge
+  scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode
+  scripts/dev_cargo.sh build --profile selfdev -p kcode-harness-api-server --bin kcode-harness-api-bridge
 Run:
-  python3 scripts/test_desktop_selfdev.py --desktop-repo ../jcode-desktop
+  python3 scripts/test_desktop_selfdev.py --desktop-repo ../kcode-desktop
 
 No shared sockets, credentials, Desktop host, compositor, or live sessions are used.
 The SDK harness is generated outside the repository for later review. Artifacts
@@ -24,7 +24,7 @@ import time
 
 
 SDK_SOURCE = r'''
-use jcode_sdk::{api::ApiRequest, ConnectOptions, JcodeClient};
+use kcode_sdk::{api::ApiRequest, ConnectOptions, JcodeClient};
 use serde_json::{json, Value};
 use std::{io::{BufRead, BufReader, Write}, os::unix::net::UnixStream, path::PathBuf, time::Duration};
 
@@ -73,7 +73,7 @@ fn verify(api: &str, dbg: &str, cwd: &str, mode: &str, desktop_root: &str) {
         "desktop" => {
             assert_eq!(context["is_canary"], false);
             assert!(tool_names.contains(&"desktop_selfdev"));
-            for tool in ["selfdev", "debug_socket", "jcode_docs"] {
+            for tool in ["selfdev", "debug_socket", "kcode_docs"] {
                 assert!(!tool_names.contains(&tool));
             }
             let definition = context["prepared_tools"].as_array().unwrap().iter()
@@ -117,7 +117,7 @@ fn verify(api: &str, dbg: &str, cwd: &str, mode: &str, desktop_root: &str) {
         session_id: id.clone(), content: "desktop SDK acceptance context only".into(),
         images: vec![], system_reminder: None, no_reply: true,
     }).expect("SDK context-only persistence");
-    assert!(matches!(reply.event, jcode_sdk::api::ApiEvent::Ok));
+    assert!(matches!(reply.event, kcode_sdk::api::ApiEvent::Ok));
     let history = client.get_history(id).expect("SDK history");
     let observer = connect(api);
     let attached = observer.attach_session(id).expect("SDK reattach");
@@ -163,16 +163,16 @@ def wait_socket(path, process, timeout=30):
 def main():
     repo = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--jcode-binary', type=Path, default=repo / 'target/selfdev/jcode')
-    parser.add_argument('--bridge-binary', type=Path, default=repo / 'target/selfdev/jcode-harness-api-bridge')
-    parser.add_argument('--desktop-repo', type=Path, default=repo.parent / 'jcode-desktop')
+    parser.add_argument('--kcode-binary', type=Path, default=repo / 'target/selfdev/kcode')
+    parser.add_argument('--bridge-binary', type=Path, default=repo / 'target/selfdev/kcode-harness-api-bridge')
+    parser.add_argument('--desktop-repo', type=Path, default=repo.parent / 'kcode-desktop')
     parser.add_argument('--output-dir', type=Path, help='New artifact directory outside both repositories')
     parser.add_argument('--compile-only', action='store_true', help='Compile/review the real SDK harness without starting any runtime')
     args = parser.parse_args()
-    binary = args.jcode_binary.resolve(strict=True)
+    binary = args.kcode_binary.resolve(strict=True)
     bridge = args.bridge_binary.resolve(strict=True)
     desktop = args.desktop_repo.resolve(strict=True)
-    nested = desktop / 'crates/jcode-desktop-ui/src'
+    nested = desktop / 'crates/kcode-desktop-ui/src'
     assert nested.is_dir(), 'A real Desktop source checkout is required'
     if args.output_dir:
         root = args.output_dir.resolve()
@@ -181,24 +181,24 @@ def main():
                 parser.error('--output-dir must be outside both repositories')
         root.mkdir(mode=0o700, parents=True, exist_ok=False)
     else:
-        scratch = Path(os.environ.get('JCODE_SCRATCH_DIR', str(Path.home() / '.cache/jcode-acceptance')))
+        scratch = Path(os.environ.get('KCODE_SCRATCH_DIR', str(Path.home() / '.cache/kcode-acceptance')))
         scratch = scratch.resolve()
         for checkout in (repo, desktop):
             if scratch == checkout or checkout in scratch.parents:
-                parser.error('JCODE_SCRATCH_DIR must be outside both repositories')
+                parser.error('KCODE_SCRATCH_DIR must be outside both repositories')
         scratch.mkdir(mode=0o700, parents=True, exist_ok=True)
         root = Path(tempfile.mkdtemp(prefix='desktop-selfdev-', dir=scratch))
     print(f'Artifacts: {root}', flush=True)
     if len(os.fsencode(str(root / 'runtime/daemon-debug.sock'))) >= 104:
         parser.error('Artifact path is too long for private Unix sockets. Choose a shorter --output-dir.')
-    for directory in ['home', 'runtime', 'config', 'cache', 'data', 'state', 'jcode', 'tmp', 'sdk/src', 'regular/jcode-desktop']:
+    for directory in ['home', 'runtime', 'config', 'cache', 'data', 'state', 'kcode', 'tmp', 'sdk/src', 'regular/kcode-desktop']:
         (root / directory).mkdir(mode=0o700, parents=True, exist_ok=True)
     (root / 'desktop-link').symlink_to(nested, target_is_directory=True)
-    (root / 'jcode/config.toml').write_text('[features]\nmemory = false\n[telemetry]\nenabled = false\n')
+    (root / 'kcode/config.toml').write_text('[features]\nmemory = false\n[telemetry]\nenabled = false\n')
     (root / 'sdk/Cargo.toml').write_text(
         '[package]\nname = "desktop-selfdev-sdk-acceptance"\nversion = "0.0.0"\nedition = "2024"\n'
-        '[workspace]\n[dependencies]\nserde_json = "1"\njcode-sdk = { path = '
-        + json.dumps(str(repo / 'crates/jcode-sdk')) + ' }\n')
+        '[workspace]\n[dependencies]\nserde_json = "1"\nkcode-sdk = { path = '
+        + json.dumps(str(repo / 'crates/kcode-sdk')) + ' }\n')
     (root / 'sdk/src/main.rs').write_text(SDK_SOURCE)
     cargo = shutil.which('cargo')
     if not cargo:
@@ -215,11 +215,11 @@ def main():
         'HOME': str(root / 'home'), 'XDG_RUNTIME_DIR': str(root / 'runtime'),
         'XDG_CONFIG_HOME': str(root / 'config'), 'XDG_CACHE_HOME': str(root / 'cache'),
         'XDG_DATA_HOME': str(root / 'data'), 'XDG_STATE_HOME': str(root / 'state'),
-        'TMPDIR': str(root / 'tmp'), 'JCODE_HOME': str(root / 'jcode'),
-        'JCODE_RUNTIME_DIR': str(root / 'runtime'), 'JCODE_SOCKET': str(root / 'runtime/daemon.sock'),
-        'JCODE_API_SOCKET': str(root / 'runtime/api.sock'), 'JCODE_DEBUG_CONTROL': '1',
-        'JCODE_NO_TELEMETRY': '1', 'JCODE_TEMP_SERVER': '1',
-        'JCODE_SERVER_OWNER_PID': str(os.getpid()), 'JCODE_TEMP_SERVER_IDLE_SECS': '300',
+        'TMPDIR': str(root / 'tmp'), 'KCODE_HOME': str(root / 'kcode'),
+        'KCODE_RUNTIME_DIR': str(root / 'runtime'), 'KCODE_SOCKET': str(root / 'runtime/daemon.sock'),
+        'KCODE_API_SOCKET': str(root / 'runtime/api.sock'), 'KCODE_DEBUG_CONTROL': '1',
+        'KCODE_NO_TELEMETRY': '1', 'KCODE_TEMP_SERVER': '1',
+        'KCODE_SERVER_OWNER_PID': str(os.getpid()), 'KCODE_TEMP_SERVER_IDLE_SECS': '300',
     }
     processes, logs = [], []
     def launch(name, command):
@@ -230,16 +230,16 @@ def main():
         processes.append(process)
         return process
     try:
-        daemon = launch('daemon', [binary, '--no-update', '--no-selfdev', '--provider', 'jcode', 'serve'])
-        wait_socket(Path(env['JCODE_SOCKET']), daemon)
+        daemon = launch('daemon', [binary, '--no-update', '--no-selfdev', '--provider', 'kcode', 'serve'])
+        wait_socket(Path(env['KCODE_SOCKET']), daemon)
         debug = root / 'runtime/daemon-debug.sock'
         wait_socket(debug, daemon)
-        adapter = launch('bridge', [bridge, env['JCODE_API_SOCKET'], env['JCODE_SOCKET']])
-        wait_socket(Path(env['JCODE_API_SOCKET']), adapter)
+        adapter = launch('bridge', [bridge, env['KCODE_API_SOCKET'], env['KCODE_SOCKET']])
+        wait_socket(Path(env['KCODE_API_SOCKET']), adapter)
         helper = root / 'sdk-target/debug/desktop-selfdev-sdk-acceptance'
-        result = subprocess.run([str(helper), env['JCODE_API_SOCKET'], str(debug), str(desktop),
+        result = subprocess.run([str(helper), env['KCODE_API_SOCKET'], str(debug), str(desktop),
                                  str(nested), str(root / 'desktop-link'),
-                                 str(root / 'regular/jcode-desktop'), str(repo)],
+                                 str(root / 'regular/kcode-desktop'), str(repo)],
                                 cwd=root, env=env, text=True, capture_output=True, timeout=180)
         (root / 'acceptance.stdout').write_text(result.stdout)
         (root / 'acceptance.stderr').write_text(result.stderr)

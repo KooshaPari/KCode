@@ -21,7 +21,7 @@ remains enabled.
 - Response: 234 models, 70,992 bytes.
 - SHA-256: `28aa4eee06b9a10b211190ad79226184090bef32c620eeb736bcd5ac49a2277b`
 - This matches the public metadata reported in
-  <https://github.com/1jehuang/jcode/issues/1274#issuecomment-5687020410>.
+  <https://github.com/1jehuang/kcode/issues/1274#issuecomment-5687020410>.
 
 To inspect current metadata without credentials:
 

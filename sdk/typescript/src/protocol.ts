@@ -1,7 +1,7 @@
 /**
- * Wire types for the jcode harness API (protocol v1).
+ * Wire types for the kcode harness API (protocol v1).
  *
- * Mirrors `crates/jcode-harness-api` exactly: request tags live under `req`,
+ * Mirrors `crates/kcode-harness-api` exactly: request tags live under `req`,
  * event tags under `ev`, and every frame carries `v`. Keep this file in sync
  * with the Rust enums; `test/schema-parity.test.ts` fails the build if the
  * tag sets drift apart.
@@ -215,13 +215,13 @@ export interface SidePanelPage {
   pdf_data?: string;
   updated_at_ms: number;
 }
-/** A user intent from an applet node (`jcode.applet/1`). */
+/** A user intent from an applet node (`kcode.applet/1`). */
 export interface AppletAction {
   action: string;
   args?: unknown;
 }
 
-/** One mounted applet instance. `document` follows the `jcode.applet/1` schema. */
+/** One mounted applet instance. `document` follows the `kcode.applet/1` schema. */
 export interface AppletInstance {
   id: string;
   applet: string;

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# End-to-end test for `jcode cloud move` / `jcode cloud return`.
+# End-to-end test for `kcode cloud move` / `kcode cloud return`.
 #
 # Two fully isolated "machines" on one box, neither touching the user's
-# ~/.jcode or running sessions:
-#   local: JCODE_HOME=$W/local-home, repo at $REPO
-#   cloud: a bubblewrap sandbox with its own HOME/JCODE_HOME and its own
+# ~/.kcode or running sessions:
+#   local: KCODE_HOME=$W/local-home, repo at $REPO
+#   cloud: a bubblewrap sandbox with its own HOME/KCODE_HOME and its own
 #          private $REPO path (tmpfs overlay), reached through a transport
 #          script standing in for `ssh <host>`.
 set -euo pipefail
 
-JCODE_BIN=${JCODE_BIN:?set JCODE_BIN to the jcode binary under test}
-W=${W:-$(mktemp -d "${JCODE_SCRATCH_DIR:-/tmp}/cloud-e2e.XXXXXX")}
-REPO=/tmp/jcode-cloud-e2e-repo          # identical absolute path on both machines
+KCODE_BIN=${KCODE_BIN:?set KCODE_BIN to the kcode binary under test}
+W=${W:-$(mktemp -d "${KCODE_SCRATCH_DIR:-/tmp}/cloud-e2e.XXXXXX")}
+REPO=/tmp/kcode-cloud-e2e-repo          # identical absolute path on both machines
 CLOUD_ROOT=$W/cloud-fs                   # cloud machine's private disk
 mkdir -p "$W/local-home" "$CLOUD_ROOT/home" "$CLOUD_ROOT/repo"
 rm -rf "$REPO"
@@ -30,25 +30,25 @@ exec bwrap --die-with-parent \\
   --proc /proc --dev /dev --tmpfs /tmp \\
   --bind "$CLOUD_ROOT/home" /home/cloud \\
   --bind "$CLOUD_ROOT/repo" $REPO \\
-  --ro-bind "$JCODE_BIN" /opt/jcode/jcode-under-test \\
+  --ro-bind "$KCODE_BIN" /opt/kcode/kcode-under-test \\
   --clearenv \\
   --setenv HOME /home/cloud --setenv USER cloud --setenv PATH /usr/local/bin:/usr/bin \\
-  --setenv JCODE_HOME /home/cloud/.jcode --setenv JCODE_CLOUD_HOST_LABEL cloud-e2e \\
-  --setenv JCODE_NO_AUTO_UPDATE 1 --setenv JCODE_NON_INTERACTIVE 1 --setenv JCODE_NO_TELEMETRY 1 \\
+  --setenv KCODE_HOME /home/cloud/.kcode --setenv KCODE_CLOUD_HOST_LABEL cloud-e2e \\
+  --setenv KCODE_NO_AUTO_UPDATE 1 --setenv KCODE_NON_INTERACTIVE 1 --setenv KCODE_NO_TELEMETRY 1 \\
   --unshare-pid --unshare-ipc --unshare-uts --hostname cloud-e2e \\
   bash -c "\$1"
 EOF
 chmod +x "$W/cloud-transport"
 
-export JCODE_HOME=$W/local-home
-export JCODE_CLOUD_TRANSPORT="$W/cloud-transport"
-export JCODE_CLOUD_HOST_LABEL=laptop-e2e
-export JCODE_NO_AUTO_UPDATE=1
-export JCODE_NO_TELEMETRY=1
-unset JCODE_SESSION_ID JCODE_SOCKET
-J() { "$JCODE_BIN" --no-update --no-selfdev "$@"; }
-CLOUD() { "$W/cloud-transport" "JCODE_HOME=/home/cloud/.jcode $*"; }
-RB=(--host cloud-e2e --remote-binary /opt/jcode/jcode-under-test)
+export KCODE_HOME=$W/local-home
+export KCODE_CLOUD_TRANSPORT="$W/cloud-transport"
+export KCODE_CLOUD_HOST_LABEL=laptop-e2e
+export KCODE_NO_AUTO_UPDATE=1
+export KCODE_NO_TELEMETRY=1
+unset KCODE_SESSION_ID KCODE_SOCKET
+J() { "$KCODE_BIN" --no-update --no-selfdev "$@"; }
+CLOUD() { "$W/cloud-transport" "KCODE_HOME=/home/cloud/.kcode $*"; }
+RB=(--host cloud-e2e --remote-binary /opt/kcode/kcode-under-test)
 
 echo "== workspace: $W"
 
@@ -70,8 +70,8 @@ LOCAL_HEAD=$(git rev-parse HEAD)
 
 # ---- a real session JSON in the isolated local home ---------------------
 SID=session_e2e_$(date +%s)
-mkdir -p "$JCODE_HOME/sessions" "$JCODE_HOME/todos"
-python3 - "$JCODE_HOME/sessions/$SID.json" "$SID" "$REPO" <<'PY'
+mkdir -p "$KCODE_HOME/sessions" "$KCODE_HOME/todos"
+python3 - "$KCODE_HOME/sessions/$SID.json" "$SID" "$REPO" <<'PY'
 import json, sys, datetime
 path, sid, repo = sys.argv[1:]
 now = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -82,23 +82,23 @@ json.dump({
   "messages": [
     msg(1, "user", [{"type": "text", "text": "Please change main.rs to print v2"}]),
     msg(2, "assistant", [{"type": "text", "text": "Editing main.rs now."},
-                          {"type": "tool_use", "id": "toolu_1", "name": "bash", "input": {"command": "jcode cloud move"}}]),
+                          {"type": "tool_use", "id": "toolu_1", "name": "bash", "input": {"command": "kcode cloud move"}}]),
   ],
 }, open(path, "w"))
 PY
-echo '[{"id":"1","content":"finish v2","status":"in_progress","priority":"high"}]' > "$JCODE_HOME/todos/$SID.json"
+echo '[{"id":"1","content":"finish v2","status":"in_progress","priority":"high"}]' > "$KCODE_HOME/todos/$SID.json"
 
 echo "== 1. dry run changes nothing"
 J cloud move --session "$SID" "${RB[@]}" --dry-run --allow-active --json > "$W/dry.json"
 check "dry run reports dry_run"  grep -q '"dry_run": true' "$W/dry.json"
-check "no local lease after dry run" test ! -e "$JCODE_HOME/session_leases/$SID.json"
+check "no local lease after dry run" test ! -e "$KCODE_HOME/session_leases/$SID.json"
 check "local worktree untouched" grep -q "v2 local wip" "$REPO/main.rs"
 check "local index untouched (staged.txt still staged)" bash -c "cd $REPO && git diff --cached --name-only | grep -qx staged.txt"
 
 echo "== 2. move to cloud"
 J cloud move --session "$SID" "${RB[@]}" --allow-active --json > "$W/move.json"
 cat "$W/move.json"
-check "local lease says away on cloud-e2e" grep -q '"away_host": "cloud-e2e"' "$JCODE_HOME/session_leases/$SID.json"
+check "local lease says away on cloud-e2e" grep -q '"away_host": "cloud-e2e"' "$KCODE_HOME/session_leases/$SID.json"
 check "cloud has repo at same path" CLOUD "test -f $REPO/main.rs"
 check "cloud keeps uncommitted edit" CLOUD "grep -q 'v2 local wip' $REPO/main.rs"
 check "cloud keeps untracked file" CLOUD "test -f $REPO/untracked.txt"
@@ -108,10 +108,10 @@ check "cloud did NOT get target/" CLOUD "test ! -e $REPO/target"
 check "cloud HEAD == local HEAD" CLOUD "cd $REPO && test \$(git rev-parse HEAD) = $LOCAL_HEAD"
 check "cloud on branch main" CLOUD "cd $REPO && test \$(git symbolic-ref --short HEAD) = main"
 check "cloud keeps git identity" CLOUD "cd $REPO && test \"\$(git config user.email)\" = e2e@example.invalid"
-check "cloud has transcript" CLOUD "test -f /home/cloud/.jcode/sessions/$SID.json"
-check "cloud has todos" CLOUD "grep -q 'finish v2' /home/cloud/.jcode/todos/$SID.json"
-check "cloud lease says here" bash -c "! grep -q away_host '$CLOUD_ROOT/home/.jcode/session_leases/$SID.json'"
-CLOUD "cat /home/cloud/.jcode/sessions/$SID.json" > "$W/cloud-session.json"
+check "cloud has transcript" CLOUD "test -f /home/cloud/.kcode/sessions/$SID.json"
+check "cloud has todos" CLOUD "grep -q 'finish v2' /home/cloud/.kcode/todos/$SID.json"
+check "cloud lease says here" bash -c "! grep -q away_host '$CLOUD_ROOT/home/.kcode/session_leases/$SID.json'"
+CLOUD "cat /home/cloud/.kcode/sessions/$SID.json" > "$W/cloud-session.json"
 python3 - "$W/cloud-session.json" <<'PY' || fail "agent-facing migration notice"
 import json, sys
 s = json.load(open(sys.argv[1]))
@@ -128,7 +128,7 @@ print("  PASS agent-facing migration notice + dangling tool call closed")
 PY
 
 echo "== 3. local copy can no longer run or overwrite"
-check "second move is refused" bash -c "! $JCODE_BIN --no-update --no-selfdev cloud move --session $SID ${RB[*]} --allow-active 2>/dev/null"
+check "second move is refused" bash -c "! $KCODE_BIN --no-update --no-selfdev cloud move --session $SID ${RB[*]} --allow-active 2>/dev/null"
 J cloud where --session "$SID" | tee "$W/where.txt"
 check "where shows cloud-e2e" grep -q cloud-e2e "$W/where.txt"
 
@@ -138,7 +138,7 @@ CLOUD "cd $REPO && git add -A && git commit -qm 'cloud: finish v2' && echo 'clou
 # append a cloud-side turn to the transcript (what the cloud agent would do)
 CLOUD "python3 - <<'PY'
 import json
-p='/home/cloud/.jcode/sessions/$SID.json'
+p='/home/cloud/.kcode/sessions/$SID.json'
 s=json.load(open(p))
 s['messages'].append({'id':'message_cloud','role':'assistant','content':[{'type':'text','text':'Done on the cloud: committed v2 and added cloud.txt.'}]})
 json.dump(s,open(p,'w'))
@@ -158,9 +158,9 @@ check "cloud uncommitted edit merged" grep -q "edited in cloud" "$REPO/notes.txt
 check "local edit kept (same file, other hunk)" grep -q "edited locally" "$REPO/notes.txt"
 check "local-only file kept" test -f "$REPO/local.txt"
 check "ignored build output untouched" test -f "$REPO/target/big.bin"
-check "local lease is home again" bash -c "! grep -q away_host $JCODE_HOME/session_leases/$SID.json"
-check "cloud lease no longer owns" grep -q '"away_host": "returned"' "$CLOUD_ROOT/home/.jcode/session_leases/$SID.json"
-python3 - "$JCODE_HOME/sessions/$SID.json" <<'PY' || fail "returned transcript"
+check "local lease is home again" bash -c "! grep -q away_host $KCODE_HOME/session_leases/$SID.json"
+check "cloud lease no longer owns" grep -q '"away_host": "returned"' "$CLOUD_ROOT/home/.kcode/session_leases/$SID.json"
+python3 - "$KCODE_HOME/sessions/$SID.json" <<'PY' || fail "returned transcript"
 import json, sys
 s = json.load(open(sys.argv[1]))
 texts = [b.get("text","") for m in s["messages"] for b in m["content"] if b.get("type")=="text"]
@@ -182,7 +182,7 @@ cat "$W/return2.json"
 check "conflict reported" grep -q '"result": "conflicts"' "$W/return2.json"
 check "conflicting file named" grep -q 'main.rs' "$W/return2.json"
 check "local file untouched on conflict" test "$(sha256sum "$REPO/main.rs")" = "$BEFORE"
-check "cloud work kept as ref" bash -c "cd $REPO && git cat-file -e refs/jcode-cloud/$SID/cloud:main.rs && git show refs/jcode-cloud/$SID/cloud:main.rs | grep -q 'CLOUD VERSION'"
+check "cloud work kept as ref" bash -c "cd $REPO && git cat-file -e refs/kcode-cloud/$SID/cloud:main.rs && git show refs/kcode-cloud/$SID/cloud:main.rs | grep -q 'CLOUD VERSION'"
 
 echo
 echo "ALL E2E CHECKS PASSED  (workspace $W)"
