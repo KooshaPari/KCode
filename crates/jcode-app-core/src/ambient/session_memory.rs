@@ -53,7 +53,11 @@ pub fn render_session_template(content: &str, variables: &HashMap<String, String
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| jcode_home.join("session-memory/config"));
     let template_path = template_dir.join("template.md");
-    if crate::storage::reject_dev_home_symlink_path(&template_path).is_err() {
+    if let Err(error) = crate::storage::reject_dev_home_symlink_path(&template_path) {
+        crate::logging::warn(&format!(
+            "rejected session-memory template path {}: {error}",
+            template_path.display()
+        ));
         return substitutor.substitute(content);
     }
     let loader = TemplateLoader::with_base_dir(template_dir.to_string_lossy().into_owned());

@@ -1461,6 +1461,9 @@ mod width_selection_tests {
 
     #[test]
     fn pane_expansion_prefers_wider_disk_rendition_then_memoizes_misses() {
+        let _image_guard = crate::IMAGE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         const HASH: u64 = 0xA11C_E55D_1A6A_0001;
         let mut cache = test_cache("prefer-wide");
         let narrow = CachedDiagram {

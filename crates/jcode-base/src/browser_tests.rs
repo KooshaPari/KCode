@@ -162,7 +162,27 @@ fn setup_complete_requires_native_host_binary() {
 fn setup_marker_symlink_is_neither_read_nor_written() {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
+    struct EnvRestore(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            if let Some(value) = self.0.take() {
+                crate::env::set_var("JCODE_HOME", value);
+            } else {
+                crate::env::remove_var("JCODE_HOME");
+            }
+            if let Some(value) = self.1.take() {
+                crate::env::set_var("JCODE_DEV_NAMESPACE", value);
+            } else {
+                crate::env::remove_var("JCODE_DEV_NAMESPACE");
+            }
+        }
+    }
+
     let _guard = crate::storage::lock_test_env();
+    let _restore = EnvRestore(
+        std::env::var_os("JCODE_HOME"),
+        std::env::var_os("JCODE_DEV_NAMESPACE"),
+    );
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join(".jcode-dev");
     let stable = temp.path().join("stable-setup-marker");
@@ -172,8 +192,6 @@ fn setup_marker_symlink_is_neither_read_nor_written() {
     let before = std::fs::symlink_metadata(&stable).unwrap();
     let identity = (before.dev(), before.ino(), before.permissions().mode());
     std::os::unix::fs::symlink(&stable, home.join("browser/.setup-complete")).unwrap();
-    let old_home = std::env::var_os("JCODE_HOME");
-    let old_namespace = std::env::var_os("JCODE_DEV_NAMESPACE");
     crate::env::set_var("JCODE_HOME", &home);
     crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
 
@@ -186,17 +204,6 @@ fn setup_marker_symlink_is_neither_read_nor_written() {
         identity
     );
     assert!(home.join("browser/.setup-complete").is_symlink());
-
-    if let Some(value) = old_home {
-        crate::env::set_var("JCODE_HOME", value);
-    } else {
-        crate::env::remove_var("JCODE_HOME");
-    }
-    if let Some(value) = old_namespace {
-        crate::env::set_var("JCODE_DEV_NAMESPACE", value);
-    } else {
-        crate::env::remove_var("JCODE_DEV_NAMESPACE");
-    }
 }
 
 #[cfg(unix)]

@@ -356,8 +356,7 @@ fn jcode_cache_dir() -> PathBuf {
 
 fn cache_path_for_namespace(namespace: &str) -> PathBuf {
     let namespace = sanitize_cache_namespace(namespace);
-    jcode_cache_dir()
-        .join(format!("{}_models.json", namespace))
+    jcode_cache_dir().join(format!("{}_models.json", namespace))
 }
 
 fn cache_path() -> PathBuf {
@@ -380,7 +379,7 @@ fn write_cache_content(path: &Path, content: &str) -> std::io::Result<()> {
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
     #[cfg(unix)]
-    {
+    if jcode_storage::running_in_dev_namespace() {
         use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(libc::O_NOFOLLOW);
     }
@@ -578,8 +577,7 @@ fn save_disk_cache_with_source_to_path(
 fn endpoints_cache_path(model: &str) -> PathBuf {
     let safe_name = model.replace('/', "__");
     let namespace = configured_cache_namespace();
-    jcode_cache_dir()
-        .join(format!("{}_endpoints_{}.json", namespace, safe_name))
+    jcode_cache_dir().join(format!("{}_endpoints_{}.json", namespace, safe_name))
 }
 
 pub fn load_endpoints_disk_cache_public(model: &str) -> Option<(Vec<EndpointInfo>, u64)> {

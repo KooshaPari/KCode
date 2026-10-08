@@ -396,7 +396,7 @@ pub fn dump_to_file() -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 #[path = "dev_namespace_tests.rs"]
 mod dev_namespace_tests;
 

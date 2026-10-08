@@ -24,6 +24,7 @@ const DPI_QUANTUM: u16 = 12;
 static LOG_HOOK: LazyLock<Mutex<fn(&str)>> = LazyLock::new(|| Mutex::new(|_| {}));
 static LAST_REPORTED_ERROR: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 const COPY_SOURCE_CACHE_LIMIT: usize = 4096;
+static CACHE_TEMP_NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct LatexCopySource {
@@ -588,7 +589,15 @@ fn render_artifact_in(
 
     let rendered = work.path().join("formula.png");
     load_artifact(&rendered)?;
-    let temporary_cache_path = cache_path.with_extension(format!("{}.tmp", std::process::id()));
+    let nonce = CACHE_TEMP_NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let time_nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary_cache_path = cache_path.with_extension(format!(
+        "{}-{time_nonce:x}-{nonce:x}.tmp",
+        std::process::id()
+    ));
     copy_to_cache_temp(&rendered, &temporary_cache_path)?;
     reject_cache_path(&temporary_cache_path)?;
     reject_cache_path(&cache_path)?;
@@ -615,6 +624,7 @@ fn load_cached_artifact(path: &Path) -> Result<Artifact, String> {
 
 fn copy_to_cache_temp(source: &Path, destination: &Path) -> Result<(), String> {
     reject_cache_path(destination)?;
+    let mut input = File::open(source).map_err(|error| format!("read rendered LaTeX: {error}"))?;
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -625,9 +635,11 @@ fn copy_to_cache_temp(source: &Path, destination: &Path) -> Result<(), String> {
     let mut output = options
         .open(destination)
         .map_err(|error| format!("create LaTeX cache temporary: {error}"))?;
-    let mut input = File::open(source).map_err(|error| format!("read rendered LaTeX: {error}"))?;
-    std::io::copy(&mut input, &mut output)
-        .map_err(|error| format!("cache rendered LaTeX: {error}"))?;
+    if let Err(error) = std::io::copy(&mut input, &mut output) {
+        drop(output);
+        remove_cache_temp(destination);
+        return Err(format!("cache rendered LaTeX: {error}"));
+    }
     Ok(())
 }
 

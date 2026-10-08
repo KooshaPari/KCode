@@ -782,7 +782,7 @@ fn read_claude_code_keychain_blob() -> Option<String> {
 /// reading the secret value. The secret is only read during an approved
 /// import or at runtime load.
 pub fn native_credentials_present() -> bool {
-    if std::env::var_os("JCODE_DEV_NAMESPACE").is_some() {
+    if crate::storage::running_in_dev_namespace() {
         return false;
     }
     if std::env::var(CLAUDE_CODE_OAUTH_TOKEN_ENV)
