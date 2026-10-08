@@ -255,9 +255,9 @@ coverage figures are **not comparable**: `7/10` against the original
   `agent_resume` for `w7:2` was written and then pruned by a later session
   rewrite, defeating pane restore.
 - Forced workaround: a server-stopped, file-level transaction
-  (`~/.kcode/scratch/cutover_session.py`) — i.e. mutating `session.json`
-  with the server down — because no runtime API offers a durable,
-  verifiable write.
+  (`superseded/cutover_session.py` — see `reconcile_sessions.py` for the
+  rev3 plan of record) — i.e. mutating `session.json` with the server down
+  — because no runtime API offers a durable, verifiable write.
 
 ## Proposed fix
 
