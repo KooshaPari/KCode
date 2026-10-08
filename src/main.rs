@@ -275,6 +275,7 @@ fn cli_launch_hint_source(args: impl IntoIterator<Item = String>) -> Option<Stri
 mod tests {
     use super::args_are_macos_hotkey_listener;
     use super::cli_launch_hint_source;
+    use super::macos_startup_repair_requested;
     use super::parse_alloc_tuning;
 
     #[test]
@@ -340,5 +341,39 @@ mod tests {
             cli_launch_hint_source(argv(&["setup-hotkey", "--notify-cli-launch"])),
             None
         );
+    }
+
+    // macos_startup_repair_requested: opt-in gate for the historical
+    // `self_heal_macos_code_signature` path. Tearing CS_LINKER_SIGNED on
+    // every launch is what produced the SIGKILL on `kcode --resume` from
+    // non-TTY (see 10_SIGKILL_NON_TTY.md). The default is OFF; the env var
+    // explicitly authorizes the recovery path for local dev.
+
+    #[test]
+    fn startup_repair_defaults_to_off() {
+        assert!(!macos_startup_repair_requested(None));
+        assert!(!macos_startup_repair_requested(Some("")));
+        assert!(!macos_startup_repair_requested(Some("  ")));
+    }
+
+    #[test]
+    fn startup_repair_accepts_canonical_truthy_values() {
+        for v in ["1", "true", "yes", "on", "TRUE", "Yes", "ON"] {
+            assert!(macos_startup_repair_requested(Some(v)), "value {v:?} should be truthy");
+        }
+    }
+
+    #[test]
+    fn startup_repair_rejects_anything_else() {
+        for v in ["0", "false", "no", "off", "nope", "1;rm -rf /", "2", "enable"] {
+            assert!(!macos_startup_repair_requested(Some(v)), "value {v:?} should be falsy");
+        }
+    }
+
+    #[test]
+    fn startup_repair_trims_whitespace_and_lowercases() {
+        assert!(macos_startup_repair_requested(Some("  yes  ")));
+        assert!(macos_startup_repair_requested(Some("\tTRUE\n")));
+        assert!(!macos_startup_repair_requested(Some("  false  ")));
     }
 }
