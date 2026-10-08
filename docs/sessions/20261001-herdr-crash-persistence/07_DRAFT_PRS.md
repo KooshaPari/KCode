@@ -2,6 +2,19 @@
 
 Drafts only — no `gh` calls made. Each entry: title + body.
 
+**Filing targets (operator confirmed 2026-10-08):**
+
+- **Herdr upstream:** `herdrdev/herdr` (https://github.com/herdrdev/herdr)
+  — four drafts in `## Herdr upstream issues`. Each has its exact
+  `gh issue create` command at the end.
+- **kcode upstream:** `1jehuang/jcode` (https://github.com/1jehuang/jcode)
+  — two drafts in `## kcode upstream issues`. Each has its exact
+  `gh issue create` command at the end.
+
+The pre_tool hook blocks `gh issue create` for public mutations; each
+filing needs explicit per-issue operator approval. The hook-internal
+hook will see the requests and route them once approved.
+
 ---
 
 ## Herdr upstream issues
@@ -79,6 +92,19 @@ Control case — the proven live consumption path (works):
 herdr 0.9.3 (stock), macOS 26, aarch64.
 ```
 
+## Filing
+
+```
+# Operator — paste once approved:
+# 1. Save the body above to /tmp/herdr-upstream-issue-1.md (or any temp file).
+# 2. Run:
+gh issue create \
+  --repo herdrdev/herdr \
+  --title '`pane report-agent` drops `resume_argv` silently on panes with no detected agent, and on stale `--seq`' \
+  --body-file /tmp/herdr-upstream-issue-1.md \
+  --label bug
+```
+
 ---
 
 ### Issue 2
@@ -120,6 +146,19 @@ stopped) as the supported workaround.
 ## Environment
 
 herdr 0.9.3 (stock), macOS 26, aarch64.
+```
+
+## Filing
+
+```
+# Operator — paste once approved:
+# 1. Save the body above to /tmp/herdr-upstream-issue-2.md (or any temp file).
+# 2. Run:
+gh issue create \
+  --repo herdrdev/herdr \
+  --title 'No API clears a persisted `agent_session` ref' \
+  --body-file /tmp/herdr-upstream-issue-2.md \
+  --label bug
 ```
 
 ---
@@ -176,6 +215,19 @@ cleanup attempts made so far.
 ## Environment
 
 herdr 0.9.3 (stock), macOS 26, aarch64.
+```
+
+## Filing
+
+```
+# Operator — paste once approved:
+# 1. Save the body above to /tmp/herdr-upstream-issue-3.md (or any temp file).
+# 2. Run:
+gh issue create \
+  --repo herdrdev/herdr \
+  --title 'restore falls back to stale `agent_session` refs from removed agents' \
+  --body-file /tmp/herdr-upstream-issue-3.md \
+  --label bug
 ```
 
 ---
@@ -282,6 +334,19 @@ herdr 0.9.3, macOS Apple Silicon (aarch64).
 `resume_agents_on_restore = true`, `startup_per_agent_delay_ms = 150`.
 ```
 
+## Filing
+
+```
+# Operator — paste once approved:
+# 1. Save the body above to /tmp/herdr-upstream-issue-4.md (or any temp file).
+# 2. Run:
+gh issue create \
+  --repo herdrdev/herdr \
+  --title '`report-agent` returns rc=0 with empty output for writes that later vanish: persistence is async/batched and `agent_resume` gets pruned by session rewrites' \
+  --body-file /tmp/herdr-upstream-issue-4.md \
+  --label bug
+```
+
 ---
 
 ## kcode upstream issues
@@ -325,6 +390,19 @@ asserting the exact source string `"herdr:kcode"`.
 A mismatched source prefix fails silently — the report is dropped with no
 `.agent_resume` persisted. Consider asserting/normalizing the source prefix at
 the call site (or requesting a herdr-side warning on unknown source).
+```
+
+## Filing (kcode-side)
+
+```
+# Operator — paste once approved:
+# 1. Save the body above to /tmp/kcode-upstream-issue-1.md (or any temp file).
+# 2. Run:
+gh issue create \
+  --repo 1jehuang/jcode \
+  --title 'herdr reporter source namespace must be `herdr:{agent}`, not `kcode:{agent}` (silent no-op against herdr 0.9.3)' \
+  --body-file /tmp/kcode-upstream-issue-1.md \
+  --label bug
 ```
 
 ---
@@ -376,4 +454,17 @@ reusing the existing infra in `crates/kcode-setup-hints/src/keymap/conflicts.rs`
 ## Environment
 
 kcode (dev build), Ghostty (stock keybinds), macOS 26, aarch64.
+```
+
+## Filing (kcode-side)
+
+```
+# Operator — paste once approved:
+# 1. Save the body above to /tmp/kcode-upstream-issue-2.md (or any temp file).
+# 2. Run:
+gh issue create \
+  --repo 1jehuang/jcode \
+  --title 'Detect terminal-level keybind conflicts (Ghostty `super+enter` vs kcode cmd+enter alternate-send)' \
+  --body-file /tmp/kcode-upstream-issue-2.md \
+  --label bug
 ```
