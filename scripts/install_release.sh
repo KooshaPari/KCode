@@ -11,14 +11,28 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-profile="${KCODE_RELEASE_PROFILE:-release-lto}"
+# Profile default: `release` (no LTO) for macOS linker-signed reliability.
+# LTO + high `codegen-units` is known-fragile for Apple's CS_LINKER_SIGNED
+# attribute (it sometimes produces flags=0x2 instead of 0x20002, which
+# causes amfid to SIGKILL on non-TTY launches — see
+# docs/sessions/20261001-herdr-crash-persistence/10_SIGKILL_NON_TTY.md for
+# the full root cause). Operators who want LTO can opt in with
+# KCODE_RELEASE_PROFILE=release-lto, and the post-install codesign verifier
+# in this script will surface a warning if the LTO path drops
+# CS_LINKER_SIGNED.
+profile="${KCODE_RELEASE_PROFILE:-release}"
 if [[ "${1:-}" == "--fast" ]]; then
   profile="release"
   shift
 fi
 
+if [[ "${1:-}" == "--lto" ]]; then
+  profile="release-lto"
+  shift
+fi
+
 if [[ "$#" -gt 0 ]]; then
-  echo "Usage: $0 [--fast]" >&2
+  echo "Usage: $0 [--fast] [--lto]" >&2
   exit 1
 fi
 
