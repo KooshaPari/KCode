@@ -19,6 +19,7 @@ fixing the kcode-side reporter source bug and the K1 terminal keybind conflict.
 | C6 | Session docs (this task) | **done** | 01_RESEARCH 2026-10-02 section, this overview, 07_DRAFT_PRS |
 | C7 | Cleanup (rev2→rev3 housekeeping) | **done (2026-10-08)** | `cutover_session.py` moved to `superseded/`; inert `~/.config/herdr/sessions/e2e/` deleted (live server unaffected); runbook + overview + 07_DRAFT_PRS references updated. `coverage_check.py` audited: no hardcoded slot/label/pane-count assumptions (read-only, runtime discovery + strength correlation); left in place as a separate verification tool. |
 | C8 | File 6 upstream issues (4 herdr, 2 kcode) | **deferred to inbox (approval-gated)** | `gh issue create` blocked by pre_tool hook for public mutations. 6 drafts ready in `07_DRAFT_PRS.md`; each requires explicit OK before filing. The hook-internal hook will see the requests and route them once approved. |
+| C9 | SIGKILL on `kcode --resume` from non-TTY (P1) | **root-caused; fix pending operator choice** | amfid rejects `b87cd9955-dirty/jcode` (`flags=0x2(adhoc)`, no linker-signed) with `AppleMobileFileIntegrityError Code=-423` → Gatekeeper SIGKILL (rc=137). 0.91.0 stable is `flags=0x20002(adhoc,linker-signed)` and works cleanly. Live jcode --resume panes all show `agent_resume.source='jcode'` (pre-C1), confirming they were spawned from the bad build. **Fix options:** PATH A — `ln -sfn versions/0.91.0/jcode ~/.jcode/builds/current/jcode` (5s, recommended); PATH B — `scripts/install_release.sh` on HEAD (~100min); PATH C — `codesign --sign -` (ruled out, doesn't add linker-signed); PATH D — wrapper fallthrough (defer). Full analysis: `10_SIGKILL_NON_TTY.md`. |
 | K1 | Ghostty `super+enter` conflict vs kcode alternate-send | **done** | Appended `keybind = super+enter=unbind` to Ghostty config; needs operator Ghostty reload + test |
 
 ## Key references
@@ -31,3 +32,7 @@ fixing the kcode-side reporter source bug and the K1 terminal keybind conflict.
 
 - **C4** awaits operator go/no-go: the file-level purge requires stopping the
   herdr server, which kills live panes.
+- **C8** awaits operator approval per-issue for each `gh issue create` (pre_tool
+  hook blocks public mutations).
+- **C9** awaits operator choice between PATH A / PATH B (PATH C ruled out, PATH D
+  deferred). Default recommendation: PATH A.
