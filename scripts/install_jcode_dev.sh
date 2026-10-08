@@ -98,6 +98,7 @@ private_storage_roots=(
 )
 
 for path in "$root" "$root/bin" "$root/run" "$root/builds" \
+  "$root/builds/current-version" "$root/builds/shared-server-version" \
   "$root/builds/current" "$root/builds/shared-server" "$root/builds/versions" \
   "$root/cargo-target" "$root/xdg" "$root/xdg/config" "$root/xdg/data" \
   "$root/xdg/state" "$root/xdg/cache" "$root/.grok" "$root/.grok/auth.json" \
@@ -145,6 +146,7 @@ mkdir -p "$root/bin" "$root/run" "$root/builds/current" \
   "$root/xdg/config" "$root/xdg/data" "$root/xdg/state" "$root/xdg/cache"
 check_private_root
 for path in "$root" "$root/bin" "$root/run" "$root/builds" \
+  "$root/builds/current-version" "$root/builds/shared-server-version" \
   "$root/builds/current" "$root/builds/shared-server" \
   "$root/builds/versions" "$root/cargo-target" "$root/xdg" \
   "$root/xdg/config" "$root/xdg/data" "$root/xdg/state" "$root/xdg/cache" \
