@@ -51,5 +51,14 @@ The real SIGKILL is narrower: it happens when the binary tries to start a
 pre-existing and unrelated to session.json reconciliation. The pointer was
 restored to its original target.
 
+**Update 2026-10-08:** the underlying cause of that SIGKILL was diagnosed
+after this write-up. The real culprit is `self_heal_macos_code_signature()`
+in `src/main.rs` running unconditionally on every launch and stripping
+the linker-placed `CS_LINKER_SIGNED` attribute via
+`codesign --force --deep --sign -`. The durable fix landed in
+`27bd2299c` (opt-in via `KCODE_MACOS_STARTUP_REPAIR=1`) and the post-install
+signature check in `bfbcf898f` (see `10_SIGKILL_NON_TTY.md` for the full
+root-cause write-up, build/install verification, and lesson notes).
+
 Lesson: verify a diagnosis against a *running* instance before changing
 shared launcher state.
