@@ -19,7 +19,11 @@ Run `36925706533`, **Build & Test ubuntu** (job `110582409958`):
 
 Same shape on **Quality Guardrails** (job `110582409688`): step #3 `ssh-agent`
 failed, so steps #6 `module-check`, #7 `cargo fmt`, and #8 check-all-targets were
-**SKIPPED**.
+**SKIPPED**. (Step indices here match the GitHub Actions log UI; the
+`gh api .../jobs/{id}/logs` stream prepends a `Set up job` line, so any
+REST cross-check that lists the steps as a JSON array is off by one for
+indices after that header — the log-UI numbering is the canonical one
+this doc uses throughout.)
 
 => Only the **Format** job ever executed project code. Its step #4
 `Check module declarations resolve` **PASSED** (no `mod x;` resolution broke), and

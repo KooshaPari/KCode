@@ -470,9 +470,15 @@ Socket Project Report + PR Alerts.
 | Format | 22s | pre-existing `cargo fmt` dirt (proven below) |
 
 The 5 ssh-agent failures are the documented empty-`secrets.DEPLOY_KEY` baseline that
-also fails on `master` (admin-only to fix; no `ssh://` git deps exist, so the checkout
-succeeds regardless). On this PR branch the step is now guarded by
-`if: env.DEPLOY_KEY_PRESENT == 'true'` (commit `3c96175f6`), so the failure mode is skipped.
+also fails on `master`. On this PR branch the step is now guarded by
+`if: env.DEPLOY_KEY_PRESENT == 'true'` (commit `3c96175f6`, sites
+`.github/workflows/ci.yml:38/172/441/703`), so the failure mode is skipped
+on the PR; the underlying empty-`DEPLOY_KEY` baseline on `master` is
+**not** admin-only to fix — it is a repository secrets configuration
+that any maintainer with `Actions secrets` write access can set, and
+once set the step will short-circuit to the same guarded path on
+`master` as on the PR. The PR branch demonstrates the guarded
+behaviour; rolling the same change to `master` is a one-commit follow-up.
 
 ### Format job cross-validation (decisive)
 

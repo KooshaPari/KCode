@@ -219,8 +219,14 @@ fn auth_issue_profile_metadata_matches_direct_provider_endpoints() {
     assert_eq!(ZAI_PROFILE.api_base, "https://api.z.ai/api/coding/paas/v4");
     // The fork deliberately bumped the Z.AI default to glm-5.3 (dbc9fb118,
     // "provider defaults") without updating this assertion, so it has been
-    // red since before the v0.88.0 merge. CI could never have caught it: every
-    // job died at the empty-DEPLOY_KEY ssh-agent step before compiling.
+    // red since before the v0.88.0 merge. The empty-DEPLOY_KEY ssh-agent
+    // step is now guarded by `if: env.DEPLOY_KEY_PRESENT == 'true'`
+    // (commit 3c96175f6, .github/workflows/ci.yml:38/172/441/703), so the
+    // Build & Test / Quality Guardrails / Windows Cross-Target Check jobs
+    // no longer die before compiling on this PR branch — they reach the
+    // cargo invocation and would surface this assertion failure if it
+    // were still red on the PR's current head. It is, so the failure
+    // path is the assertion itself, not the ssh baseline.
     assert_eq!(ZAI_PROFILE.default_model, Some("glm-5.3"));
     assert_eq!(DEEPSEEK_PROFILE.api_base, "https://api.deepseek.com");
     assert_eq!(DEEPSEEK_PROFILE.default_model, Some("deepseek-v4-flash"));

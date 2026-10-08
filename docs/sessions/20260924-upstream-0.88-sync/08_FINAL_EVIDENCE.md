@@ -81,9 +81,11 @@ The remaining 11 commits are doc/budget/security/CI-hygiene commits: `21fa4ad20`
 ## 6. How to reproduce the green state locally
 
 ```bash
-# Verify head + branch
+# Verify head + branch (HEAD at time of measurement, see "Current HEAD" table above
+# for the up-to-date short SHA; the example below was the value at the moment the
+# TUI test rerun was captured, not the live head).
 git rev-parse --abbrev-ref HEAD   # feature/upstream-0.88-sync
-git rev-parse --short HEAD        # c2b043ed2
+git rev-parse --short HEAD        # HEAD at time of measurement — see "Current HEAD" table
 
 # Reproduce the TUI test step CI runs
 export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk
