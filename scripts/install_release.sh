@@ -76,8 +76,24 @@ if [[ -n "$git_hash" ]]; then
   if [[ "$git_dirty" == "1" ]]; then
     expected_git_identity="($git_hash, dirty)"
   fi
-  if [[ "$($bin --version)" != *"$expected_git_identity"* ]]; then
+
+  # The fork versions the root package as `BASE-k<major>.<minor>.<patch>`
+  # (e.g. `0.88.0-k1.2.0`). The identity substring alone would accept a
+  # channel-less binary, so also require the binary to report the same
+  # prerelease channel as the root `Cargo.toml` (Kilo-review CRITICAL #4).
+  pkg_version="$(awk -F'"' '/^[[:space:]]*version[[:space:]]*=[[:space:]]*"/{print $2; exit}' "$repo_root/Cargo.toml")"
+  pkg_channel=""
+  if [[ "$pkg_version" == *-* ]]; then
+    pkg_channel="-${pkg_version#*-}"
+  fi
+
+  version_output="$("$bin" --version)"
+  if [[ "$version_output" != *"$expected_git_identity"* ]]; then
     echo "Release binary does not report expected git identity: $expected_git_identity" >&2
+    exit 1
+  fi
+  if [[ -n "$pkg_channel" && "$version_output" != *"$pkg_channel"* ]]; then
+    echo "Release binary does not report expected version channel: $pkg_channel (got: $version_output)" >&2
     exit 1
   fi
 fi
