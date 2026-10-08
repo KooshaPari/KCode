@@ -301,12 +301,27 @@ explicitly disabling it.
 ## Open questions
 
 - **Why do release-lto builds sometimes produce `flags=0x2` and sometimes
-  `flags=0x20002`?** The 0.91.0 build (Oct 5) is linker-signed. The
-  b87cd9955-dirty build (Oct 4) is not. Same `install_release.sh` invocation.
-  Same profile (`release-lto`). Difference may be in incremental linking state
-  in the `target/` directory at the time of the build. Not blocking the fix,
-  but worth investigating before the next release.
+  `flags=0x20002`?** Diagnosed 2026-10-08: the `release-lto` profile in
+  `Cargo.toml` is `lto = "thin"`, `opt-level = 1` (inherited from `release`),
+  `codegen-units = 256`. Thin LTO + high `codegen-units` is a known-fragile
+  combination for Apple's `CS_LINKER_SIGNED` attribute: the linker does not
+  always get a complete symbol set in time to embed the signing manifest, and
+  the result toggles between `flags=0x20002(adhoc,linker-signed)` and
+  `flags=0x2(adhoc)` based on incremental linking state in `target/`. The
+  0.91.0 build (Oct 5) hit the lucky path; the `b87cd9955-dirty` build (Oct 4)
+  hit the unlucky one. **Stable resolution:** build with
+  `KCODE_RELEASE_PROFILE=release` (no LTO, opt-level=1, codegen-units=256) —
+  this profile reliably preserves `CS_LINKER_SIGNED` because no LTO pass
+  reorders symbols after the linker embeds the signing manifest. The current
+  C9 install at `~/.kcode/builds/versions/6e0f0fc9c-dirty/kcode` was built
+  with that profile.
 - **Was `stable` repointed to 0.91.0 manually, or did `install_release.sh`
-  run twice in quick succession?** The mtimes suggest the latter, but the
-  `current` symlink was not updated, which is a behavior we don't expect from
-  install_release.sh. Worth a code review of the script.
+  run twice in quick succession?** Diagnosed 2026-10-08: `install_release.sh`
+  updates BOTH `stable` and `current` symlinks on every successful run (see
+  the script's `stable_dir=` / `current_dir=` blocks). The 0.91.0 stable
+  was installed by an earlier `install_release.sh` run; the 6e0f0fc9c-dirty
+  stable is the latest run, which repointed the symlink. **No manual
+  repointing happened.** The mtimes suggested the right answer; the only
+  surprise was that the old 0.91.0 binary was deleted from `versions/` when
+  the new install took its place. (The 0.91.0 binary is no longer
+  available; only `6e0f0fc9c-dirty/kcode` survives in `versions/`.)
