@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the KooshaPari fork of Jcode will be documented in this file.
+All notable changes to the KooshaPari fork of Kcode will be documented in this file.
 
 ## v0.85.1-k1.1.0 (2026-09-15)
 
@@ -8,23 +8,23 @@ HERDR integration release. Terminal runtime integration, ForgeCode provider impr
 
 ### Added
 
-- **HERDR terminal runtime integration** (`jcode-herdr` crate) -- 6 modules, 11+ tests
+- **HERDR terminal runtime integration** (`kcode-herdr` crate) -- 6 modules, 11+ tests
   - Agent lifecycle state reporting (working/idle/blocked) via Unix socket
   - Debounced idle transitions (configurable, default 250ms)
   - Error-hold with retry grace (configurable, default 2500ms)
   - Monotonic sequence numbers for event ordering
-  - Screen manifest TOML generation for jcode and ForgeCode detection
+  - Screen manifest TOML generation for kcode and ForgeCode detection
   - `--herdr` CLI flag for testing outside HERDR pane
-  - `--herdr-kind` CLI arg for agent type routing (jcode/forge/forgecode)
-  - `jcode herdr status` subcommand (pane env, socket path, reporter state)
-  - `jcode herdr install` subcommand (screen detection manifests)
-  - Env var overrides: `HERDR_JCODE_IDLE_DEBOUNCE_MS`, `HERDR_JCODE_RETRY_GRACE_MS`
+  - `--herdr-kind` CLI arg for agent type routing (kcode/forge/forgecode)
+  - `kcode herdr status` subcommand (pane env, socket path, reporter state)
+  - `kcode herdr install` subcommand (screen detection manifests)
+  - Env var overrides: `HERDR_KCODE_IDLE_DEBOUNCE_MS`, `HERDR_KCODE_RETRY_GRACE_MS`
 - **ForgeCode runtime provider split** -- monolithic lib.rs decomposed into modules
   - `config.rs`: ForgeCodeCliConfig (env-based configuration)
   - `parser.rs`: CLI output types (CliOutput, SseEvent, CliOutputParser)
   - `translator.rs`: ForgeCodeEventTranslator (SSE-to-StreamEvent mapping)
   - `lib.rs`: Provider impl + subprocess execution (~650 lines, down from 1132)
-- HERDR install scripts for jcode and ForgeCode screen detection
+- HERDR install scripts for kcode and ForgeCode screen detection
 
 ### Changed
 
@@ -42,8 +42,8 @@ KooshaPari fork release. First tagged fork version (0.85.0 base + k1.0.0 fork su
 
 ### Added
 
-- **Terminal detection crate** (`jcode-terminal-detect`) -- 14 terminals, 15 capability flags
-- **Shell integration crate** (`jcode-shell-integration`) -- 6 shells, hook/completion generation
+- **Terminal detection crate** (`kcode-terminal-detect`) -- 14 terminals, 15 capability flags
+- **Shell integration crate** (`kcode-shell-integration`) -- 6 shells, hook/completion generation
 - TUI synchronized update wrapping (DECSET 2026) in 5 render sites
 - Bun installer script (`scripts/install_bun.sh`)
 - GitHub Packages publish workflow (`.github/workflows/publish-github-packages.yml`)
@@ -61,12 +61,12 @@ KooshaPari fork release. First tagged fork version (0.85.0 base + k1.0.0 fork su
 - Subtle background tinting for selected swarm tiles
 - Active-vs-idle visual differentiation in strip, dock, and vertical views
 - Auto-dream consolidation LLM call
-- Micro-compact crate wiring into jcode-app-core
-- Cache-vectors and permission-bubble crates wired into jcode-app-core
-- Tool-search and session-memory crates wired into jcode-app-core
+- Micro-compact crate wiring into kcode-app-core
+- Cache-vectors and permission-bubble crates wired into kcode-app-core
+- Tool-search and session-memory crates wired into kcode-app-core
 - `fork_message.rs` with `build_forked_messages` in permission-bubble crate
 - `PromptStateSnapshot` fields and `snapshot_current_state` in cache-vectors crate
-- `time_gate.rs` with 24h threshold in jcode-auto-dream crate
+- `time_gate.rs` with 24h threshold in kcode-auto-dream crate
 - Protocol fields: `input_tokens`, `output_tokens`, `queue_depth`, `cost_cents` on `SwarmMemberRuntime`
 - Token counts, cost, and queue depth display in agent detail card
 - Elapsed time, effort, and auth display in agent detail card

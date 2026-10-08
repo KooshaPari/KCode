@@ -8,27 +8,27 @@
 ## Epic 1: Extend Existing Status System (swarm stats + turn recap)
 
 ### 1.1 Add SwarmStats to TuiState (10m)
-- File: `crates/jcode-tui/src/tui/app/tui_state.rs`
+- File: `crates/kcode-tui/src/tui/app/tui_state.rs`
 - Add `SwarmStats` struct: `active: u32, completed: u32, failed: u32`
 - Add `TurnRecapState` struct: `turn_number: u32, elapsed: f32, tokens: u32, tools: u32, expires_at: Instant`
 - Add `fn swarm_stats(&self) -> SwarmStats` to TuiState trait
 - Implement using `self.remote_swarm_members` status field counts
 
 ### 1.2 Extend right_fact_lines with swarm stats (10m)
-- File: `crates/jcode-tui/src/tui/ui_input.rs` → `right_fact_lines()` (line 2484)
+- File: `crates/kcode-tui/src/tui/ui_input.rs` → `right_fact_lines()` (line 2484)
 - Add line 5: `▸ N active ● N done ✗ N failed` using `app.swarm_stats()`
 - Color: green active, dim completed, red failed
 - Only show when `active > 0 || failed > 0` (don't show when all idle)
 - Existing `right_fact_placements` auto-hides on narrow width
 
 ### 1.3 Add turn recap to draw_status (10m)
-- File: `crates/jcode-tui/src/tui/ui_input.rs` → `draw_status()` (line 754)
+- File: `crates/kcode-tui/src/tui/ui_input.rs` → `draw_status()` (line 754)
 - When status transitions Streaming→Idle: capture turn metrics, set TurnRecapState
 - Show recap for 5s: `── Turn N ── Xs · Nk tok · N tools · swarm stats`
 - After expiry: fall back to normal idle state
 
 ### 1.4 Enhance idle bottom bar with swarm summary (10m)
-- File: `crates/jcode-tui/src/tui/ui_input.rs` → `draw_status()`
+- File: `crates/kcode-tui/src/tui/ui_input.rs` → `draw_status()`
 - When idle AND agents active: `▸ N active ● N done ✗ N failed  · project_name`
 - Falls back to existing idle behavior when no agents
 
@@ -37,33 +37,33 @@
 ## Epic 2: Elicitation Overlay
 
 ### 2.1 Create elicitation types module (10m)
-- File: `crates/jcode-tui/src/tui/elicitation_types.rs` (NEW)
+- File: `crates/kcode-tui/src/tui/elicitation_types.rs` (NEW)
 - Define `ElicitRequest`, `FieldSpec`, `ChoiceOption`, `ElicitResponse`, `ElicitAction`
 - Define `ElicitOverlayState` with cursor, selected, text_buffer, response_tx
 
 ### 2.2 Add TuiEvent::ElicitRequest channel (10m)
-- File: `crates/jcode-tui/src/tui/app/tui_event.rs`
+- File: `crates/kcode-tui/src/tui/app/tui_event.rs`
 - Add `TuiEvent::ElicitRequest(ElicitRequest, oneshot::Sender<ElicitResponse>)` variant
 - Handle in main event loop: set `state.elicit_overlay`
 
 ### 2.3 Implement elicitation overlay rendering (10m)
-- File: `crates/jcode-tui/src/tui/ui_overlays.rs`
+- File: `crates/kcode-tui/src/tui/ui_overlays.rs`
 - Add `draw_elicit_overlay()` - radio list for choice, buttons for boolean
 - Border color by urgency (blue/yellow/red/gray)
 - Notes area below main field
 
 ### 2.4 Add elicitation key handling (10m)
-- File: `crates/jcode-tui/src/tui/app/key_dispatch.rs`
+- File: `crates/kcode-tui/src/tui/app/key_dispatch.rs`
 - Arrow Up/Down for choice navigation
 - Enter to confirm, Escape to cancel
 - Y/N shortcuts for boolean
 
 ### 2.5 Create ElicitationTool (10m)
-- File: `crates/jcode-app-core/src/tool/elicitation.rs` (NEW)
+- File: `crates/kcode-app-core/src/tool/elicitation.rs` (NEW)
 - Implement tool trait, parse args → ElicitRequest → oneshot → ToolOutput
 
 ### 2.6 Register elicitation tool (10m)
-- File: `crates/jcode-app-core/src/tool/mod.rs`
+- File: `crates/kcode-app-core/src/tool/mod.rs`
 - Add to tool registry, wire dispatch
 
 ---
@@ -71,7 +71,7 @@
 ## Epic 3: DevOps / CI/CD (user requested)
 
 ### 3.1 Audit upstream sync status (10m)
-- Check if jcode fork is behind upstream 1jehuang/jcode
+- Check if kcode fork is behind upstream 1jehuang/jcode
 - Identify commits to cherry-pick or merge
 - Document sync delta
 
@@ -91,7 +91,7 @@
 ### 3.4 Create install scripts (10m)
 - macOS/Linux: `curl -fsSL https://jcode.sh/install.sh | bash`
 - Windows: `irm https://jcode.sh/install.ps1 | iex`
-- Bun: `bun install jcode`
+- Bun: `bun install kcode`
 
 ---
 

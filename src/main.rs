@@ -81,7 +81,7 @@ fn configure_system_allocator() {
     const M_ARENA_MAX: i32 = -8;
     const M_MMAP_THRESHOLD: i32 = -3;
 
-    let arena_max = parse_alloc_tuning_env("JCODE_GLIBC_ARENA_MAX", 4);
+    let arena_max = parse_alloc_tuning_env("KCODE_GLIBC_ARENA_MAX", 4);
     let _ = unsafe { mallopt(M_ARENA_MAX, arena_max) };
 
     // Pin the mmap threshold so large transient allocations (history JSON,
@@ -96,7 +96,7 @@ fn configure_system_allocator() {
     // alloc/free cycles (mmap/munmap syscalls + page faults each time) for
     // predictable, immediate memory return. For a long-running interactive
     // agent, lower steady-state RSS wins.
-    let mmap_threshold = parse_alloc_tuning_env("JCODE_GLIBC_MMAP_THRESHOLD", 256 * 1024);
+    let mmap_threshold = parse_alloc_tuning_env("KCODE_GLIBC_MMAP_THRESHOLD", 256 * 1024);
     let _ = unsafe { mallopt(M_MMAP_THRESHOLD, mmap_threshold) };
 }
 
@@ -128,11 +128,11 @@ fn main() -> Result<()> {
     // Unix environments where most development happens. The CLI/provider setup
     // path can exceed that reserve before Tokio takes over, producing an
     // unrecoverable STATUS_STACK_OVERFLOW. Keep the linker defaults unchanged
-    // for every auxiliary binary and run the Jcode entry point on a deliberately
+    // for every auxiliary binary and run the Kcode entry point on a deliberately
     // sized stack instead.
     const WINDOWS_MAIN_STACK_SIZE: usize = 8 * 1024 * 1024;
     match std::thread::Builder::new()
-        .name("jcode-main".to_string())
+        .name("kcode-main".to_string())
         .stack_size(WINDOWS_MAIN_STACK_SIZE)
         .spawn(run_main)?
         .join()
@@ -148,6 +148,12 @@ fn main() -> Result<()> {
 }
 
 fn run_main() -> Result<()> {
+    // Backwards-compat: copy legacy JCODE_* env vars to KCODE_* so that users
+    // upgrading from the old `jcode` install still get their config picked up.
+    // This must run before anything that reads KCODE_* (kcode_dir, env lookups,
+    // socket paths, etc.). Idempotent — only the first call has effect.
+    kcode_storage::migrate_legacy_jcode_env();
+
     // Self-heal macOS code-signature xattrs (com.apple.provenance + quarantine)
     // and re-adhoc-sign this binary on first launch. Must run before any heavy
     // work so a freshly-installed binary that taskgated already accepted still
@@ -159,12 +165,12 @@ fn run_main() -> Result<()> {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     // SessionStart hooks should be effectively invisible to Claude Code and
-    // Codex. Handle this tiny callback before the Tokio runtime and normal Jcode
+    // Codex. Handle this tiny callback before the Tokio runtime and normal Kcode
     // startup path so it does not initialize providers, start cleanup threads,
     // check for updates, or emit first-run telemetry disclosure text into the
     // parent CLI's hook output.
     if let Some(source) = cli_launch_hint_source_invocation() {
-        return jcode::setup_hints::run_setup_hotkey(false, false, false, Some(&source));
+        return kcode::setup_hints::run_setup_hotkey(false, false, false, Some(&source));
     }
 
     // The macOS global-hotkey listener must run on the real main thread with a
@@ -173,15 +179,15 @@ fn run_main() -> Result<()> {
     // otherwise move execution onto a worker thread with no run loop and leave
     // the Cmd+; hotkey silently dead.
     if is_macos_hotkey_listener_invocation() {
-        return jcode::setup_hints::run_macos_hotkey_listener_main_thread();
+        return kcode::setup_hints::run_macos_hotkey_listener_main_thread();
     }
 
     // The generated LSUIElement helper hard-links this universal binary under
     // a dedicated executable name. Intercept that multicall entry point before
     // Tokio/CLI startup so AppKit and Notification Center stay on the real main
     // thread and the helper never initializes an agent session.
-    if jcode::cli::macos_notification_broker::is_invocation() {
-        return jcode::cli::macos_notification_broker::run();
+    if kcode::cli::macos_notification_broker::is_invocation() {
+        return kcode::cli::macos_notification_broker::run();
     }
 
     let mut builder = tokio::runtime::Builder::new_multi_thread();
@@ -210,10 +216,10 @@ fn run_main() -> Result<()> {
     }
     let runtime = builder.build()?;
 
-    runtime.block_on(async { jcode::run().await })
+    runtime.block_on(async { kcode::run().await })
 }
 
-/// True when invoked as `jcode setup-hotkey --listen-macos-hotkey`.
+/// True when invoked as `kcode setup-hotkey --listen-macos-hotkey`.
 fn is_macos_hotkey_listener_invocation() -> bool {
     args_are_macos_hotkey_listener(std::env::args().skip(1))
 }

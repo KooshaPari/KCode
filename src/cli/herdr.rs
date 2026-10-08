@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 /// Print HERDR pane info: env vars, socket path, pane ID, and reporter state.
 pub(crate) fn run_herdr_status() -> Result<()> {
-    let env = jcode_herdr::env::HerdrEnv::capture();
+    let env = kcode_herdr::env::HerdrEnv::capture();
     let reporter_active = crate::herdr::is_active();
 
     println!("HERDR Pane Status");
@@ -50,14 +50,14 @@ pub(crate) fn run_herdr_status() -> Result<()> {
     if !env.is_valid() {
         println!();
         println!(
-            "Not running inside a HERDR pane. Launch jcode from a HERDR session to enable integration."
+            "Not running inside a HERDR pane. Launch kcode from a HERDR session to enable integration."
         );
     }
 
     Ok(())
 }
 
-/// Write screen detection manifests for jcode and ForgeCode, plus the
+/// Write screen detection manifests for kcode and ForgeCode, plus the
 /// HERDR `herdr-plugin.toml` plugin manifests that register these
 /// agents with the HERDR loader.
 ///
@@ -74,44 +74,44 @@ pub(crate) fn run_herdr_install() -> Result<()> {
     let dir = herdr_agent_detection_dir()?;
     std::fs::create_dir_all(&dir)?;
 
-    let jcode_manifest = jcode_herdr::manifest::jcode_manifest();
-    let forgecode_manifest = jcode_herdr::manifest::forgecode_manifest();
+    let kcode_manifest = kcode_herdr::manifest::kcode_manifest();
+    let forgecode_manifest = kcode_herdr::manifest::forgecode_manifest();
 
-    let jcode_path = dir.join("jcode.toml");
+    let kcode_path = dir.join("kcode.toml");
     let forgecode_path = dir.join("forgecode.toml");
 
-    jcode_herdr::manifest::write_manifest(&jcode_manifest, &jcode_path)?;
-    println!("Installed {}", jcode_path.display());
+    kcode_herdr::manifest::write_manifest(&kcode_manifest, &kcode_path)?;
+    println!("Installed {}", kcode_path.display());
 
-    jcode_herdr::manifest::write_manifest(&forgecode_manifest, &forgecode_path)?;
+    kcode_herdr::manifest::write_manifest(&forgecode_manifest, &forgecode_path)?;
     println!("Installed {}", forgecode_path.display());
 
     println!();
     println!("Screen manifests written to {}", dir.display());
     println!(
-        "HERDR will use these rules to detect jcode and ForgeCode agent state from terminal output."
+        "HERDR will use these rules to detect kcode and ForgeCode agent state from terminal output."
     );
 
     // Also write the local HERDR plugin manifests under
-    // ~/.config/herdr/plugins/local/. These register jcode (and
+    // ~/.config/herdr/plugins/local/. These register kcode (and
     // ForgeCode) as a HERDR plugin that points back at the in-process
     // HerdrReporter this binary already provides — avoiding the need
-    // to clone leonardoacosta/herdr-jcode or
-    // capt-marbles/jcode-integration.
+    // to clone leonardoacosta/herdr-kcode or
+    // capt-marbles/kcode-integration.
     let plugins_dir = herdr_local_plugins_dir()?;
     std::fs::create_dir_all(&plugins_dir)?;
 
-    let jcode_plugin_path = plugins_dir.join("jcode").join("herdr-plugin.toml");
-    let jcode_plugin_manifest = jcode_herdr::plugin::jcode_plugin();
-    jcode_herdr::plugin::write_plugin(&jcode_plugin_manifest, &jcode_plugin_path)?;
-    println!("Installed {}", jcode_plugin_path.display());
+    let kcode_plugin_path = plugins_dir.join("kcode").join("herdr-plugin.toml");
+    let kcode_plugin_manifest = kcode_herdr::plugin::kcode_plugin();
+    kcode_herdr::plugin::write_plugin(&kcode_plugin_manifest, &kcode_plugin_path)?;
+    println!("Installed {}", kcode_plugin_path.display());
 
     let forgecode_plugin_path = plugins_dir.join("forgecode").join("herdr-plugin.toml");
-    let forgecode_plugin_manifest = jcode_herdr::plugin::forgecode_plugin();
-    jcode_herdr::plugin::write_plugin(&forgecode_plugin_manifest, &forgecode_plugin_path)?;
+    let forgecode_plugin_manifest = kcode_herdr::plugin::forgecode_plugin();
+    kcode_herdr::plugin::write_plugin(&forgecode_plugin_manifest, &forgecode_plugin_path)?;
     println!("Installed {}", forgecode_plugin_path.display());
 
-    for manifest in [&jcode_plugin_path, &forgecode_plugin_path] {
+    for manifest in [&kcode_plugin_path, &forgecode_plugin_path] {
         let binary = std::env::var_os("HERDR_BIN_PATH").unwrap_or_else(|| "herdr".into());
         let status = std::process::Command::new(binary)
             .args(["plugin", "link"])
@@ -130,7 +130,7 @@ pub(crate) fn run_herdr_install() -> Result<()> {
         plugins_dir.display()
     );
     println!(
-        "These register jcode and ForgeCode as local HERDR plugins — no separate plugin clone required."
+        "These register kcode and ForgeCode as local HERDR plugins — no separate plugin clone required."
     );
 
     Ok(())

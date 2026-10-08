@@ -44,7 +44,7 @@
 | origin/fix/soft-interrupt-images | 49 days |
 | origin/fix/stream-first-byte-timeout | 49 days |
 | origin/fix/transport-retry-classification | 98 days |
-| origin/fix/windows-global-jcode-path | 59 days |
+| origin/fix/windows-global-kcode-path | 59 days |
 
 ### iOS Branches (2) - Abandoned, >30 days old
 | Branch | Age |
@@ -55,7 +55,7 @@
 ### Other (1) - Abandoned, >30 days old
 | Branch | Age |
 |--------|-----|
-| origin/jcode/configurable-colors | 47 days |
+| origin/kcode/configurable-colors | 47 days |
 
 ## Kept Branches (7)
 

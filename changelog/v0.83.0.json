@@ -3,8 +3,8 @@
   "date": "2026-09-06",
   "title": "Native SSH sessions and remote login",
   "highlights": [
-    "Run the local terminal UI against a remote Jcode server over SSH, keeping the workspace, tools, and agent execution on the remote host",
-    "Explicitly import a local Jcode-managed OpenAI or Claude login to a trusted SSH host after confirmation, without overwriting an existing remote credential store",
+    "Run the local terminal UI against a remote Kcode server over SSH, keeping the workspace, tools, and agent execution on the remote host",
+    "Explicitly import a local Kcode-managed OpenAI or Claude login to a trusted SSH host after confirmation, without overwriting an existing remote credential store",
     "Sign in to Novita with its built-in API-key login option"
   ],
   "improvements": [

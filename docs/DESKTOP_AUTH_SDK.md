@@ -1,6 +1,6 @@
 # Native desktop login with the Rust SDK
 
-`jcode-sdk` exports `AuthClient`, `AuthOptions`, `LoginProvider`, `LoginMethod`,
+`kcode-sdk` exports `AuthClient`, `AuthOptions`, `LoginProvider`, `LoginMethod`,
 `AuthFlow`, `AuthPrompt`, `AuthInputKind`, and `AuthResult`.
 
 ## UI contract
@@ -9,7 +9,7 @@
   the same controller. Do not add auth input, URLs, or subprocess output to chat.
 - Build the picker with `AuthClient::providers()`. `resolve_provider()` accepts
   shared catalog IDs, aliases, and display names, filtered to supported methods.
-- `LoginMethod::ApiKey` uses `JcodeClient::set_api_key(provider.id, key)`. Keys
+- `LoginMethod::ApiKey` uses `KcodeClient::set_api_key(provider.id, key)`. Keys
   belong in a masked, transient input. Clear that input after submission.
 - For OAuth/device code, `begin(provider.id, account)` allocates an `AuthFlow`
   without starting I/O. Retain a clone for the Cancel button. On a worker thread,
@@ -27,8 +27,8 @@
 
 ## Runtime and compatibility
 
-`AuthOptions` selects a trusted local executable, `JCODE_HOME`, and the **daemon**
-socket (not the harness API socket). Defaults use `JCODE_BIN` or `jcode` on PATH,
+`AuthOptions` selects a trusted local executable, `KCODE_HOME`, and the **daemon**
+socket (not the harness API socket). Defaults use `KCODE_BIN` or `kcode` on PATH,
 inherit the credential home, and use the normal daemon socket. The client is
 local-only. A desktop attached over SSH must explicitly disable this local flow.
 
@@ -40,13 +40,13 @@ The SDK bounds subprocess output, suppresses stderr, and returns redacted errors
 Normal CLI completion already notifies the daemon. The SDK sends a best-effort
 legacy auth-change notification after saved-but-unvalidated completion, so this
 path needs no daemon or harness upgrade. The additive
-`JcodeClient::notify_auth_changed()` / TypeScript `notifyAuthChanged()` API requires
+`KcodeClient::notify_auth_changed()` / TypeScript `notifyAuthChanged()` API requires
 an updated harness bridge, advertised as `auth_changed_notification`. Its reply
 acknowledges the notification, not completion of asynchronous model discovery.
 
 OAuth supports Claude, OpenAI, Gemini, Antigravity, and Google. Copilot supports
 device code. Google requires previously configured OAuth client credentials.
-Jcode subscription supports API-key entry here, not interactive device login.
+Kcode subscription supports API-key entry here, not interactive device login.
 Other CLI-only providers are excluded instead of falling back to a terminal.
 
 ## Verification
@@ -54,5 +54,5 @@ Other CLI-only providers are excluded instead of falling back to a terminal.
 Unit tests cover catalog resolution, secret-free stdin transport, bounded errors,
 validation warnings, daemon notification, timeout/reaping, concurrent cancellation,
 and drop cleanup. An opt-in `installed_cli_begin_cancel_isolated` test uses
-`JCODE_AUTH_TEST_BINARY` with empty temporary homes for Claude/OpenAI begin/cancel.
+`KCODE_AUTH_TEST_BINARY` with empty temporary homes for Claude/OpenAI begin/cancel.
 It neither opens browsers nor completes OAuth or prints authorization URLs.

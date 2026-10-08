@@ -1,7 +1,7 @@
 {
   "name": "@1jehuang/jcode-sdk",
   "version": "1.2.0",
-  "description": "TypeScript SDK for the jcode harness API (protocol v1)",
+  "description": "TypeScript SDK for the kcode harness API (protocol v1)",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -33,7 +33,7 @@
     "typescript": "^5.7.2"
   },
   "keywords": [
-    "jcode",
+    "kcode",
     "agent",
     "sdk",
     "llm",

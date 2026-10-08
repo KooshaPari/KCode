@@ -6,7 +6,7 @@
   "created_at": "2026-09-15T06:00:00Z",
   "criterion_id": "PEP-01-04-02",
   "instance_id": "I-04",
-  "subject_scope": "jcode fork: fork features derived from upstream capability.",
+  "subject_scope": "kcode fork: fork features derived from upstream capability.",
   "modality": "OBSERVATIONAL",
   "method": "Source code inspection and cargo check for PEP-01-04-02.",
   "expected_behavior": "Fork features extend upstream MCP/TUI capabilities.",

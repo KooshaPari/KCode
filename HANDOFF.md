@@ -1,4 +1,4 @@
-# Jcode Handoff — 2026-09-15
+# Kcode Handoff — 2026-09-15
 
 ## Current State
 
@@ -6,7 +6,7 @@
 **Last commits (newest first):**
 ```
 9c37986db fix: add missing ModelRoute.usage field in test fixtures
-d5f37e1f4 feat: HERDR terminal runtime integration for jcode
+d5f37e1f4 feat: HERDR terminal runtime integration for kcode
 7d0158aa6 feat(provider): add ForgeCode runtime provider
 1f4810821 fix(tui): fix status bar compilation errors
 1e73c6425 fix: revert Cargo.lock to avoid aws-smithy-json incompatibility
@@ -16,7 +16,7 @@ d5f37e1f4 feat: HERDR terminal runtime integration for jcode
 ```
 
 **Build:** PASSES (cargo check clean, warnings only)
-**Binary:** `~/.local/bin/jcode` v0.0.0-dev (installed)
+**Binary:** `~/.local/bin/kcode` v0.0.0-dev (installed)
 
 ## Test Results (258 passed, 8 failed)
 
@@ -33,7 +33,7 @@ All core functionality works: tools, MCP, config, auth, models, etc.
 | 3 | `auth_integration_registry_matches_cli_choice_runtime_wiring` | Provider `orcarouter` missing from CLI choice map | MEDIUM | Add orcarouter mapping |
 | 4 | `login_provider_choice_table_round_trips_catalog_providers` | Same `orcarouter` issue — in catalog but not choice table | MEDIUM | Same fix as #3 |
 | 5 | `startup_timeout_kills_and_reaps_owned_process` | OS error 2 (No such file or directory) — missing test binary | HIGH | Check test setup |
-| 6 | `test_init_provider_jcode_delegates_runtime_profile_to_wrapper` | Label mismatch: "Jcode Subscription" vs "Jcode Hosted Models" | LOW | Update expected string |
+| 6 | `test_init_provider_kcode_delegates_runtime_profile_to_wrapper` | Label mismatch: "Kcode Subscription" vs "Kcode Hosted Models" | LOW | Update expected string |
 | 7 | `spawn_resume_in_new_terminal_uses_handterm_exec_mode` | Timeout waiting for launcher output file | MEDIUM | Test timing / env issue |
 | 8 | `spawn_selfdev_in_new_terminal_uses_handterm_exec_mode` | PoisonError on env lock | MEDIUM | Test isolation issue |
 
@@ -51,7 +51,7 @@ All core functionality works: tools, MCP, config, auth, models, etc.
 - **0acfb941d** Assessment dossier (85% pass, 22 criteria)
 - **1e73c6425** Cargo.lock revert for aws-smithy-json compat
 - **1f4810821** Status bar compilation fix
-- **~/.codex/AGENTS.md** and **~/.forge/AGENTS.md** updated with Jcode patterns
+- **~/.codex/AGENTS.md** and **~/.forge/AGENTS.md** updated with Kcode patterns
 
 ## Build Environment
 
@@ -61,7 +61,7 @@ export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk
 export MACOSX_DEPLOYMENT_TARGET=15.0
 
 # Install binary:
-cargo install --path . --force --bin jcode
+cargo install --path . --force --bin kcode
 ```
 
 ## Lock Contention Notes
@@ -69,15 +69,15 @@ cargo install --path . --force --bin jcode
 Shared `target/` directory across 16-128 agents causes massive lock contention. The `nohup` approach doesn't survive harness timeout. Use `launchd` for persistent background cargo tasks:
 
 ```bash
-# Create script at /tmp/jcode-test-runner.sh
-# Create plist at ~/Library/LaunchAgents/com.jcode.test-runner.plist
-# Load: launchctl load ~/Library/LaunchAgents/com.jcode.test-runner.plist
-# Check: cat /tmp/jcode-test-results.txt
-# Unload: launchctl unload ~/Library/LaunchAgents/com.jcode.test-runner.plist
+# Create script at /tmp/kcode-test-runner.sh
+# Create plist at ~/Library/LaunchAgents/com.kcode.test-runner.plist
+# Load: launchctl load ~/Library/LaunchAgents/com.kcode.test-runner.plist
+# Check: cat /tmp/kcode-test-results.txt
+# Unload: launchctl unload ~/Library/LaunchAgents/com.kcode.test-runner.plist
 ```
 
 ## Pending Work
 
 1. Fix the 8 failing tests (priority order above)
 2. Status bar visual verification in TUI
-3. Assessment dossier is at `.audit/jcode-assessment-2026-09-15/`
+3. Assessment dossier is at `.audit/kcode-assessment-2026-09-15/`

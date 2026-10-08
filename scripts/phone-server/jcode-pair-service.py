@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Token-protected HTTP service that generates jcode pairing codes.
+"""Token-protected HTTP service that generates kcode pairing codes.
 
 GET /pair-code?t=<token> -> {"code": "123456", "host": "100.109.78.41", "port": 7643, "uri": "jcode://pair?..."}
 """
 import http.server, json, re, subprocess, os
 from urllib.parse import urlparse, parse_qs
 
-TOKEN = open('/etc/jcode-pair-token').read().strip()
+TOKEN = open('/etc/kcode-pair-token').read().strip()
 HOST = '100.109.78.41'
 PORT = 7643
 
@@ -32,10 +32,10 @@ class H(http.server.BaseHTTPRequestHandler):
             return self._send(404, {'error': 'not found'})
         env = dict(os.environ)
         env['PATH'] = '/home/ec2-user/.local/bin:' + env.get('PATH', '')
-        env['JCODE_GATEWAY_HOST'] = HOST
+        env['KCODE_GATEWAY_HOST'] = HOST
         try:
             out = subprocess.run(
-                ['sudo', '-u', 'ec2-user', '-i', 'jcode', 'pair'],
+                ['sudo', '-u', 'ec2-user', '-i', 'kcode', 'pair'],
                 capture_output=True, text=True, timeout=30, env=env,
             )
             text = re.sub(r'\x1b\[[0-9;]*m', '', out.stdout + out.stderr)
