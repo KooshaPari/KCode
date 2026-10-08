@@ -39,3 +39,72 @@ fixing the kcode-side reporter source bug and the K1 terminal keybind conflict.
   amfid-accept). Launcher symlinks updated. `kcode --resume` from non-TTY
   exits cleanly. Next SIGKILL on a live pane should relaunch with
   `agent_resume.source = "herdr:jcode"` (C1 fix).
+
+## Updates since 2026-10-02
+
+The original 2026-10-02 status table is preserved above. This section
+captures the durable follow-ups that landed between 2026-10-07 and
+2026-10-08.
+
+### 2026-10-07 (C9 landing)
+
+- **Root cause diagnosed and durable fix landed** — see `10_SIGKILL_NON_TTY.md`.
+  Three pieces:
+    1. `27bd2299c` (src/main.rs): the `self_heal_macos_code_signature()` call
+       now reads `KCODE_MACOS_STARTUP_REPAIR`; default is OFF so the
+       `CS_LINKER_SIGNED` attribute survives across launches.
+    2. `bfbcf898f` (scripts/install_release.sh): post-install
+       `codesign -dvv` verifier that warns (or aborts on
+       `KCODE_REQUIRE_LINKER_SIGNED=1`) when the new install is
+       adhoc-only.
+    3. New build at `~/.kcode/builds/versions/6e0f0fc9c-dirty/kcode`
+       (138M, linker-signed, amfid accepts). Launchers updated.
+- **`27bd2299c` retroactively authored 51f4e27e8** (the original opt-in
+  that was authored but never merged). The two commits are equivalent;
+  `27bd2299c` is the durable form on the mainline.
+
+### 2026-10-08 (post-landing housekeeping)
+
+Seven follow-up commits, all on `feature/herdr-plugin-manifest`:
+
+| Commit | Type | Subject |
+|---|---|---|
+| `9677bf743` | test | 4 unit tests for the `KCODE_MACOS_STARTUP_REPAIR` opt-in gate |
+| `965d4fb40` | docs | `07_DRAFT_PRS.md` — per-issue filing invocations pre-baked (see the Filing targets section) |
+| `c2294a7f6` | docs | `09_DAEMON_OWNS_STATE.md` — forward-pointer at `10_SIGKILL_NON_TTY` |
+| `ad35201f9` | docs | `08_CUTOVER_RUNBOOK.md` — Phase 4 (C1 SIGKILL-and-relaunch verification) + Appendix C |
+| `43fbc64a0` | fix | `install_release.sh` — default profile flipped from `release-lto` to `release` (no LTO) for macOS linker-signed reliability; new `--lto` opt-in |
+| `3a228eeed` | refactor | `install_release.sh` — extract the signature classifier into `scripts/lib_install_signature.sh` + 13 unit tests in `tests/install_release_signature_test.sh`. Latent case-sensitivity bug fixed. |
+| `d0d29439a` | test | `crates/kcode-herdr/src/reporter.rs` — 4 new tests pinning the C1 fix's `herdr:{agent_label}` namespace shape across `claude`, `gpt`, `omlx`, and an unknown label |
+
+### Bodies materialized for the upstream-issue filing workflow
+
+The 6 issue bodies are now at `/tmp/{herdr,kcode}-upstream-issue-{1..4,1..2}.md`,
+ready to be submitted. C8 (file 6 upstream issues) is still operator-
+gated; each requires explicit per-issue approval. The exact filing
+commands are in `07_DRAFT_PRS.md` (one per issue, with the body file
+path inline).
+
+### Open-question status (from 10_SIGKILL_NON_TTY.md)
+
+Both Q1 ("why release-lto sometimes 0x2") and Q2 ("was stable repointed
+manually?") were diagnosed 2026-10-08 and removed from the open-questions
+section. Q1 was thin-LTO + high-codegen-units fragility (mitigated by the
+profile flip in `43fbc64a0`); Q2 was a misunderstanding of install_release.sh's
+stable/current update semantics (no manual repointing happened).
+
+## Operator-gated items still pending
+
+These are all safe to leave un-done in this session; the work is
+captured, the runbook describes the procedure, and the test bodies
+are pre-baked.
+
+- **C8 — file 6 upstream issues.** Per-issue approval required. Bodies at
+  `/tmp/`. Filing commands in `07_DRAFT_PRS.md`.
+- **C1 — Phase 4 of runbook (SIGKILL-and-relaunch verification).** Destructive.
+- **C4 — herdr server stop+restart, then `reconcile_sessions.py --apply`.**
+  Kills live panes.
+- **Upstream PR to `1jehuang/jcode`** to merge `27bd2299c` + `bfbcf898f` +
+  `9677bf743` + `3a228eeed` + `d0d29439a`. Public mutation, blocked by
+  the pre_tool hook until operator approves.
+- **K1 — Ghostty reload** so `super+enter=unbind` takes effect.
