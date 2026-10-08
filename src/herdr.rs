@@ -19,4 +19,4 @@
 //! Re-exporting the jcode-tui module guarantees a single reporter
 //! instance: whatever the CLI initializes is exactly what the TUI uses.
 
-pub use jcode_tui::herdr::*;
+pub use jcode_tui::herdr::{init, init_forced, is_active, on_session_start, shutdown};
