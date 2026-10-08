@@ -10,10 +10,10 @@
 The input flow for PWSH+HERDR involves three layers:
 
 1. **pwsh** runs inside a HERDR pane, emitting OSC 133 sequences via `Write-Host -NoNewline`
-2. **HERDR** is a terminal multiplexer; jcode reports lifecycle state to it via Unix socket (`crates/jcode-herdr/`)
-3. **jcode TUI** (Rust/crossterm/ratatui) runs in raw mode, reading crossterm events from the terminal
+2. **HERDR** is a terminal multiplexer; kcode reports lifecycle state to it via Unix socket (`crates/kcode-herdr/`)
+3. **kcode TUI** (Rust/crossterm/ratatui) runs in raw mode, reading crossterm events from the terminal
 
-The critical path: pwsh writes OSC 133 to stdout -> HERDR's PTY -> jcode's crossterm event loop.
+The critical path: pwsh writes OSC 133 to stdout -> HERDR's PTY -> kcode's crossterm event loop.
 
 ---
 
@@ -23,14 +23,14 @@ The critical path: pwsh writes OSC 133 to stdout -> HERDR's PTY -> jcode's cross
 
 **Evidence:**
 
-- **Zsh** (`crates/jcode-shell-integration/src/templates/zsh.rs`):
+- **Zsh** (`crates/kcode-shell-integration/src/templates/zsh.rs`):
   ```zsh
   printf '\033]133;A\007'   # BEL-terminated, via printf
   printf '\033]133;B\007'
   printf '\033]133;D;%d\007' $exit_code
   ```
 
-- **Pwsh** (`crates/jcode-shell-integration/src/templates/pwsh.rs`):
+- **Pwsh** (`crates/kcode-shell-integration/src/templates/pwsh.rs`):
   ```powershell
   Write-Host -NoNewline "`e]133;A`a"   # BEL-terminated, via Write-Host
   Write-Host -NoNewline "`e]133;B`a"
@@ -46,9 +46,9 @@ Both use BEL (`\x07` / `` `a ``) terminators and the same OSC 133 format. The di
 ### Finding 2: No PWSH-Specific Handling in Remote Mode
 
 **Evidence:**
-- `crates/jcode-tui/src/tui/app/remote/key_handling.rs` has zero references to `pwsh`, `PowerShell`, or shell-specific logic
-- `crates/jcode-tui/src/tui/app/remote.rs` has zero references to pwsh
-- `crates/jcode-tui/src/tui/app/remote/input_dispatch.rs` has zero references to pwsh
+- `crates/kcode-tui/src/tui/app/remote/key_handling.rs` has zero references to `pwsh`, `PowerShell`, or shell-specific logic
+- `crates/kcode-tui/src/tui/app/remote.rs` has zero references to pwsh
+- `crates/kcode-tui/src/tui/app/remote/input_dispatch.rs` has zero references to pwsh
 - The `!` command handler (`extract_input_shell_command` in `input.rs:85`) delegates to `build_input_shell_command` which:
   - On **non-Windows**: uses `bash -c <command>` (line 99)
   - On **Windows**: uses `cmd.exe /C <command>` (line 92)
@@ -58,8 +58,8 @@ Both use BEL (`\x07` / `` `a ``) terminators and the same OSC 133 format. The di
 ### Finding 3: HERDR State Reporting is Shell-Agnostic (Not the Direct Cause)
 
 **Evidence:**
-- `crates/jcode-herdr/src/reporter.rs`: Reports `AgentState` (Working/Idle/Blocked) via Unix socket to HERDR
-- `crates/jcode-tui/src/herdr.rs`: Wraps the reporter as a global singleton; called from `local.rs`, `turn.rs`, `ui_elicit.rs`
+- `crates/kcode-herdr/src/reporter.rs`: Reports `AgentState` (Working/Idle/Blocked) via Unix socket to HERDR
+- `crates/kcode-tui/src/herdr.rs`: Wraps the reporter as a global singleton; called from `local.rs`, `turn.rs`, `ui_elicit.rs`
 - HERDR state reports are fire-and-forget socket writes; they don't interact with the PTY or terminal I/O
 
 **Impact:** HERDR state reporting is not the direct cause of input issues. The problem is in how HERDR manages the PTY and how pwsh's output flows through it.
@@ -67,8 +67,8 @@ Both use BEL (`\x07` / `` `a ``) terminators and the same OSC 133 format. The di
 ### Finding 4: PTY Interaction Layer - The Real Collision Point
 
 **Evidence:**
-- jcode TUI runs in crossterm raw mode (captures all key events, mouse events, bracketed paste)
-- `reapply_terminal_modes_to` (`crates/jcode-tui/src/tui/mod.rs:165`) reasserts: bracketed paste, focus change, mouse capture, kitty keyboard
+- kcode TUI runs in crossterm raw mode (captures all key events, mouse events, bracketed paste)
+- `reapply_terminal_modes_to` (`crates/kcode-tui/src/tui/mod.rs:165`) reasserts: bracketed paste, focus change, mouse capture, kitty keyboard
 - pwsh's PSReadLine also manages the terminal: it uses ANSI sequences for syntax highlighting, cursor movement, and input editing
 - HERDR's PTY sits between them
 
@@ -76,10 +76,10 @@ Both use BEL (`\x07` / `` `a ``) terminators and the same OSC 133 format. The di
 1. pwsh starts, PSReadLine initializes and sets terminal modes
 2. pwsh shell integration writes OSC 133 sequences via `Write-Host`
 3. In HERDR's PTY, these sequences may be:
-   - Buffered and delivered in chunks to jcode's crossterm reader
+   - Buffered and delivered in chunks to kcode's crossterm reader
    - Partially corrupted by HERDR's own terminal management
    - Interleaved with HERDR's own escape sequences (pane boundaries, focus events)
-4. jcode's crossterm receives malformed or partial escape sequences
+4. kcode's crossterm receives malformed or partial escape sequences
 5. Unrecognized bytes appear as "random input symbols" in the input bar
 
 ### Finding 5: "Input Bar Becomes New Shell Session" on Message Send
@@ -106,7 +106,7 @@ Both use BEL (`\x07` / `` `a ``) terminators and the same OSC 133 format. The di
 - In a HERDR pane, if pwsh exits, HERDR may close the pane
 
 **Impact:** "exit" behavior depends on context:
-- In jcode TUI input bar: treated as a chat message, sent to the server
+- In kcode TUI input bar: treated as a chat message, sent to the server
 - In pwsh's own shell (if user focused the shell directly): pwsh exits, HERDR closes pane
 - The "sometimes closes pane, sometimes goes back to chat" behavior is a race condition between pwsh's exit handling and HERDR's pane management
 
@@ -155,8 +155,8 @@ Write-Host -NoNewline "`e]133;A`a"
 [Console]::Write("`e]133;A`a")
 ```
 
-**File:** `crates/jcode-shell-integration/src/templates/pwsh.rs` (constants `PWSH_PRECMD`, `PWSH_PREEXEC`, `PWSH_INIT`)
-**File:** `crates/jcode-shell-integration/src/hooks.rs` (function `pwsh_hooks`)
+**File:** `crates/kcode-shell-integration/src/templates/pwsh.rs` (constants `PWSH_PRECMD`, `PWSH_PREEXEC`, `PWSH_INIT`)
+**File:** `crates/kcode-shell-integration/src/hooks.rs` (function `pwsh_hooks`)
 
 ### Fix 2: Shell-Aware `!` Command on Windows (MEDIUM PRIORITY)
 
@@ -181,14 +181,14 @@ Detect the current shell and use the appropriate interpreter:
 }
 ```
 
-**File:** `crates/jcode-tui/src/tui/app/input.rs` (function `build_input_shell_command`)
-**File:** `crates/jcode-app-core/src/server/client_actions.rs` (function `build_input_shell_command`)
+**File:** `crates/kcode-tui/src/tui/app/input.rs` (function `build_input_shell_command`)
+**File:** `crates/kcode-app-core/src/server/client_actions.rs` (function `build_input_shell_command`)
 
 ### Fix 3: Consume leaked OSC sequences in the TUI event loop (HIGH PRIORITY)
 
 Add an OSC 133 sequence filter in the crossterm event processing path. When an unrecognized sequence starting with `\x1b]133;` is detected, consume it silently rather than passing it through as input.
 
-**File:** `crates/jcode-tui/src/tui/app/remote/key_handling.rs` (function `handle_remote_key_event` or the event polling loop)
+**File:** `crates/kcode-tui/src/tui/app/remote/key_handling.rs` (function `handle_remote_key_event` or the event polling loop)
 
 ### Fix 4: Add `/exit` as alias for `/quit` in remote mode (LOW PRIORITY)
 
@@ -198,13 +198,13 @@ if trimmed == "/quit" || trimmed == "/exit" {
 }
 ```
 
-**File:** `crates/jcode-tui/src/tui/app/remote/key_handling.rs` (around line 1073)
+**File:** `crates/kcode-tui/src/tui/app/remote/key_handling.rs` (around line 1073)
 
 ### Fix 5: Clear input buffer after send in HERDR+PWSH mode (MEDIUM PRIORITY)
 
 After `begin_remote_send`, if running in HERDR+PWSH, drain any pending bytes from the PTY to prevent stale OSC sequences from entering the input buffer.
 
-**File:** `crates/jcode-tui/src/tui/app/remote/input_dispatch.rs` (function `begin_remote_send`)
+**File:** `crates/kcode-tui/src/tui/app/remote/input_dispatch.rs` (function `begin_remote_send`)
 
 ---
 
@@ -216,7 +216,7 @@ After `begin_remote_send`, if running in HERDR+PWSH, drain any pending bytes fro
 
 **Reproduction steps (estimated):**
 1. Launch HERDR on Windows
-2. In a HERDR pane, start jcode with pwsh as the shell
+2. In a HERDR pane, start kcode with pwsh as the shell
 3. Type a message and press Enter
 4. Observe: input bar may show random characters after send
 5. Type `!dir` to test the `!` command (runs cmd.exe, not pwsh)

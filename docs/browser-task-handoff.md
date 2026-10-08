@@ -1,7 +1,7 @@
 # Jev browser task handoff
 
 `browser(action="handoff")` delegates a whole task in one explicit tab and frame.
-Jcode owns the task state and execution loop. Jev selects the next action from the
+Kcode owns the task state and execution loop. Jev selects the next action from the
 current trusted action catalog using the typed Decisions API. It does not generate
 JavaScript or run a separate chat-completion agent.
 
@@ -12,7 +12,7 @@ Each cycle sends:
 - Previous actions, their results, and evidence from pages visited earlier.
 - Available browser actions and the remaining action budget.
 
-Jcode executes the selected action, observes its result, appends that evidence, and
+Kcode executes the selected action, observes its result, appends that evidence, and
 consults Jev again. Navigation is an intermediate step, not an implicit handback.
 The default budget is 40 actions, with a maximum of 100 and a ten-minute task deadline.
 Results use a rolling retention budget, and the transport compacts older history to
@@ -50,7 +50,7 @@ orchestration.
 Run the browser regression suite through `selfdev test`:
 
 ```sh
-cargo test -p jcode-app-core --lib browser
+cargo test -p kcode-app-core --lib browser
 ```
 
 For live acceptance, check browser readiness, create a dedicated disposable

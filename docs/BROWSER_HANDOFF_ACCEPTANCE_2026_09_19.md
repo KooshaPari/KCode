@@ -3,13 +3,13 @@
 ## Outcome
 
 The browser description and action schema explicitly default browser tasks to
-Jev handoff. Three independently launched fresh Jcode sessions selected handoff
+Jev handoff. Three independently launched fresh Kcode sessions selected handoff
 from ordinary navigation prompts that never mentioned handoff. All three
 completed four navigation clicks through Jev and returned the fresh receipt.
 Three paired direct-action sessions also completed correctly.
 
 **This establishes the new CLI's default selection, browser correctness, and a
-measured BYOK speed advantage on this workload. It does not establish live Jcode
+measured BYOK speed advantage on this workload. It does not establish live Kcode
 subscription availability.**
 
 Additional acceptance on the real Rust and Python documentation sites confirmed
@@ -23,16 +23,16 @@ instruction and are excluded from speed comparisons, not silently discarded.
 
 - Parent model: `gpt-6-astra`, native OpenAI provider, identical in both arms.
 - Handoff provider: explicitly `openrouter` using existing local BYOK credentials.
-- Exact binary: `target/selfdev/jcode`, built via coordinated self-dev build.
+- Exact binary: `target/selfdev/kcode`, built via coordinated self-dev build.
 - SHA-256: `eae091b252d546cca723a465acfb5e3085bd33eea428642c27513cda5f27c63f`.
 - Built version: `50c4533fb-dirty-8dce190e3d68`. Its Rust changes were subsequently
   committed as `831171a47` without changing the measured Rust source.
-- Immutable artifact: `~/.jcode/builds/versions/50c4533fb-dirty-8dce190e3d68/jcode`.
+- Immutable artifact: `~/.kcode/builds/versions/50c4533fb-dirty-8dce190e3d68/kcode`.
   A later confidence audit reconfirmed its SHA-256 above. Other concurrent work
-  has since replaced `target/selfdev/jcode`, so use the immutable artifact when
+  has since replaced `target/selfdev/kcode`, so use the immutable artifact when
   reproducing these particular measurements.
 - Each trial launched that exact binary as its own daemon with private socket
-  and runtime directory, then a fresh `jcode run --ndjson` session in an empty
+  and runtime directory, then a fresh `kcode run --ndjson` session in an empty
   workspace. It did not use the old shared daemon.
 - Dedicated tab, fresh loopback URL and receipt per trial. Normal and direct
   order alternated. No measured trials were dropped or retried.
@@ -67,7 +67,7 @@ by enabling debug control only on the private daemon and passing its socket to
 the debug subcommand explicitly.
 
 Local raw evidence is retained under
-`$JCODE_SCRATCH_DIR/browser-handoff-benchmark-byok-v2/`, including per-trial prompts,
+`$KCODE_SCRATCH_DIR/browser-handoff-benchmark-byok-v2/`, including per-trial prompts,
 NDJSON transcripts, independent result records, binary metadata and summary.
 See `scripts/benchmark_browser_handoff.md` for repeatable invocation.
 
@@ -136,8 +136,8 @@ handoffs and the continuing need for safe parent recovery on complex pages.
 Local raw evidence, including exact prompts, complete NDJSON tool results,
 independent public-page snapshots, answers and binary hashes, is retained under:
 
-- `$JCODE_SCRATCH_DIR/browser-handoff-public-rust/`
-- `$JCODE_SCRATCH_DIR/browser-handoff-public-python/`
+- `$KCODE_SCRATCH_DIR/browser-handoff-public-rust/`
+- `$KCODE_SCRATCH_DIR/browser-handoff-public-python/`
 
 Real-site acceptance therefore extends the fixture result to actual user-facing
 CLI/browser workflows, while retaining the subscription and activation blockers
@@ -146,7 +146,7 @@ below. No BYOK result is presented as subscriber acceptance.
 ## Subscription implementation and blockers
 
 The browser uses the shared Jev client with a separate browser purpose and
-`JCODE_BROWSER_JEV_PROVIDER`. Auto selection prefers Jcode credentials, checks
+`KCODE_BROWSER_JEV_PROVIDER`. Auto selection prefers Kcode credentials, checks
 live `/v1/me` capability `browser_jev`, then uses bounded typed choice requests at
 `/v1/decisions`. It never silently spends a BYOK balance after an entitlement or
 billing failure. Memory provider selection and `memory_jev` gating remain separate.
@@ -157,8 +157,8 @@ gating with a shared account-wide quota (60 attempts/minute, 1,000/day by defaul
 Memory and browser calls cannot bypass that quota by switching purpose.
 
 Live subscription verification was attempted with
-`JCODE_BROWSER_JEV_PROVIDER=jcode` and the ignored
-`live_subscription_jev_decision_smoke` test. It stopped at missing Jcode credentials,
+`KCODE_BROWSER_JEV_PROVIDER=kcode` and the ignored
+`live_subscription_jev_decision_smoke` test. It stopped at missing Kcode credentials,
 without falling back or transmitting fixture data. A read-only deployed secret
 name check separately confirmed that the gateway has no `OPENROUTER_API_KEY`.
 No personal key was copied to the gateway, no subscription was created, and no
@@ -166,12 +166,12 @@ billing settings were altered. The backend change has **not been deployed**.
 
 To finish subscription acceptance:
 
-1. Sign in to an eligible account with `jcode account login`.
+1. Sign in to an eligible account with `kcode account login`.
 2. Provision an explicitly approved dedicated, hard-spend-capped gateway key.
 3. Deploy the reviewed backend change and verify `browser_jev: true` for the
    entitled account, while denied accounts remain denied.
 4. Run the subscription-only smoke test, then the fresh-session benchmark with
-   `JCODE_BROWSER_JEV_PROVIDER=jcode` and expected provider `jcode`.
+   `KCODE_BROWSER_JEV_PROVIDER=kcode` and expected provider `kcode`.
 
 ## Other verification and activation
 

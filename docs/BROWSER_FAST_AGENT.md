@@ -16,22 +16,22 @@ runtime, so Desktop and the TUI use the same controller.
 ## Setup
 
 Check `browser` with `action: "status"` first and run setup only if not ready.
-Sign in with `jcode account login` for subscription access. The browser client
-prefers the Jcode subscription credential, verifies the live `/v1/me`
+Sign in with `kcode account login` for subscription access. The browser client
+prefers the Kcode subscription credential, verifies the live `/v1/me`
 `browser_jev` capability, then sends bounded choice requests to `/v1/decisions`.
 This requires the gateway browser rollout and its upstream service configuration.
 A saved login alone is not proof of entitlement or deployed support.
 
-`JCODE_BROWSER_JEV_PROVIDER` can explicitly select `jcode`, `openrouter`,
-`typesafe`, or `aimlapi`. Its default is `auto`: Jcode, then OpenRouter, TypeSafe,
+`KCODE_BROWSER_JEV_PROVIDER` can explicitly select `kcode`, `openrouter`,
+`typesafe`, or `aimlapi`. Its default is `auto`: Kcode, then OpenRouter, TypeSafe,
 and AI/ML API, choosing the first configured credential. This setting is separate
 from memory's Jev provider. An entitlement, billing, or network error never
 silently switches to a personal paid key. Direct browser actions remain available.
 
-For OpenRouter BYOK, connect using `jcode login openrouter`. Credentials remain
+For OpenRouter BYOK, connect using `kcode login openrouter`. Credentials remain
 bound to the selected provider, never the shared OpenAI-compatible credential.
 The OpenRouter route uses `POST https://openrouter.ai/api/alpha/decisions`, not
-chat completions, and uses that key's credits and cap. Jcode does not buy credits
+chat completions, and uses that key's credits and cap. Kcode does not buy credits
 or switch your main coding model.
 
 ## Interface and control boundary
@@ -77,7 +77,7 @@ accepting `done`, the controller observes again and hands back if the observed
 DOM changed. Observations include node identities and scroll position. The
 result contains `status`, `reason`, `requested_help`, `action_trace`,
 `final_observation`, and `model`. When the transport is configured,
-`decision_provider` records its selected route (`jcode` for subscription).
+`decision_provider` records its selected route (`kcode` for subscription).
 This route field alone is not proof of a successful upstream request.
 A help choice returns `status: "hand_back"`
 with `requested_help: "script"` or `"text"`. The parent reads the goal and page
@@ -94,7 +94,7 @@ does not receive screenshot pixels or arbitrary action-result payloads. Known
 credential patterns are redacted, but this is not a complete secret detector.
 Do not delegate confidential page content you do not want sent to the selected
 provider and its upstream Jev service. Subscription requests also pass through
-the Jcode gateway. A screenshot returned to the parent cannot be text-redacted.
+the Kcode gateway. A screenshot returned to the parent cannot be text-redacted.
 
 An uncertain in-flight action must not be blindly retried: cancellation
 or a timeout cannot undo an action already delivered to Firefox.
@@ -122,20 +122,20 @@ process environment, without putting its value in shell history or logs.
 
 ```bash
 cargo build --profile selfdev
-BIN="$PWD/target/selfdev/jcode"
-REAL_JCODE_HOME="${JCODE_HOME:-$HOME/.jcode}"
-export JCODE_HOME="$(mktemp -d "$JCODE_SCRATCH_DIR/browser-fast-home.XXXXXX")"
-export JCODE_RUNTIME_DIR="$(mktemp -d "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/jbf.XXXXXX")"
-SOCK="$JCODE_RUNTIME_DIR/jcode-browser-fast.sock"
-cp -a "$REAL_JCODE_HOME/browser" "$JCODE_HOME/browser"
+BIN="$PWD/target/selfdev/kcode"
+REAL_KCODE_HOME="${KCODE_HOME:-$HOME/.kcode}"
+export KCODE_HOME="$(mktemp -d "$KCODE_SCRATCH_DIR/browser-fast-home.XXXXXX")"
+export KCODE_RUNTIME_DIR="$(mktemp -d "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/jbf.XXXXXX")"
+SOCK="$KCODE_RUNTIME_DIR/kcode-browser-fast.sock"
+cp -a "$REAL_KCODE_HOME/browser" "$KCODE_HOME/browser"
 : "${OPENROUTER_API_KEY:?Provide OpenRouter credentials through the process environment}"
 : "${BROWSER_SESSION:?Use the existing dedicated fixture browser session}"
-: "${JCODE_BROWSER_HANDOFF_TEST_TAB_ID:?Use a disposable local fixture tab}"
+: "${KCODE_BROWSER_HANDOFF_TEST_TAB_ID:?Use a disposable local fixture tab}"
 
 # Enable debug control only for this disposable acceptance daemon.
-JCODE_DEBUG_CONTROL=1 "$BIN" --no-update --provider openrouter --socket "$SOCK" serve \
+KCODE_DEBUG_CONTROL=1 "$BIN" --no-update --provider openrouter --socket "$SOCK" serve \
   --temporary-server --owner-pid "$$" --temp-idle-timeout-secs 300 \
-  >"$JCODE_HOME/acceptance-server.log" 2>&1 &
+  >"$KCODE_HOME/acceptance-server.log" 2>&1 &
 SERVER_PID=$!
 # Wait for this private debug listener, never fall back to the shared socket.
 for attempt in $(seq 1 100); do
@@ -149,7 +149,7 @@ SID=$("$BIN" debug --socket "$SOCK" create_session "$PWD" |
   python3 -c 'import json,sys; print(json.load(sys.stdin)["session_id"])')
 
 PAYLOAD=$(python3 -c 'import json,os; print(json.dumps({
-  "action":"handoff", "tab_id":int(os.environ["JCODE_BROWSER_HANDOFF_TEST_TAB_ID"]),
+  "action":"handoff", "tab_id":int(os.environ["KCODE_BROWSER_HANDOFF_TEST_TAB_ID"]),
   "frame_id":0, "max_steps":8,
   "goal":"Open Documentation, then Browser controls. Finish only when Fast browser integration verified is visible. Stay on the local fixture website."
 }))')
@@ -168,11 +168,11 @@ reload, or promotion commands to clean up an acceptance daemon.
 To verify subscription access without accidentally measuring BYOK:
 
 ```bash
-JCODE_BROWSER_JEV_PROVIDER=jcode cargo test -p jcode-app-core \
+KCODE_BROWSER_JEV_PROVIDER=kcode cargo test -p kcode-app-core \
   live_subscription_jev_decision_smoke -- --ignored --nocapture
 ```
 
-This test refuses any non-Jcode route and requires a real typed decision. For
+This test refuses any non-Kcode route and requires a real typed decision. For
 fresh-session default selection and paired latency measurement, see
 `scripts/benchmark_browser_handoff.md`. Use the newly built binary and validate
 both completion and the recorded provider before attributing timings to the
@@ -186,7 +186,7 @@ navigation test. Use `/blocked` for the authentication handback test.
 The reproducible runner owns a local HTTP fixture for the entire test sequence,
 resets its designated disposable tab before each case, and clears that tab on
 exit. It refuses a non-fixture tab. Prepare an `about:blank` disposable tab or
-reuse a prior local Jcode fixture, and use an existing browser session:
+reuse a prior local Kcode fixture, and use an existing browser session:
 
 ```bash
 BROWSER_SESSION=<existing-session-name> \
@@ -205,13 +205,13 @@ They do not create, select, focus, or close a tab/window themselves.
 
 ```bash
 # Start page -> Documentation -> Browser controls -> visible verification text.
-JCODE_BROWSER_HANDOFF_TEST_TAB_ID=<dedicated-tab-id> \
-  cargo test -p jcode-app-core live_browser_handoff_completes_local_navigation \
+KCODE_BROWSER_HANDOFF_TEST_TAB_ID=<dedicated-tab-id> \
+  cargo test -p kcode-app-core live_browser_handoff_completes_local_navigation \
   -- --ignored --nocapture
 
 # A separate dedicated local page with a visible OTP/password control.
-JCODE_BROWSER_HANDOFF_TEST_BLOCKED_TAB_ID=<dedicated-blocked-tab-id> \
-  cargo test -p jcode-app-core live_browser_handoff_sensitive_fixture_hands_back_without_actions \
+KCODE_BROWSER_HANDOFF_TEST_BLOCKED_TAB_ID=<dedicated-blocked-tab-id> \
+  cargo test -p kcode-app-core live_browser_handoff_sensitive_fixture_hands_back_without_actions \
   -- --ignored --nocapture
 ```
 
@@ -227,12 +227,12 @@ is not evidence of either live acceptance workflow.
 Inspect only while other work is active:
 
 ```bash
-SHARED="/run/user/$(id -u)/jcode.sock"
-jcode debug --socket "$SHARED" sessions
-jcode debug --socket "$SHARED" clients:map
-jcode debug --socket "$SHARED" background:tasks
-jcode debug --socket "$SHARED" jobs
-jcode debug --socket "$SHARED" server:info
+SHARED="/run/user/$(id -u)/kcode.sock"
+kcode debug --socket "$SHARED" sessions
+kcode debug --socket "$SHARED" clients:map
+kcode debug --socket "$SHARED" background:tasks
+kcode debug --socket "$SHARED" jobs
+kcode debug --socket "$SHARED" server:info
 ```
 
 `sessions` exposes `is_processing` and `status`. Defer activation while any
@@ -245,8 +245,8 @@ Only after validation, explicit activation authorization, installation of the
 immutable tested version, and an agreed idle window:
 
 ```bash
-jcode server promote <installed-version> --json
-jcode server reload --json
+kcode server promote <installed-version> --json
+kcode server reload --json
 ```
 
 Promotion selects the daemon binary but does not replace the running process.

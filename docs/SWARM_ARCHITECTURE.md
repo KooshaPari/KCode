@@ -210,7 +210,7 @@ All agents can send DMs and subtree broadcasts.
 
 Each swarm can carry a short, human-readable label (`set_swarm_label`), unique
 case-insensitively across swarms and persisted in
-`~/.jcode/state/swarm-labels.json`. `list_swarms` returns the live swarm
+`~/.kcode/state/swarm-labels.json`. `list_swarms` returns the live swarm
 directory: id, label, coordinator, member count, and which swarm is yours.
 
 Cross-swarm communication is DM-only. `dm` (or `message`) with

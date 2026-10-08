@@ -1,11 +1,11 @@
-# Issue 2: Manager Mode for Jcode
+# Issue 2: Manager Mode for Kcode
 
 ## Problem
 
 When the user asks the agent to "just coordinate" or "manage other agents" (orchestrator/verbal mode), the agent ignores the request and keeps doing implementation work itself. There's no real distinction between "do the work" and "direct others to do the work."
 
 **Current state:**
-- Jcode operates in a single mode: autonomous implementer
+- Kcode operates in a single mode: autonomous implementer
 - The `swarm` tool exists but agents prefer to do work directly
 - No CLI flag or config to enforce manager-only behavior
 - User must repeatedly say "don't code, just coordinate" and the agent still codes
@@ -55,9 +55,9 @@ When `AgentMode::Manager` is active:
 
 #### 1. CLI Flag
 ```bash
-jcode --mode manager    # or --mgr
-jcode --mode researcher # or --research
-jcode                   # default: execute mode
+kcode --mode manager    # or --mgr
+kcode --mode researcher # or --research
+kcode                   # default: execute mode
 ```
 
 #### 2. Tool Gating (crucial)
@@ -112,7 +112,7 @@ Manager mode naturally pairs with swarm:
 
 ### Config File Support
 ```toml
-# .jcode/config.toml
+# .kcode/config.toml
 [agent]
 mode = "manager"  # or "execute" or "researcher"
 
@@ -133,8 +133,8 @@ review_before_merge = true
 
 | File | Change |
 |------|--------|
-| `crates/jcode-cli/src/cli.rs` | Add `--mode` flag |
-| `crates/jcode-tui/src/tui/status_bar.rs` | Show mode indicator |
-| `crates/jcode-base/src/tools/` | Add tool gating by mode |
-| `crates/jcode-base/src/agent/` | Mode-aware system prompt |
-| `crates/jcode-tui/src/tui/app/commands.rs` | Mode-aware command dispatch |
+| `crates/kcode-cli/src/cli.rs` | Add `--mode` flag |
+| `crates/kcode-tui/src/tui/status_bar.rs` | Show mode indicator |
+| `crates/kcode-base/src/tools/` | Add tool gating by mode |
+| `crates/kcode-base/src/agent/` | Mode-aware system prompt |
+| `crates/kcode-tui/src/tui/app/commands.rs` | Mode-aware command dispatch |

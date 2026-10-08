@@ -1,6 +1,6 @@
 # Windows Support
 
-Jcode supports Windows as a first-class platform. The Windows implementation uses native named pipes, Windows process management, PowerShell installation, and platform-specific launch-hotkey integration.
+Kcode supports Windows as a first-class platform. The Windows implementation uses native named pipes, Windows process management, PowerShell installation, and platform-specific launch-hotkey integration.
 
 ## Support status
 
@@ -10,7 +10,7 @@ Jcode supports Windows as a first-class platform. The Windows implementation use
 | Windows 11 ARM64 | Release builds and automated install checks |
 | PowerShell installer | Tested on Windows CI |
 | Native IPC and process lifecycle | Covered by targeted and end-to-end Windows tests |
-| `jcode update` | Supported with SHA-256 verification |
+| `kcode update` | Supported with SHA-256 verification |
 | Release assets | x64 and ARM64 `.exe` and `.tar.gz` assets |
 | Authenticode signing | Release pipeline ready; requires the one-time Azure configuration below |
 
@@ -21,7 +21,7 @@ PowerShell 5.1 or later is required by the installer. The x64 build is the defau
 Open PowerShell and run:
 
 ```powershell
-irm https://jcode.sh/install.ps1 | iex
+irm https://kcode.sh/install.ps1 | iex
 ```
 
 The installer:
@@ -29,24 +29,24 @@ The installer:
 1. Detects x64 or ARM64.
 2. Downloads the matching asset from the official GitHub release.
 3. Verifies it against the release's `SHA256SUMS` file.
-4. Installs immutable, stable, and launcher copies under `%LOCALAPPDATA%\jcode`.
-5. Adds `%LOCALAPPDATA%\jcode\bin` to the user `PATH`.
+4. Installs immutable, stable, and launcher copies under `%LOCALAPPDATA%\kcode`.
+5. Adds `%LOCALAPPDATA%\kcode\bin` to the user `PATH`.
 
 Alacritty installation and the global launch hotkey are optional and are no longer installed automatically. To request both explicitly:
 
 ```powershell
-$script = [scriptblock]::Create((irm https://jcode.sh/install.ps1))
+$script = [scriptblock]::Create((irm https://kcode.sh/install.ps1))
 & $script -ConfigureAlacritty -ConfigureHotkey
 ```
 
-Jcode can also offer these options interactively after launch.
+Kcode can also offer these options interactively after launch.
 
 If a release does not contain a matching prebuilt Windows asset, the installer
 fails with an actionable message rather than silently starting a long build.
 To explicitly allow a source build:
 
 ```powershell
-$script = [scriptblock]::Create((irm https://jcode.sh/install.ps1))
+$script = [scriptblock]::Create((irm https://kcode.sh/install.ps1))
 & $script -BuildFromSource
 ```
 
@@ -55,17 +55,17 @@ Source builds require Git, Rust, and Visual Studio 2022 Build Tools with the
 
 ### Install paths
 
-- Launcher: `%LOCALAPPDATA%\jcode\bin\jcode.exe`
-- Stable binary: `%LOCALAPPDATA%\jcode\builds\stable\jcode.exe`
-- Versioned binary: `%LOCALAPPDATA%\jcode\builds\versions\<version>\jcode.exe`
-- User data and configuration: `%USERPROFILE%\.jcode`
+- Launcher: `%LOCALAPPDATA%\kcode\bin\kcode.exe`
+- Stable binary: `%LOCALAPPDATA%\kcode\builds\stable\kcode.exe`
+- Versioned binary: `%LOCALAPPDATA%\kcode\builds\versions\<version>\kcode.exe`
+- User data and configuration: `%USERPROFILE%\.kcode`
 
 ### Verify an installation
 
 ```powershell
-jcode --version
-Get-Command jcode
-Get-FileHash (Get-Command jcode).Source -Algorithm SHA256
+kcode --version
+Get-Command kcode
+Get-FileHash (Get-Command kcode).Source -Algorithm SHA256
 ```
 
 Compare the hash with `SHA256SUMS` on the matching [GitHub release](https://github.com/1jehuang/jcode/releases/latest).
@@ -73,7 +73,7 @@ Compare the hash with `SHA256SUMS` on the matching [GitHub release](https://gith
 After Authenticode signing is enabled, this must report `Valid`:
 
 ```powershell
-Get-AuthenticodeSignature (Get-Command jcode).Source | Format-List Status,StatusMessage,SignerCertificate
+Get-AuthenticodeSignature (Get-Command kcode).Source | Format-List Status,StatusMessage,SignerCertificate
 ```
 
 ## Microsoft Defender and SmartScreen
@@ -144,16 +144,16 @@ Windows is covered by:
 
 ## Architecture notes
 
-Unix domain sockets are replaced by Windows named pipes under `crates/jcode-base/src/transport/windows.rs`. Platform-specific filesystem, process, update, and replacement behavior is selected at compile time with `#[cfg(windows)]`, so Windows support does not add runtime branching to Unix builds.
+Unix domain sockets are replaced by Windows named pipes under `crates/kcode-base/src/transport/windows.rs`. Platform-specific filesystem, process, update, and replacement behavior is selected at compile time with `#[cfg(windows)]`, so Windows support does not add runtime branching to Unix builds.
 
-Windows launch-hotkey setup is implemented in `crates/jcode-setup-hints/src/windows_setup.rs` and is only installed after explicit user consent.
+Windows launch-hotkey setup is implemented in `crates/kcode-setup-hints/src/windows_setup.rs` and is only installed after explicit user consent.
 
 ## Reporting Windows problems
 
 Include the following in a GitHub issue:
 
 - Windows edition, version, and architecture
-- Jcode version from `jcode --version`
+- Kcode version from `kcode --version`
 - Installation method
 - Terminal and PowerShell version (`$PSVersionTable.PSVersion`)
 - Exact Defender or SmartScreen message
@@ -161,4 +161,4 @@ Include the following in a GitHub issue:
 - SHA-256 from `Get-FileHash`
 - Authenticode status from `Get-AuthenticodeSignature`
 
-Do not upload private configuration, credentials, session transcripts, or `.jcode` authentication files.
+Do not upload private configuration, credentials, session transcripts, or `.kcode` authentication files.

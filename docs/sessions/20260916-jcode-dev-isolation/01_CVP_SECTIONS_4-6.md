@@ -10,7 +10,7 @@ Applies to all three primary repos per docs-3 dossiers.
 
 | Baseline | Repo | Pin | Status |
 |----------|------|-----|--------|
-| KCode owned build | KooshaPari/jcode | v0.85.1-k1.1.0 | Built, tested 16/16 |
+| KCode owned build | KooshaPari/kcode | v0.85.1-k1.1.0 | Built, tested 16/16 |
 | HeliosLite owned build | KooshaPari/HeliosLite | v2.13.21-h.0.2.1 | Built, tested 429/430 |
 | HeliosCLI owned build | KooshaPari/HeliosCLI | v0.2.1 | Built, tested 28/28 |
 | Upstream ForgeCode | tailcallhq/forgecode | NEEDS PIN | Not cloned |
@@ -35,7 +35,7 @@ Applies to all three primary repos per docs-3 dossiers.
 - harness_checkpoint: git-based checkpoint/rollback
 - kla: CLI recording/screenshot tool
 
-**KCode over jcode:**
+**KCode over kcode:**
 - HERDR terminal detection + reporter (socket-based state machine)
 - Fork identity: v0.85.1-k1.1.0, herdr-kind CLI arg
 
@@ -87,7 +87,7 @@ All pilots use the same long-running coding + transport-fault corpus as defined 
 
 ### Pilot Execution Protocol
 
-1. Pin exact tool versions (jcode, helioslite, helios CLI)
+1. Pin exact tool versions (kcode, helioslite, helios CLI)
 2. Clone fixture repository at fixed commit
 3. Run each repo's binary against identical task script
 4. Record: time, memory, CPU, mutations, errors

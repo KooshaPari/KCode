@@ -1,56 +1,47 @@
 # Repository Guidelines
 
-## Repository Scope
+## Last updated
+2026-10-05 (decoded from jcode to kcode; backwards-compat shim added)
 
-- Jcode Desktop is in a separate repository.
+## Working notes
+- The product is now branded **kcode**. The cargo package is `kcode`; the binary on PATH is `kcode`; the home dir is `~/.kcode/`.
+- The fork is the KooshaPari fork of `1jehuang/jcode`. v0.27.x+ builds of kcode retain the ability to read jcode's data for one release cycle (see backwards-compat shim in `crates/jcode-storage/src/lib.rs:home_dir()`).
 
-## Development Workflow
+## Build & install channels
 
-- **Use the user's Git identity** - Create commits with the configured
-  `user.name` and `user.email`. Do not override them with `Jcode`, `Jcode agent`,
-  or a fabricated agent email. Preserve existing contributor attribution when
-  integrating work. If no identity is configured, ask rather than inventing one.
-- **Welcome pull requests from everyone** - Review contributions on their merits,
-  regardless of whether the author is a maintainer, an existing contributor, a
-  first-time contributor, or an agent. Good PRs can be merged directly after review
-  and validation. Do not require a maintainer-authored rewrite merely because of
-  who submitted the change. See `CONTRIBUTING.md` for the contribution policy.
-- **Keep work scoped** - Work on your own branch and preserve unrelated work. When
-  the user asks you to review or integrate a PR or branch, you may inspect, test,
-  and integrate that contribution regardless of author status. Do not pull in
-  unrelated branches or merge a PR without user authorization.
+The launcher is **`~/.local/bin/kcode`** (formerly `~/.local/bin/jcode`). It reads `KCODE_HOME` first, falls back to `JCODE_HOME`, then `~/.kcode/builds/current/kcode`, then `~/.jcode/builds/current/jcode`.
 
-## Install Notes
-- `~/.local/bin/jcode` is the launcher symlink used from `PATH`.
-- `~/.jcode/builds/current/jcode` is the active local/source-build channel; self-dev builds and `scripts/install_release.sh` point the launcher here.
-- `~/.jcode/builds/stable/jcode` is the stable release channel; `scripts/install.sh` installs this and points the launcher here.
-- `~/.jcode/builds/versions/<version>/jcode` stores immutable binaries.
-- `~/.jcode/builds/canary/jcode` still exists for canary/testing flows, but it is not the primary self-dev install path.
-- On Windows, the equivalents are `%LOCALAPPDATA%\\jcode\\bin\\jcode.exe` for the launcher, `%LOCALAPPDATA%\\jcode\\builds\\stable\\jcode.exe` for stable, and `%LOCALAPPDATA%\\jcode\\builds\\versions\\<version>\\jcode.exe` for immutable installs; `scripts/install.ps1` currently installs the stable channel.
-- Ensure `~/.local/bin` is **before** `~/.cargo/bin` in `PATH`.
+Build channel layout (all paths now use `kcode`):
 
-## Verifying a change at runtime
+| Channel     | Path                                          | Symlink inside                                       |
+|-------------|-----------------------------------------------|------------------------------------------------------|
+| Self-dev    | `~/.kcode/builds/current/kcode`                | `versions/<commit-sha>/kcode` (renamed from `jcode`) |
+| Stable      | `~/.kcode/builds/stable/kcode`                  | same as above                                         |
+| Immutable   | `~/.kcode/builds/versions/<commit-sha>/kcode` | the actual binary                                    |
+| Shared-srv  | `~/.kcode/builds/shared-server/kcode`           | the long-lived daemon binary                          |
 
-`cargo build` alone proves nothing about behavior. `jcode run` and interactive
-sessions are served by the long-lived daemon at
-`~/.jcode/builds/shared-server/jcode`, which is a symlink into
-`~/.jcode/builds/versions/<version>/`. Until that symlink is repointed and the
-daemon restarted (`jcode self-dev --build`), a freshly built binary is inert and
-every runtime check silently measures the old code.
+**Backwards compat:** for one release cycle, the launcher also accepts `~/.jcode/builds/.../jcode` paths so legacy installs continue to work. To migrate: run `scripts/migrate-from-jcode.sh`.
 
-To test a change without disturbing the shared daemon or the caller's session,
-run your build against its own socket:
+### Windows
 
-```bash
-cargo build --profile selfdev
-./target/selfdev/jcode run --no-update --socket /run/user/1000/jcode-mytest.sock '<prompt>'
-```
+The Windows equivalents are:
+- `%LOCALAPPDATA%\kcode\bin\kcode.exe` (launcher)
+- `%LOCALAPPDATA%\kcode\builds\stable\kcode.exe`
+- `%LOCALAPPDATA%\kcode\builds\versions\<version>\kcode.exe`
 
-Two things that waste time otherwise:
+### Secrets dir
 
-- `crate::logging::info` writes to a log file, not stderr, so instrumenting a
-  code path with it produces no visible output under `--trace`. Use `eprintln!`
-  for throwaway diagnostics and delete it before committing.
-- Confirm which binary you are actually inspecting. `strings` on
-  `builds/shared-server/jcode` reads a 70-byte symlink, not a program; resolve it
-  with `readlink -f` first.
+~/.kcode/ is the data home. ~/.config/kcode/ is the secrets home (env-file creds). Both have backwards-compat fallback to ~/.jcode/ and ~/.config/jcode/.
+
+### Environment variables
+
+- `KCODE_HOME` — override the data home (formerly `JCODE_HOME`; still supported with deprecation warning)
+- `KCODE_NO_EMOJI` — disable emoji globally
+- `KCODE_BINARY` — SDK override
+- `KCODE_API_SOCKET` — SDK socket override
+
+### Verifying a change at runtime
+
+After building, smoke-test by running `kcode --version` from a shell. The build channels (`current`, `stable`) are real directories containing one symlink to a version directory; renaming the inner symlink from `jcode` to `kcode` is a manual step that the build script does.
+
+Long-lived daemon: `~/.kcode/builds/shared-server/kcode` is a daemon binary that does NOT update from a launcher rebuild. Restart the daemon after renaming.

@@ -1,21 +1,21 @@
 # Remote compilation and cloud-compute credits
 
-`compile_remote` uploads a source snapshot to Jcode's authenticated API and runs
+`compile_remote` uploads a source snapshot to Kcode's authenticated API and runs
 one build in an isolated Linux sandbox. It returns compiler stdout, stderr, exit
 code, and server-metered usage. It never executes the supplied command locally.
 
 ## Subscription-aware tool surface
 
 The tool remains discoverable when signed out. Its description asks the agent to
-explain the Jcode subscription requirement and link to <https://jcode.sh/pricing>.
-Existing subscribers can sign in with `jcode account login`. The tool does not
+explain the Kcode subscription requirement and link to <https://kcode.sh/pricing>.
+Existing subscribers can sign in with `kcode account login`. The tool does not
 open checkout, subscribe, or purchase credits automatically.
 
-Before exposing the schema, the harness checks `/v1/me` with the configured Jcode
+Before exposing the schema, the harness checks `/v1/me` with the configured Kcode
 account credential. Guidance distinguishes signed out, subscription required,
 available, service not enabled, and account status unknown. Account checks are
 cached for 60 seconds by a fingerprint of the key and API base, not by model
-provider. Using a non-Jcode model does not prevent use of a Jcode subscription.
+provider. Using a non-Kcode model does not prevent use of a Kcode subscription.
 Locked tool snapshots refresh this description when account state changes,
 including sessions using deferred MCP tools.
 

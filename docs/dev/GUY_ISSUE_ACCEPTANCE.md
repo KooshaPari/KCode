@@ -11,14 +11,14 @@ credentials. No provider, transport, tool, or SDK method was mocked.
 The model executed a real bash command (`sleep 3; printf 'TOOL_OK\n'`).
 
 ```sh
-JCODE_SDK_TEST_MODEL=gpt-6-astra \
-  node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/jcode
+KCODE_SDK_TEST_MODEL=gpt-6-astra \
+  node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/kcode
 ```
 
 The test is opt-in because it requires credentials and consumes provider quota.
 It creates an empty working directory, disables memory and autonomous wakes,
 and closes and removes its private instance afterward. The shared daemon was
-not restarted. Its binary remained `builds/versions/5afd4655e/jcode`.
+not restarted. Its binary remained `builds/versions/5afd4655e/kcode`.
 
 ## Final repeated acceptance
 

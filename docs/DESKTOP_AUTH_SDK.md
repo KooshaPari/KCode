@@ -1,6 +1,6 @@
 # Native desktop login with the Rust SDK
 
-`jcode-sdk` exports `AuthClient`, `AuthOptions`, `LoginProvider`, `LoginMethod`,
+`kcode-sdk` exports `AuthClient`, `AuthOptions`, `LoginProvider`, `LoginMethod`,
 `AuthFlow`, `AuthPrompt`, `AuthInputKind`, and `AuthResult`.
 
 ## UI contract
@@ -34,8 +34,8 @@
 
 ## Runtime and compatibility
 
-`AuthOptions` selects a trusted local executable, `JCODE_HOME`, and the **daemon**
-socket (not the harness API socket). Defaults use `JCODE_BIN` or `jcode` on PATH,
+`AuthOptions` selects a trusted local executable, `KCODE_HOME`, and the **daemon**
+socket (not the harness API socket). Defaults use `KCODE_BIN` or `kcode` on PATH,
 inherit the credential home, and use the normal daemon socket. The client is
 local-only. A desktop attached over SSH must explicitly disable this local flow.
 
@@ -53,7 +53,7 @@ acknowledges the notification, not completion of asynchronous model discovery.
 
 OAuth supports Claude, OpenAI, Gemini, Antigravity, and Google. Copilot supports
 device code. Google requires previously configured OAuth client credentials.
-Jcode subscription supports API-key entry here, not interactive device login.
+Kcode subscription supports API-key entry here, not interactive device login.
 Other CLI-only providers are excluded instead of falling back to a terminal.
 
 ## Verification
@@ -62,5 +62,5 @@ Unit tests cover catalog resolution, secret-free stdin transport, loopback
 completion and request rejection, port-conflict fallback, bounded errors,
 validation warnings, daemon notification, timeout/reaping, concurrent cancellation,
 and drop cleanup. An opt-in `installed_cli_begin_cancel_isolated` test uses
-`JCODE_AUTH_TEST_BINARY` with empty temporary homes for Claude/OpenAI begin/cancel.
+`KCODE_AUTH_TEST_BINARY` with empty temporary homes for Claude/OpenAI begin/cancel.
 It neither opens browsers nor completes OAuth or prints authorization URLs.

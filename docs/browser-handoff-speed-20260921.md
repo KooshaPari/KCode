@@ -13,7 +13,7 @@ exhausted). A failed handoff is not a fast completion. No purchase was made.
 
 ## Re-audited archived comparison
 
-Source: local `browser-handoff-benchmark-byok-v2` artifacts in Jcode's scratch
+Source: local `browser-handoff-benchmark-byok-v2` artifacts in Kcode's scratch
 folder. The six original NDJSON transcripts were reparsed using the current
 `benchmark_browser_handoff.py` extractor on 2026-09-21. Assertions confirmed:
 
@@ -53,7 +53,7 @@ Recomputed local audit: `browser-handoff-speed-20260921-audit.json` in scratch.
 
 The existing paired harness self-test passed. A dedicated disposable local tab,
 private sockets and isolated daemons were used. The selected immutable binary was
-`1d8388635-dirty-e56b23724f90/jcode` (v0.86.17-dev). Its direct-arm disable guard
+`1d8388635-dirty-e56b23724f90/kcode` (v0.86.17-dev). Its direct-arm disable guard
 was present. No production code or prompts were tuned during measurement.
 
 All attempted trials remain in separate scratch output folders:
@@ -67,7 +67,7 @@ All attempted trials remain in separate scratch output folders:
 In the subscription smoke, direct took **38.535 s**, with the receipt visible at
 **29.748 s**. The Jev arm returned failure after **14.744 s**. Those values must
 **not** be divided and presented as a speedup because the Jev task did not finish.
-No configured TypeSafe, AIMLAPI or Jcode subscription credential file was available
+No configured TypeSafe, AIMLAPI or Kcode subscription credential file was available
 as an alternate Jev route. The OpenRouter key was used only through its intended
 provider. No alternate account was silently charged.
 

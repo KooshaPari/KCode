@@ -4,7 +4,7 @@ Updated: 2026-09-19
 
 ## Recall: Jev Decisions, not embeddings or a sidecar LLM
 
-Jcode keeps persistent memories locally and sends bounded batches directly to
+Kcode keeps persistent memories locally and sends bounded batches directly to
 [Jev](https://docs.typesafe.ai/introduction) for typed relevance decisions. Jev
 returns a probability for each candidate. It is neither a vector database nor a
 text generator.
@@ -35,10 +35,10 @@ Startup warmup and automatic embedding backfill have been removed.
 | OpenRouter | `OPENROUTER_API_KEY` or `openrouter.env` | `https://openrouter.ai/api/alpha/decisions` |
 | TypeSafe | `TYPESAFE_API_KEY` or `typesafe.env` | `https://api.typesafe.ai/v1/systemone` |
 | AI/ML API | `AIMLAPI_API_KEY` or `aimlapi.env` | `https://api.aimlapi.com/v1/decisions` |
-| Jcode subscription | Existing Jcode login | Trusted Jcode gateway `/v1/decisions` |
+| Kcode subscription | Existing Kcode login | Trusted Kcode gateway `/v1/decisions` |
 
-Environment files use the existing Jcode provider-config directory and
-`KEY=value` format. OpenRouter can also be connected using `jcode login openrouter`.
+Environment files use the existing Kcode provider-config directory and
+`KEY=value` format. OpenRouter can also be connected using `kcode login openrouter`.
 No provider's credential is borrowed from a generic OpenAI-compatible key slot.
 
 ```toml
@@ -50,9 +50,9 @@ memory_jev_threshold = 0.8
 memory_sidecar_enabled = false
 ```
 
-`auto` chooses the first configured credential route in this order: Jcode,
+`auto` chooses the first configured credential route in this order: Kcode,
 OpenRouter, TypeSafe, then AI/ML API. Set `memory_jev_provider` (or
-`JCODE_MEMORY_JEV_PROVIDER`) explicitly to choose the account to use. Neither
+`KCODE_MEMORY_JEV_PROVIDER`) explicitly to choose the account to use. Neither
 `auto` nor an explicit provider falls back to another account after an
 entitlement, auth, billing, or network failure. This prevents a failed
 subscription request from silently spending a BYOK balance. Thresholds must be
@@ -69,10 +69,10 @@ rate limits on the Decisions endpoint itself.
 The server route is an included subscription feature, not a client-side paywall
 or a separate charge. **The companion gateway change must be deployed and its
 upstream Jev credential configured before this route works.** Older gateways
-without the capability fail closed. With a Jcode login configured, `auto` still
-selects Jcode on an older gateway. To use BYOK in that situation, explicitly set
+without the capability fail closed. With a Kcode login configured, `auto` still
+selects Kcode on an older gateway. To use BYOK in that situation, explicitly set
 `memory_jev_provider` to `openrouter`, `typesafe`, or `aimlapi` (or use
-`JCODE_MEMORY_JEV_PROVIDER`). There is no automatic fallback. BYOK does not depend
+`KCODE_MEMORY_JEV_PROVIDER`). There is no automatic fallback. BYOK does not depend
 on the gateway rollout.
 
 ## Request and failure boundaries
@@ -100,8 +100,8 @@ on the gateway rollout.
 
 The existing graph JSON format remains compatible:
 
-- `~/.jcode/memory/global.json`
-- `~/.jcode/memory/projects/<working-directory-hash>.json`
+- `~/.kcode/memory/global.json`
+- `~/.kcode/memory/projects/<working-directory-hash>.json`
 
 Tags, relationships, categories, trust, sources, and superseded/inactive entries
 are retained. Writes no longer create embeddings. Exact duplicate content within
@@ -136,18 +136,18 @@ Storage remains local, but Jev recall is remote inference: the focused query and
 candidate memories in the selected scope are sent to the selected provider.
 Scanning memories directly means more stored content may leave the machine than
 with the old embedding shortlist. The subscription route forwards this content
-through Jcode's gateway to its configured Jev upstream. Do not store secrets in
+through Kcode's gateway to its configured Jev upstream. Do not store secrets in
 memory. Disabling the memory feature stops automatic recall. Local list/search
 remain useful without making remote requests.
 
 ## Implementation map
 
-- `crates/jcode-base/src/jev.rs`: provider-specific credentials and bounded HTTP.
-- `crates/jcode-base/src/memory_jev.rs`: direct batched relevance selection.
-- `crates/jcode-base/src/memory_agent.rs`: asynchronous per-session coordinator.
-- `crates/jcode-base/src/memory.rs`: local storage and public compatibility APIs.
-- `crates/jcode-base/src/memory/pending.rs`: scope-bound pending injection.
-- `crates/jcode-app-core/src/tool/memory.rs`: public memory tool.
+- `crates/kcode-base/src/jev.rs`: provider-specific credentials and bounded HTTP.
+- `crates/kcode-base/src/memory_jev.rs`: direct batched relevance selection.
+- `crates/kcode-base/src/memory_agent.rs`: asynchronous per-session coordinator.
+- `crates/kcode-base/src/memory.rs`: local storage and public compatibility APIs.
+- `crates/kcode-base/src/memory/pending.rs`: scope-bound pending injection.
+- `crates/kcode-app-core/src/tool/memory.rs`: public memory tool.
 
 ## Upstream references
 
