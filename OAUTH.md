@@ -1,10 +1,10 @@
 # Auth Notes: OAuth + API-key Providers
 
-This document explains how authentication works in J-Code.
+This document explains how authentication works in Kcode.
 
 ## Overview
 
-J-Code can detect existing local credentials and can also run built-in OAuth and API-key login flows.
+Kcode can detect existing local credentials and can also run built-in OAuth and API-key login flows.
 
 For auth files managed by other tools/CLIs, kcode asks before reading them. If you
 approve a source, kcode remembers that approval for that external auth file path
@@ -12,11 +12,11 @@ for future sessions and still leaves the original file untouched (no move,
 rewrite, or permission mutation). Symlinked external auth files are rejected.
 
 Credentials are stored locally:
-- J-Code Claude OAuth (if logged in via `kcode login --provider claude`): `~/.kcode/auth.json`
+- Kcode Claude OAuth (if logged in via `kcode login --provider claude`): `~/.kcode/auth.json`
 - Claude Code CLI: `~/.claude/.credentials.json` (Linux/Windows), or the **macOS login Keychain** item `Claude Code-credentials` (the default on macOS, where the JSON file usually does not exist), or the `CLAUDE_CODE_OAUTH_TOKEN` env var (set by `claude setup-token`)
 - OpenCode (optional provider/OAuth import source): `~/.local/share/opencode/auth.json`
 - pi (optional provider/OAuth import source): `~/.pi/agent/auth.json`
-- J-Code OpenAI/Codex OAuth: `~/.kcode/openai-auth.json`
+- Kcode OpenAI/Codex OAuth: `~/.kcode/openai-auth.json`
 - Codex CLI auth source (read in place only after confirmation): `~/.codex/auth.json`
 - Gemini native OAuth: `~/.kcode/gemini_oauth.json`
 - Gemini CLI import fallback: `~/.gemini/oauth_creds.json`
@@ -111,7 +111,7 @@ Notes:
   OAuth requests even if the token is otherwise valid.
 
 ### Removed Claude CLI transport
-The old Claude Code CLI shell-out transport has been removed. Jcode always talks
+The old Claude Code CLI shell-out transport has been removed. Kcode always talks
 to the Anthropic API directly. `--provider claude-subprocess` is accepted as an
 alias for `--provider claude`, and `KCODE_USE_CLAUDE_CLI` is ignored.
 
@@ -138,7 +138,7 @@ reading them. When approved, it remembers that trust decision for future kcode
 sessions and still does not move, delete, or rewrite the Codex file.
 
 ### Request details
-J-Code uses the Responses API. If you have a ChatGPT subscription (refresh
+Kcode uses the Responses API. If you have a ChatGPT subscription (refresh
 token or id_token present), requests go to:
 - `https://chatgpt.com/backend-api/codex/responses`
 with headers:
@@ -202,7 +202,7 @@ The implementation follows [Codex's backend client](https://github.com/openai/co
 
 ## Azure OpenAI
 
-This was added after comparing J-Code to OpenCode/Crush. The meaningful auth gap
+This was added after comparing Kcode to OpenCode/Crush. The meaningful auth gap
 was not another browser OAuth flow, but support for **Azure OpenAI** using either:
 - **Microsoft Entra ID** credentials (via Azure's `DefaultAzureCredential` chain), or
 - **Azure OpenAI API keys**.
@@ -229,7 +229,7 @@ The Azure env file may contain:
 - In **Entra ID** mode, kcode obtains bearer tokens using `azure_identity::DefaultAzureCredential` with scope:
   - `https://cognitiveservices.azure.com/.default`
 - In **API key** mode, kcode sends the credential in the Azure-style `api-key` header.
-- The Azure provider currently reuses J-Code's OpenAI-compatible transport layer under the hood.
+- The Azure provider currently reuses Kcode's OpenAI-compatible transport layer under the hood.
 - Model catalog fetching is disabled for Azure by default, so you should configure a deployment/model explicitly.
 
 ### Entra ID credential sources
@@ -295,7 +295,7 @@ For Gmail/Google it verifies credential discovery and token refresh, but skips m
 
 ## OpenAI-compatible API-key providers
 
-J-Code also ships first-class provider presets for many OpenAI-compatible APIs.
+Kcode also ships first-class provider presets for many OpenAI-compatible APIs.
 These providers use the same built-in login flow pattern: `kcode login --provider <name>`.
 
 For arbitrary OpenAI-compatible APIs, especially when an agent is doing setup, prefer the named profile command instead of hand-editing config:
@@ -348,7 +348,7 @@ If kcode finds matching API keys in trusted OpenCode/pi auth files, it can reuse
 
 ## Experimental CLI Providers
 
-J-Code also supports experimental CLI-backed providers, plus Antigravity with native OAuth login:
+Kcode also supports experimental CLI-backed providers, plus Antigravity with native OAuth login:
 - `--provider cursor`
 - `--provider copilot`
 - `--provider antigravity`
