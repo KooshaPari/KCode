@@ -69,7 +69,12 @@ pub fn render_session_template(content: &str, variables: &HashMap<String, String
             for section in &template.sections {
                 if let Some(value) = variables.get(&section.name) {
                     let section_header = format!("## {}", section.name);
-                    let Some(header_start) = rendered.find(&section_header) else {
+                    let header_line = format!("{section_header}\n");
+                    let Some(header_start) = rendered
+                        .match_indices(&header_line)
+                        .find(|(start, _)| *start == 0 || rendered.as_bytes()[start - 1] == b'\n')
+                        .map(|(start, _)| start)
+                    else {
                         continue;
                     };
                     let body_start = rendered[header_start..]
@@ -78,7 +83,7 @@ pub fn render_session_template(content: &str, variables: &HashMap<String, String
                         .unwrap_or(rendered.len());
                     let body_end = rendered[body_start..]
                         .find("\n## ")
-                        .map(|offset| body_start + offset + 1)
+                        .map(|offset| body_start + offset)
                         .unwrap_or(rendered.len());
                     rendered.replace_range(body_start..body_end, value);
                 }
@@ -187,8 +192,10 @@ mod isolation_tests {
 
         let rendered = render_session_template("unused fallback", &variables);
 
-        assert!(rendered.contains("## Summary\nReplacement summary\n## Details"));
-        assert!(rendered.contains("Keep details"));
+        assert_eq!(
+            rendered,
+            "## Summary\nReplacement summary\n\n## Details\nKeep details\n"
+        );
         assert!(!rendered.contains("Original summary"));
     }
 }
