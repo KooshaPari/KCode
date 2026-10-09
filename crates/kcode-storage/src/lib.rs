@@ -25,14 +25,14 @@ pub fn migrate_legacy_jcode_env() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         for (jcode_name, kcode_name) in JCODE_TO_KCODE_ENV {
-            if let Ok(value) = std::env::var(jcode_name) {
-                if std::env::var_os(kcode_name).is_none() {
-                    // SAFETY: We only ever set this from a single call_once closure
-                    // at process startup, before any threads have read these env vars.
-                    // The values are simple strings migrated from a legacy var.
-                    unsafe {
-                        std::env::set_var(kcode_name, value);
-                    }
+            if let Ok(value) = std::env::var(jcode_name)
+                && std::env::var_os(kcode_name).is_none()
+            {
+                // SAFETY: We only ever set this from a single call_once closure
+                // at process startup, before any threads have read these env vars.
+                // The values are simple strings migrated from a legacy var.
+                unsafe {
+                    std::env::set_var(kcode_name, value);
                 }
             }
         }
