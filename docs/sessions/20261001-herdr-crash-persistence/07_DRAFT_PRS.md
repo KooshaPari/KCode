@@ -488,7 +488,9 @@ was actually a herdr logging bug, and the original 7th body
    doesn't include kcode/jcode, so `plan()` returns None. The crash
    persistence works via the `resume_argv` rescue path, but the
    canonical path (dedupe_key, AgentResumePlan, pane.list integration)
-   is broken. Filed as priority/medium instead of priority/high.
+   is broken. Filed as `p2` (herdr's actual label is `p2`, not
+   `priority/medium` — verified by fetching the live label
+   taxonomy from `github.com/herdrdev/herdr/labels`).
 
 **C1 status:** the kcode-side C1 fix is **correct and working at runtime**
 (proven by session.json pane 19 having the exact data the kcode reporter
@@ -556,10 +558,10 @@ gh issue create \
   --title 'pane.report_agent and pane.report_agent_session events are received but not logged in herdr-server.log' \
   --body-file /tmp/herdr-upstream-issue-5.md \
   --label bug \
-  --label priority/medium \
-  --label area/api \
-  --label area/logging \
-  --label good-first-issue
+  --label p2 \
+  --label api \
+  --label triaged \
+  --label auto-fix
 ```
 
 **Status:** body rewritten 2026-10-08 round 8.1 to reflect the actual
@@ -598,10 +600,10 @@ gh issue create \
   --title 'is_official_agent_source allowlist in src/agent_resume.rs missing kcode and jcode entries' \
   --body-file /tmp/herdr-upstream-issue-6.md \
   --label bug \
-  --label priority/medium \
-  --label area/reporter \
-  --label area/agent-integration \
-  --label good-first-issue
+  --label p2 \
+  --label api \
+  --label triaged \
+  --label intends-to-pr
 ```
 
 **Alternative — file as a PR (recommended) instead of an issue:**
