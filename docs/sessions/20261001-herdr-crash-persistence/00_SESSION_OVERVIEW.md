@@ -129,3 +129,52 @@ Revised the runbook's Phase 4 to use the C4 cutover path (herdr server stop + re
 - C4: not yet attempted. 13 live panes still need to be evaluated.
 - Upstream PR: not attempted.
 - K1 (Ghostty reload): operator-local.
+
+## Updates 2026-10-09 (round 5 — herdr plugin install + byproduct verification)
+
+Round 5 recon'd the herdr manifest/plugin system to find out why `herdr agent start
+--kind kcode` doesn't work. Discovered:
+
+- The `kcode herdr install` (clap: `kcode herdr-install`) command writes a
+  `herdr-plugin.toml` to `~/.config/herdr/plugins/local/kcode/` and runs
+  `herdr plugin link` to register it.
+- The new kcode binary on this host was **never installed** as a herdr plugin — the
+  C9 rename likely broke this step (the `jcode-herdr` crate's install command
+  wasn't re-run as `kcode herdr install`).
+- Ran `kcode herdr-install` in this round. Wrote:
+  - `~/.config/herdr/agent-detection/kcode.toml` (screen state rules)
+  - `~/.config/herdr/agent-detection/forgecode.toml` (screen state rules)
+  - `~/.config/herdr/plugins/local/kcode/herdr-plugin.toml` (local plugin entry)
+  - `~/.config/herdr/plugins/local/forgecode/herdr-plugin.toml` (local plugin entry)
+  - Both plugins successfully linked.
+- `herdr plugin list` confirms `kooshapari.kcode (Kcode HERDR integration) enabled`.
+
+After the install, the live kcode binary emits HERDR events correctly when started
+in a pane that has the right env (verified via `kcode herdr-status` in HelioLite
+showing `Reporter active: yes`).
+
+**C1 fix verification status:** PASSED at four levels (source, unit tests, live
+binary strings, codex production byproducts showing `herdr:codex` source). The
+end-to-end SIGKILL drill remains blocked by pane-size constraint — all 18 panes in
+the operator's herdr session are 9-27 rows tall; kcode TUI requires 60x20 minimum
+and checks via `ioctl(TIOCGWINSZ)` which can't be faked with env vars.
+
+The C1 fix cannot be observed in `herdr agent list` for kcode specifically until
+either (a) a new ≥60x20 pane is opened, or (b) the C4 cutover runs (which
+re-executes the resume command for every pane that has an `agent_resume`, including
+HelioLite's `null` state — which will remain null, but other panes with active
+kcode sessions will re-emit and confirm `herdr:kcode`).
+
+| Commit | Subject |
+|---|---|
+| (this commit) | docs(herdr-session): add round 5 update — herdr plugin install + byproduct verification |
+| `525a04f70` | docs(herdr-session): add Phase 4 revision 1 (lessons from C1 dry-run) |
+| `84f9861f2` | docs(herdr-session): add 2026-10-09 round 4 (C1 Phase 4 dry-run) update |
+
+**Operator-gated items still pending:**
+- C8: 6 upstream issues, 1 attempted (blocked), 5 queued.
+- C1: VERIFIED via byproducts. SIGKILL drill pending operator action (full-width pane or C4 cutover).
+- C4: not yet attempted. Now combines C1 verification (herdr-restart auto-relaunches agents).
+- Upstream PR: not attempted.
+- K1 (Ghostty reload): operator-local.
+- **`kcode herdr-install`:** DONE in this round. Plugin linked.

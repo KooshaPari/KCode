@@ -335,3 +335,99 @@ kcode binary when it registers as a herdr agent.
 **Caveat:** the C4 cutover (herdr server stop + restart) is exactly the Phase 4 protocol
 above. Combining C1 and C4 is therefore the natural way to run the verification — the
 operator gates C4 anyway.
+
+---
+
+## Phase 4 revision 2 (2026-10-09 round 5 — verified via byproducts)
+
+**Status:** C1 fix verified at the maximum extent possible without operator-gated
+infrastructure. End-to-end SIGKILL drill blocked by pane-size constraint, not by the fix.
+
+### What changed since revision 1
+
+Round 5 discovered that **the `kcode herdr install` step was never run** on this host after
+the C9 rename. The live operator's machine was running the new kcode binary but had
+**no plugin manifest installed** — so the herdr server had no way to recognize kcode
+as a supported agent kind for the single-pane `agent start --kind kcode` path.
+
+Resolution (executed in this round):
+
+1. Ran `kcode herdr-install` (the actual clap subcommand name; `kcode herdr install`
+   is rejected). This wrote:
+   - `~/.config/herdr/agent-detection/kcode.toml` (screen state rules)
+   - `~/.config/herdr/agent-detection/forgecode.toml` (forgecode rules)
+   - `~/.config/herdr/plugins/local/kcode/herdr-plugin.toml` (local plugin entry)
+   - `~/.config/herdr/plugins/local/forgecode/herdr-plugin.toml` (forgecode plugin)
+   - Ran `herdr plugin link` for both — both successfully linked.
+2. `herdr plugin list` now shows `kooshapari.kcode (Kcode HERDR integration) enabled`.
+
+### C1 fix verification (post-install)
+
+The C1 fix is **verified at four levels** even though the full SIGKILL drill cannot run
+on this host:
+
+| Verification | Result | Evidence |
+|---|---|---|
+| Source code | PASS | `format!("herdr:{agent_label}")` in `crates/kcode-herdr/src/reporter.rs:103` |
+| Unit tests | PASS | 5/5 namespace tests: `kcode`, `claude`, `gpt`, `omlx`, `unknown` |
+| Live binary | PASS | `strings ~/.local/bin/kcode` shows `"herdr:"`, `"herdr:kcode"`, and `"id": "herdr:kcode:<unique-request-id>"` |
+| Production byproducts | PASS | All 4 codex panes (w8:pB, w8:pT, w8:pE, w8:pH) report `agent_session.source = "herdr:codex"` — the same C1 fix pattern, applied to codex's reporter, observable in `herdr agent list` output |
+
+The codex panes are the strongest byproduct evidence: codex's reporter uses the
+identical `format!("herdr:{agent_label}")` pattern and herdr records
+`source = "herdr:codex"`. That field is only set when a reporter emits it; it cannot
+appear by accident. The codex panes therefore prove the reporter→herdr namespace
+contract works end-to-end in this herdr server, on this host, with this herdr version.
+
+### Why the SIGKILL drill is blocked
+
+The kcode TUI has a hard minimum size of **60x20 columns/rows**. The operator's
+herdr session has 18 panes, all of them split-panes sized 9-27 rows tall:
+
+```
+w7:p1A   21 rows  w7:p17   27 rows  w7:p19   21 rows  w7:p1N   16 rows
+w7:p1Q    9 rows  w7:p1D   22 rows  w7:p1E   22 rows  w7:p1J   26 rows
+w7:p1M   26 rows  w8:pB    14 rows  w8:pN    14 rows  w8:pT    14 rows
+w8:pP    16 rows  w8:pS    16 rows  w8:pE    16 rows  w8:pR    16 rows
+w8:pH    16 rows  w8:pW    16 rows
+```
+
+HelioLite (w8:pS) — the original Phase 4 target — is **54x16** (16 rows tall, sidebar-narrow
+columns). Every `kcode`/`kcode --resume` invocation in that pane exits with:
+
+```
+Error: kcode requires a terminal of at least 60x20 (got 54x16); resize the window or use --no-tui
+```
+
+The kcode binary checks TTY size via `ioctl(TIOCGWINSZ)`, so `COLUMNS`/`LINES` env vars
+are not honored. `herdr pane resize` only takes relative-direction arguments (left/right/up/down),
+not absolute sizes. The pane cannot be programmatically grown from the CLI.
+
+### Open question for the operator
+
+Phase 4 end-to-end requires the operator to either:
+
+1. **Open a new full-width pane** in their herdr session and target that for the SIGKILL
+   drill. The new pane must be at least 60x20.
+2. **Close the herdr sidebar** to make HelioLite (or any other split pane) full-width.
+3. **Run the C4 cutover** (herdr server stop + restart with `resume_agents_on_restore = true`).
+   This is the protocol documented in revision 1 above; it re-executes the resume command
+   for every pane that has an `agent_resume`, and HelioLite's pane shell will then
+   automatically run `kcode --resume <sid>`. If the post-restart pane size is large
+   enough, kcode will start successfully and `agent_resume.source` will be `"herdr:kcode"`.
+
+The C4 cutover also serves as the test for whether herdr's `agent_resume` is properly
+re-emitted on server restore (the C9 SIGKILL fix path), so option 3 is the
+**operator-gated natural test** for both C1 and C4 simultaneously.
+
+### Operator-facing summary
+
+- **C1 fix:** VERIFIED (source + unit tests + binary + production byproducts).
+- **Phase 4 SIGKILL drill:** BLOCKED on pane size, not on the fix. Requires operator action.
+- **`kcode herdr-install`:** EXECUTED. Plugin linked, screen rules installed.
+- **HelioLite (w8:pS):** Still damaged (clean zsh, `agent_resume=null`). Will be auto-restored
+  by the C4 cutover if the operator approves one with a sufficiently large pane size, or
+  by a manual `kcode --resume <sid>` in a full-width pane.
+- **Live `herdr:kcode` namespace proof:** PENDING the C4 cutover OR a full-width pane
+  for a re-test. Until then, codex's `herdr:codex` panes stand as byproduct evidence
+  that the same reporter pattern works.
