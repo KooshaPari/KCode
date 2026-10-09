@@ -743,3 +743,9 @@ Note: the PR draft uses `maintainer-approved` instead of
 explicitly approved by a maintainer (operator is acting as the
 filing maintainer for the herdr fork).
 
+**Filing checklist:** `/tmp/herdr-filing-checklist.md` (202
+lines). Pre-flight verification steps (gh auth, label taxonomy,
+body file existence), recommended filing order, full step-by-step
+PR workflow (fork → clone → branch → patch → test → commit →
+push → PR), and rollback plan. Ready to copy-paste.
+
