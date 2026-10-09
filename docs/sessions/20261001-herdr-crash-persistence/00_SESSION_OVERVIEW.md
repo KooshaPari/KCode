@@ -618,15 +618,21 @@ The 8th body should be:
    - "Round 7's kcode-side verification was correct; round 8's
      misdiagnosis was a herdr logging bug"
 
-### Updates 2026-10-09 (round 8.1 follow-up — verification, label taxonomy, deeper logging issue)
+### Updates 2026-10-09 (round 8.1 follow-up — verification, label taxonomy, deeper logging issue, PR draft)
 
-**Three additional commits pushed today** to fully document round
-8.1 reversal:
+**Multiple additional commits pushed today** to fully document round
+8.1 reversal and prepare the upstream filings:
 
 | SHA | Description |
 |---|---|
 | `13b1d2ab7` | 07_DRAFT_PRS — 7th body root cause FOUND in herdr/src/logging.rs |
 | `41f86383b` | 07_DRAFT_PRS — update label taxonomy to herdr's actual flat schema |
+| `de3a228c4` | 00_SESSION_OVERVIEW — round 8.1 follow-up section |
+| `734f10fab` | 08_CUTOVER_RUNBOOK — refresh Reference section |
+| `85f07bcfc` | 10_SIGKILL_NON_TTY — mark central claim OBSOLETE per round 8.1 |
+| `07eecd0cc` | 07_DRAFT_PRS — revise Issue 6 fix scope to 7 functions |
+| `724bd7f38` | 07_DRAFT_PRS — reference PR draft /tmp/herdr-upstream-pr-draft.md |
+| `3b8363c64` | 07_DRAFT_PRS — add 9th body + revised label taxonomy (sessions, agent-detection, rust, p2 not p3) |
 
 **Verification work (non-gated):**
 
@@ -661,8 +667,7 @@ The 8th body should be:
 - Updated both filing commands in 07_DRAFT_PRS.md to use the
   correct labels
 
-**Deeper logging observation (added to 7th body as "Related
-observations"):**
+**Deeper logging observation (now FILED as 9th body — 220 lines):**
 
 While investigating the routine-method filter, I found that
 `api_request_completed()` in `src/logging.rs` logs at INFO when
@@ -670,10 +675,60 @@ While investigating the routine-method filter, I found that
 The result: 205 error entries in herdr-server.log tell you
 **that** processing failed but not **why**. The error reason
 is in the handler code, not in the log. This is a separate,
-larger concern than the routine-method filter and was added
-to the 7th body as a "Related observations" section for
-follow-up. (Filed as a follow-up note, NOT as a separate body
-file — would need operator approval to open a 9th body file.)
+larger concern than the routine-method filter and is now
+**filed as a separate 9th body file** at
+`/tmp/herdr-upstream-issue-9.md` (220 lines). The 9th body
+includes three fix options (A: add `err` param to
+`api_request_completed`; B: audit callers of
+`api_request_failed`; C: hybrid) and references the 7th
+body as a companion.
+
+**Health check (round 8.1 + 2h):**
+
+- **kcode test process still running**: PID 22365, 1h 40m+,
+  session_evergreen_1791516626775_251c14ff3297d065. Process
+  fired one `pane.report_agent_session` event at startup
+  (20:46:01 PDT) then idled. Confirmed alive 2026-10-09
+  ~05:26 PDT. No new state events expected until the agent
+  transitions state.
+- **session.json mtime 2026-10-09T04:16:29 UTC** (about 10
+  minutes before the health check). The rescue path
+  continues to work: 12 panes with `agent_resume` argv
+  `["kcode", "--resume", "<session_id>"]` or
+  `["jcode", "--resume", "<session_id>"]`.
+- **herdr log shows ongoing `pane.release_agent` events
+  from jcode sessions** (request_id=`herdr:jcode:release:...`),
+  confirming jcode binaries are also using the rescue
+  path and the C1 fix is universal.
+
+**PR draft prepared (7-function fix):**
+
+`/tmp/herdr-upstream-pr-draft.md` (257 lines). Contains the
+full Rust diff for the 7-function allowlist fix: Agent
+enum + 2 new variants, Agent::ALL (24→26),
+SCREEN_MANIFEST_AGENTS (22→24), agent_label (2 new arms),
+interactive_agent_executable (2 new arms), lookup_agent
+(2 new arms), is_official_agent_source (2 new pairs),
+plus 2 new plan() arms and 2 new assert_eq blocks in
+the planner test. Ready to apply to a herdr fork without
+further editing.
+
+**kcode C1 fix test (positive verification):**
+
+The kcode C1 fix is locked in by a unit test at
+`crates/kcode-herdr/src/reporter.rs:619-622`:
+
+```rust
+assert_eq!(
+    state_req["params"]["resume_argv"],
+    serde_json::json!(["kcode", "--resume", "sess_abc123"])
+);
+```
+
+This test runs against a mock Unix socket server and
+verifies the exact format `["kcode", "--resume", "<sid>"]`
+that we observed in `herdr-server.log` (the runtime
+behavior matches the test).
 
 **Operator ledger updated to 728 lines** (684 → 728). New
 pillars 7, 8, 9 added in round 8.1 follow-up:
