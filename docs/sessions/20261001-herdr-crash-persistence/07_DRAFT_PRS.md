@@ -647,6 +647,13 @@ commit + push the fix, then:
 # 5. Commit + push + gh pr create.
 ```
 
+**PR draft saved at `/tmp/herdr-upstream-pr-draft.md` (257 lines).**
+The draft contains the full diff (with all 7 functions, the new
+test cases, the diff formatting, a test plan, and a provenance
+section). When operator approves filing, the PR draft can be
+copied to the herdr fork, committed, and pushed. The diff is
+ready to apply directly without further editing.
+
 **Status:** body extracted from original 7th body 2026-10-08 round
 8.1. Re-verified against the live herdr source: the 18-pair
 allowlist, the `plan()` arm structure, and the `--resume` flag
