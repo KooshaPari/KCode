@@ -258,8 +258,12 @@ guarantee the 5.3 semantics.
 | File | Pre | Post | Delta | Reason |
 |---|---|---|---|---|
 | `crates/jcode-app-core/src/server/client_actions.rs` | 1223 | 1227 | +4 | 4 added comment lines documenting the new CI guard flow (3c96175f6) |
-| `crates/jcode-tui/src/tui/input.rs` | 4270 | 4273 | +3 | comment expansion for the gate-digest duplicate |
+| `crates/jcode-tui/src/tui/app/input.rs` | 4270 | 4273 | +3 | comment expansion for the gate-digest duplicate |
 | `crates/jcode-tui/src/tui/ui_input.rs` | 3752 | 3757 | +5 | comment expansion for the truncate comment vs reality |
+
+**Correction (2026-10-09):** the prior draft listed the second
+path as `crates/jcode-tui/src/tui/input.rs` (file does not
+exist). The correct path is `crates/jcode-tui/src/tui/app/input.rs`.
 
 ### 4.2 Why absorbed, not decomposed
 
@@ -269,16 +273,26 @@ hiding comments would obscure them from reviewers. A
 decomposition pass is tracked separately in the deferred
 "Budget growth" issue.
 
-### 4.3 The wildcard re-export budget drops to 0
+### 4.3 The wildcard re-export budget stays at 17
 
-The only pre-existing wildcard re-export in the source tree was
-`pub use jcode_tui::herdr::*;` in `src/herdr.rs:22`. WBS-02
-replaced it with an explicit list, dropping the wildcard count
-from 17 (which the Kilo review's CRITICAL flagged as
-"unbudgeted" — the budget file's `total: 17` was set by
-upstream and the fork's `herdr.rs` was the only addition that
-matched the pattern) to 0. The `check_wildcard_reexport_budget.py`
-script will exit 0 with `total: 0`.
+`scripts/wildcard_reexport_budget.json` has `total: 17` with 17
+file entries (mostly upstream wildcards in
+`crates/jcode-app-core/src/lib.rs`, `crates/jcode-base/src/*.rs`,
+`crates/jcode-tui/src/lib.rs`, `crates/jcode-tui/src/tui/mod.rs`,
+and `src/lib.rs`). The fork's only added wildcard was at
+`src/herdr.rs:22` (`pub use jcode_tui::herdr::*;`). `aa955589d`
+replaced it with an explicit 5-item list
+(`init, init_forced, is_active, on_session_start, shutdown`).
+The fork's effective wildcard count is now 0, but the budget
+still reports `total=17` because the upstream's 16 wildcards
+remain. The check script
+`python3 scripts/check_wildcard_reexport_budget.py` exits 0
+with `total=17`.
+
+**Correction (2026-10-09):** the prior draft claimed "wildcard
+count 17→0" — that is wrong. The fork removed its 1 added
+wildcard, but the upstream's 17 wildcards remain. The budget
+enforces all 17 entries.
 
 ## 5. Dependency bumping strategy (WBS-04)
 

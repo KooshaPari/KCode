@@ -93,17 +93,24 @@ changes.
 **Severity:** DEFERRED (4 absorbed ratchets since v0.88.0).
 
 **Current state:** the 3 code-size baselines ratcheted in WBS-03
-(`client_actions.rs` 1223→1227, `input.rs` 4270→4273,
-`ui_input.rs` 3752→3757) and the panic baseline ratcheted in
-`d511d5948` (77→181, 135% increase) are absorbed, not decomposed.
-The growths are all comment lines and test/build scaffolding, so
-the decomposition is non-trivial.
+(`crates/jcode-app-core/src/server/client_actions.rs` 1223→1227,
+`crates/jcode-tui/src/tui/app/input.rs` 4270→4273,
+`crates/jcode-tui/src/tui/ui_input.rs` 3752→3757) and the panic
+baseline ratcheted in `d511d5948` (77→181, 135% increase) are
+absorbed, not decomposed. The growths are all comment lines
+and test/build scaffolding, so the decomposition is non-trivial.
 
 **File/line refs:**
-- `scripts/code_size_budget.json:8/9/104` (the 3 ratchets)
-- `scripts/panic_budget.json:2` (the 77→181 ratchet)
-- `02_SPECIFICATIONS.md` §2.3, §3.3 (the ratchet vs decomposition
-  rationale)
+- `scripts/code_size_budget.json:8/83/104` (the 3 ratchets)
+- `scripts/panic_budget.json:2` (the 77→181 ratchet; current `total: 181`)
+- `git show 253b337ba` (the ratchet commit)
+- `02_SPECIFICATIONS.md` §2.3, §3.4, `04_IMPLEMENTATION_STRATEGY.md` §4.1 (the ratchet vs decomposition rationale)
+
+**Correction (2026-10-09):** the prior draft listed the second
+ratchet path as `input.rs` (ambiguous). The correct path is
+`crates/jcode-tui/src/tui/app/input.rs`. The other two
+ratchets (`client_actions.rs` and `ui_input.rs`) are correct
+as full paths.
 
 **Blocking condition:** the budgets grow monotonically until a
 decomposition pass is done. The 135% panic increase is the most
@@ -141,25 +148,23 @@ quota reset or to skip Copilot for this PR).
 
 **Owner candidate:** the operator who opened the PR (KooshaPari).
 
-## 5. provider_catalog_tests assertion (Z.AI default) — DEFERRED
+## 5. provider_catalog_tests assertion (Z.AI default) — DOCUMENTED
 
-**Severity:** MEDIUM (the test is currently failing; the fork
-intends the assertion to pass but the actual code differs).
+**Severity:** LOW (no functional impact; the test is currently
+passing; documented for future reviewers).
 
 **Current state:** the test at
 `crates/jcode-base/src/provider_catalog_tests.rs:230` asserts
-`ZAI_PROFILE.default_model == Some("glm-5.3")`. The actual default
-in the fork's provider catalog is `glm-5.3` (set by `dbc9fb118`,
-"provider defaults"). The test passes when the assertion matches
-the catalog; the test fails when the catalog is updated without
-updating the test.
+`ZAI_PROFILE.default_model == Some("glm-5.3")`. The actual
+default in the fork's provider catalog is `glm-5.3` (set by
+`dbc9fb118`, "provider defaults"). The test passes in CI
+(2402/0 baseline).
 
-Wait — actually, the test is **passing** in CI (the 2402/0
-baseline). The Kilo review's WARNING at
-`provider_catalog_tests.rs:220` was about the **comment** in the
-test, not the assertion. The comment used to claim "CI could
-never have caught it" (which is now false since `3c96175f6`); the
-WBS-15 fix updated the comment to acknowledge the guard.
+The Kilo review's WARNING at `provider_catalog_tests.rs:220`
+was about the **comment** in the test, not the assertion. The
+comment used to claim "CI could never have caught it" (which is
+now false since `3c96175f6`); the WBS-15 fix (`32621b2ad`)
+updated the comment to acknowledge the guard.
 
 The remaining stale item: the test's assertion is fine, but the
 catalog has a second `Z.AI` default that is **not** covered by
@@ -173,7 +178,8 @@ changes that field, no test will catch it.
 - `crates/jcode-base/src/provider_catalog.rs:30-60` (the catalog
   itself)
 
-**Blocking condition:** none. The PR passes CI.
+**Blocking condition:** none. The PR passes CI (the test is
+green, just under-tested).
 
 **Deferred-to:** next PR that touches the provider catalog.
 

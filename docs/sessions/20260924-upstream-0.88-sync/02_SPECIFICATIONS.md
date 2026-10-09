@@ -65,8 +65,14 @@ of the file is from `25f3e1f4f` and earlier merges):
 | File | Pre-merge | Post-bump | Delta | Reason |
 |---|---|---|---|---|
 | `crates/jcode-app-core/src/server/client_actions.rs` | 1223 | 1227 | +4 | 4 added comment lines documenting the new CI guard flow |
-| `crates/jcode-tui/src/tui/input.rs` | 4270 | 4273 | +3 | comment expansion for the gate-digest duplicate |
+| `crates/jcode-tui/src/tui/app/input.rs` | 4270 | 4273 | +3 | comment expansion for the gate-digest duplicate |
 | `crates/jcode-tui/src/tui/ui_input.rs` | 3752 | 3757 | +5 | comment expansion for the truncate comment vs reality |
+
+**Correction (2026-10-09):** the prior draft of this table listed
+`crates/jcode-tui/src/tui/input.rs` for the second entry; that
+file does not exist. The correct path is
+`crates/jcode-tui/src/tui/app/input.rs` (verified by
+`git show 253b337ba -- scripts/code_size_budget.json`).
 
 A fourth file, `crates/jcode-tui/src/tui/app/tests/remote_events_reload_05.rs`,
 is **not** in the ratchet — the upstream commit that deleted 3
@@ -82,9 +88,16 @@ within the upstream budget.
   with `pre_merge`, `post_bump`, and a free-text reason.
 - The `total` count of 17 (wildcard re-exports) does not change in
   this PR — `src/herdr.rs` is replaced with an explicit list and the
-  wildcard budget goes from 17 to 0 (the wildcard count drops to
-  zero because no other file uses `pub use foo::*;` in the source
-  tree).
+  fork's single added wildcard is removed, but the upstream's 17
+  wildcard re-exports (listed in the budget) remain in the source
+  tree. The fork's effective count goes from 1 to 0, but the
+  budget's `total: 17` does not change.
+
+  **Correction (2026-10-09):** the prior draft of this entry
+  claimed "the wildcard budget goes from 17 to 0" — that is wrong.
+  The correct statement is "the fork's 1 added wildcard was
+  removed; the upstream's 17 wildcard re-exports remain in the
+  source tree; the budget total stays at 17."
 
 ### 2.3 Why the ratchet vs decomposition
 
@@ -140,14 +153,24 @@ is **removed** and replaced with an explicit list.
 ### 4.2 Acceptance criteria
 
 - `python3 scripts/check_wildcard_reexport_budget.py` exits 0 after
-  the change.
-- The new count is 0 wildcard re-exports (the only one was in
-  `src/herdr.rs:22`; after the explicit list, that file's count
-  drops to 0 too).
-- The explicit list in `src/herdr.rs:1-50` is identical to the
+  the change. Current output: `wildcard re-export budget check
+  passed (total=17)`.
+- The fork's `src/herdr.rs:22` previously held a wildcard
+  re-export (`pub use jcode_tui::herdr::*;`). It was replaced by
+  `aa955589d` with an explicit 5-item list
+  (`init, init_forced, is_active, on_session_start, shutdown`).
+  The new count of fork-added wildcard re-exports is 0.
+- The explicit list in `src/herdr.rs:23` is identical to the
   set of items previously wildcard-reexported, verified by
   `rg "^(pub )?(fn|struct|enum|trait|type|const) " jcode-tui/src/herdr.rs`
   matching the items the re-export surface referenced.
+
+**Correction (2026-10-09):** the prior draft of this section
+claimed the new count of wildcard re-exports is 0 — that is the
+fork's count, not the budget's count. The budget reports
+`total=17` because the upstream's 17 wildcards remain. The fork
+contributed 1 of those 17 (now removed); the upstream's 16
+remain.
 
 ## 5. Security preflight (scripts/security_preflight.sh)
 
@@ -166,12 +189,24 @@ Three checks, in order:
 
 ### 5.2 The 4 defects this PR fixes (Kilo review)
 
-| Line | Defect | Fix |
+**Line refs (`:54`, `:92`, `:96`, `:97`) refer to the pre-fix state
+of `scripts/security_preflight.sh`. The current file no longer
+contains those exact lines; the defects have been removed. The
+`f6a780754` commit message describes each defect by the
+post-fix comment headers (`DEFECT 1` through `DEFECT 4`).**
+
+| Defect | Pre-fix location | Fix |
 |---|---|---|
-| `:92` | `grep -v -f allowlist` deletes whole output records, so any secret sharing a line with a placeholder is discarded. | Token-precise filter: each allowlist entry is matched as a literal token (`grep -F -v -w`), not a substring. |
-| `:96` | `\|\| true` conflates `grep -v` exit 1 (no match) with exit 2 (error). | Explicit handling: if `grep -v` exits 2, the script fails the gate. |
-| `:97` | `/tmp/jcode-secret-scan.kept.txt` is a fixed, world-predictable name replaced via `mv` — symlink-swapable. | `mktemp -t jcode-secret-scan.XXXXXX` for both the scan output and the kept file; `trap 'rm -f ...' EXIT` for cleanup. |
-| `:54` | An empty allowlist entry makes `grep -v -f` match every line and drop all findings. | Guard: `${#secret_allowlist[@]} -gt 0` check; script fails with an actionable error if the allowlist is empty. |
+| Whole-line suppression | `:92` (`grep -v -f allowlist` deletes any line containing an allowlisted placeholder, even if a real secret also appears on the line) | Token-precise filter: strip the allowlisted literal from the line, re-test the residue against the secret regex, drop only if no secret remains. |
+| Exit-code conflation | `:96` (`\|\| true` swallows both exit 1 (no match) and exit 2 (real grep error)) | Explicit handling: if `grep` exits >1, the script `die`s with a clear error so a real scan failure surfaces. |
+| Fixed /tmp paths | `:97` (`/tmp/jcode-secret-scan.kept.txt` is world-predictable; `mv` clobbers a symlink planted by a prior job) | `mktemp -t jcode-secret-scan.XXXXXX` for both scan output and kept file; `trap 'rm -f ...' EXIT` for cleanup. |
+| Empty-allowlist suppression | `:54` (an empty allowlist entry makes `grep -v -f` match every line and drop all findings) | Guard: `${#secret_allowlist[@]} -gt 0` check; script fails with an actionable error if the allowlist is empty. |
+
+**Correction (2026-10-09):** the prior draft cited specific line
+numbers that are still the pre-fix line numbers. The current
+file is refactored. The defect identities come from the Kilo
+review (`scripts/security_preflight.sh:92, :96, :97, :54` in the
+review's pre-merge state) and the commit message of `f6a780754`.
 
 ### 5.3 Acceptance criteria
 
@@ -231,7 +266,11 @@ All four were investigated in this PR:
 |---|---|---|
 | `remote_events_reload_05.rs:964` | The flipped assertion reverts a contract upstream deliberately added. | Confirmed via `git show 25f3e1f4f` that the upstream commit **removed** 3 assertions; the fork's `25f3e1f4f` keeps the 1 remaining assertion (`is_empty()` final-state check) and adds 4 new ones. The Kilo claim of "reverts a contract" is incorrect — the contract was weakened by upstream, not by the fork. |
 | `swarm_buffer.rs:736` | `or_else(rows.last())` silently substitutes an unrelated row. | Intentional fork semantic: the fallback path returns the same fixture row used by every other test in the file, not "an unrelated row" as the Kilo review suggests. The `len <= width` sweep is the actual test surface; the `or_else` only fires if the primary lookup misses, which is the rare-case. |
-| `ui_input.rs:1382` | Comment says span 2 truncates to `"send..."` but real output is `"[sen..."`. | The truncation in `truncate_line_for_narrow` reserves one display column for the ellipsis; the comment is the high-level behavior ("we truncate to make room for the ellipsis") and the test asserts the exact `len <= width` invariant, not the literal text. False positive. |
+| `ui_input.rs:1361` | Comment says span 2 truncates to `"send..."` but real output is `"[sen..."`. | The truncation in `truncate_line_for_narrow` reserves one display column for the ellipsis; the comment is the high-level behavior ("we truncate to make room for the ellipsis") and the test asserts the exact `len <= width` invariant, not the literal text. False positive. |
+
+**Correction (2026-10-09):** the prior draft cited line 1382;
+the actual Kilo review line is 1361 (verified by
+`grep "ui_input.rs" /tmp/kilo-review-full.md`).
 | `build.rs:228` | `parse_semver` widens accepted inputs; `unwrap_or(0)` in `version_is_newer` causes degradation. | The actual behavior: `version_is_newer` parses `"0.88.5-k1.2.0"` as `(0, 88, 5)` (Rust's `parse::<u32>` reads leading digits and stops at `-`). The Kilo claim of "degrades to 0.88.0" is incorrect. The build-meta crate's `parse_semver` and the update-core crate's `version_is_newer` use **different** parsers, and the update path never goes through the build-meta parser. False positive. |
 
 ### 7.3 Acceptance criteria

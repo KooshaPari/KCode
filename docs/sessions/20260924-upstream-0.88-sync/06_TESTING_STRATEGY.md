@@ -40,17 +40,24 @@ python3 scripts/check_panic_budget.py
 # exit 0; reports 0 panic additions vs the ratcheted baseline
 
 python3 scripts/check_wildcard_reexport_budget.py
-# exit 0; reports 0 wildcard re-exports
+# exit 0; reports 17 wildcard re-exports (upstream's 17, fork's 1 removed)
 ```
 
 The budgets are checked into the repo (`scripts/*.json`); the
 scripts read them and exit 1 on any violation. The current state:
 
-- `scripts/code_size_budget.json` has 3 ratchets (WBS-03).
+- `scripts/code_size_budget.json` has 3 ratchets (WBS-03)
+  covering `client_actions.rs`, `app/input.rs`, and `ui_input.rs`.
 - `scripts/panic_budget.json` has the 77→181 ratchet (d511d5948).
-- `scripts/wildcard_reexport_budget.json` has 0 entries (the only
-  pre-existing wildcard in `src/herdr.rs` was replaced with an
-  explicit list in WBS-02).
+- `scripts/wildcard_reexport_budget.json` has 17 entries (the
+  upstream's 17 wildcard re-exports; the fork's 1 added wildcard
+  in `src/herdr.rs` was replaced with an explicit 5-item list in
+  WBS-02 / `aa955589d`).
+
+**Correction (2026-10-09):** the prior draft said the wildcard
+budget has 0 entries and the script reports 0 — that is wrong.
+The budget has 17 entries and the script reports `total=17`. The
+fork removed its 1 added wildcard, but the upstream's 17 remain.
 
 ## 3. The security preflight
 
@@ -121,7 +128,7 @@ swarm_buffer` exits 0; the test is part of the 2402/0 baseline.
 
 **No change made.** Documented in `02_SPECIFICATIONS.md` §7.2.
 
-### 4.3 `ui_input.rs:1382`
+### 4.3 `ui_input.rs:1361`
 
 **Kilo claim:** "The comment says span 2 truncates to `'send...'`,
 but `truncate_line_for_narrow` reserves a character for the
@@ -131,7 +138,7 @@ ellipsis, so the real output is `'[sen...'`."
 `truncate_line_for_narrow` reserves one display column for the
 ellipsis. The comment is the **high-level** behavior ("we truncate
 to make room for the ellipsis"), not the literal text. The test
-at `crates/jcode-tui/src/tui/ui_tests/input.rs:1382` asserts the
+at `crates/jcode-tui/src/tui/ui_tests/input.rs:1361` asserts the
 `len <= width` invariant, not the literal text. The comment is
 correct as a high-level description; the literal text is an
 implementation detail that the test does not pin.
@@ -141,6 +148,10 @@ shows the helper is used in 14 sites; the test covers the
 invariant, not the literal text.
 
 **No change made.** Documented in `02_SPECIFICATIONS.md` §7.2.
+
+**Correction (2026-10-09):** the prior draft cited line 1382;
+the actual Kilo review line is 1361 (verified by
+`grep "ui_input.rs" /tmp/kilo-review-full.md`).
 
 ### 4.4 `build.rs:228`
 

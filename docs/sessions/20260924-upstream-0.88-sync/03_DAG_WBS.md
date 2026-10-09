@@ -1,20 +1,36 @@
 # DAG / WBS
 
-The 13-commit dependency graph and work-breakdown structure for the
-v0.88.0 sync PR. Every commit on the branch `feature/upstream-0.88-sync`
-between the merge base `41fae89f3` and the current HEAD is accounted
-for, with its dependencies, file/line deltas, and the role of the
-subagent (or orchestrator) that produced it.
+The dependency graph and work-breakdown structure for the v0.88.0
+sync PR. Every commit on the branch
+`feature/upstream-0.88-sync` between the merge base `41fae89f3`
+and the current HEAD is accounted for, with its dependencies,
+file/line deltas, and the role of the subagent (or orchestrator)
+that produced it.
+
+## 0. Commit count and WBS scope (corrected 2026-10-09)
+
+**The follow-up branch contains 32 commits on top of the v0.88.0
+merge base `41fae89f3`.** This file documents 15 WBS nodes
+corresponding to 15 of those 32 commits (the 15 work products
+that close the 15 audit items). The remaining 17 commits are
+auxiliary: build-meta hardening follow-ups, additional doc
+revisions, and CI workflow tweaks. Each is named in the commit
+log; the WBS table below names the audit-relevant 15.
+
+The 15 WBS nodes below are the 15 audit items; the 32 follow-up
+commits include those 15 plus 17 other commits (auxiliary doc
+fixes, build-meta follow-ups, CI tweaks) all visible in
+`git log 41fae89f3..HEAD --oneline`.
 
 ## 1. The DAG
 
-The 13 commits form a **mostly-serial** DAG with two parallel
-branches (the security-preflight hardening and the dependency bump)
-and a "fast-feedback" tail (the doc fixes). The critical path is
-through the dependency bump because the RUSTSEC-2026-0258 advisory
-was the highest-severity unaddressed item in the Kilo review and the
-bump enables the preflight script's deny/audit invocation to run
-clean.
+The 15 audit-relevant commits form a **mostly-serial** DAG with
+two parallel branches (the security-preflight hardening and the
+dependency bump) and a "fast-feedback" tail (the doc fixes). The
+critical path is through the dependency bump because the
+RUSTSEC-2026-0258 advisory was the highest-severity unaddressed
+item in the Kilo review and the bump enables the preflight
+script's deny/audit invocation to run clean.
 
 ```mermaid
 graph TD
@@ -45,9 +61,9 @@ graph TD
 |---|---|---|---|---|---|---|---|
 | WBS-01 | `cee86c4d7` | 1 | +6 | repo | (none) | orchestrator | gitignore `.scratch-*.{txt,md,sh,json}` so 82 existing scratch files are untracked and future scratch files are auto-ignored. |
 | WBS-02 | `aa955589d` | 1 | +12/-1 | code | WBS-01 | dragon | Replace `pub use jcode_tui::herdr::*;` wildcard in `src/herdr.rs:22` with an explicit `pub use` list. Resolves Kilo CRITICAL. |
-| WBS-03 | `253b337ba` | 1 | +9/-3 | budgets | WBS-01 | dragon | Bump 3 code-size baselines (`client_actions.rs` 1223→1227, `input.rs` 4270→4273, `ui_input.rs` 3752→3757) in `scripts/code_size_budget.json`. Resolves Kilo CRITICAL. |
+| WBS-03 | `253b337ba` | 1 | +9/-3 | budgets | WBS-01 | dragon | Bump 3 code-size baselines (`crates/jcode-app-core/src/server/client_actions.rs` 1223→1227, `crates/jcode-tui/src/tui/app/input.rs` 4270→4273, `crates/jcode-tui/src/tui/ui_input.rs` 3752→3757) in `scripts/code_size_budget.json`. Resolves Kilo CRITICAL. |
 | WBS-04 | `3a23ad63b` | 1 | +166/-166 | deps | WBS-01 | hatchling | `cargo update -p h2 -p rustls`: h2 0.4.13→0.4.20, rustls 0.23.37→0.23.45, rustls-webpki 0.103.13→0.103.15. Resolves RUSTSEC-2026-0258 and RUSTSEC-2026-0285. |
-| WBS-05 | `f6a780754` | 1 | +85/-12 | security | WBS-01 | nautilus | Harden `scripts/security_preflight.sh`: token-precise filter (line 92), explicit error handling (line 96), mktemp + trap (line 97), empty-allowlist guard (line 54). Resolves 4 Kilo WARNINGs. |
+| WBS-05 | `f6a780754` | 1 | +85/-12 | security | WBS-01 | nautilus | Harden `scripts/security_preflight.sh`: token-precise filter (pre-fix line 92), explicit error handling (pre-fix line 96), mktemp + trap (pre-fix line 97), empty-allowlist guard (pre-fix line 54). Resolves 4 Kilo WARNINGs. The post-fix file no longer has those line numbers; the commit message labels the defects `DEFECT 1`-`DEFECT 4`. |
 | WBS-06 | `1db891b29` | 1 | +19/-12 | docs | WBS-04, WBS-05 | hatchling | Update `docs/SECURITY_DEPENDENCIES.md` RUSTSEC-0258/0285 rows: bump Last reviewed to 2026-10-08, mark both "Resolved 2026-10-08", note removal of `--ignore` entries. |
 | WBS-07 | `ef9b1e42a` | 2 | +71/-22 | build | WBS-03 | humpback | In `crates/jcode-build-meta/build.rs`, preserve the prerelease channel in `JCODE_BASE_SEMVER` and `JCODE_UPDATE_SEMVER`. Relax `parse_semver` to split on both `-` and `+`. Add the `prerelease_suffix` helper. Resolves Kilo CRITICAL. |
 | WBS-08 | `3f76e8d41` | 1 | +27/-3 | installer | WBS-07 | humpback | In `scripts/install_release.sh:73-83`, assert the installed binary's `--version` carries the package channel. The regex is still only `($git_hash)`-shaped (the channel-segment work is the deferred issue). |
@@ -59,11 +75,20 @@ graph TD
 | WBS-14 | `67576d8cb` | 1 | +13/-8 | docs | WBS-12, WBS-13 | wyvern | Correct `07_ACCEPTANCE_EVIDENCE.md`: the actual current HEAD (`e6135802a`, superseded by `67576d8cb`) and the 8,964-test denominator provenance. Resolves 3 Kilo WARNINGs. |
 | WBS-15 | `32621b2ad` | 4 | +26/-8 | docs+test | WBS-14 | orchestrator | Correct 4 stale Kilo claims: `provider_catalog_tests.rs:220` (ssh-agent guarded), `00_SESSION_OVERVIEW.md:471` ("admin-only to fix" → "maintainer with secrets write access"), `08_FINAL_EVIDENCE.md:84` (HEAD scoped as "at time of measurement"), `07_ACCEPTANCE_EVIDENCE.md:26` (log UI step indexing noted). |
 
-**Total**: 15 commits, 13 distinct WBS nodes (WBS-04 + WBS-05 are
-parallel siblings of WBS-02/WBS-03). Files touched: 9 unique (1
-gitignore, 1 code, 1 budgets, 1 Cargo.lock, 1 build script, 1
-installer script, 1 test, 1 security doc, 3 session docs + 1
-test file).
+**Total**: 15 audit-relevant WBS commits (1 of the 32 total
+follow-up commits per the §0 reconciliation), 15 distinct WBS
+nodes (WBS-04 + WBS-05 are parallel siblings of WBS-02/WBS-03).
+Files touched: 9 unique (1 gitignore, 1 code, 1 budgets, 1
+Cargo.lock, 1 build script, 1 installer script, 1 test, 1
+security doc, 3 session docs + 1 test file).
+
+**Correction (2026-10-09):** the prior draft said "15 commits,
+13 distinct WBS nodes." The correct count is 15 audit-relevant
+commits and 15 distinct WBS nodes (one WBS node per audit
+commit; WBS-04 and WBS-05 run as parallel siblings rather than
+sharing a node). The prior draft also said "13 commits form a
+DAG" in §1; the correct count is 15 audit-relevant commits, and
+the full branch has 32 follow-up commits.
 
 ## 3. Critical path
 
