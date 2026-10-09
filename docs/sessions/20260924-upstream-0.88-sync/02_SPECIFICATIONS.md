@@ -302,7 +302,7 @@ the actual Kilo review line is 1361 (verified by
 | Item | Owner | Tracking |
 |---|---|---|
 | `parse_semver` env-var channelization (install_release.sh regex still only matches `($git_hash)`) | next PR | `05_KNOWN_ISSUES.md` §"parse_semver env vars" |
-| `cargo fmt` cleanup (102 pre-existing dirty files) | dedicated PR | `05_KNOWN_ISSUES.md` §"cargo fmt debt" |
+| `cargo fmt` cleanup (103 pre-existing dirty files) | dedicated PR | `05_KNOWN_ISSUES.md` §"cargo fmt debt" |
 | Budget growth decomposition (4 absorbed ratchets since v0.88.0) | dedicated PR | `05_KNOWN_ISSUES.md` §"Budget growth" |
 | `provider_catalog_tests` Z.AI `glm-5.3` assertion (correct comment, stale expectation) | next PR | `05_KNOWN_ISSUES.md` §"provider_catalog_tests assertion" |
 | Master branch empty-DEPLOY_KEY guard | one-commit follow-up | `05_KNOWN_ISSUES.md` §"Master branch ssh guard" |

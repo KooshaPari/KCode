@@ -176,7 +176,7 @@ changes and can land in any order.
 The audit identified 4 items that this PR did not address because
 they are out-of-scope for the v0.88.0 sync:
 
-- `cargo fmt --all` (would touch 102 pre-existing dirty files and
+- `cargo fmt --all` (would touch 103 pre-existing dirty files and
   obscure the v0.88.0 diff). Tracked in
   `05_KNOWN_ISSUES.md` §"cargo fmt debt".
 - `parse_semver` env-var channelization in `install_release.sh:73-83`

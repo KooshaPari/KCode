@@ -19,8 +19,14 @@ Per-job matrix (10 jobs total), source of truth: GitHub Actions workflow run `37
 | 6 | Setup Friction Eval (Linux installer) | **PASS** | |
 | 7 | Release Automation | **PASS** | |
 | 8 | PowerShell Syntax | **PASS** | |
-| 9 | Format | FAIL (expected, non-blocking) | 102 pre-existing dirty files, by design (see `06_TESTING_STRATEGY.md` and `.scratch-fmt-premerge-r2.txt`). Not introduced by this PR. Excluded from merge decision. |
-| 10 | Quality Guardrails | FAIL (expected, non-blocking) | Same 102 pre-existing dirty files. Not introduced by this PR. Excluded from merge decision. |
+| 9 | Format | FAIL (expected, non-blocking) | 103 pre-existing dirty files, by design (see `06_TESTING_STRATEGY.md` and `.scratch-fmt-premerge-r2.txt`). Not introduced by this PR. Excluded from merge decision. |
+| 10 | Quality Guardrails | FAIL (expected, non-blocking) | Same 103 pre-existing dirty files. Not introduced by this PR. Excluded from merge decision. |
+
+**Correction (2026-10-09):** rows 9 and 10 said "102". Re-measured at `94db64687` on both
+the `+stable` and default `nightly` rustfmt channels the count is **103**, with zero
+file divergence between channels. Live confirmation at run `37882834770`: both jobs
+still fail, and the `Quality Guardrails` failed log contains exactly one step,
+`Check formatting`, proving the job exits at fmt and never reaches steps 4-15.
 
 **Required-checks result: 8/8 PASS. Overall workflow conclusion: failure, caused solely by the two expected non-blocking jobs.**
 
@@ -71,7 +77,7 @@ The remaining 11 commits are doc/budget/security/CI-hygiene commits: `21fa4ad20`
 
 | Item | Why not blocking | Where tracked |
 |---|---|---|
-| `cargo fmt --all` (102 files dirty) | Pre-existing, not introduced by this PR; excluded from merge by session policy | `06_TESTING_STRATEGY.md`; `.scratch-fmt-premerge-r2.txt` |
+| `cargo fmt --all` (103 files dirty) | Pre-existing, not introduced by this PR; excluded from merge by session policy | `06_TESTING_STRATEGY.md`; `.scratch-fmt-premerge-r2.txt` |
 | Dependency bump `h2 >=0.4.16` | Patch fix exists; deferred to keep this PR free of graph churn; advisory is triaged, not silently dropped | `docs/SECURITY_DEPENDENCIES.md` |
 | Dependency bump `rustls >=0.23.45` | Same as above | Same |
 | Reachability verification for the two triaged RustSec paths | Not required for this triage decision (lockfile inherited from upstream); tracked as "not verified" honestly in the triage entry | `docs/SECURITY_DEPENDENCIES.md` |

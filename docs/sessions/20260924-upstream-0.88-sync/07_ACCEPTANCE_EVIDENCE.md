@@ -25,10 +25,21 @@ REST cross-check that lists the steps as a JSON array is off by one for
 indices after that header — the log-UI numbering is the canonical one
 this doc uses throughout.)
 
-=> Only the **Format** job ever executed project code. Its step #4
-`Check module declarations resolve` **PASSED** (no `mod x;` resolution broke), and
-its step #5 `cargo fmt --all -- --check` failed on the pre-existing dirt documented
+=> Only the **Format** job (`.github/workflows/ci.yml:600`, a separate job from
+`Quality Guardrails` at line 20) ever executed project code. Its step 1 `Check module
+declarations resolve` **PASSED** (no `mod x;` resolution broke), and
+its step 2 `cargo fmt --all -- --check` failed on the pre-existing dirt documented
 in `00_SESSION_OVERVIEW.md`.
+
+**Correction (2026-10-09):** this passage previously said "step #4" and "step #5".
+The `Format` job has exactly two named steps after the `uses:` bootstrap
+(`actions/checkout@v4`, `dtolnay/rust-toolchain@stable`):
+1. `Check module declarations resolve` (PASS)
+2. `Check formatting` (FAIL)
+
+Separately, in the `Quality Guardrails` job the same `Check formatting` step is
+**third** of 15 named steps, and its failure is what prevents steps 4-15 from
+running. See `05_KNOWN_ISSUES.md` §2.
 
 ## B) The 5 ssh-agent failures were structural (now guarded)
 

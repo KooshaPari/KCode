@@ -165,8 +165,9 @@ the v0.88.0 sync scope:
 
 - `parse_semver` env-var channelization (the install_release.sh regex
   still only matches `($git_hash)`, not the channel segment).
-- `cargo fmt` cleanup (102 pre-existing dirty files blocking the CI
-  `Quality Guardrails` job from reaching the budget gates).
+- `cargo fmt` cleanup (103 pre-existing dirty files blocking the CI
+  `Quality Guardrails` job from reaching the budget gates). Corrected
+  2026-10-09 from a stale "102" (see `05_KNOWN_ISSUES.md` §2).
 - Budget growth (4 absorbed ratchets since v0.88.0; no decomposition
   path, and the panic baseline moved 77 -> 181 with no offsetting
   reduction).

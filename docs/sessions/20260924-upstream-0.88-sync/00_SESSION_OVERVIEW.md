@@ -383,12 +383,19 @@ Gold-standard provenance (same worktree method as the budget gates): the identic
 command was run on `jcode-prov-premerge` (detached `115170054`, the merge's fork parent)
 with the same pinned `rustfmt 1.9.0-nightly (d0babd8b6b 2026-07-15)`:
 
+**Correction (2026-10-09):** the figures in this section said **102** post-merge dirty
+files, derived as `111 pre-merge − 9 fixed`. Re-measured at `94db64687` on both the
+`+stable` and default `nightly` rustfmt channels, the true count is **103**, and the two
+channels agree exactly (zero file divergence). The `111 − 9 = 102` arithmetic is therefore
+wrong by one somewhere upstream of the CI comparison: the CI log comparison below remains
+valid for its own conclusion (**0 merge-introduced dirt**), but its headline count is stale.
+
 | Tree | Unique dirty files | Result |
 |---|---|---|
 | Pre-merge (`115170054`) | **111** | RED already |
-| Branch head (post-fix) | **102** | RED |
-| dirty in both | 102 | pre-existing fork dirt |
-| dirty pre → clean post | **9** | merge *fixed* these |
+| Branch head (post-fix, re-measured 2026-10-09) | **103** | RED |
+| dirty in both | 103 | pre-existing fork dirt |
+| dirty pre → clean post | **8** | merge *fixed* these |
 | clean pre → dirty post | **0** | merge introduced none |
 
 **Measurement trap:** the first pre-merge run measured only 99 files because a server
@@ -406,7 +413,7 @@ order — the `save_preferred_macos_terminal` statement must precede the
 `{MacTerminalKind, effective_macos_terminal}` group. Fixed with a 4-line reorder;
 re-measure gives `clean_pre_dirty_post = 0`.
 
-**Decision: neither ratcheted nor mass-formatted.** The remaining 102 files are
+**Decision: neither ratcheted nor mass-formatted.** The remaining 103 files are
 pre-existing fork dirt (the operator documented ~402 fmt-dirty files at session start
 and directed against `cargo fmt --all`). The gate does not block: `master` is
 unprotected, so no required status checks gate the merge.
@@ -418,7 +425,7 @@ unprotected, so no required status checks gate the merge.
 - All 5 budget gates EXIT=0 on the branch head `d511d5948`.
 - E2E re-verify of the 6 shifting failures: **4 passed / 2 failed**, both failures
   timeout-class (see below).
-- Format: EXIT=1 with 102 pre-existing dirty files, **0 introduced by this branch**.
+- Format: EXIT=1 with 103 pre-existing dirty files, **0 introduced by this branch**.
 
 ## E2E re-verify results (2026-10-01): failures are load flakes, not defects
 
@@ -487,10 +494,19 @@ set and compared it against the local pre-merge measurement:
 
 | Set | Count |
 |---|---|
-| CI dirty files (Linux, rustfmt **stable**) | **102** |
+| CI dirty files (Linux, rustfmt **stable**) | **102** *(see correction note)* |
 | Pre-merge dirty files (local, pinned nightly 1.9.0) | **111** |
 | In CI but **not** pre-merge → **merge-introduced dirt** | **0** |
 | In pre-merge but not CI → fixed by the merge | 9 |
+
+**Correction (2026-10-09):** the `102` above is what the CI run `36925706533` log
+contained at head `26936d06e`, recorded faithfully but never re-measured afterwards.
+Re-measuring at the current head `94db64687` (run `37882834770`) gives **103** dirty
+files on both the `+stable` and default `nightly` rustfmt channels, with zero file
+divergence between channels. So `111 − 9 = 102` is off by one: the CI-log extraction
+and the local re-measurement differ by a single file. The comparison's actual
+conclusion — **0 merge-introduced dirt** — is unaffected, and that is the claim this
+table was used to support.
 
 `111 − 9 = 102`, so CI's set is exactly `pre-merge − fixed`. The first CI entry is
 `benches/startup.rs:15`, byte-identical to the local first entry. This is independent

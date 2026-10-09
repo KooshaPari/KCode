@@ -215,7 +215,7 @@ The CI pipeline runs 5 test layers per branch push:
 | Layer | Job | Duration | Gates |
 |---|---|---|---|
 | 1. Format | `Format` | ~22s | `cargo fmt --all -- --check` |
-| 2. Quality Guardrails | `Quality Guardrails` | ~8s without fmt; longer with | `cargo deny` + `cargo audit` + secret scan + `cargo check --all-targets` |
+| 2. Quality Guardrails | `Quality Guardrails` | ~8s without fmt; longer with | `cargo check --all-targets --all-features`, `cargo clippy ... -D warnings`, and 8 budget/ratchet scripts (`check_code_size_budget.py`, `check_test_size_budget.py`, `check_panic_budget.py`, `check_swallowed_error_budget.py`, `check_dependency_boundaries.py`, SDK-parity, `check_wildcard_reexport_budget.py`, unused-deps). **Note:** `cargo deny`, `cargo audit` (RUSTSEC) and the secret scan are *not* steps in this job — they run in `scripts/security_preflight.sh`. Correction 2026-10-09; an earlier draft listed them here. |
 | 3. Build & Test (matrix) | `Build & Test macos / ubuntu / windows` | varies | `cargo build` + `cargo test` |
 | 4. Windows cross-target | `Windows Cross-Target Check (Linux)` | ~12s | `cargo check --target x86_64-pc-windows-gnu` |
 | 5. E2E | `E2E` (if exists) | varies | end-to-end smoke |

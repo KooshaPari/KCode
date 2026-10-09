@@ -51,24 +51,35 @@ pre-release channel segment to installer regex".
 
 ## 2. cargo fmt debt — DEFERRED
 
-**Severity:** DEFERRED (102 pre-existing dirty files, by design).
+**Severity:** DEFERRED (103 pre-existing dirty files, by design).
+
+**Correction (2026-10-09):** this section previously said 102, derived as
+`111 pre-merge − 9 fixed`. Re-measured at `94db64687` on both the `+stable` and
+default `nightly` rustfmt channels the true count is **103**, and the two
+channels agree exactly (zero file divergence). The merge reduced the dirt by
+**8** files, not 9. The `0 merge-introduced` conclusion is unaffected.
 
 **Current state:** `cargo fmt --all -- --check` exits 1 on the
 current HEAD. The dirt is **pre-existing** (verified by running
 the same command on a detached `115170054` — the fork parent of
-the merge — in a separate worktree; the count was 111, not 102, so
-the merge actually reduced the dirt by 9 files; the 102 number is
+the merge — in a separate worktree; the count was 111, so the
+merge actually reduced the dirt by 8 files; the 103 number is
 the post-merge floor).
 
 **File/line refs:**
 - `08_FINAL_EVIDENCE.md` §4 (the cross-validation)
 - `00_SESSION_OVERVIEW.md` §"Format gate" (the provenance)
 
-**Blocking condition:** the CI `Quality Guardrails` job runs
-`cargo fmt --all -- --check` at step #5 (post `Format` job), and
-this step fails before the budget gates (deny, RUSTSEC, secret
-scan) can run. The budget gates are reached only when the fmt step
-passes.
+**Blocking condition:** the CI `Quality Guardrails` job
+(`.github/workflows/ci.yml:20`) runs `cargo fmt --all -- --check` as its
+**third** of 15 steps, named "Check formatting". This step fails before
+clippy, `cargo check --all-targets`, and the eight budget/ratchet gates can
+run.
+
+**Correction (2026-10-09):** this section previously said "step #5" and named
+`deny`, `RUSTSEC` and `secret scan` as the skipped gates. Enumerating the job
+from the workflow file directly gives 15 steps with fmt at position 3, and
+`deny` / `RUSTSEC` / `secret scan` are **not** steps in this job at all.
 
 **Why this blocks the budget gates:** the `Quality Guardrails`
 job's `cargo fmt --all -- --check` step is a hard prerequisite for
@@ -78,11 +89,17 @@ budget gates are SKIPPED. This means a CI run that shows
 fmt step passed; the budget gates are NEVER exercised at this
 head.
 
+**Live confirmation (2026-10-09):** at PR head `94db64687` (run
+`37882834770`), `gh pr checks 23` reports both `Format` and
+`Quality Guardrails` failing, and `gh run view 37882834770 --log-failed`
+contains exactly one `Quality Guardrails` step — `Check formatting` —
+confirming the job exits at fmt and never reaches steps 4-15.
+
 **Deferred-to:** dedicated PR titled "style: cargo fmt --all the
-102 pre-existing dirty files" or "ci: allow the fmt step to
+103 pre-existing dirty files" or "ci: allow the fmt step to
 proceed independently of the budget gates".
 
-**Owner candidate:** any maintainer willing to land a 102-file
+**Owner candidate:** any maintainer willing to land a 103-file
 format-only diff. The diff is large but mechanical; no logic
 changes.
 
