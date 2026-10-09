@@ -471,12 +471,32 @@ gh issue create \
 
 ---
 
-## Herdr upstream issue 5 (added 2026-10-09 round 6; root cause found 2026-10-09 round 7)
+## Herdr upstream issue 5 (added 2026-10-09 round 6; root cause found 2026-10-09 round 7; REFRAMED 2026-10-08 round 8.1)
 
-This is a **7th body** added after the original 6. The C1 fix at the kcode
-level is correct (verified at 4 levels), but the herdr server silently
-rejects every `pane.report_agent_session` event from kcode/jcode reporters
-with `outcome="error"` and no error reason in the log.
+**REFRAMED.** Round 8 initially diagnosed a kcode runtime regression
+(C1 fix not firing at runtime), but round 8.1 proved the C1 fix IS
+working at runtime (proven by session.json persistence). The "regression"
+was actually a herdr logging bug, and the original 7th body
+(about the `is_official_agent_source` allowlist) was reframed.
+
+**Two separate issues emerged:**
+
+1. **herdr logging bug** (now 7th body) — `pane.report_agent*` events
+   are received and persisted but NOT logged in `herdr-server.log`.
+   This makes verification difficult and audit trails incomplete.
+2. **herdr allowlist polish** (now 8th body) — `is_official_agent_source`
+   doesn't include kcode/jcode, so `plan()` returns None. The crash
+   persistence works via the `resume_argv` rescue path, but the
+   canonical path (dedupe_key, AgentResumePlan, pane.list integration)
+   is broken. Filed as priority/medium instead of priority/high.
+
+**C1 status:** the kcode-side C1 fix is **correct and working at runtime**
+(proven by session.json pane 19 having the exact data the kcode reporter
+sends). Round 7's 4-level verification was sufficient; the 5th level
+(runtime log entry) was an artifact of a herdr logging bug.
+
+**7th body reframed** as herdr logging bug (was: allowlist as crash blocker).
+**8th body added** as herdr allowlist polish (was: same content as 7th body).
 
 **Root cause found in round 7** by reading the herdr source at
 `https://github.com/herdrdev/herdr/blob/master/src/agent_resume.rs`:
@@ -511,18 +531,17 @@ This body is concrete enough to be filed as a **PR description** rather than
 just an issue. A 4-line PR with a clear repro and the exact fix is a small
 change that's likely to merge quickly.
 
-### Issue 5
+### Issue 5 (REFRAMED 2026-10-08 round 8.1)
 
-**Title:** herdr server-side allowlist `is_official_agent_source` silently drops `pane.report_agent_session` events for kcode and jcode (regression: kcode/jcode not in list)
+**Title:** `pane.report_agent` and `pane.report_agent_session` events are received but not logged in herdr-server.log
 
-**Body file:** `/tmp/herdr-upstream-issue-5.md` (265 lines, ~13 KB; includes
-file path, function name, code snippet, call chain, suggested ~10-line
-fix (allowlist + plan arms + test cases), adjacent-work note about
-`is_reserved_native_state_source`, workarounds, and a recommended `warn!`
-log line for the silent-drop case). Re-verified against the live herdr
-source on 2026-10-09 round 7 follow-up: the 18-pair allowlist, the
-`plan()` arm structure, and the `--resume` flag (claude pattern, not
-codex positional pattern) all match the live herdr code.
+**Body file:** `/tmp/herdr-upstream-issue-5.md` (139 lines, ~5 KB). The
+body was completely rewritten to be about the herdr logging bug, NOT
+about the `is_official_agent_source` allowlist. The original 7th body
+content (allowlist) is now the 8th body. This reframe was triggered by
+round 8.1 discovering that the C1 fix IS working at runtime (proven by
+session.json persistence), and the "0 events in herdr-server.log" was
+actually a herdr logging bug, not a kcode regression.
 
 **Filing command (for operator paste once approved):**
 
@@ -532,39 +551,85 @@ codex positional pattern) all match the live herdr code.
 # 2. Run (issue):
 gh issue create \
   --repo herdrdev/herdr \
-  --title 'herdr server-side allowlist is_official_agent_source silently drops pane.report_agent_session events for kcode and jcode' \
+  --title 'pane.report_agent and pane.report_agent_session events are received but not logged in herdr-server.log' \
   --body-file /tmp/herdr-upstream-issue-5.md \
   --label bug \
-  --label priority/high \
+  --label priority/medium \
+  --label area/api \
+  --label area/logging \
+  --label good-first-issue
+```
+
+**Status:** body rewritten 2026-10-08 round 8.1 to reflect the actual
+herdr logging bug (not the allowlist as originally diagnosed). Filing
+can be deferred — operator can choose to file the issue from the
+inbox once approved.
+
+**Evidence summary:** 0 `pane.report_agent*` events in herdr-server.log
+since 2026-10-05T00:44:45 UTC (4 days), but 812 `pane.release_agent`
+events in the same timeframe. Persistence layer (session.json) proves
+events ARE being received and processed — the bug is in the logger.
+session.json pane 19 has the exact data the kcode reporter sends
+(`source: "herdr:kcode"`, `agent: "kcode"`, `argv: ["kcode", "--resume", "session_evergreen_..."]`).
+
+---
+
+### Issue 6 (NEW 2026-10-08 round 8.1; originally part of 7th body)
+
+**Title:** herdr server-side allowlist `is_official_agent_source` missing kcode and jcode entries (rescue path works, but `plan()` returns None)
+
+**Body file:** `/tmp/herdr-upstream-issue-6.md` (230 lines, ~9 KB). The
+8th body was extracted from the original 7th body. The key change:
+the allowlist is no longer claimed to be a crash-persistence blocker
+(crash recovery works via the `resume_argv` rescue path). The
+allowlist is now framed as a **polish** issue that enables the
+canonical `plan()` path, dedupe_key, and pane.list integration.
+
+**Filing command (for operator paste once approved):**
+
+```
+# Operator — paste once approved:
+# 1. Body already saved to /tmp/herdr-upstream-issue-6.md
+# 2. Run (issue):
+gh issue create \
+  --repo herdrdev/herdr \
+  --title 'is_official_agent_source allowlist in src/agent_resume.rs missing kcode and jcode entries' \
+  --body-file /tmp/herdr-upstream-issue-6.md \
+  --label bug \
+  --label priority/medium \
   --label area/reporter \
   --label area/agent-integration \
-  --label regression \
   --label good-first-issue
 ```
 
 **Alternative — file as a PR (recommended) instead of an issue:**
 
-The fix is small enough (4 lines) that a PR is more useful than an issue.
-Branch + commit + push the 4-line fix, then:
+The fix is small enough (~10 lines) that a PR is more useful than an
+issue. Branch + commit + push the fix, then:
 
 ```
 # 1. Fork herdrdev/herdr (operator-gated)
 # 2. Create branch: allowlist-kcode-jcode
-# 3. Apply the 4-line fix in src/agent_resume.rs
+# 3. Apply the ~10-line fix in src/agent_resume.rs:
+#    - 2 lines for the allowlist match arm
+#    - 2 plan() arms at ~4 lines each
+#    - 2 test cases at ~5 lines each
 # 4. Run cargo test -p herdr (the existing test cases in agent_resume.rs
 #    include is_official_agent_source tests — add kcode/jcode entries to
 #    the matches! arms in the planner_allows_supported_agents test).
 # 5. Commit + push + gh pr create.
 ```
 
-**Status:** root cause documented in commit `fec43fa9c`. Body updated
-2026-10-09 round 7 to include the file path, function name, code snippet,
-and 4-line suggested fix. Filing can be deferred — operator can choose to
-file the issue (or PR) from the inbox.
+**Status:** body extracted from original 7th body 2026-10-08 round
+8.1. Re-verified against the live herdr source: the 18-pair
+allowlist, the `plan()` arm structure, and the `--resume` flag
+(claude pattern, not codex positional pattern) all match the live
+herdr code. Filing can be deferred — operator can choose to file
+the issue (or PR) from the inbox.
 
-**Evidence summary:** 100% failure rate (34 of 34 `pane.report_agent_session`
-events errored, 0 succeeded). Cross-agent scope (kcode/jcode/codex). Long-
-standing (3+ weeks for codex, 5+ days for kcode/jcode). Error reason suppressed
-at INFO level — only `RUST_LOG=debug` on the server would reveal the actual
-rejection cause, but server restart is destructive (13 live panes).
+**Evidence summary:** the kcode session IS persisted in session.json
+via the `resume_argv` rescue path, but `agent_session` is None in
+`pane.list`/`pane info` (canonical path not taken). dedupe_key is
+None, so redundant state reports are not collapsed. ~10-line fix
+(2 allowlist + 2 plan arms + 2 test cases) is well-scoped.
 
