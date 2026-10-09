@@ -810,3 +810,16 @@ works: w7:p1R pane (the test pane) now shows proper
 command is preserved. The Ghostty instance is using the
 new daemon state. See 07_DRAFT_PRS.md for full verification
 details.
+
+### ✅ Ideas discussion filed (2026-10-09 20:21 UTC)
+
+Per the herdr maintainer's suggestion in the bot closure
+messages, the kcode/jcode support request has been filed as
+an Ideas discussion on herdrdev/herdr:
+**[herdr Discussion #5124: Add kcode and jcode to built-in agent allowlist](https://github.com/herdrdev/herdr/discussions/5124)**
+
+Working branch `KooshaPari:fix/agent-detection-allowlist`
+@ `d10bf15` is referenced in the discussion. Local validation
+evidence (binary test above) is included in the body. See
+07_DRAFT_PRS.md for the filing record, pillar 19, and the
+GraphQL `createDiscussion` flow that finally worked.
