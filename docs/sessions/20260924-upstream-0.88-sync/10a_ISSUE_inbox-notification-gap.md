@@ -1,3 +1,6 @@
+## Title
+Inbox notification gap: pre-tool-hook DEFERs of GitHub writes are never surfaced to the operator
+
 ## Symptom
 
 Agent-initiated GitHub write actions that the pre-tool hook DEFERs to the operator inbox are
