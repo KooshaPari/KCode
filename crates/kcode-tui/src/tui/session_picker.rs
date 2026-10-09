@@ -2191,6 +2191,17 @@ impl SessionPicker {
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
+        // Tiny panes retain keyboard navigation and show the current selection.
+        // Avoid bordered panes and fixed-height onboarding layouts here.
+        if frame.area().width < 60 || frame.area().height < 20 {
+            self.last_list_area = None;
+            self.last_preview_area = None;
+            let title = self.selected_session()
+                .map(|session| session.title.clone())
+                .unwrap_or_else(|| "No session selected".to_string());
+            frame.render_widget(Paragraph::new(title), frame.area());
+            return;
+        }
         let has_banner = self.crashed_sessions.is_some();
         let has_search = self.search_active || !self.search_query.is_empty();
         let has_onboarding = self.onboarding_banner.is_some();
