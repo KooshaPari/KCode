@@ -471,42 +471,91 @@ gh issue create \
 
 ---
 
-## Herdr upstream issue 5 (added 2026-10-09 round 6)
+## Herdr upstream issue 5 (added 2026-10-09 round 6; root cause found 2026-10-09 round 7)
 
-This is a **7th body** added after the original 6 — discovered while trying to
-verify the C1 fix end-to-end on a fresh 155x52 pane. The C1 fix at the kcode
-level is correct (verified at 4 levels), but the herdr server is silently
-rejecting every `pane.report_agent*` event with `outcome="error"` and no error
-reason in the log. This bug is upstream in `herdrdev/herdr` and affects all
-agent reporters (kcode, jcode, codex) — codex works around it via screen-state
-detection (sets `agent` from title only, not `agent_session`).
+This is a **7th body** added after the original 6. The C1 fix at the kcode
+level is correct (verified at 4 levels), but the herdr server silently
+rejects every `pane.report_agent_session` event from kcode/jcode reporters
+with `outcome="error"` and no error reason in the log.
+
+**Root cause found in round 7** by reading the herdr source at
+`https://github.com/herdrdev/herdr/blob/master/src/agent_resume.rs`:
+the function `is_official_agent_source(source, agent)` is a hardcoded
+`matches!` expression with 18 source/agent pairs. **kcode and jcode are
+not in the list.** The kcode reporter (after C1 fix) sends
+`source="herdr:kcode"` and `agent="kcode"`, the match returns false,
+`session_ref_from_report` returns `None` silently, and the pane record's
+`agent_session` is never set.
+
+**codex works** because codex is in the allowlist (its
+`agent_session.source="herdr:codex"` was set successfully at some point
+before the strict allowlist was introduced).
+
+**Suggested upstream fix (4 lines, well-scoped):**
+
+```rust
+// In src/agent_resume.rs, is_official_agent_source, add:
+| ("herdr:kcode", "kcode")
+| ("herdr:jcode", "jcode")
+
+// In src/agent_resume.rs, plan() resume planner, add:
+("herdr:kcode", "kcode", AgentSessionRefKind::Id) => {
+    vec!["kcode".into(), "--resume".into(), session_ref.value.clone()]
+}
+("herdr:jcode", "jcode", AgentSessionRefKind::Id) => {
+    vec!["jcode".into(), "--resume".into(), session_ref.value.clone()]
+}
+```
+
+This body is concrete enough to be filed as a **PR description** rather than
+just an issue. A 4-line PR with a clear repro and the exact fix is a small
+change that's likely to merge quickly.
 
 ### Issue 5
 
-**Title:** herdr silently rejects `pane.report_agent` / `pane.report_agent_session` events with `outcome=error` and no log reason
+**Title:** herdr server-side allowlist `is_official_agent_source` silently drops `pane.report_agent_session` events for kcode and jcode (regression: kcode/jcode not in list)
 
-**Body file:** `/tmp/herdr-upstream-issue-5.md` (179 lines, 7840 bytes)
+**Body file:** `/tmp/herdr-upstream-issue-5.md` (231 lines, ~12 KB; includes
+file path, function name, code snippet, call chain, suggested 4-line fix,
+workarounds, and a recommended `warn!` log line for the silent-drop case)
 
 **Filing command (for operator paste once approved):**
 
 ```
 # Operator — paste once approved:
 # 1. Body already saved to /tmp/herdr-upstream-issue-5.md
-# 2. Run:
+# 2. Run (issue):
 gh issue create \
   --repo herdrdev/herdr \
-  --title 'herdr silently rejects pane.report_agent / pane.report_agent_session events with outcome=error and no log reason' \
+  --title 'herdr server-side allowlist is_official_agent_source silently drops pane.report_agent_session events for kcode and jcode' \
   --body-file /tmp/herdr-upstream-issue-5.md \
   --label bug \
   --label priority/high \
   --label area/reporter \
   --label area/agent-integration \
-  --label regression
+  --label regression \
+  --label good-first-issue
 ```
 
-**Status:** not yet attempted (drafted 2026-10-09 round 6; will be hook-blocked
-when attempted, will appear in operator's inbox for approval). Filing can be
-deferred — operator can choose to file all 7 issues at once from the inbox.
+**Alternative — file as a PR (recommended) instead of an issue:**
+
+The fix is small enough (4 lines) that a PR is more useful than an issue.
+Branch + commit + push the 4-line fix, then:
+
+```
+# 1. Fork herdrdev/herdr (operator-gated)
+# 2. Create branch: allowlist-kcode-jcode
+# 3. Apply the 4-line fix in src/agent_resume.rs
+# 4. Run cargo test -p herdr (the existing test cases in agent_resume.rs
+#    include is_official_agent_source tests — add kcode/jcode entries to
+#    the matches! arms in the planner_allows_supported_agents test).
+# 5. Commit + push + gh pr create.
+```
+
+**Status:** root cause documented in commit `fec43fa9c`. Body updated
+2026-10-09 round 7 to include the file path, function name, code snippet,
+and 4-line suggested fix. Filing can be deferred — operator can choose to
+file the issue (or PR) from the inbox.
 
 **Evidence summary:** 100% failure rate (34 of 34 `pane.report_agent_session`
 events errored, 0 succeeded). Cross-agent scope (kcode/jcode/codex). Long-

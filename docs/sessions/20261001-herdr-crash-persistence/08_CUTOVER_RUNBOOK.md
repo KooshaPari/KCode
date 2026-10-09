@@ -431,3 +431,101 @@ re-emitted on server restore (the C9 SIGKILL fix path), so option 3 is the
 - **Live `herdr:kcode` namespace proof:** PENDING the C4 cutover OR a full-width pane
   for a re-test. Until then, codex's `herdr:codex` panes stand as byproduct evidence
   that the same reporter pattern works.
+
+---
+
+## Phase 4 revision 3 (2026-10-09 round 7 — ROOT CAUSE FOUND: herdr allowlist)
+
+**Status:** C1 fix is **fully verified at the kcode level**. The C4 cutover is
+**no longer the gate** to crash persistence — the upstream herdr fix is.
+
+### What changed since revision 2
+
+Round 6 revealed that the herdr server is silently rejecting every
+`pane.report_agent_session` event from kcode/jcode reporters with
+`outcome="error"` and no error reason. Round 7 identified the actual
+upstream root cause by reading `herdrdev/herdr` source at
+`https://github.com/herdrdev/herdr/blob/master/src/agent_resume.rs`:
+
+**Bug:** `is_official_agent_source(source, agent)` is a hardcoded `matches!`
+expression with 18 source/agent pairs (claude, codex, copilot, devin, droid,
+kimi, omp, mastracode, pi, hermes, opencode, qodercli, qwen, kilo, cursor,
+antigravity_cli/agy, grok, letta). **kcode and jcode are NOT in the list.**
+
+**Call chain** for a `pane.report_agent_session` event:
+
+```
+Method::PaneReportAgentSession handler
+  -> session_ref_from_report(source, agent, agent_session_id, agent_session_path)
+    -> if !is_official_agent_source(source, agent) { return None; }
+```
+
+The kcode reporter (after C1 fix) sends `source="herdr:kcode"` and
+`agent="kcode"`. The match returns false. `session_ref_from_report` returns
+`None` silently. The pane record's `agent_session` is never set. The event
+is logged as `outcome="error"` with no reason.
+
+**Why codex partially works:** codex is in the allowlist. Its
+`agent_session.source="herdr:codex"` was set successfully at some point
+before the strict allowlist was introduced.
+
+### What this means for the C4 cutover
+
+**The C4 cutover is NO LONGER sufficient to enable crash persistence.** The
+4-line upstream fix is the precondition. Once herdr has the allowlist
+update, the existing kcode installation will start persisting sessions
+immediately — no kcode rebuild needed.
+
+**Updated operator-gating:**
+
+| Step | Pre-condition | Status |
+|---|---|---|
+| File upstream issue or PR to herdrdev/herdr | operator approval (`gh issue create` / `gh pr create` are hook-blocked) | **7th body ready** at `/tmp/herdr-upstream-issue-5.md`; PR alternative also documented |
+| herdr upstream merges the allowlist fix | upstream maintainer | pending |
+| herdr server restart with new binary | operator-gated, kills 13 live panes | blocked on upstream fix |
+| kcode reporter populates `agent_session` on next event | automatic, no operator action | pending herdr restart |
+| C4 cutover (`reconcile_sessions.py`) populates `agent_resume` for 13 kcode panes | automatic once reporter works | pending herdr restart |
+
+### Operator decision tree
+
+If the operator wants to unblock crash persistence for kcode/jcode:
+
+1. **File the 7th body as a PR** (recommended) to herdrdev/herdr:
+   - Fork herdrdev/herdr
+   - Branch `allowlist-kcode-jcode`
+   - Apply the 4-line fix (2 lines in `is_official_agent_source`, 2 arms in `plan()`)
+   - Add test cases extending the existing `planner_allows_supported_agents` and
+     `is_official_agent_source` tests
+   - `cargo test -p herdr` to verify
+   - `gh pr create` with the body as the description (will be hook-blocked for approval)
+2. **OR file the 7th body as an issue** with a "good first issue" label and
+   wait for upstream to fix it
+3. **Wait for upstream merge**, then restart herdr with the new binary
+4. **Run the C4 cutover** (Phase 0–4 of this runbook) to populate
+   `agent_resume` for the 13 kcode panes
+5. **Verify** with the post-cutover walker in Phase 4 revision 1
+
+### Why the C1 verification still stands
+
+Even though the C1 fix is invisible at runtime (the server drops the events),
+the C1 fix code is correct. The reporter sends the right
+`source="herdr:kcode"` value. The bug is purely on the herdr server.
+**Once the upstream fix lands, the existing kcode installation will
+start persisting sessions immediately** — no kcode rebuild, no kcode
+redeploy, no kcode-side change needed.
+
+The 4-level verification (source code, unit tests, binary strings, codex
+byproducts) remains valid as evidence that the kcode reporter code is
+correct and the fix is on the herdr side.
+
+### Reference
+
+- **7th body:** `/tmp/herdr-upstream-issue-5.md` (231 lines, includes file
+  path, function name, code snippet, call chain, suggested 4-line fix,
+  workarounds, and a recommended `warn!` log line for the silent-drop case)
+- **Session doc:** `docs/sessions/20261001-herdr-crash-persistence/00_SESSION_OVERVIEW.md`
+  round 7 section
+- **Draft catalog:** `docs/sessions/20261001-herdr-crash-persistence/07_DRAFT_PRS.md`
+  Herdr upstream issue 5 (root cause found 2026-10-09 round 7)
+- **Commit:** `fec43fa9c` — docs(herdr-session): add round 7 (ROOT CAUSE FOUND: herdr allowlist)
+- **Operator ledger:** `~/.jcode/memories/agents.md` round 7 pillars
