@@ -69,8 +69,11 @@ pub fn render_session_template(content: &str, variables: &HashMap<String, String
             for section in &template.sections {
                 if let Some(value) = variables.get(&section.name) {
                     let section_header = format!("## {}", section.name);
-                    rendered =
-                        rendered.replace(&format!("{section_header}\n{}", section.body), value);
+                    let normalized_body = section.body.trim_start_matches([' ', '\t', '\n', '\r']);
+                    rendered = rendered.replace(
+                        &format!("{section_header}\n{normalized_body}"),
+                        value,
+                    );
                 }
             }
             substitutor.substitute(&rendered)

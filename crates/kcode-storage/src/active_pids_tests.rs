@@ -37,7 +37,11 @@ fn session_counts_counts_live_and_streaming_only() {
     kcode_core::env::set_var("KCODE_HOME", temp.path());
 
     let live = std::process::id();
-    let dead = 999_999u32;
+    let mut exited_process = std::process::Command::new("true")
+        .spawn()
+        .expect("spawn short-lived process");
+    let dead = exited_process.id();
+    exited_process.wait().expect("wait for short-lived process");
     register_active_pid("session_alpha", live);
     mark_streaming("session_alpha");
     register_active_pid("session_beta", live);
