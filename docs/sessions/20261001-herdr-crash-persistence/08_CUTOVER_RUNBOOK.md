@@ -533,11 +533,16 @@ canonical `plan()` path, dedupe_key, and agent_session display.
 
 ### Reference
 
-- **7th body:** `/tmp/herdr-upstream-issue-5.md` (139 lines, herdr logging bug)
-- **8th body:** `/tmp/herdr-upstream-issue-6.md` (230 lines, herdr allowlist)
+- **7th body:** `/tmp/herdr-upstream-issue-5.md` (268 lines, herdr logging bug, root cause FOUND in `src/logging.rs`)
+- **8th body:** `/tmp/herdr-upstream-issue-6.md` (278 lines, herdr allowlist, full pane inventory)
 - **Session doc:** `docs/sessions/20261001-herdr-crash-persistence/00_SESSION_OVERVIEW.md`
-  round 8 REVERSED section
+  round 8 REVERSED + round 8.1 follow-up sections
 - **Draft catalog:** `docs/sessions/20261001-herdr-crash-persistence/07_DRAFT_PRS.md`
-  Herdr upstream issues 5 (reframed) + 6 (new)
-- **Commit:** `26c91080a` — docs(herdr-session): round 8.1 — REVERSE round 8; C1 fix is working
-- **Operator ledger:** `~/.jcode/memories/agents.md` round 8.1 pillars
+  Herdr upstream issues 5 (reframed) + 6 (new), with verified herdr label taxonomy
+- **Commits:**
+  - `26c91080a` — round 8.1 REVERSAL (C1 fix proven working)
+  - `8ebe298f5` — Phase 4 revision 4 (allowlist = polish, not blocker)
+  - `13b1d2ab7` — 7th body root cause FOUND in `herdr/src/logging.rs`
+  - `41f86383b` — update label taxonomy to herdr's actual flat schema
+  - `de3a228c4` — session overview round 8.1 follow-up section
+- **Operator ledger:** `~/.jcode/memories/agents.md` (728 lines), 9 round 8.1 pillars
