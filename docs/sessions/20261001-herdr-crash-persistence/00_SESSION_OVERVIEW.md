@@ -27,6 +27,13 @@ fixing the kcode-side reporter source bug and the K1 terminal keybind conflict.
 - `01_RESEARCH.md` — Sep-28 forensics + 2026-10-02 verified findings (13 items:
   seq rule, phantom purge gap, reporter source bug, K1, ENOSPC ops incident).
 - `07_DRAFT_PRS.md` — ready-to-file upstream issue drafts (herdr ×3, kcode ×2).
+- `08_CUTOVER_RUNBOOK.md` — operator-facing cutover procedure, Phase 4
+  decision tree, references all 3 herdr body files + 1 PR draft.
+- `09_DAEMON_OWNS_STATE.md` — herdr daemon-owns-state methodology, plus
+  the **pane ID mapping reference** (session.json numeric ↔ herdr CLI
+  workspace:pane notation) discovered during round 8.1 followup.
+- `10_SIGKILL_NON_TTY.md` — C9 SIGKILL root cause, central claim marked
+  OBSOLETE per round 8.1 reversal.
 
 ## Blockers
 
