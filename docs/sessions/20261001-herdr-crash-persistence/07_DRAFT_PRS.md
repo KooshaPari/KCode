@@ -582,12 +582,29 @@ session.json pane 19 has the exact data the kcode reporter sends
 
 **Title:** herdr server-side allowlist `is_official_agent_source` missing kcode and jcode entries (rescue path works, but `plan()` returns None)
 
-**Body file:** `/tmp/herdr-upstream-issue-6.md` (230 lines, ~9 KB). The
+**Body file:** `/tmp/herdr-upstream-issue-6.md` (467 lines, ~16 KB). The
 8th body was extracted from the original 7th body. The key change:
 the allowlist is no longer claimed to be a crash-persistence blocker
 (crash recovery works via the `resume_argv` rescue path). The
 allowlist is now framed as a **polish** issue that enables the
 canonical `plan()` path, dedupe_key, and pane.list integration.
+
+**Update 2026-10-09:** the fix scope was significantly revised
+after a deeper read of herdr's `src/detect/mod.rs`. The fix is
+not just 2 lines in `is_official_agent_source` — it touches
+SEVEN distinct locations (Agent enum, Agent::ALL,
+SCREEN_MANIFEST_AGENTS, agent_label, interactive_agent_executable,
+lookup_agent, is_official_agent_source) across TWO files
+(`src/detect/mod.rs` and `src/agent_resume.rs`). The
+`can_record_reported_resume` function in
+`src/terminal/state.rs` requires `parse_agent_label(agent) ==
+self.detected_agent`, which means adding kcode/jcode to
+`is_official_agent_source` ALONE is not sufficient — the
+report would still be rejected before reaching the allowlist.
+The total fix scope is now ~16-20 lines plus 2 new test cases
+(was previously estimated at ~10 lines). The 8th body file
+documents all 7 locations with exact line numbers from the
+live herdr source.
 
 **Filing command (for operator paste once approved):**
 
@@ -608,16 +625,22 @@ gh issue create \
 
 **Alternative — file as a PR (recommended) instead of an issue:**
 
-The fix is small enough (~10 lines) that a PR is more useful than an
-issue. Branch + commit + push the fix, then:
+The fix is well-scoped (~16-20 lines across 7 functions, plus 2
+new test cases) and a PR is more useful than an issue. Branch +
+commit + push the fix, then:
 
 ```
 # 1. Fork herdrdev/herdr (operator-gated)
 # 2. Create branch: allowlist-kcode-jcode
-# 3. Apply the ~10-line fix in src/agent_resume.rs:
-#    - 2 lines for the allowlist match arm
-#    - 2 plan() arms at ~4 lines each
-#    - 2 test cases at ~5 lines each
+# 3. Apply the fix in src/detect/mod.rs and src/agent_resume.rs:
+#    - src/detect/mod.rs:43-70  (Agent enum, 2 new variants)
+#    - src/detect/mod.rs:71-95  (Agent::ALL, 2 new entries, [Self; 24] -> [Self; 26])
+#    - src/detect/mod.rs:98-120 (SCREEN_MANIFEST_AGENTS, 2 new entries, [Self; 22] -> [Self; 24])
+#    - src/detect/mod.rs:124-150 (agent_label, 2 new arms)
+#    - src/detect/mod.rs:153-185 (interactive_agent_executable, 2 new arms)
+#    - src/detect/mod.rs:198-235 (lookup_agent, 2 new arms)
+#    - src/agent_resume.rs:330  (is_official_agent_source, 2 new pairs)
+#    - src/agent_resume.rs:453-660 (planner_allows_supported_agents test, 2 new assert_eq blocks)
 # 4. Run cargo test -p herdr (the existing test cases in agent_resume.rs
 #    include is_official_agent_source tests — add kcode/jcode entries to
 #    the matches! arms in the planner_allows_supported_agents test).
@@ -628,12 +651,16 @@ issue. Branch + commit + push the fix, then:
 8.1. Re-verified against the live herdr source: the 18-pair
 allowlist, the `plan()` arm structure, and the `--resume` flag
 (claude pattern, not codex positional pattern) all match the live
-herdr code. Filing can be deferred — operator can choose to file
-the issue (or PR) from the inbox.
+herdr code. Fix scope revised 2026-10-09 after deeper read of
+`src/detect/mod.rs` and `src/terminal/state.rs` revealed the
+`can_record_reported_resume` check requires Agent enum support.
+Filing can be deferred — operator can choose to file the issue
+(or PR) from the inbox.
 
 **Evidence summary:** the kcode session IS persisted in session.json
 via the `resume_argv` rescue path, but `agent_session` is None in
 `pane.list`/`pane info` (canonical path not taken). dedupe_key is
-None, so redundant state reports are not collapsed. ~10-line fix
-(2 allowlist + 2 plan arms + 2 test cases) is well-scoped.
+None, so redundant state reports are not collapsed. ~16-20 line
+fix (7 functions in 2 files + 2 new test cases) is well-scoped
+but larger than originally estimated.
 
