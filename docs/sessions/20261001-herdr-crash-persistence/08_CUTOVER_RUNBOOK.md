@@ -556,3 +556,26 @@ canonical `plan()` path, dedupe_key, and agent_session display.
   - `ebbf5f311` — session overview updated with 9th body, PR draft, kcode C1 test
 - **Operator ledger:** `~/.jcode/memories/agents.md` (~775 lines), 13 round 8.1 pillars
 - **Filing command summary:** see `07_DRAFT_PRS.md` "Filing command summary" section — all 3 issues + 1 PR can be filed with the documented `gh issue create` / `gh pr create` commands
+
+### Filed URLs (2026-10-09)
+
+| Item | URL |
+|---|---|
+| 7th body (is_routine_api_method bug) | https://github.com/herdrdev/herdr/issues/5101 |
+| 8th body (agent-detection allowlist) | https://github.com/herdrdev/herdr/issues/5102 |
+| 9th body (missing err field) | https://github.com/herdrdev/herdr/issues/5103 |
+| PR (fix for 8th body) | https://github.com/herdrdev/herdr/pull/5105 |
+
+Test result for PR 5105: `cargo test --bin herdr agent_resume::tests`
+passed (19 tests, including the modified
+`planner_allows_supported_agents` test with 21 assert_eq blocks).
+
+Phinbox approval flow used (each gh issue create / gh pr create
+/ gh repo fork is deferred to the inbox by the pre_tool hook;
+operator approved each via phinbox):
+
+```
+phinbox answer --request-id <hook-xxx> --boolean true \
+  --notes "user said 'do it all plz'"
+```
+
