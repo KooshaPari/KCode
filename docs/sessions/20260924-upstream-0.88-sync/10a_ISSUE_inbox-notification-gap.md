@@ -111,3 +111,10 @@ long-term home and should be filed as a follow-up.
 - Filed from `feature/upstream-0.88-sync` at `8ee60a85766eb29ab34cff0e2119cb5428e114c9`
 - Source trace recorded in `docs/sessions/20260924-upstream-0.88-sync/10_INBOX_NOTIFICATION_GAP.md`
 - Affects every harness that routes approvals through `elicitate`: jcode, kcode, forge, helioslite
+
+---
+
+## Cross-session record (added 2026-10-09 00:55)
+
+The inbox-classification hazard (classify by `Command:` field, not by `--body-file` resolvability) was promoted to `~/.jcode/memories/agents.md` lesson **#19**, so future sessions that touch the operator inbox start from the correct mental model. The 6 high-hazard foreign items left in the inbox remain un-dispatched and continue to wait for explicit operator approval.
+
