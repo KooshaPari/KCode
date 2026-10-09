@@ -296,9 +296,116 @@ remains correct; the herdr server is the blocker. Operator should approve:
   vars, but reporter events all error in herdr-server.log. Will continue running
   until the C4 cutover or operator cleanup.
 
+### Updates 2026-10-09 (round 7 — ROOT CAUSE FOUND: herdr allowlist misses kcode/jcode)
+
+The "100% failure rate" finding from round 6 had a clear upstream root cause.
+By reading the herdr source at `https://github.com/herdrdev/herdr/blob/master/src/agent_resume.rs`
+the actual validation logic was found.
+
+**Bug location:** `src/agent_resume.rs`, function `is_official_agent_source(source, agent)`.
+
+**The validation** uses a hardcoded `matches!` expression with 18 source/agent
+pairs. It does NOT include `kcode` or `jcode`:
+
+```rust
+pub(crate) fn is_official_agent_source(source: &str, agent: &str) -> bool {
+    matches!(
+        (source, agent),
+        ("herdr:claude", "claude") | ("herdr:codex", "codex")
+            | ("herdr:copilot", "copilot") | ("herdr:devin", "devin")
+            | ("herdr:droid", "droid") | ("herdr:kimi", "kimi")
+            | ("herdr:omp", "omp") | ("herdr:mastracode", "mastracode")
+            | ("herdr:pi", "pi") | ("herdr:hermes", "hermes")
+            | ("herdr:opencode", "opencode") | ("herdr:qodercli", "qodercli")
+            | ("herdr:qwen", "qwen") | ("herdr:kilo", "kilo")
+            | ("herdr:cursor", "cursor") | ("herdr:antigravity_cli", "agy")
+            | ("herdr:grok", "grok") | ("herdr:letta", "letta")
+    )
+}
+```
+
+**Call chain** when a `pane.report_agent_session` event arrives:
+
+```
+Method::PaneReportAgentSession handler
+  -> session_ref_from_report(source, agent, agent_session_id, agent_session_path)
+    -> if !is_official_agent_source(source, agent) { return None; }
+```
+
+**Why kcode/jcode fail silently:** the kcode reporter (after C1 fix) sends
+`source="herdr:kcode"` and `agent="kcode"`. The match returns false. The
+function returns `None` without logging. The pane record's `agent_session`
+field is never set, `agent_resume` stays null, and the event is logged as
+`outcome="error"` with no error reason.
+
+**Why codex still works** (partially): codex is in the allowlist, so
+`is_official_agent_source("herdr:codex", "codex")` returns true. The
+`agent_session.source="herdr:codex"` value in current session.json WAS set
+by the codex reporter successfully (before whatever change introduced the
+strict allowlist). New codex reporter events may also be failing now if
+the validation was tightened AFTER codex sessions were created.
+
+**C1 verification status (FINAL):** PASSED. The C1 fix at the kcode level
+is correct. The reporter sends the right `source` value. The bug is purely
+on the herdr server. No kcode-side change is needed; the fix lives in
+`herdrdev/herdr`.
+
+**Operator-gated fix on herdr side** (4 lines, well-scoped):
+
+```rust
+// In src/agent_resume.rs, is_official_agent_source:
+| ("herdr:kcode", "kcode")
+| ("herdr:jcode", "jcode")
+
+// In plan() resume planner:
+("herdr:kcode", "kcode", AgentSessionRefKind::Id) => {
+    vec!["kcode".into(), "--resume".into(), session_ref.value.clone()]
+}
+("herdr:jcode", "jcode", AgentSessionRefKind::Id) => {
+    vec!["jcode".into(), "--resume".into(), session_ref.value.clone()]
+}
+```
+
+**Action taken in this round:**
+
+1. Updated `/tmp/herdr-upstream-issue-5.md` (7th body, 231 lines) to include
+   the actual root cause: hardcoded allowlist misses kcode/jcode. The body
+   now documents the file path, function name, code snippet, and a 4-line
+   suggested fix.
+2. The 7th body still requires operator approval to file (`gh issue create`
+   is hook-blocked for public mutations). 5 distinct request_ids already in
+   inbox for the 6 original C8 issues; the 7th would be a 6th call.
+3. Test pane w7:p1R (PID 22365) still running 10+ hours; the new build
+   installed in C9 fix (path A) means the test process is technically an
+   older binary, but its reporter behavior is identical.
+
+**No kcode-side code change is warranted.** The reporter code is correct;
+the herdr server allowlist is the blocker. Once the upstream fix lands, the
+existing kcode installation will start persisting sessions immediately
+(no rebuild needed).
+
+**Operator-gated items still pending:**
+
+- C8: 6 upstream issues, all hook-blocked, distinct request_ids. 7th body
+  updated with root cause, ready to file alongside the other 6.
+- C4 cutover: still blocked on the upstream fix. Once herdr has the
+  allowlist update, the kcode reporter will start populating
+  `agent_session` on every pane that uses the kcode-herdr plugin. At that
+  point a herdr restart + session reconcile will populate `agent_resume`
+  for the 13 kcode panes.
+- Upstream PR to herdrdev/herdr: not attempted. The 4-line allowlist fix
+  is small enough to be a PR, not just an issue.
+- K1 (Ghostty reload): operator-local.
+- Test pane w7:p1R (PID 22365): can be cleaned up now; the new info is
+  that the kcode reporter code is correct and the failure is upstream,
+  so the test process is no longer producing new evidence. The
+  pre-existing 34 errored events in herdr-server.log are sufficient
+  evidence for the 7th issue body.
+
 ### Open file paths to remember
 
-- **Body files** (for C8): `/tmp/{herdr,kcode}-upstream-issue-{1..4,1..2}.md`
+- **Body files** (for C8): `/tmp/{herdr,kcode}-upstream-issue-{1..4,1..2,5}.md`
+  (7th updated with root cause, ready to file)
 - **Phase 4 runbook (revised)**: `docs/sessions/20261001-herdr-crash-persistence/08_CUTOVER_RUNBOOK.md`
 - **Session overview**: `docs/sessions/20261001-herdr-crash-persistence/00_SESSION_OVERVIEW.md`
 - **Operator ledger**: `~/.jcode/memories/agents.md`
@@ -309,7 +416,9 @@ remains correct; the herdr server is the blocker. Operator should approve:
 - **kcode tui launch**: `src/cli/tui_launch.rs:101-109` (spawn_report_session_id)
 - **kcode log**: `/Users/kooshapari/.kcode/logs/kcode-2026-10-08.log`
 - **herdr server log**: `/Users/kooshapari/.config/herdr/herdr-server.log` (3.3MB, all kcode/jcode events erroring since Oct 4)
-- **Live kcode test process**: PID 22365 in pane w7:p1R, etime=9h+, status=idle, agent=kcode
+- **herdr source for root cause**: https://github.com/herdrdev/herdr/blob/master/src/agent_resume.rs
+  (function `is_official_agent_source`, line ~330)
+- **Live kcode test process**: PID 22365 in pane w7:p1R, etime=10h+, status=idle, agent=kcode
 - **Latest kcode session**: `session_evergreen_1791516626775_251c14ff3297d065`
 - **Live jcode process**: PID 10715 in HelioLite (w8:pS)
 - **Original session (NOT orphaned)**: `~/.jcode/sessions/session_panda_1789273883949_ace2cf2f18024501.json`
