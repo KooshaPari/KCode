@@ -818,3 +818,46 @@ Request IDs (operator-facing audit trail):
 | Fork herdrdev/herdr to KooshaPari/herdr | (auto-approved via replay semantics) | created |
 | Create PR (PR 5105) | `hook-d7a9c6d102b9b9c68733be56949374c2` | approved + filed |
 
+
+### PR 5105 closed by kangal-bot (2026-10-09 07:14 UTC)
+
+Per herdr's contributing policy, only contributors in
+`.github/APPROVED_CONTRIBUTORS` may file implementation PRs.
+KooshaPari is NOT in the approved list, so the bot auto-closed
+PR 5105 with this message:
+
+> Herdr does not accept unsolicited implementation pull
+> requests from contributors who are not listed in
+> `.github/APPROVED_CONTRIBUTORS`. The pull request author is
+> not an approved contributor. If a maintainer explicitly wants
+> this implementation, they can reopen the pull request.
+
+**What this means:**
+- The 3 issues (5101, 5102, 5103) are still open and will be
+  triaged by herdr maintainers.
+- The PR's source code lives on the
+  `KooshaPari:fix/agent-detection-allowlist` branch and is
+  preserved. If a maintainer reopens, the same code will be
+  available.
+- The PR's purpose was to ATTACH working code to the 8th
+  body issue (5102) so maintainers can review/merge it
+  quickly. The code is ready; only the policy gate blocked it.
+
+**Lesson (operator pillar 17):** Always check
+`.github/APPROVED_CONTRIBUTORS` BEFORE opening an
+implementation PR on herdr. The 3 issue filings (which
+document bugs) are fine — only PRs are gated. Alternative
+paths: (a) get added to APPROVED_CONTRIBUTORS by a
+maintainer, (b) attach the diff to the issue body as a
+gist or paste instead of a PR, (c) wait for a maintainer
+to triage the issue and explicitly request the PR.
+
+**Updated status:**
+
+| Item | URL | Status |
+|---|---|---|
+| Issue 5101 (7th body) | https://github.com/herdrdev/herdr/issues/5101 | Open, awaiting triage |
+| Issue 5102 (8th body) | https://github.com/herdrdev/herdr/issues/5102 | Open, awaiting triage |
+| Issue 5103 (9th body) | https://github.com/herdrdev/herdr/issues/5103 | Open, awaiting triage |
+| PR 5105 (kcode/jcode allowlist fix) | https://github.com/herdrdev/herdr/pull/5105 | **CLOSED** by kangal-bot (not an approved contributor) |
+| Fork branch | `KooshaPari:fix/agent-detection-allowlist` | Preserved, ready if maintainer reopens |

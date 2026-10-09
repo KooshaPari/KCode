@@ -579,3 +579,12 @@ phinbox answer --request-id <hook-xxx> --boolean true \
   --notes "user said 'do it all plz'"
 ```
 
+
+### ⚠️ PR 5105 closed by kangal-bot
+
+Herdr's `kangal-bot` auto-closes unsolicited implementation
+PRs from non-approved contributors. PR 5105 was closed
+2026-10-09 07:14 UTC (11 seconds after opening). The 3
+issues (5101, 5102, 5103) remain open. Source code
+preserved on `KooshaPari:fix/agent-detection-allowlist`.
+See operator pillar 17 for the contribution policy details.
