@@ -1282,7 +1282,7 @@ impl Agent {
 
     /// Start an interactive REPL
     pub async fn repl(&mut self) -> Result<()> {
-        println!("J-Code - Coding Agent");
+        println!("kcode - Coding Agent");
         println!("Type your message, or 'quit' to exit.");
 
         // Show available skills
