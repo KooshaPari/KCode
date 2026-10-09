@@ -1,7 +1,5 @@
 use super::*;
-use std::sync::{Mutex, MutexGuard};
-
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+use std::sync::MutexGuard;
 
 struct EnvRestore {
     home: Option<std::ffi::OsString>,
@@ -25,7 +23,7 @@ impl Drop for EnvRestore {
 }
 
 fn dev_home() -> (tempfile::TempDir, EnvRestore) {
-    let lock = ENV_LOCK
+    let lock = crate::TEST_ENV_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let restore = EnvRestore {

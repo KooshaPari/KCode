@@ -9,6 +9,10 @@ fn start(dir: &Path, child: bool) -> (Lease, Counts) {
     (lease, counts.expect("successful registration"))
 }
 
+fn lock_test_env() -> std::sync::MutexGuard<'static, ()> {
+    crate::lock_test_env_global()
+}
+
 #[cfg(unix)]
 struct EnvRestore(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
 
@@ -33,13 +37,13 @@ impl Drop for EnvRestore {
 fn dev_namespace_rejects_symlinked_registry_paths_without_touching_targets() {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-    let _lock = crate::lock_test_env_global();
+    let _lock = lock_test_env();
     let previous_home = std::env::var_os("KCODE_HOME");
     let previous_namespace = std::env::var_os("KCODE_DEV_NAMESPACE");
     let _restore = EnvRestore(previous_home, previous_namespace);
     let temp = tempfile::tempdir().expect("temp dir");
     let home = temp.path().join(".kcode-dev");
-    let stable_dir = temp.path().join(".jcode/telemetry_concurrency_v2");
+    let stable_dir = temp.path().join(".kcode/telemetry_concurrency_v2");
     let stable_file = stable_dir.join("sentinel.json");
     std::fs::create_dir_all(&stable_dir).expect("stable directory");
     std::fs::write(&stable_file, b"stable registry sentinel\n").expect("stable file");
@@ -93,6 +97,7 @@ fn dev_namespace_rejects_symlinked_registry_paths_without_touching_targets() {
 
 #[test]
 fn idle_owner_remembers_short_lived_peers_and_independent_role_peaks() {
+    let _lock = lock_test_env();
     let home = tempfile::tempdir().unwrap();
     let dir = home.path();
     let (mut idle, at_start) = start(dir, false);
@@ -134,6 +139,7 @@ fn idle_owner_remembers_short_lived_peers_and_independent_role_peaks() {
 
 #[test]
 fn live_leases_never_expire_and_fresh_stale_markers_never_count() {
+    let _lock = lock_test_env();
     let home = tempfile::tempdir().unwrap();
     let dir = home.path();
     let (mut old, _) = start(dir, false);
@@ -168,6 +174,7 @@ fn live_leases_never_expire_and_fresh_stale_markers_never_count() {
 
 #[test]
 fn concurrent_same_process_joins_are_serialized_and_update_all_peaks() {
+    let _lock = lock_test_env();
     const PARTICIPANTS: usize = 12;
     let home = tempfile::tempdir().unwrap();
     let joined = Arc::new(Barrier::new(PARTICIPANTS));
@@ -204,6 +211,7 @@ fn concurrent_same_process_joins_are_serialized_and_update_all_peaks() {
 
 #[test]
 fn failed_atomic_publication_invalidates_idle_peers_even_after_failed_owner_exits() {
+    let _lock = lock_test_env();
     let home = tempfile::tempdir().unwrap();
     let dir = home.path();
     let (mut owner, _) = start(dir, false);
@@ -239,6 +247,7 @@ fn failed_atomic_publication_invalidates_idle_peers_even_after_failed_owner_exit
 
 #[test]
 fn finish_releases_lease_even_when_registry_is_unavailable() {
+    let _lock = lock_test_env();
     let home = tempfile::tempdir().unwrap();
     let dir = home.path();
     let (mut owner, _) = start(dir, false);
@@ -253,6 +262,7 @@ fn finish_releases_lease_even_when_registry_is_unavailable() {
 
 #[test]
 fn clean_finish_unlocks_even_if_a_fork_inherited_the_file_description() {
+    let _lock = lock_test_env();
     let home = tempfile::tempdir().unwrap();
     let (mut owner, _) = start(home.path(), false);
     // try_clone shares the open file description just as fork does. Force an
@@ -279,6 +289,7 @@ fn clean_finish_unlocks_even_if_a_fork_inherited_the_file_description() {
 // wall-clock sleeps or assumptions about scheduling are used in crash tests.
 #[test]
 fn lease_subprocess_helper() {
+    let _lock = lock_test_env();
     let Some(dir) = std::env::var_os("KCODE_TEST_CONCURRENCY_DIR") else {
         return;
     };
@@ -360,6 +371,7 @@ impl Drop for Process {
 
 #[test]
 fn cross_process_kill_prunes_owner_but_preserves_survivor_peak() {
+    let _lock = lock_test_env();
     let home = tempfile::tempdir().unwrap();
     let dir = home.path();
     let (mut survivor, _) = start(dir, false);
@@ -389,6 +401,7 @@ fn cross_process_kill_prunes_owner_but_preserves_survivor_peak() {
 
 #[test]
 fn cross_process_start_races_have_unique_counts_and_all_owners_get_peak() {
+    let _lock = lock_test_env();
     const PARTICIPANTS: usize = 6;
     let home = tempfile::tempdir().unwrap();
     let mut processes = (0..PARTICIPANTS)
@@ -416,6 +429,7 @@ fn cross_process_start_races_have_unique_counts_and_all_owners_get_peak() {
 
 #[test]
 fn killed_registry_writer_releases_global_lock_and_pending_write_is_ignored() {
+    let _lock = lock_test_env();
     let home = tempfile::tempdir().unwrap();
     let (mut survivor, _) = start(home.path(), false);
     let mut process = Process::spawn(home.path(), true);

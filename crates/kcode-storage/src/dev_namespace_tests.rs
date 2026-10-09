@@ -1,10 +1,18 @@
 use super::*;
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-struct EnvRestore(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
+struct EnvRestore(
+    Option<std::ffi::OsString>,
+    Option<std::ffi::OsString>,
+    Option<std::ffi::OsString>,
+);
 
 impl Drop for EnvRestore {
     fn drop(&mut self) {
+        match self.2.take() {
+            Some(v) => kcode_core::env::set_var("HOME", v),
+            None => kcode_core::env::remove_var("HOME"),
+        }
         match self.0.take() {
             Some(value) => kcode_core::env::set_var("KCODE_HOME", value),
             None => kcode_core::env::remove_var("KCODE_HOME"),
@@ -34,7 +42,9 @@ fn dev_namespace_path_guard_rejects_symlink_components_without_touching_target()
     let _restore = EnvRestore(
         std::env::var_os("KCODE_HOME"),
         std::env::var_os("KCODE_DEV_NAMESPACE"),
+        std::env::var_os("HOME"),
     );
+    kcode_core::env::set_var("HOME", home.parent().unwrap());
     kcode_core::env::set_var("KCODE_HOME", &home);
     kcode_core::env::set_var("KCODE_DEV_NAMESPACE", "1");
 
@@ -48,6 +58,30 @@ fn dev_namespace_path_guard_rejects_symlink_components_without_touching_target()
         (after.dev(), after.ino(), after.permissions().mode()),
         identity
     );
+}
+
+#[test]
+fn dev_namespace_path_guard_allows_home_below_symlinked_ancestor() {
+    let _lock = lock_test_env();
+    let temp = tempfile::tempdir().expect("temp dir");
+    let real_parent = temp.path().join("real");
+    std::fs::create_dir_all(&real_parent).expect("real parent");
+    let alias = temp.path().join("alias");
+    std::os::unix::fs::symlink(&real_parent, &alias).expect("ancestor symlink");
+    let home = alias.join(".kcode-dev");
+    std::fs::create_dir_all(&home).expect("dev home");
+    let path = home.join("active_pids/session");
+
+    let _restore = EnvRestore(
+        std::env::var_os("KCODE_HOME"),
+        std::env::var_os("KCODE_DEV_NAMESPACE"),
+        std::env::var_os("HOME"),
+    );
+    kcode_core::env::set_var("HOME", home.parent().unwrap());
+    kcode_core::env::set_var("KCODE_HOME", &home);
+    kcode_core::env::set_var("KCODE_DEV_NAMESPACE", "1");
+
+    assert!(reject_dev_home_symlink_path(&path).is_ok());
 }
 
 #[test]
@@ -71,7 +105,9 @@ fn json_recovery_rejects_a_symlinked_backup_without_reading_or_repairing_it() {
     let _restore = EnvRestore(
         std::env::var_os("KCODE_HOME"),
         std::env::var_os("KCODE_DEV_NAMESPACE"),
+        std::env::var_os("HOME"),
     );
+    kcode_core::env::set_var("HOME", home.parent().unwrap());
     kcode_core::env::set_var("KCODE_HOME", &home);
     kcode_core::env::set_var("KCODE_DEV_NAMESPACE", "1");
 

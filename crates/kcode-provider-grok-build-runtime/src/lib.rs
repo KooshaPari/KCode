@@ -42,10 +42,8 @@ pub struct GrokBuildProcess {
 impl GrokBuildProcess {
     pub fn from_env() -> Self {
         let command = grok_command_from_env(
-            kcode_base::storage::running_in_dev_namespace(),
-            kcode_base::storage::kcode_dir()
-                .ok()
-                .map(|path| path.into_os_string()),
+            dev_namespace_enabled(),
+            std::env::var_os("KCODE_HOME"),
             std::env::var_os("KCODE_GROK_CLI_PATH"),
         );
         Self {
@@ -635,8 +633,16 @@ where
     })
 }
 
+fn dev_namespace_enabled() -> bool {
+    dev_namespace_enabled_value(std::env::var_os("KCODE_DEV_NAMESPACE").as_deref())
+}
+
+fn dev_namespace_enabled_value(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("1"))
+}
+
 fn apply_dev_home(command: &mut Command) {
-    let home = (std::env::var_os("KCODE_DEV_NAMESPACE").is_some())
+    let home = dev_namespace_enabled()
         .then(|| std::env::var_os("KCODE_HOME").map(PathBuf::from))
         .flatten();
     apply_dev_home_values(command, home.as_deref());
@@ -812,21 +818,30 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn namespace_marker_requires_exact_one() {
+        assert!(dev_namespace_enabled_value(Some(std::ffi::OsStr::new("1"))));
+        assert!(!dev_namespace_enabled_value(Some(std::ffi::OsStr::new(
+            "0"
+        ))));
+        assert!(!dev_namespace_enabled_value(None));
+    }
+
+    #[test]
     fn dev_namespace_ignores_stable_cli_override() {
         assert_eq!(
             grok_command_from_env(
                 true,
-                Some(std::ffi::OsString::from("/private/jcode-dev")),
+                Some(std::ffi::OsString::from("/private/kcode-dev")),
                 Some(std::ffi::OsString::from("/stable/grok")),
             ),
-            PathBuf::from("/private/jcode-dev")
+            PathBuf::from("/private/kcode-dev")
                 .join("provider-backends/grok-build")
                 .join(if cfg!(windows) { "grok.exe" } else { "grok" })
         );
     }
 
     #[test]
-    fn dev_namespace_fails_closed_without_jcode_home() {
+    fn dev_namespace_fails_closed_without_kcode_home() {
         assert!(
             grok_command_from_env(true, None, Some(std::ffi::OsString::from("/stable/grok")),)
                 .as_os_str()

@@ -422,7 +422,7 @@ fn macos_notification_broker_app_path() -> Option<std::path::PathBuf> {
         return Some(path.into());
     }
     if crate::storage::running_with_sandboxed_home() {
-        return crate::storage::jcode_dir().ok().map(|root| {
+        return crate::storage::kcode_dir().ok().map(|root| {
             root.join("Applications")
                 .join(MACOS_NOTIFICATION_BROKER_APP_NAME)
         });
@@ -524,6 +524,7 @@ pub fn send_macos_turn_notification(
     }
 }
 
+#[cfg(target_os = "macos")]
 fn remove_queued_notification(path: &std::path::Path) {
     if crate::storage::reject_dev_home_symlink_path(path).is_ok() {
         let _ = std::fs::remove_file(path);

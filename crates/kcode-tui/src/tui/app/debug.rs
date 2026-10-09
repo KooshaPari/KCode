@@ -745,7 +745,10 @@ pub(super) fn handle_debug_command(app: &mut App, trimmed: &str) -> bool {
             .unwrap_or(0);
         let filename = format!("recording_{}.json", timestamp);
         let filepath = recording_dir.join(&filename);
-        let _ = debug_recording::save_recording_to_path(&filepath, &json);
+        if let Err(error) = debug_recording::save_recording_to_path(&filepath, &json) {
+            app.push_display_message(recording_save_error_message(error));
+            return true;
+        }
 
         app.push_display_message(DisplayMessage {
             role: "system".to_string(),
@@ -791,6 +794,23 @@ pub(super) fn handle_debug_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     false
+}
+
+fn recording_save_error_message(error: impl std::fmt::Display) -> DisplayMessage {
+    DisplayMessage::error(format!("Failed to save recording: {error}"))
+}
+
+#[cfg(test)]
+mod recording_save_tests {
+    use super::recording_save_error_message;
+
+    #[test]
+    fn save_failure_is_reported_as_an_error() {
+        let message = recording_save_error_message("permission denied");
+        assert_eq!(message.role, "error");
+        assert!(message.content.contains("Failed to save recording"));
+        assert!(message.content.contains("permission denied"));
+    }
 }
 
 #[cfg(test)]

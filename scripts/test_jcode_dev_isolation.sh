@@ -80,7 +80,7 @@ if HOME="$home/.kcode" "$launcher" --version >"$tmp/home-out" 2>"$tmp/home-err";
   echo 'launcher accepted HOME nested inside the production Kcode root' >&2
   exit 1
 fi
-if ! rg -q 'overlaps a protected production path' "$tmp/home-err"; then
+if ! grep -qE 'overlaps a protected production path' "$tmp/home-err"; then
   cat "$tmp/home-err" >&2
   echo 'launcher failed for an unexpected HOME override reason' >&2
   exit 1
@@ -93,7 +93,7 @@ if HOME="$home" "$launcher" --version >"$tmp/out" 2>"$tmp/err"; then
   echo 'launcher accepted current symlink escaping into production' >&2
   exit 1
 fi
-if ! rg -q 'escapes .*\.kcode-dev' "$tmp/err"; then
+if ! grep -qE 'escapes .*\.kcode-dev' "$tmp/err"; then
   cat "$tmp/err" >&2
   echo 'launcher failed for an unexpected reason' >&2
   exit 1
@@ -107,7 +107,7 @@ if HOME="$home" "$launcher" --version >"$tmp/out" 2>"$tmp/err"; then
   echo 'launcher accepted a nested dynamic PID symlink into protected data' >&2
   exit 1
 fi
-if ! rg -q 'refusing nested dynamic symlink' "$tmp/err"; then
+if ! grep -qE 'refusing nested dynamic symlink' "$tmp/err"; then
   cat "$tmp/err" >&2
   echo 'launcher failed for an unexpected PID symlink reason' >&2
   exit 1
@@ -125,10 +125,32 @@ if HOME="$install_home" "$repo_root/scripts/install_jcode_dev.sh" \
   echo 'installer accepted a dev root symlink into production data' >&2
   exit 1
 fi
-if ! rg -q 'refusing symlinked namespace component' "$tmp/install-err"; then
+if ! grep -qE 'refusing symlinked namespace component' "$tmp/install-err"; then
   cat "$tmp/install-err" >&2
   echo 'installer failed for an unexpected reason' >&2
   exit 1
 fi
+
+version_install_home="$tmp/version-install-home"
+version_install_root="$version_install_home/.kcode-dev"
+mkdir -p "$version_install_home" "$version_install_root/builds"
+chmod 700 "$version_install_root"
+printf 'stable version sentinel\n' > "$tmp/stable-version-sentinel"
+ln -s "$tmp/stable-version-sentinel" "$version_install_root/builds/current-version"
+if HOME="$version_install_home" "$repo_root/scripts/install_jcode_dev.sh" \
+  >"$tmp/version-install-out" 2>"$tmp/version-install-err"; then
+  echo 'installer accepted a current-version symlink into stable data' >&2
+  exit 1
+fi
+if ! grep -qE 'refusing symlinked namespace component: .*builds/current-version' \
+  "$tmp/version-install-err"; then
+  cat "$tmp/version-install-err" >&2
+  echo 'installer failed for an unexpected version-file symlink reason' >&2
+  exit 1
+fi
+[[ "$(cat "$tmp/stable-version-sentinel")" == 'stable version sentinel' ]] || {
+  echo 'version-file symlink check modified its target' >&2
+  exit 1
+}
 
 echo 'kcode-dev launcher isolation checks passed'

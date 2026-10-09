@@ -117,7 +117,12 @@ pub(super) fn canonicalize_existing_prefix(path: &Path) -> Result<PathBuf> {
     }
     let mut ancestor = path;
     let mut suffix = Vec::new();
-    while !ancestor.exists() {
+    while let Err(error) = std::fs::symlink_metadata(ancestor) {
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(error).with_context(|| {
+                format!("inspect kcode-dev path component {}", ancestor.display())
+            });
+        }
         let name = ancestor
             .file_name()
             .context("kcode-dev path has no existing ancestor")?;
@@ -131,6 +136,22 @@ pub(super) fn canonicalize_existing_prefix(path: &Path) -> Result<PathBuf> {
         resolved.push(part);
     }
     Ok(resolved)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::canonicalize_existing_prefix;
+
+    #[test]
+    fn canonicalize_existing_prefix_rejects_dangling_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let dangling = temp.path().join("dangling");
+        symlink(temp.path().join("missing-target"), &dangling).unwrap();
+
+        assert!(canonicalize_existing_prefix(&dangling).is_err());
+    }
 }
 
 pub(super) fn validate_optional_path_under(name: &str, root: &Path) -> Result<()> {

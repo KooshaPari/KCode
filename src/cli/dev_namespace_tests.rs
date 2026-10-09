@@ -38,6 +38,11 @@ fn setup_env(home: &Path) -> Vec<(&'static str, Option<OsString>)> {
         "ANTHROPIC_BASE_URL",
         "KCODE_OPENROUTER_API_BASE",
         "AWS_SECRET_ACCESS_KEY",
+        "AWS_ACCESS_KEY_ID",
+        "OPENAI_BASE_URL",
+        "OPENAI_API_BASE",
+        "KCODE_ANTHROPIC_ENV_FILE",
+        "KCODE_OPENROUTER_ENV_FILE",
         "AWS_CONFIG_FILE",
         "AWS_PROFILE",
         "AWS_DEFAULT_PROFILE",
@@ -254,6 +259,11 @@ fn provider_environment_isolated_from_inherited_keys_and_profiles() {
     crate::env::set_var("ANTHROPIC_BASE_URL", "https://prod.example/v1");
     crate::env::set_var("KCODE_OPENROUTER_API_BASE", "https://prod.example/v1");
     crate::env::set_var("AWS_SECRET_ACCESS_KEY", "inherited-aws-secret");
+    crate::env::set_var("AWS_ACCESS_KEY_ID", "inherited-aws-access-id");
+    crate::env::set_var("OPENAI_BASE_URL", "https://stable.example/v1");
+    crate::env::set_var("OPENAI_API_BASE", "https://stable.example/v1");
+    crate::env::set_var("KCODE_ANTHROPIC_ENV_FILE", "/stable/anthropic.env");
+    crate::env::set_var("KCODE_OPENROUTER_ENV_FILE", "/stable/openrouter.env");
     crate::env::set_var("AWS_PROFILE", "production");
     crate::env::set_var("KCODE_COPILOT_ALLOW_GH_AUTH_TOKEN", "1");
     crate::env::set_var("KCODE_OPENROUTER_MAX_TOKENS", "4096");
@@ -273,6 +283,11 @@ fn provider_environment_isolated_from_inherited_keys_and_profiles() {
         "ANTHROPIC_BASE_URL",
         "KCODE_OPENROUTER_API_BASE",
         "AWS_SECRET_ACCESS_KEY",
+        "AWS_ACCESS_KEY_ID",
+        "OPENAI_BASE_URL",
+        "OPENAI_API_BASE",
+        "KCODE_ANTHROPIC_ENV_FILE",
+        "KCODE_OPENROUTER_ENV_FILE",
         "AWS_PROFILE",
         "KCODE_COPILOT_ALLOW_GH_AUTH_TOKEN",
     ] {
@@ -370,6 +385,32 @@ fn legacy_import_refuses_overwrite_and_path_traversal() {
         std::fs::read(temp.path().join(".kcode-dev/sessions/session_safe.json")).unwrap(),
         b"original"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn legacy_import_retries_when_stale_stage_directory_exists() {
+    let _lock = env_lock();
+    let temp = tempfile::tempdir().unwrap();
+    let _restore = RestoreEnv(setup_env(temp.path()));
+    let source = temp.path().join(".kcode/sessions");
+    let destination = temp.path().join(".kcode-dev/sessions");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::create_dir_all(&destination).unwrap();
+    std::fs::set_permissions(
+        destination.parent().unwrap(),
+        std::fs::Permissions::from_mode(0o700),
+    )
+    .unwrap();
+    std::fs::set_permissions(&destination, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::write(source.join("session_retry.json"), b"session").unwrap();
+    let stale = destination.join(format!(".import-session_retry-{}", std::process::id()));
+    std::fs::create_dir(&stale).unwrap();
+
+    let imported = import_legacy_session("session_retry").unwrap();
+    assert_eq!(imported, vec![destination.join("session_retry.json")]);
+    assert!(stale.is_dir());
+    assert_eq!(std::fs::read(&imported[0]).unwrap(), b"session");
 }
 
 #[cfg(unix)]

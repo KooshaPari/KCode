@@ -5,10 +5,14 @@ fn lock_env() -> std::sync::MutexGuard<'static, ()> {
     crate::lock_test_env()
 }
 
-struct RestoreEnv(Option<OsString>, Option<OsString>);
+struct RestoreEnv(Option<OsString>, Option<OsString>, Option<OsString>);
 
 impl Drop for RestoreEnv {
     fn drop(&mut self) {
+        match self.2.take() {
+            Some(v) => kcode_core::env::set_var("HOME", v),
+            None => kcode_core::env::remove_var("HOME"),
+        }
         match self.0.take() {
             Some(value) => kcode_core::env::set_var("KCODE_HOME", value),
             None => kcode_core::env::remove_var("KCODE_HOME"),
@@ -27,6 +31,7 @@ fn session_counts_counts_live_and_streaming_only() {
     let _restore = RestoreEnv(
         original_home.clone(),
         std::env::var_os("KCODE_DEV_NAMESPACE"),
+        std::env::var_os("HOME"),
     );
     let temp = tempfile::tempdir().expect("tempdir");
     kcode_core::env::set_var("KCODE_HOME", temp.path());
@@ -81,6 +86,7 @@ fn streaming_guard_marks_and_clears_on_drop() {
     let _restore = RestoreEnv(
         original_home.clone(),
         std::env::var_os("KCODE_DEV_NAMESPACE"),
+        std::env::var_os("HOME"),
     );
     let temp = tempfile::tempdir().expect("tempdir");
     kcode_core::env::set_var("KCODE_HOME", temp.path());
@@ -102,6 +108,7 @@ fn user_session_counts_exclude_internal_sessions() {
     let _restore = RestoreEnv(
         original_home.clone(),
         std::env::var_os("KCODE_DEV_NAMESPACE"),
+        std::env::var_os("HOME"),
     );
     let temp = tempfile::tempdir().expect("tempdir");
     kcode_core::env::set_var("KCODE_HOME", temp.path());
@@ -136,9 +143,10 @@ fn pid_state_symlinks_never_read_or_write_targets() {
     let _restore = RestoreEnv(
         std::env::var_os("KCODE_HOME"),
         std::env::var_os("KCODE_DEV_NAMESPACE"),
+        std::env::var_os("HOME"),
     );
     let temp = tempfile::tempdir().expect("tempdir");
-    let home = temp.path().join("dev");
+    let home = temp.path().join(".kcode-dev");
     std::fs::create_dir_all(&home).unwrap();
     let home = std::fs::canonicalize(home).unwrap();
     let active = home.join("active_pids");
@@ -152,6 +160,7 @@ fn pid_state_symlinks_never_read_or_write_targets() {
     for leaf in [&active, &streaming, &internal] {
         std::os::unix::fs::symlink(&target, leaf.join("write_link")).unwrap();
     }
+    kcode_core::env::set_var("HOME", home.parent().unwrap());
     kcode_core::env::set_var("KCODE_HOME", &home);
     kcode_core::env::set_var("KCODE_DEV_NAMESPACE", "1");
     register_active_pid("write_link", 7);
@@ -175,4 +184,47 @@ fn pid_state_symlinks_never_read_or_write_targets() {
     assert!(!session.streaming);
     assert!(!session.internal);
     assert_eq!(std::fs::read_to_string(&target).unwrap(), pid.to_string());
+}
+
+#[cfg(unix)]
+#[test]
+fn active_pid_open_directory_handle_survives_namespace_replacement_race() {
+    use std::ffi::CString;
+    use std::os::unix::fs::{OpenOptionsExt, symlink};
+
+    let _lock = lock_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let active = temp.path().join(".kcode-dev/active_pids");
+    let moved = temp.path().join("original-active-pids");
+    let stable = temp.path().join("stable-active-pids");
+    std::fs::create_dir_all(&active).unwrap();
+    std::fs::create_dir_all(&stable).unwrap();
+    let sentinel = stable.join("sentinel");
+    std::fs::write(&sentinel, b"stable marker").unwrap();
+
+    let directory = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&active)
+        .unwrap();
+    std::fs::rename(&active, &moved).unwrap();
+    symlink(&stable, &active).unwrap();
+
+    symlink(&sentinel, moved.join("session-link")).unwrap();
+    assert!(
+        super::write_marker_in_directory(
+            &directory,
+            &CString::new("session-link").unwrap(),
+            b"overwrite",
+        )
+        .is_err()
+    );
+    assert_eq!(std::fs::read(&sentinel).unwrap(), b"stable marker");
+
+    super::write_marker_in_directory(&directory, &CString::new("session-race").unwrap(), b"1234")
+        .unwrap();
+
+    assert_eq!(std::fs::read(moved.join("session-race")).unwrap(), b"1234");
+    assert_eq!(std::fs::read(&sentinel).unwrap(), b"stable marker");
+    assert!(!stable.join("session-race").exists());
 }
