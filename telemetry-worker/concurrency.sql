@@ -1,7 +1,7 @@
 -- Reliable concurrency, last 30 days by SERVER RECEIPT time (UTC).
 -- Run: npm run concurrency [-- --json]. Requires migration 0026.
 -- Installations are not people. A runtime incarnation is one Agent lifetime,
--- including children and idle sessions, within a shared JCODE_HOME on one host.
+-- including children and idle sessions, within a shared KCODE_HOME on one host.
 -- End peaks may cover time before this window. No historical exact repair.
 WITH recent AS (
   SELECT * FROM concurrency_event_quality

@@ -1,9 +1,9 @@
 [Unit]
-Description=jcode pairing code service
+Description=kcode pairing code service
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /usr/local/bin/jcode-pair-service.py
+ExecStart=/usr/bin/python3 /usr/local/bin/kcode-pair-service.py
 Restart=always
 RestartSec=3
 

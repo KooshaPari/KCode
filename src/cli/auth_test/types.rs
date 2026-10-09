@@ -54,8 +54,7 @@ impl AuthTestTarget {
     #[allow(deprecated)]
     fn from_provider_choice(choice: &super::provider_init::ProviderChoice) -> Option<Self> {
         match choice {
-            super::provider_init::ProviderChoice::Claude
-            | super::provider_init::ProviderChoice::ClaudeSubprocess => Some(Self::Claude),
+            super::provider_init::ProviderChoice::Claude => Some(Self::Claude),
             super::provider_init::ProviderChoice::Openai => Some(Self::Openai),
             super::provider_init::ProviderChoice::Gemini => Some(Self::Gemini),
             super::provider_init::ProviderChoice::Antigravity => Some(Self::Antigravity),
@@ -69,7 +68,7 @@ impl AuthTestTarget {
     fn credential_paths(self) -> Result<Vec<String>> {
         match self {
             Self::Claude => Ok(vec![
-                crate::auth::claude::jcode_path()?.display().to_string(),
+                crate::auth::claude::kcode_path()?.display().to_string(),
                 crate::storage::user_home_path(".claude/.credentials.json")?
                     .display()
                     .to_string(),
@@ -81,7 +80,7 @@ impl AuthTestTarget {
                     .to_string(),
             ]),
             Self::Openai => Ok(vec![
-                crate::storage::jcode_dir()?
+                crate::storage::kcode_dir()?
                     .join("openai-auth.json")
                     .display()
                     .to_string(),
@@ -144,7 +143,7 @@ impl AuthTestTarget {
             Self::Cursor => Ok(vec![
                 dirs::config_dir()
                     .ok_or_else(|| anyhow::anyhow!("No config directory found"))?
-                    .join("jcode")
+                    .join("kcode")
                     .join("cursor.env")
                     .display()
                     .to_string(),

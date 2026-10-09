@@ -60,7 +60,7 @@ public struct PairingClient: Sendable {
         }
         return Response(
             token: token,
-            serverName: object["server_name"] as? String ?? "jcode",
+            serverName: object["server_name"] as? String ?? "kcode",
             serverVersion: object["server_version"] as? String ?? "unknown"
         )
     }

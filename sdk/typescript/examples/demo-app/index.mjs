@@ -1,10 +1,10 @@
-import { JcodeClient } from "@1jehuang/jcode-sdk";
+import { JcodeClient } from "@1jehuang/kcode-sdk";
 
 const prompt = process.argv.slice(2).join(" ") || "Describe this directory in one sentence.";
 
 const client = await JcodeClient.launch({
   workingDir: process.cwd(),
-  binary: process.env.JCODE_BINARY,
+  binary: process.env.KCODE_BINARY,
 });
 
 try {

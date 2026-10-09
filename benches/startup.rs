@@ -50,83 +50,83 @@ fn bench_tool_constructors(c: &mut Criterion) {
 
     // Simple stateless tools
     group.bench_function("ReadTool::new", |b| {
-        b.iter(jcode::tool::read::ReadTool::new);
+        b.iter(kcode::tool::read::ReadTool::new);
     });
     group.bench_function("WriteTool::new", |b| {
-        b.iter(jcode::tool::write::WriteTool::new);
+        b.iter(kcode::tool::write::WriteTool::new);
     });
     group.bench_function("EditTool::new", |b| {
-        b.iter(jcode::tool::edit::EditTool::new);
+        b.iter(kcode::tool::edit::EditTool::new);
     });
     group.bench_function("MultiEditTool::new", |b| {
-        b.iter(jcode::tool::multiedit::MultiEditTool::new);
+        b.iter(kcode::tool::multiedit::MultiEditTool::new);
     });
     group.bench_function("PatchTool::new", |b| {
-        b.iter(jcode::tool::patch::PatchTool::new);
+        b.iter(kcode::tool::patch::PatchTool::new);
     });
     group.bench_function("ApplyPatchTool::new", |b| {
-        b.iter(jcode::tool::apply_patch::ApplyPatchTool::new);
+        b.iter(kcode::tool::apply_patch::ApplyPatchTool::new);
     });
     group.bench_function("LsTool::new", |b| {
-        b.iter(jcode::tool::ls::LsTool::new);
+        b.iter(kcode::tool::ls::LsTool::new);
     });
     group.bench_function("BashTool::new", |b| {
-        b.iter(jcode::tool::bash::BashTool::new);
+        b.iter(kcode::tool::bash::BashTool::new);
     });
     group.bench_function("BrowserTool::new", |b| {
-        b.iter(jcode::tool::browser::BrowserTool::new);
+        b.iter(kcode::tool::browser::BrowserTool::new);
     });
     group.bench_function("WebFetchTool::new", |b| {
-        b.iter(jcode::tool::webfetch::WebFetchTool::new);
+        b.iter(kcode::tool::webfetch::WebFetchTool::new);
     });
     group.bench_function("WebSearchTool::new", |b| {
-        b.iter(jcode::tool::websearch::WebSearchTool::new);
+        b.iter(kcode::tool::websearch::WebSearchTool::new);
     });
     group.bench_function("SidePanelTool::new", |b| {
-        b.iter(jcode::tool::side_panel::SidePanelTool::new);
+        b.iter(kcode::tool::side_panel::SidePanelTool::new);
     });
     group.bench_function("InvalidTool::new", |b| {
-        b.iter(jcode::tool::invalid::InvalidTool::new);
+        b.iter(kcode::tool::invalid::InvalidTool::new);
     });
     group.bench_function("TodoTool::new", |b| {
-        b.iter(jcode::tool::todo::TodoTool::new);
+        b.iter(kcode::tool::todo::TodoTool::new);
     });
     group.bench_function("BgTool::new", |b| {
-        b.iter(jcode::tool::bg::BgTool::new);
+        b.iter(kcode::tool::bg::BgTool::new);
     });
     group.bench_function("MemoryTool::new", |b| {
-        b.iter(jcode::tool::memory::MemoryTool::new);
+        b.iter(kcode::tool::memory::MemoryTool::new);
     });
     group.bench_function("OpenTool::new", |b| {
-        b.iter(jcode::tool::open::OpenTool::new);
+        b.iter(kcode::tool::open::OpenTool::new);
     });
     group.bench_function("JcodeDocsTool::new", |b| {
-        b.iter(jcode::tool::jcode_docs::JcodeDocsTool::new);
+        b.iter(kcode::tool::kcode_docs::JcodeDocsTool::new);
     });
     group.bench_function("MaintainerFeedbackTool::new", |b| {
-        b.iter(jcode::tool::feedback::MaintainerFeedbackTool::new);
+        b.iter(kcode::tool::feedback::MaintainerFeedbackTool::new);
     });
 
     // Tools that need extra state
     group.bench_function("SkillTool::new", |b| {
-        let skills = jcode::skill::SkillRegistry::shared_registry();
-        b.iter(|| jcode::tool::skill::SkillTool::new(skills.clone()));
+        let skills = kcode::skill::SkillRegistry::shared_registry();
+        b.iter(|| kcode::tool::skill::SkillTool::new(skills.clone()));
     });
 
     group.bench_function("CommunicateTool::new", |b| {
-        b.iter(jcode::tool::communicate::CommunicateTool::new);
+        b.iter(kcode::tool::communicate::CommunicateTool::new);
     });
 
     // ToolSearchIndex (used during registry population)
     group.bench_function("ToolSearchIndex::new", |b| {
-        b.iter(jcode::tool::tool_search::ToolSearchIndex::new);
+        b.iter(kcode::tool::tool_search::ToolSearchIndex::new);
     });
 
     // Simulate the search-index population loop for a typical tool set
     group.bench_function("search_index_population_30_tools", |b| {
         b.iter_batched(
             || {
-                let idx = jcode::tool::tool_search::ToolSearchIndex::new();
+                let idx = kcode::tool::tool_search::ToolSearchIndex::new();
                 // 30 representative tool name+description pairs
                 let entries: Vec<(String, String)> = (0..30)
                     .map(|i| (format!("tool_{i}"), format!("Description for tool number {i} that is moderately long to simulate real tool descriptions")))
@@ -153,51 +153,51 @@ fn bench_all_base_tools(c: &mut Criterion) {
     c.bench_function("all_base_tools_constructors", |b| {
         b.iter(|| {
             let count = AtomicUsize::new(0);
-            let skills = jcode::skill::SkillRegistry::shared_registry();
+            let skills = kcode::skill::SkillRegistry::shared_registry();
 
-            let _ = jcode::tool::read::ReadTool::new();
+            let _ = kcode::tool::read::ReadTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::write::WriteTool::new();
+            let _ = kcode::tool::write::WriteTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::edit::EditTool::new();
+            let _ = kcode::tool::edit::EditTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::multiedit::MultiEditTool::new();
+            let _ = kcode::tool::multiedit::MultiEditTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::patch::PatchTool::new();
+            let _ = kcode::tool::patch::PatchTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::apply_patch::ApplyPatchTool::new();
+            let _ = kcode::tool::apply_patch::ApplyPatchTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::ls::LsTool::new();
+            let _ = kcode::tool::ls::LsTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::bash::BashTool::new();
+            let _ = kcode::tool::bash::BashTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::browser::BrowserTool::new();
+            let _ = kcode::tool::browser::BrowserTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::webfetch::WebFetchTool::new();
+            let _ = kcode::tool::webfetch::WebFetchTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::websearch::WebSearchTool::new();
+            let _ = kcode::tool::websearch::WebSearchTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::invalid::InvalidTool::new();
+            let _ = kcode::tool::invalid::InvalidTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::feedback::MaintainerFeedbackTool::new();
+            let _ = kcode::tool::feedback::MaintainerFeedbackTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::jcode_docs::JcodeDocsTool::new();
+            let _ = kcode::tool::kcode_docs::JcodeDocsTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::todo::TodoTool::new();
+            let _ = kcode::tool::todo::TodoTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::bg::BgTool::new();
+            let _ = kcode::tool::bg::BgTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::session_search::SessionSearchTool::new();
+            let _ = kcode::tool::session_search::SessionSearchTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::memory::MemoryTool::new();
+            let _ = kcode::tool::memory::MemoryTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::open::OpenTool::new();
+            let _ = kcode::tool::open::OpenTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::skill::SkillTool::new(skills.clone());
+            let _ = kcode::tool::skill::SkillTool::new(skills.clone());
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::communicate::CommunicateTool::new();
+            let _ = kcode::tool::communicate::CommunicateTool::new();
             count.fetch_add(1, Ordering::Relaxed);
-            let _ = jcode::tool::side_panel::SidePanelTool::new();
+            let _ = kcode::tool::side_panel::SidePanelTool::new();
             count.fetch_add(1, Ordering::Relaxed);
 
             count.load(Ordering::Relaxed)
@@ -214,17 +214,17 @@ fn bench_provider_creation(c: &mut Criterion) {
 
     // GeminiProvider::new() is a cheap constructor (no network)
     group.bench_function("GeminiProvider::new", |b| {
-        b.iter(jcode_provider_gemini_runtime::GeminiProvider::new);
+        b.iter(kcode_provider_gemini_runtime::GeminiProvider::new);
     });
 
     // AnthropicProvider::new() is a cheap constructor
     group.bench_function("AnthropicProvider::new", |b| {
-        b.iter(jcode_provider_anthropic_runtime::AnthropicProvider::new);
+        b.iter(kcode_provider_anthropic_runtime::AnthropicProvider::new);
     });
 
     // OpenAIProvider::new_browser_only() avoids credential loading
     group.bench_function("OpenAIProvider::new_browser_only", |b| {
-        b.iter(jcode_provider_openai_runtime::OpenAIProvider::new_browser_only);
+        b.iter(kcode_provider_openai_runtime::OpenAIProvider::new_browser_only);
     });
 
     group.finish();

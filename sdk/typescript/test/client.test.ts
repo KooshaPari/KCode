@@ -282,13 +282,13 @@ test("pending requests reject when the connection drops", async () => {
 });
 
 test("a missing bridge socket explains how to start it", async () => {
-  const missing = path.join(os.tmpdir(), `jcode-sdk-absent-${process.pid}.sock`);
+  const missing = path.join(os.tmpdir(), `kcode-sdk-absent-${process.pid}.sock`);
   await assert.rejects(
     () => JcodeClient.connect({ socketPath: missing }),
     (error: HarnessError) => {
       assert.equal(error.name, "HarnessError");
       assert.equal(error.code, "connect_failed");
-      assert.match(error.message, /jcode api-bridge/);
+      assert.match(error.message, /kcode api-bridge/);
       assert.match(error.message, new RegExp(missing.replace(/[/\\]/g, "\\$&")));
       return true;
     },
@@ -299,7 +299,7 @@ test("a stale socket file reports a dead bridge, not a missing one", async () =>
   // A bridge killed with SIGKILL leaves its socket file behind, so the path
   // exists and dialling gets ECONNREFUSED. "Not found" would send the user
   // looking for a config problem that is not there.
-  const stale = path.join(os.tmpdir(), `jcode-sdk-stale-${process.pid}.sock`);
+  const stale = path.join(os.tmpdir(), `kcode-sdk-stale-${process.pid}.sock`);
   fs.writeFileSync(stale, "");
   try {
     await assert.rejects(
@@ -364,7 +364,7 @@ test("GA methods send stable request shapes and map typed replies", async () => 
           reply({ ev: "credential_updated", provider: "gemini", configured: true });
           break;
         case "clear_api_key":
-          reply({ ev: "credential_updated", provider: "jcode", configured: false });
+          reply({ ev: "credential_updated", provider: "kcode", configured: false });
           break;
         case "notify_auth_changed":
           reply({ ev: "ok" });
@@ -418,7 +418,7 @@ test("GA methods send stable request shapes and map typed replies", async () => 
     assert.equal(runtime.routes.length, 2);
 
     await client.setApiKey("gemini-api", "secret");
-    await client.clearApiKey("jcode");
+    await client.clearApiKey("kcode");
     await client.notifyAuthChanged("openai");
     assert.deepEqual(await client.readFile("s1", "src/a.ts", 5), {
       path: "src/a.ts",
@@ -649,6 +649,29 @@ test("sendSystemReminder writes hidden content without waiting for acceptance", 
     assert.equal(requests[0].content, "");
     assert.equal(requests[0].system_reminder, "continue task");
     assert.notEqual(requests[0].no_reply, true);
+  } finally {
+    client.close();
+    await server.close();
+  }
+});
+
+test("run retains an abnormal stop without leaking another session's reason", async () => {
+  const server = await startMockHarness({
+    onRequest(request, send) {
+      if (request.req === "send_message") {
+        send({ v: 1, reply_to: request.id, ev: "ok" });
+        send({ v: 1, ev: "message_accepted", session_id: "s1" });
+        send({ v: 1, ev: "turn_stopped", session_id: "other", reason: "crash", message: "Other session" });
+        send({ v: 1, ev: "turn_stopped", session_id: "s1", reason: "interrupted", message: "Cancelled by user" });
+        send({ v: 1, ev: "turn_done", session_id: "s1" });
+      }
+    },
+  });
+  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  try {
+    const result = await client.run("s1", "hello");
+    assert.equal(result.stopReason, "interrupted");
+    assert.equal(result.stopMessage, "Cancelled by user");
   } finally {
     client.close();
     await server.close();

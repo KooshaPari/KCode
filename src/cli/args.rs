@@ -27,11 +27,11 @@ pub(crate) enum ProviderAuthArg {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "jcode")]
-#[command(version = jcode_build_meta::version())]
-#[command(about = "J-Code: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
+#[command(name = "kcode")]
+#[command(version = kcode_build_meta::version())]
+#[command(about = "kcode: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
 pub(crate) struct Args {
-    /// Initial provider to use (jcode, claude, openai, openai-api, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, conifer, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, xai, grok-build, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, google, or auto-detect). Interactive sessions can switch providers with /model.
+    /// Initial provider to use (kcode, claude, openai, openai-api, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, conifer, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, xai, grok-build, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, google, or auto-detect). Interactive sessions can switch providers with /model.
     #[arg(short, long, default_value = "auto", global = true)]
     pub(crate) provider: ProviderChoice,
 
@@ -75,8 +75,8 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) herdr: bool,
 
-    /// Agent kind for HERDR reporting (jcode, forge, forgecode)
-    #[arg(long, global = true, default_value = "jcode")]
+    /// Agent kind for HERDR reporting (kcode, forge, forgecode)
+    #[arg(long, global = true, default_value = "kcode")]
     pub(crate) herdr_kind: String,
 
     /// Agent operating mode: execute (default), manager (coordinate only), researcher (read-only)
@@ -95,7 +95,7 @@ pub(crate) struct Args {
     #[arg(long, global = true, hide = true, value_name = "CHORD")]
     pub(crate) spawn_hotkey: Option<String>,
 
-    /// Disable auto-detection of jcode repository and self-dev mode
+    /// Disable auto-detection of kcode repository and self-dev mode
     #[arg(long, global = true)]
     pub(crate) no_selfdev: bool,
 
@@ -182,7 +182,7 @@ pub(crate) enum Command {
     /// Run as an Agent Client Protocol (ACP) adapter backed by the Jcode daemon
     Acp,
 
-    /// Manage the background server daemon (e.g. `jcode server stop`).
+    /// Manage the background server daemon (e.g. `kcode server stop`).
     Server {
         #[command(subcommand)]
         action: ServerCommand,
@@ -207,10 +207,10 @@ pub(crate) enum Command {
 
     /// Login to a provider via OAuth, API key, or local credentials
     Login {
-        /// Provider to log in to. Equivalent to --provider for this command, e.g. `jcode login google`.
+        /// Provider to log in to. Equivalent to --provider for this command, e.g. `kcode login google`.
         // Distinct clap id: the global `--provider` flag also has id "provider";
         // sharing the id makes clap drop the flag inside `login` (so
-        // `jcode login --provider x` errors) and propagate the global default
+        // `kcode login --provider x` errors) and propagate the global default
         // into this positional.
         #[arg(value_enum, id = "login_provider", value_name = "PROVIDER")]
         provider: Option<ProviderChoice>,
@@ -264,7 +264,7 @@ pub(crate) enum Command {
         #[arg(long)]
         api_base: Option<String>,
 
-        /// OpenAI-compatible API key. If omitted, jcode prompts securely when needed.
+        /// OpenAI-compatible API key. If omitted, kcode prompts securely when needed.
         #[arg(long)]
         api_key: Option<String>,
 
@@ -282,7 +282,7 @@ pub(crate) enum Command {
     /// Run in simple REPL mode (no TUI)
     Repl,
 
-    /// Update jcode to the latest version
+    /// Update kcode to the latest version
     Update,
 
     /// Show build/version information in human or JSON form
@@ -311,7 +311,7 @@ pub(crate) enum Command {
         build: bool,
     },
 
-    /// Debug socket CLI - interact with running jcode server
+    /// Debug socket CLI - interact with running kcode server
     Debug {
         /// Debug command to run (list, start, sessions, create_session, message, tool, state, history, etc.)
         #[arg(default_value = "help")]
@@ -386,14 +386,14 @@ pub(crate) enum Command {
         session: Option<String>,
     },
 
-    /// Run configured dictation: send to last-focused jcode client or type raw text
+    /// Run configured dictation: send to last-focused kcode client or type raw text
     Dictate {
-        /// Type the transcript into the focused app instead of sending to jcode
+        /// Type the transcript into the focused app instead of sending to kcode
         #[arg(long)]
         r#type: bool,
     },
 
-    /// Set up the platform global hotkey to launch jcode
+    /// Set up the platform global hotkey to launch kcode
     SetupHotkey {
         /// Internal: run as the macOS hotkey listener process.
         #[arg(long, hide = true)]
@@ -412,14 +412,18 @@ pub(crate) enum Command {
         uninstall: bool,
     },
 
-    /// Install a launcher so jcode appears in your app launcher
+    /// Install platform launcher integration (Windows shortcut; macOS notification helper)
     SetupLauncher,
 
     /// Browser automation setup and status
     Browser {
-        /// Action (setup, status)
+        /// Action (setup, status, detect)
         #[arg(default_value = "setup")]
         action: String,
+
+        /// Browser to target: auto (default: detect your browser), firefox,
+        /// chrome, chromium, edge, brave, or safari
+        browser: Option<String>,
     },
 
     /// Replay a saved session in the TUI
@@ -564,7 +568,7 @@ pub(crate) enum Command {
         coverage_limit: usize,
     },
 
-    /// Save or restore the current set of open jcode windows across a system reboot
+    /// Save or restore the current set of open kcode windows across a system reboot
     Restart {
         #[command(subcommand)]
         action: RestartCommand,
@@ -590,14 +594,14 @@ pub(crate) enum Command {
 
     /// Serve the stable harness API on a Unix socket, for SDK clients.
     ///
-    /// This is the endpoint the TypeScript SDK (`@1jehuang/jcode-sdk`) connects to. It
+    /// This is the endpoint the TypeScript SDK (`@1jehuang/kcode-sdk`) connects to. It
     /// ships in the released binary on purpose: the API is only "generally
     /// available" if reaching it does not require a Rust toolchain and a
     /// source checkout.
     #[cfg(unix)]
     #[command(name = "api-bridge", alias = "api")]
     ApiBridge {
-        /// Path of the API socket to listen on (default: $XDG_RUNTIME_DIR/jcode-api.sock)
+        /// Path of the API socket to listen on (default: $XDG_RUNTIME_DIR/kcode-api.sock)
         ///
         /// Named `--api-socket` rather than `--socket` because the global
         /// `--socket` already selects the *internal daemon* socket, and clap
@@ -668,7 +672,7 @@ pub(crate) enum ServerCommand {
     /// Pin the shared server channel to an installed version.
     ///
     /// Defaults to the active `current` version. This only selects the daemon's
-    /// binary; run `jcode server reload` separately to apply it.
+    /// binary; run `kcode server reload` separately to apply it.
     Promote {
         /// Installed version to promote (defaults to the current channel)
         version: Option<String>,
@@ -719,6 +723,100 @@ pub(crate) enum CloudCommand {
         #[command(subcommand)]
         action: CloudSessionsCommand,
     },
+
+    /// Move a live session (transcript, repo state, env notes) to a cloud host
+    /// and keep working there. Your local files stay editable. Git reconciles
+    /// both sides when the session comes back with `kcode cloud return`.
+    Move {
+        /// Session ID or name. Defaults to the session this command runs in.
+        #[arg(long)]
+        session: Option<String>,
+        #[command(flatten)]
+        target: CloudMoveTarget,
+        /// Allow moving while the session is mid-turn (the agent itself runs /cloud).
+        #[arg(long)]
+        allow_active: bool,
+        /// Prepare and verify only. Do not hand ownership to the cloud host.
+        #[arg(long)]
+        dry_run: bool,
+        /// After a successful move, attach this terminal to the cloud session.
+        #[arg(long)]
+        attach: bool,
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Bring a moved session back: pull the cloud transcript and merge its git
+    /// work into your local checkout with a normal 3-way merge.
+    Return {
+        #[arg(long)]
+        session: Option<String>,
+        #[command(flatten)]
+        target: CloudMoveTarget,
+        /// Bring the work back as refs only (refs/kcode-cloud/<session>/*) without touching the working tree.
+        #[arg(long)]
+        refs_only: bool,
+        /// After returning, resume the session in this terminal.
+        #[arg(long)]
+        attach: bool,
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show where moved sessions live and how their repos have diverged.
+    Where {
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Attach this terminal to a session that lives on a cloud host.
+    Attach {
+        #[arg(long)]
+        session: Option<String>,
+    },
+
+    /// Internal: remote side of `cloud move` (reads a bundle tarball on stdin).
+    #[command(hide = true)]
+    Receive {
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Internal: remote side of `cloud move` commit phase.
+    #[command(hide = true)]
+    Activate {
+        #[arg(long)]
+        session: String,
+        #[arg(long)]
+        epoch: u64,
+    },
+
+    /// Internal: remote side of `cloud return` (writes a bundle tarball to stdout).
+    #[command(hide = true)]
+    Export {
+        #[arg(long)]
+        session: String,
+        #[arg(long)]
+        epoch: u64,
+    },
+}
+
+#[derive(Parser, Debug, Clone, Default)]
+pub(crate) struct CloudMoveTarget {
+    /// SSH host alias for the cloud machine. Defaults to [cloud] host in config
+    /// or $KCODE_CLOUD_HOST.
+    #[arg(long)]
+    pub(crate) host: Option<String>,
+    /// Remote kcode binary (name or path). Defaults to `kcode`.
+    #[arg(long)]
+    pub(crate) remote_binary: Option<String>,
+    /// Local command used in place of `ssh <host>` (for tests and custom
+    /// transports). Receives the remote shell command as its final argument.
+    /// Also read from $KCODE_CLOUD_TRANSPORT.
+    #[arg(long, hide = true)]
+    pub(crate) transport: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -777,7 +875,7 @@ pub(crate) enum CloudSessionsCommand {
     /// Upload the newest local Jcode session to Jade cloud storage
     UploadLatest {
         /// Directory containing local Jcode session JSON files
-        #[arg(long, default_value = "~/.jcode/sessions")]
+        #[arg(long, default_value = "~/.kcode/sessions")]
         sessions_dir: String,
 
         /// Upload without Jade's redaction pass
@@ -790,7 +888,7 @@ pub(crate) enum CloudSessionsCommand {
 
     /// Sync new or changed local sessions to Jade cloud storage (idempotent; safe to schedule)
     Sync {
-        /// Directory containing local Jcode session JSON files (default: ~/.jcode/sessions)
+        /// Directory containing local Jcode session JSON files (default: ~/.kcode/sessions)
         #[arg(long)]
         sessions_dir: Option<String>,
 
@@ -911,7 +1009,7 @@ pub(crate) struct JadeCloudOptions {
     #[arg(long)]
     pub(crate) region: Option<String>,
 
-    /// Path to the private Jade session helper. Defaults to $JCODE_JADE_SESSIONS_HELPER or ~/jade/scripts/jade_sessions.py.
+    /// Path to the private Jade session helper. Defaults to $KCODE_JADE_SESSIONS_HELPER or ~/jade/scripts/jade_sessions.py.
     #[arg(long)]
     pub(crate) helper: Option<String>,
 }
@@ -935,9 +1033,9 @@ impl CloudSessionViewFormat {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum RestartCommand {
-    /// Save a reboot snapshot of currently active jcode windows
+    /// Save a reboot snapshot of currently active kcode windows
     Save {
-        /// Restore this reboot snapshot automatically the next time plain `jcode` starts
+        /// Restore this reboot snapshot automatically the next time plain `kcode` starts
         #[arg(long)]
         auto_restore: bool,
     },
@@ -1021,11 +1119,11 @@ pub(crate) enum ProviderCommand {
         #[arg(long, conflicts_with = "no_api_key")]
         api_key_env: Option<String>,
 
-        /// API key value to store in jcode's private provider env file. Prefer --api-key-stdin for shell history safety.
+        /// API key value to store in kcode's private provider env file. Prefer --api-key-stdin for shell history safety.
         #[arg(long, conflicts_with_all = ["api_key_stdin", "no_api_key"])]
         api_key: Option<String>,
 
-        /// Read the API key from stdin and store it in jcode's private provider env file
+        /// Read the API key from stdin and store it in kcode's private provider env file
         #[arg(long, conflicts_with = "no_api_key")]
         api_key_stdin: bool,
 
@@ -1041,7 +1139,7 @@ pub(crate) enum ProviderCommand {
         #[arg(long)]
         auth_header: Option<String>,
 
-        /// Private env file name under jcode's app config directory for stored API keys
+        /// Private env file name under kcode's app config directory for stored API keys
         #[arg(long)]
         env_file: Option<String>,
 
@@ -1134,7 +1232,7 @@ pub(crate) enum MemoryCommand {
         /// Search query
         query: String,
 
-        /// Use semantic search (embedding-based) instead of keyword
+        /// Use Jev relevance decisions instead of local keyword search (requires Jev access)
         #[arg(short, long)]
         semantic: bool,
     },

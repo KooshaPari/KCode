@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-jcode Live Monitor - Real-time activity dashboard
+kcode Live Monitor - Real-time activity dashboard
 
-Connects to jcode's debug socket and displays live streaming events.
-Run jcode serve in one terminal, then this monitor in another.
+Connects to kcode's debug socket and displays live streaming events.
+Run kcode serve in one terminal, then this monitor in another.
 
-Usage: ./jcode_monitor.py [--socket PATH]
+Usage: ./kcode_monitor.py [--socket PATH]
 """
 
 import json
@@ -54,9 +54,9 @@ class MonitorState:
 
 
 def get_socket_path() -> str:
-    """Get the jcode debug socket path"""
+    """Get the kcode debug socket path"""
     runtime_dir = os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
-    return os.path.join(runtime_dir, "jcode-debug.sock")
+    return os.path.join(runtime_dir, "kcode-debug.sock")
 
 
 def connect_to_socket(path: str) -> Optional[socket.socket]:
@@ -142,7 +142,7 @@ def render_dashboard(state: MonitorState, width: int = 80):
     lines = []
 
     # Header
-    header = f" JCODE MONITOR "
+    header = f" KCODE MONITOR "
     padding = (width - len(header)) // 2
     lines.append(f"{Colors.BG_BLUE}{Colors.WHITE}{Colors.BOLD}{' ' * padding}{header}{' ' * padding}{Colors.RESET}")
     lines.append("")

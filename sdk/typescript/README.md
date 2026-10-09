@@ -1,19 +1,19 @@
-# @1jehuang/jcode-sdk
+# @1jehuang/kcode-sdk
 
-TypeScript SDK for the **jcode harness API** (protocol v1) — the stable,
-versioned boundary between the jcode agent runtime and any client.
+TypeScript SDK for the **kcode harness API** (protocol v1) — the stable,
+versioned boundary between the kcode agent runtime and any client.
 
-It mirrors `crates/jcode-harness-api` and talks NDJSON over the harness API
+It mirrors `crates/kcode-harness-api` and talks NDJSON over the harness API
 Unix socket. Schema drift is guarded from both sides: a Rust test fails if a
 variant is added without mirroring it here, and a Node test fails if the tag
 sets diverge.
 
-Full documentation: **[jcode.sh/sdk](https://jcode.sh/sdk)**
+Full documentation: **[kcode.sh/sdk](https://kcode.sh/sdk)**
 
 ## Install
 
 ```bash
-npm install @1jehuang/jcode-sdk
+npm install @1jehuang/kcode-sdk
 ```
 
 From a source checkout:
@@ -26,10 +26,10 @@ npm run build
 
 ## Requirements
 
-Node 20 or newer. The SDK installs the correct jcode runtime for supported
+Node 20 or newer. The SDK installs the correct kcode runtime for supported
 macOS, Linux, and Windows architectures as an optional platform package, so a
-separate jcode installation is not normally required. If optional dependencies
-are disabled, `launch()` falls back to `jcode` on `PATH`; `binary` can also
+separate kcode installation is not normally required. If optional dependencies
+are disabled, `launch()` falls back to `kcode` on `PATH`; `binary` can also
 select a specific executable.
 
 macOS and Linux are exercised end to end in CI. Windows builds and is wired up
@@ -40,24 +40,24 @@ treat it as untested rather than unsupported and please report what breaks.
 `launch()` needs nothing else: it starts its own daemon and bridge. `connect()`
 needs a bridge already running, which the user starts once and leaves running.
 The bridge ships in the runtime package, so no Rust toolchain is needed. To use
-`connect()` with the user's global jcode, start its bridge:
+`connect()` with the user's global kcode, start its bridge:
 
 ```bash
-jcode api-bridge
+kcode api-bridge
 ```
 
-It starts the jcode server if one is not already up, then exposes the API
-socket (`$XDG_RUNTIME_DIR/jcode-api.sock`) and translates onto the internal
+It starts the kcode server if one is not already up, then exposes the API
+socket (`$XDG_RUNTIME_DIR/kcode-api.sock`) and translates onto the internal
 daemon socket. The socket is owner-only, matching the daemon socket it fronts.
 
-Use `--api-socket <path>` to listen elsewhere, and set `JCODE_API_SOCKET` to
+Use `--api-socket <path>` to listen elsewhere, and set `KCODE_API_SOCKET` to
 the same path in your client. (The global `--socket` selects the *internal
 daemon* socket, which is a different thing.)
 
-## Two ways to use jcode
+## Two ways to use kcode
 
-**Embed jcode as an agent engine** (`launch`). Starts a private instance with
-its own state, sessions, and sockets. It cannot see or disturb the jcode the
+**Embed kcode as an agent engine** (`launch`). Starts a private instance with
+its own state, sessions, and sockets. It cannot see or disturb the kcode the
 user runs in their terminal, and `close()` shuts it down. This is the default
 for applications.
 
@@ -70,7 +70,7 @@ await client.close();  // stops the instance
 
 Provider logins are inherited from the user by default, since an instance with
 no credentials cannot reach a model. Pass `inheritLogins: false` to start empty
-and supply your own. Pass `jcodeHome` to keep sessions across runs instead of
+and supply your own. Pass `kcodeHome` to keep sessions across runs instead of
 using a temporary directory.
 
 Inheritance shares only recognized credential **files**, never whole config or
@@ -81,21 +81,21 @@ restricted to SDK-created temp paths. The launched process still runs as the
 current OS user and can spend those accounts' quota, so disable inheritance
 when running untrusted application code (`inheritLogins: false`).
 
-**Automate the user's own jcode** (`connect`). Attaches to the jcode already
+**Automate the user's own kcode** (`connect`). Attaches to the kcode already
 running on the machine, sharing its live sessions. This is what an editor
 plugin or a status dashboard wants. Anything it does is visible in the user's
-terminal, and it needs a bridge already running (`jcode api-bridge`).
+terminal, and it needs a bridge already running (`kcode api-bridge`).
 
 ## Quick start
 
-Swap `launch` for `connect` to drive the user's own jcode instead of a private
+Swap `launch` for `connect` to drive the user's own kcode instead of a private
 instance; everything after that line is identical.
 
 A complete runnable application is available in
-[`examples/demo-app`](https://github.com/1jehuang/jcode/tree/master/sdk/typescript/examples/demo-app).
+[`examples/demo-app`](https://github.com/1jehuang/kcode/tree/master/sdk/typescript/examples/demo-app).
 
 ```ts
-import { JcodeClient } from "@1jehuang/jcode-sdk";
+import { JcodeClient } from "@1jehuang/kcode-sdk";
 
 const client = await JcodeClient.launch({ workingDir: process.cwd() });
 
@@ -112,12 +112,154 @@ console.log("tokens:", turn.usage);
 client.close();
 ```
 
+### Full system prompt override
+
+```ts
+const session = await client.createSession({
+  workingDir: process.cwd(),
+  systemPrompt: "You are a concise code reviewer.",
+});
+```
+
+`systemPrompt` is sent as `system_prompt` and replaces the **entire assembled
+system prompt**, not just its base text. Default instructions and assembled
+instruction/context additions are not appended. The override is immutable after
+session creation and is persisted by the runtime for resume. Omit it (or use
+`undefined`) to keep normal prompt assembly. An empty string explicitly replaces
+the system prompt with an empty prompt. Existing `createSession()` and
+`createSession("/path")` calls retain their normal behavior.
+
+### Controlling tools
+
+Use `createSession({ workingDir, tools })` or `configureTools(sessionId, tools)`
+to control the tools exposed to one session. This requires a runtime and API
+bridge advertising `session_tools`. Existing `createSession("/path")` calls
+continue to work unchanged.
+
+```ts
+const session = await client.createSession({
+  workingDir: process.cwd(),
+  tools: {
+    enabled: ["read", "agentgrep"],
+    disabled: ["bash"],
+    custom: [{
+      name: "lookup_ticket",
+      description: "Look up a ticket in the application's ticket store",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string" } },
+        required: ["id"],
+        additionalProperties: false,
+      },
+      execute: async (input, { signal }) => {
+        // Your application implements this function. Honor signal for cancellation.
+        return JSON.stringify(await lookupTicket(String(input.id), { signal }));
+      },
+    }],
+  },
+});
+
+console.log(await client.listTools(session.session_id));
+const turn = await client.run(session.session_id, "Summarize ticket ABC-123");
+
+// Replace the policy between turns. No tools at all:
+await client.configureTools(session.session_id, { enabled: [] });
+// Restore configured defaults and remove all custom callbacks:
+await client.configureTools(session.session_id, {});
+```
+
+- `enabled` selects built-in/MCP tools. Omitted or `null` inherits configured
+  defaults. An empty array exposes no built-in/MCP tools.
+- `custom` adds tools regardless of `enabled`. A custom tool with the same name
+  replaces that tool only in this session. `disabled` wins over both lists.
+- Configuration replaces the previous SDK policy, not a patch. It is accepted
+  only while the session is idle. Await it before starting another turn.
+- `execute` receives schema-validated input and returns a string or
+  `{ output: string, error?: string }`. Thrown errors become tool errors sent back
+  to the model. The SDK never serializes the callback function.
+- Callbacks have a 60-second deadline. Set `timeoutMs` on a custom tool to shorten
+  it. Cancellation and disconnect abort the supplied signal. Callbacks must
+  cooperate with that signal to stop external work, and synchronous blocking
+  callbacks cannot be forcibly interrupted by JavaScript timers.
+- Custom callbacks belong to the registering connection. Keep it open throughout
+  the turn. Policies are in-memory, not saved in the transcript. Reconfigure
+  before sending a message after reconnecting, reloading a session, restarting
+  the daemon, or forking a session. These controls are not an OS sandbox:
+  an enabled shell or application callback can still perform arbitrary work.
+  Automatic recovery after a daemon restart uses the daemon's default policy,
+  not the previous SDK selection. Do not treat these live-session controls as
+  a persistent security boundary. Prefer a private ephemeral `JcodeClient.launch()`
+  instance for embedding rather than a shared or automatically resumed session.
+- If a configuration acknowledgement times out, the SDK closes its connection
+  rather than risk executing old callbacks against an uncertain new policy.
+
+For manual dispatch, send a wire-level `configure_tools` request via
+`client.request`, consume `tool_call` events, and call
+`client.submitToolResult(sessionId, callId, result)`. Do not manually answer calls
+that already have an `execute` callback.
+
+### Web search
+
+The built-in `websearch` tool uses the model provider's own server-side search
+when the provider supports it (Anthropic first-party API, OpenAI API or ChatGPT
+login on non-codex models). Otherwise it scrapes locally with the configured
+engines. It needs no SDK code:
+
+- Provider searches stream as ordinary tool rows named `web_search`:
+  `tool_start`, `tool_input_delta` (`{"query": ...}`), `tool_exec`, then
+  `tool_done` with the result titles and URLs as `output`. No `tool_call` is
+  sent, because the provider already ran the search. They also appear in
+  `getHistory`.
+- `enabled` and `disabled` govern provider search too. A session without
+  `websearch` never gets provider search.
+- A `custom` tool named `websearch` replaces search entirely. It is called
+  through your callback and is never swapped for provider search.
+- Set `websearch.prefer_native = false` in `config.toml`, or
+  `KCODE_WEBSEARCH_PREFER_NATIVE=0` in `launch({ env })`, to always search
+  locally (unless `websearch.engine = "native"` is set explicitly).
+
+### Assistant messages and final answers
+
+`turn.text` is the concatenation of **all** assistant text in the turn, including
+intermediate narration before tools. This behavior is preserved for compatibility.
+Use `turn.finalText` to forward only the last completed assistant message, or
+`turn.messages` to retain each completed message separately:
+
+```ts
+const turn = await client.run(session.session_id, "Investigate the failure");
+console.log(turn.finalText);
+// turn.messages: [{ messageId?: string, text: string }, ...]
+```
+
+Framing-capable bridges attach `message_id` to `text_delta` and emit `text_done`
+with the same id when that message ends. Reasoning may interleave within one
+message and is **not** a text boundary. These ids correlate a live stream, not
+persisted history entries, and should be scoped to the connection and session.
+`text_replace` replaces the text for its `message_id`, including a previously
+completed message. An empty replacement retracts discarded retry output. Streaming
+clients should apply these corrections, and wait for `turn_done` before publishing
+an irreversible final answer. The SDK applies them to `text`, `messages`, and
+`finalText` automatically.
+With older bridges, `messages` is empty and `finalText` falls back to whole-turn
+`text`. Exact message boundaries cannot be reconstructed from that older stream.
+
+To verify message framing and concurrent history reads against a real provider
+in a private instance, run the opt-in acceptance check from the repository root:
+
+```sh
+KCODE_SDK_TEST_MODEL="your-model-id" node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/kcode
+```
+
+This uses your existing provider login and quota, runs one harmless bash tool,
+and cleans up its private instance. It does not restart the shared daemon.
+
 ## Structured output
 
 `runStructured()` asks the model for JSON, validates the response with Ajv, and
 sends bounded corrective retries when the response is not valid JSON or does not
 match your JSON Schema. It returns the normal turn metadata plus validated
-`data` and an `attempts` audit trail.
+`data` and an `attempts` audit trail. On framing-capable bridges it validates
+`finalText`, so intermediate narration does not contaminate the JSON answer.
 
 ```ts
 const result = await client.runStructured<{ summary: string; count: number }>(
@@ -204,11 +346,11 @@ discovery pass only.
 | Method | Purpose |
 | --- | --- |
 | `JcodeClient.launch(options)` | Start a private instance and connect to it |
-| `JcodeClient.connect(options)` | Attach to the jcode already running on this machine |
+| `JcodeClient.connect(options)` | Attach to the kcode already running on this machine |
 | `listSessions({ includeArchived? })` | Every persisted session, optionally including archived sessions |
 | `archiveSession(id)` / `restoreSession(id)` | Reversibly hide or restore a session |
 | `setRetentionPolicy(days?)` | Auto-archive inactive sessions, or disable retention |
-| `createSession(workingDir?)` | Create and attach |
+| `createSession(workingDirOrOptions?)` | Create and attach, optionally overriding the full system prompt |
 | `attachSession(id)` / `detachSession(id)` | Subscribe / unsubscribe |
 | `sendMessage(id, content, images?)` | Send a user message (awaits `message_accepted`) |
 | `run(id, content, options?)` | Send and collect one full turn |
@@ -231,6 +373,7 @@ discovery pass only.
 | `renameSession(id, title?)` | Set a session title, or clear it |
 | `rewindUndo(id)` | Restore what the last `rewind` removed |
 | `cancelSoftInterrupts(id)` | Retract queued soft interrupts |
+| `backgroundTool(id)` | Move the running tool call to the background |
 | `ping()` | Liveness |
 
 ## Models
@@ -257,7 +400,7 @@ union that would go stale.
 `getRuntimeInfo(id)` adds the active provider/model, every available model route,
 the negotiated protocol version, advertised capability strings, and a live ping.
 API-key provisioning accepts the supported provider aliases, normalizes Gemini
-aliases to `gemini`, supports the jcode subscription key, writes owner-only files
+aliases to `gemini`, supports the kcode subscription key, writes owner-only files
 atomically, and asks the daemon to reload credentials. OAuth tokens are not part
 of this API.
 
@@ -312,17 +455,17 @@ up for you:
 | Option | Effect |
 | --- | --- |
 | `workingDir` | Working directory for sessions. Defaults to `process.cwd()`. |
-| `jcodeHome` | Keep state at a fixed path across runs. Defaults to a temporary directory that is removed on `close()`. See the note below. |
+| `kcodeHome` | Keep state at a fixed path across runs. Defaults to a temporary directory that is removed on `close()`. See the note below. |
 | `inheritLogins` | Inherit the user's provider logins. Defaults to `true`. |
-| `binary` | Path to the jcode binary. Defaults to `jcode` on `PATH`. |
+| `binary` | Path to the kcode binary. Defaults to `kcode` on `PATH`. |
 | `env` | Extra environment variables for the instance. |
-| `swarmModel` | Operator-enforced model for all swarm workers. Use `inherit` to keep the coordinator model and auth route. Takes precedence over `env.JCODE_SWARM_MODEL`. |
-| `wakeMode` | `internal` (daemon-owned wakes) or `external` (emit `wake_requested` for the operator). Takes precedence over `env.JCODE_WAKE_MODE`. |
+| `swarmModel` | Operator-enforced model for all swarm workers. Use `inherit` to keep the coordinator model and auth route. Takes precedence over `env.KCODE_SWARM_MODEL`. |
+| `wakeMode` | `internal` (daemon-owned wakes) or `external` (emit `wake_requested` for the operator). Takes precedence over `env.KCODE_WAKE_MODE`. |
 | `startupTimeoutMs` | How long to wait for the instance to come up. Defaults to 30000. |
 | `cleanupTimeoutMs` | How long `close()` spends removing an ephemeral home. Defaults to 30000. |
 | `inheritStderr` | Forward the instance's stderr to your process. Defaults to `false`. |
 
-A fixed `jcodeHome` persists transcripts on disk. `listSessions()` discovers
+A fixed `kcodeHome` persists transcripts on disk. `listSessions()` discovers
 those records even on a fresh, unattached connection, so a restarted process can
 rebuild its complete session index without keeping a separate id registry.
 
@@ -330,9 +473,9 @@ rebuild its complete session index without keeping a separate id registry.
 
 | Env var | Effect |
 | --- | --- |
-| `JCODE_API_SOCKET` | Override the API socket path |
-| `JCODE_WAKE_MODE` | Autonomous wake ownership: `internal` (default) or `external` |
-| `JCODE_RUNTIME_DIR` | Override the runtime directory |
+| `KCODE_API_SOCKET` | Override the API socket path |
+| `KCODE_WAKE_MODE` | Autonomous wake ownership: `internal` (default) or `external` |
+| `KCODE_RUNTIME_DIR` | Override the runtime directory |
 | `XDG_RUNTIME_DIR` | Default runtime directory on Linux |
 
 Or pass `socketPath` to `connect()`.
@@ -345,7 +488,7 @@ JavaScript errors (for example, an OS filesystem error) can still surface from
 the platform.
 
 ```ts
-import { HarnessError, StructuredOutputError } from "@1jehuang/jcode-sdk";
+import { HarnessError, StructuredOutputError } from "@1jehuang/kcode-sdk";
 
 try {
   await client.run(sessionId, prompt);
@@ -374,12 +517,12 @@ try {
 
 | Code | Cause | Recovery |
 | --- | --- | --- |
-| `jcode_not_found` | `launch()` could not execute jcode. | Install jcode, put it on `PATH`, or pass `binary` with an absolute path. |
+| `kcode_not_found` | `launch()` could not execute kcode. | Install kcode, put it on `PATH`, or pass `binary` with an absolute path. |
 | `startup_failed` | The private instance exited before opening its API socket. Its stderr is included in the message. | Display/log the message; fix the reported configuration, credential, or binary error before retrying. |
 | `startup_timeout` | The private instance did not open its API socket within `startupTimeoutMs`. | Increase the timeout on a slow machine; otherwise inspect stderr and ensure the runtime directory is writable. |
-| `invalid_instance_home` | `jcodeHome`, its credential paths, or the source login home is unsafe (same directory, symlink, file, or traversal). | Choose a separate real directory. Do not point a private instance at the user's live jcode home. |
-| `connect_failed` | The bridge is absent, dead, or listening at another socket path. | Run `jcode api-bridge`; verify `socketPath` or `JCODE_API_SOCKET`. The message names the attempted path. |
-| `handshake_failed` | The peer replied with an invalid frame during protocol negotiation. | Confirm the socket is a jcode harness socket and upgrade jcode/SDK together. |
+| `invalid_instance_home` | `kcodeHome`, its credential paths, or the source login home is unsafe (same directory, symlink, file, or traversal). | Choose a separate real directory. Do not point a private instance at the user's live kcode home. |
+| `connect_failed` | The bridge is absent, dead, or listening at another socket path. | Run `kcode api-bridge`; verify `socketPath` or `KCODE_API_SOCKET`. The message names the attempted path. |
+| `handshake_failed` | The peer replied with an invalid frame during protocol negotiation. | Confirm the socket is a kcode harness socket and upgrade kcode/SDK together. |
 | `unsupported_version` | Client and bridge do not share a protocol major version. | Upgrade the older side. Do not retry unchanged versions. |
 
 ### Request and transport errors
@@ -389,11 +532,13 @@ try {
 | `disconnected` | The socket closed or a write failed while work was in flight. | Reconnect. Retry only idempotent reads, or first verify whether a mutating request took effect. |
 | `timeout` | No correlated reply arrived within `requestTimeoutMs` (30 seconds by default). | Check daemon health and raise the timeout for legitimately slow requests. Treat outcome as unknown before repeating mutations. |
 | `unexpected_reply` | A reply was valid protocol data but not the event kind required by that SDK method. | Upgrade both sides and report the server/client versions with the error. |
-| `unknown_request` | The bridge does not implement that request tag. | Upgrade jcode, or stop using that newer SDK method with this bridge. |
+| `unknown_request` | The bridge does not implement that request tag. | Upgrade kcode, or stop using that newer SDK method with this bridge. |
 | `unknown_session` | The session no longer exists, is not available to this instance, or the connection is not attached where attachment is required. | Refresh `listSessions()`, use the right private/shared instance, and attach when the method requires it. |
 | `invalid_request` | Arguments or current state violate the operation's contract (for example an invalid model, retry count, path, or compaction request). | Correct the caller input. The message contains the rejected constraint; do not blindly retry. |
 | `invalid_option` | A client-only option is outside its allowed range. | Correct the named option, such as `discoveryIntervalMs` or `maxBufferedEvents`. |
-| `internal` | The bridge or daemon failed unexpectedly while handling a valid request. | Preserve the message and jcode logs, retry once if safe, then report it if reproducible. |
+| `unsupported` | The runtime does not advertise `session_tools`. | Update both the kcode daemon and API bridge before using tool controls. |
+| `busy` | Another tool configuration request is in flight for this session. | Await the previous configuration before submitting another. |
+| `internal` | The bridge or daemon failed unexpectedly while handling a valid request. | Preserve the message and kcode logs, retry once if safe, then report it if reproducible. |
 
 ### Streaming and structured-output errors
 
@@ -464,5 +609,5 @@ npm run check   # typecheck + build + tests (mock harness, no daemon needed)
 ```
 
 `test/schema-parity.test.ts` reads the Rust enums directly, and
-`crates/jcode-harness-api`'s `typescript_sdk_lists_every_variant` test reads
+`crates/kcode-harness-api`'s `typescript_sdk_lists_every_variant` test reads
 this package. Adding a variant on either side without the other fails CI.

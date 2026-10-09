@@ -3,13 +3,13 @@ use anyhow::{Context, Result};
 use crate::subscription_api::{self, AccountApiError};
 
 pub(crate) async fn run_login(no_browser: bool) -> Result<()> {
-    super::login::run_jcode_account_login(no_browser).await
+    super::login::run_kcode_account_login(no_browser).await
 }
 
 pub(crate) async fn run_status(json: bool) -> Result<()> {
     let Some(api_key) = crate::subscription_catalog::configured_api_key() else {
         anyhow::bail!(
-            "No Jcode account credential is configured. Run `jcode account login` to sign in."
+            "No Jcode account credential is configured. Run `kcode account login` to sign in."
         );
     };
     let client = crate::provider::shared_http_client();
@@ -41,7 +41,7 @@ pub(crate) async fn run_status(json: bool) -> Result<()> {
             crate::subscription_catalog::clear_account_credentials()
                 .context("The account key is revoked, and local credential cleanup failed")?;
             anyhow::bail!(
-                "The Jcode account key was revoked or expired. Local credentials were cleared. Run `jcode account login` to sign in again."
+                "The Jcode account key was revoked or expired. Local credentials were cleared. Run `kcode account login` to sign in again."
             )
         }
         Err(error) => Err(anyhow::Error::new(error)),
@@ -49,7 +49,7 @@ pub(crate) async fn run_status(json: bool) -> Result<()> {
 }
 
 pub(crate) fn run_manage() -> Result<()> {
-    let url = crate::subscription_catalog::JCODE_ACCOUNT_URL;
+    let url = crate::subscription_catalog::KCODE_ACCOUNT_URL;
     println!("Opening Jcode account management: {url}");
     if crate::auth::browser_suppressed(false) {
         println!("Browser launch is disabled. Open the URL above manually.");
@@ -106,12 +106,12 @@ fn public_manage_url(candidate: Option<&str>) -> &str {
                 reqwest::Url::parse(url),
                 Ok(parsed)
                     if parsed.scheme() == "https"
-                        && matches!(parsed.host_str(), Some("jcode.sh" | "www.jcode.sh" | "solosystems.dev"))
+                        && matches!(parsed.host_str(), Some("kcode.sh" | "www.kcode.sh" | "solosystems.dev"))
                         && parsed.username().is_empty()
                         && parsed.password().is_none()
             )
         })
-        .unwrap_or(crate::subscription_catalog::JCODE_ACCOUNT_URL)
+        .unwrap_or(crate::subscription_catalog::KCODE_ACCOUNT_URL)
 }
 
 #[cfg(test)]
@@ -121,16 +121,16 @@ mod tests {
     #[test]
     fn manage_url_accepts_only_public_allowlisted_https_origins() {
         assert_eq!(
-            public_manage_url(Some("https://jcode.sh/account")),
-            "https://jcode.sh/account"
+            public_manage_url(Some("https://kcode.sh/account")),
+            "https://kcode.sh/account"
         );
         assert_eq!(
             public_manage_url(Some("https://evil.example/?key=jck_live_secret")),
-            crate::subscription_catalog::JCODE_ACCOUNT_URL
+            crate::subscription_catalog::KCODE_ACCOUNT_URL
         );
         assert_eq!(
-            public_manage_url(Some("https://user:pass@jcode.sh/account")),
-            crate::subscription_catalog::JCODE_ACCOUNT_URL
+            public_manage_url(Some("https://user:pass@kcode.sh/account")),
+            crate::subscription_catalog::KCODE_ACCOUNT_URL
         );
     }
 }

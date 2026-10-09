@@ -1,6 +1,6 @@
 -- Where are our users? Coarse country breakdown (migration 0022).
 -- Usage:
---   wrangler d1 execute jcode-telemetry --remote --file=geo.sql
+--   wrangler d1 execute kcode-telemetry --remote --file=geo.sql
 --
 -- Data source: Cloudflare resolves the 2-letter country at the edge
 -- (request.cf.country). No IP address, city, region, or coordinates is ever

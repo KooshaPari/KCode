@@ -68,7 +68,7 @@ struct PairingView: View {
                 Button {
                     showScanner = true
                 } label: {
-                    Label("Scan QR from `jcode pair`", systemImage: "qrcode.viewfinder")
+                    Label("Scan QR from `kcode pair`", systemImage: "qrcode.viewfinder")
                         .font(.subheadline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -86,7 +86,7 @@ struct PairingView: View {
                 .accessibilityLabel("Scan QR code")
                 .accessibilityHint("Opens the camera to scan a pairing code")
 
-                Text("Run `jcode pair` on your machine, then scan the QR code or enter the code manually. Traffic stays on your tailnet.")
+                Text("Run `kcode pair` on your machine, then scan the QR code or enter the code manually. Traffic stays on your tailnet.")
                     .font(.footnote)
                     .foregroundStyle(Theme.textTertiary)
             }
@@ -103,7 +103,7 @@ struct PairingView: View {
                     code = payload.code
                     pair()
                 } else {
-                    errorMessage = "Not a jcode pairing QR code"
+                    errorMessage = "Not a kcode pairing QR code"
                 }
             }
         }
@@ -123,7 +123,7 @@ struct PairingView: View {
                             .stroke(Theme.border, lineWidth: 1)
                     )
                     .accessibilityHidden(true)
-                Text("jcode")
+                Text("kcode")
                     .font(Theme.mono(32, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)
             }

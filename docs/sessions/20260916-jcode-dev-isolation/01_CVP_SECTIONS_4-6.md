@@ -10,12 +10,12 @@ Applies to all three primary repos per docs-3 dossiers.
 
 | Baseline | Repo | Pin | Status |
 |----------|------|-----|--------|
-| KCode owned build | KooshaPari/jcode | v0.85.1-k1.1.0 | Built, tested 16/16 |
+| KCode owned build | KooshaPari/kcode | v0.85.1-k1.1.0 | Built, tested 16/16 |
 | HeliosLite owned build | KooshaPari/HeliosLite | v2.13.21-h.0.2.1 | Built, tested 429/430 |
 | HeliosCLI owned build | KooshaPari/HeliosCLI | v0.2.1 | Built, tested 28/28 |
 | Upstream ForgeCode | tailcallhq/forgecode | NEEDS PIN | Not cloned |
 | Upstream Codex CLI | openai/codex | NEEDS PIN | Not cloned |
-| Upstream jcode | 1jehuang/jcode | NEEDS PIN | Not cloned |
+| Upstream kcode | 1jehuang/kcode | NEEDS PIN | Not cloned |
 | Direct model/tool runner | N/A (design stub) | N/A | Not implemented |
 
 ### Fork Deltas (what each repo adds over upstream)
@@ -35,7 +35,7 @@ Applies to all three primary repos per docs-3 dossiers.
 - harness_checkpoint: git-based checkpoint/rollback
 - kla: CLI recording/screenshot tool
 
-**KCode over jcode:**
+**KCode over kcode:**
 - HERDR terminal detection + reporter (socket-based state machine)
 - Fork identity: v0.85.1-k1.1.0, herdr-kind CLI arg
 
@@ -87,7 +87,7 @@ All pilots use the same long-running coding + transport-fault corpus as defined 
 
 ### Pilot Execution Protocol
 
-1. Pin exact tool versions (jcode, helioslite, helios CLI)
+1. Pin exact tool versions (kcode, helioslite, helios CLI)
 2. Clone fixture repository at fixed commit
 3. Run each repo's binary against identical task script
 4. Record: time, memory, CPU, mutations, errors
@@ -144,7 +144,7 @@ All pilots use the same long-running coding + transport-fault corpus as defined 
 
 | Blocker | Impact | Resolution |
 |---------|--------|------------|
-| Upstream repos not cloned | Cannot build comparator baselines | Clone tailcallhq/forgecode, openai/codex, 1jehuang/jcode |
+| Upstream repos not cloned | Cannot build comparator baselines | Clone tailcallhq/forgecode, openai/codex, 1jehuang/kcode |
 | Fixture repo not created | Cannot run controlled tasks | Create minimal coding task fixture |
 | Mutation tracker not built | Cannot measure forbidden writes | Build or reuse existing audit tool |
 | Memory profiler not installed | Cannot measure memory | Install heaptrack or use jemalloc profiling |

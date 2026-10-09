@@ -765,6 +765,8 @@ impl AcpRuntime {
         let subscribe_id = 1;
         session
             .send(&Request::Subscribe {
+                system_prompt: None,
+                supports_pdf_panels: false,
                 crash_on_disconnect: false,
                 continue_on_disconnect: false,
                 id: subscribe_id,
@@ -818,6 +820,8 @@ impl AcpRuntime {
         let resume_id = 1;
         session
             .send(&Request::Subscribe {
+                system_prompt: None,
+                supports_pdf_panels: false,
                 crash_on_disconnect: false,
                 continue_on_disconnect: false,
                 id: resume_id,
@@ -863,7 +867,7 @@ impl AcpRuntime {
                 }
                 other => {
                     if self.profile.is_extended() {
-                        self.write_jcode_extension_event(&attached_id, &other)
+                        self.write_kcode_extension_event(&attached_id, &other)
                             .await?;
                     }
                 }
@@ -968,7 +972,7 @@ impl AcpRuntime {
                 }
             };
             if self.profile.is_extended() {
-                self.write_jcode_extension_event(&session.session_id, &event)
+                self.write_kcode_extension_event(&session.session_id, &event)
                     .await?;
             }
             match event {
@@ -1208,13 +1212,13 @@ impl AcpRuntime {
         .await
     }
 
-    async fn write_jcode_extension_event(
+    async fn write_kcode_extension_event(
         &self,
         session_id: &str,
         event: &ServerEvent,
     ) -> Result<()> {
         self.write_notification(
-            "_jcode/server_event",
+            "_kcode/server_event",
             json!({
                 "sessionId": session_id,
                 "event": serde_json::to_value(event).unwrap_or(Value::Null),
@@ -1273,7 +1277,12 @@ async fn request_history(session: &DaemonSession) -> Result<ServerEvent> {
 
 async fn request_model_catalog(session: &DaemonSession) -> Result<ServerEvent> {
     let id = session.next_id();
-    session.send(&Request::GetModelCatalog { id, subscribe_usage_updates: false }).await?;
+    session
+        .send(&Request::GetModelCatalog {
+            id,
+            subscribe_usage_updates: false,
+        })
+        .await?;
     loop {
         match session.read_event().await? {
             ServerEvent::Ack { .. } => {}
@@ -1415,6 +1424,7 @@ async fn wait_for_model_changed(session: &DaemonSession, request_id: u64) -> Res
                 model,
                 provider_name,
                 error,
+                ..
             } if id == request_id => {
                 if let Some(error) = error {
                     anyhow::bail!(error);
@@ -1486,7 +1496,7 @@ impl EventMapper {
                     "status": "pending",
                 })]
             }
-            ServerEvent::ToolInput { delta } => {
+            ServerEvent::ToolInput { delta, .. } => {
                 let Some(tool_id) = self.current_tool_id.clone() else {
                     return Vec::new();
                 };
@@ -1649,7 +1659,7 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
         object.insert(
             "_meta".to_string(),
             json!({
-                "jcode": {
+                "kcode": {
                     "profile": profile.as_str(),
                     "extensions": ["raw_server_event"]
                 }
@@ -1661,9 +1671,9 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
         "protocolVersion": protocol_version,
         "agentCapabilities": agent_capabilities,
         "agentInfo": {
-            "name": "jcode",
+            "name": "kcode",
             "title": "Jcode",
-            "version": jcode_build_meta::pkg_version(),
+            "version": kcode_build_meta::pkg_version(),
         },
         "authMethods": [],
     })
@@ -1836,7 +1846,7 @@ fn tool_title(name: &str) -> String {
         "bash" => "Running shell command".to_string(),
         "read" => "Reading file".to_string(),
         "write" => "Writing file".to_string(),
-        "edit" | "multiedit" | "patch" | "apply_patch" => "Editing files".to_string(),
+        "edit" | "multiedit" | "patch" | "apply_patch" | "replace" => "Editing files".to_string(),
         "agentgrep" | "grep" | "glob" | "ls" => "Searching workspace".to_string(),
         "webfetch" | "websearch" => "Fetching web content".to_string(),
         other => other.replace('_', " "),
@@ -1846,7 +1856,7 @@ fn tool_title(name: &str) -> String {
 pub(crate) fn tool_kind(name: &str) -> &'static str {
     match name {
         "read" => "read",
-        "write" | "edit" | "multiedit" | "patch" | "apply_patch" => "edit",
+        "write" | "edit" | "multiedit" | "patch" | "apply_patch" | "replace" => "edit",
         "bash" | "bg" | "selfdev" => "execute",
         "agentgrep" | "grep" | "glob" | "ls" | "session_search" | "conversation_search" => "search",
         "webfetch" | "websearch" | "codesearch" => "fetch",
@@ -1860,10 +1870,10 @@ pub(crate) async fn run_acp_command(
     provider_profile: Option<String>,
     explicit_tool_profile: bool,
 ) -> Result<()> {
-    crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
+    crate::env::set_var("KCODE_NON_INTERACTIVE", "1");
     let acp_config = crate::config::config().acp.clone();
     if !explicit_tool_profile {
-        crate::env::set_var("JCODE_TOOL_PROFILE", acp_config.tool_profile.trim());
+        crate::env::set_var("KCODE_TOOL_PROFILE", acp_config.tool_profile.trim());
         crate::config::invalidate_config_cache();
     }
     let profile = AcpProfile::parse(&acp_config.profile);
@@ -1959,7 +1969,7 @@ mod tests {
     }
 
     #[test]
-    fn initialize_standard_omits_jcode_meta() {
+    fn initialize_standard_omits_kcode_meta() {
         let result = initialize_result(&json!({"protocolVersion": 1}), AcpProfile::Standard);
         assert_eq!(result["protocolVersion"], 1);
         assert!(result["agentCapabilities"].get("_meta").is_none());
@@ -1967,10 +1977,10 @@ mod tests {
     }
 
     #[test]
-    fn initialize_full_advertises_jcode_extension_meta() {
+    fn initialize_full_advertises_kcode_extension_meta() {
         let result = initialize_result(&json!({"protocolVersion": 1}), AcpProfile::Full);
         assert_eq!(
-            result["agentCapabilities"]["_meta"]["jcode"]["profile"],
+            result["agentCapabilities"]["_meta"]["kcode"]["profile"],
             "full"
         );
     }
@@ -1986,6 +1996,7 @@ mod tests {
         assert_eq!(start[0]["kind"], "execute");
 
         let input = mapper.map_event(ServerEvent::ToolInput {
+            id: None,
             delta: "{\"command\":\"true\"}".to_string(),
         });
         assert_eq!(input[0]["rawInput"]["command"], "true");

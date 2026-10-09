@@ -47,7 +47,7 @@ public protocol CredentialStore: Sendable {
 /// unavailable (e.g. unsigned simulator builds returning
 /// `errSecMissingEntitlement`). Real signed builds use the keychain.
 public struct KeychainCredentialStore: CredentialStore {
-    private static let service = "com.jcode.mobile.servers"
+    private static let service = "com.kcode.mobile.servers"
     private static let account = "paired-servers"
 
     public init() {}
@@ -113,7 +113,7 @@ public struct KeychainCredentialStore: CredentialStore {
         let base =
             FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first ?? FileManager.default.temporaryDirectory
-        return base.appendingPathComponent("jcode-servers.json")
+        return base.appendingPathComponent("kcode-servers.json")
     }
 
     private func baseQuery() -> [String: Any] {
