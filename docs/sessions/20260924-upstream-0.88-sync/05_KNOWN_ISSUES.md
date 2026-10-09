@@ -292,6 +292,8 @@ the new HEAD, the new body should reflect the resolved items.
   parts of these issues that are in-scope.
 - `08_FINAL_EVIDENCE.md` §5 — the local-only test failures
   walkthrough.
+- `10_INBOX_NOTIFICATION_GAP.md` — the inbox notification gap
+  (§11 below) traced to source level.
 
 ## 10. Re-verification of prior-session goals (2026-10-09)
 
@@ -374,3 +376,30 @@ the commit changed (it corrected `08_FINAL_EVIDENCE.md`, not
 `03_DAG_WBS.md` WBS-11. The corrected stats and the local repro
 result in the commit body are backed by concrete data, not
 inspection.
+
+## 11. Inbox notification gap — DEFERRED (harness defect, not fork)
+
+**Severity:** DEFERRED (operator-side harness defect; no fork code
+impact).
+
+Agent-initiated GitHub write actions that the pre-tool hook DEFERs to
+the operator inbox are never surfaced to the operator. Every queued
+item shows `notified_via: []`, and the deferred items accumulated
+unanswered for 21+ hours across multiple sessions.
+
+**Observed:** 35 pending inbox items existed at one point, 14 of them
+duplicate PR-comment entries and 6 pointing at body files that no
+longer resolve. Only 5 were the intended issue bodies.
+
+**Root cause and proposed fix:** traced to source level in
+`10_INBOX_NOTIFICATION_GAP.md`. Pre-staged issue body:
+`10a_ISSUE_inbox-notification-gap.md`.
+
+**Scope for this PR:** none. The gap was *worked around* manually in
+this session (`~/.jcode/memories/global/harness-agents.md` records the
+fallback behaviour), and the five deferred issue bodies were written
+and re-verified against live data before dispatch.
+
+**Cross-repo note:** this is a harness defect, so the fix belongs in
+`1jehuang/jcode` upstream, not in the KCode fork. The fork-side
+deliverable is the issue body, which is complete.
