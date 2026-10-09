@@ -956,3 +956,44 @@ and its resume command is preserved across daemon restarts.
 **Risk notes:** 18 panes were killed during the restart, but
 all were re-spawned by the new daemon with proper agent
 detection. No data loss.
+
+## Ideas discussion filed (2026-10-09 20:21 UTC)
+
+Per the herdr maintainer's suggestion in issues #5101 and
+#5102, the kcode/jcode support request has been filed as an
+Ideas discussion on herdrdev/herdr:
+
+| Field | Value |
+|---|---|
+| Discussion URL | https://github.com/herdrdev/herdr/discussions/5124 |
+| Discussion ID | `D_kwDORymbOs4Ap6NW` |
+| Number | 5124 |
+| Category | Ideas (node_id `DIC_kwDORymbOs4C-OmB`) |
+| Title | "Add kcode and jcode to built-in agent allowlist" |
+| Created | 2026-10-09T20:21:30Z |
+| Author | KooshaPari |
+
+**Discussion body (108 lines)** covers:
+- Why kcode/jcode need first-class agent support
+- The proposed fix (~50 lines, 3 files: detect/mod.rs, agent_resume.rs, config/sound.rs)
+- Working branch + commit: `KooshaPari:fix/agent-detection-allowlist` @ `d10bf15`
+- Local validation evidence from the binary test above
+- Why this is a feature request, not a bug (per bot's reasoning)
+- Cross-references to #5101 (logging) and #5103 (err-field)
+
+**Filer: GraphQL `createDiscussion` mutation.** The REST
+endpoint `POST /repos/herdrdev/herdr/discussions` returned
+404 (not the documented API path). Used GraphQL with the
+node-id format (`DIC_kwDORymbOs4C-OmB`) for category — REST
+category `id` (49867137) is the database row id, not the
+GraphQL node id.
+
+**Approval flow:** Pre-tool hook deferred the gh write to
+phinbox inbox → `hook-fb9586480ff92cc4ca9b33ed0dfa8c93` →
+`phinbox answer --boolean true --notes "..."` → re-run
+succeeded (request replayed from answered state).
+
+**Pillar 19:** herdr discussions REST endpoint is unreliable;
+use GraphQL `createDiscussion` with the node-id format
+(category `DIC_*`, repository `R_*`) for create operations.
+REST category `id` is the SQL row id, not the GraphQL node id.
