@@ -4,14 +4,14 @@
   "id": "JCODE-2026-09-15",
   "record_status": "OPERATIONAL",
   "example_class": "REAL_ASSESSMENT",
-  "title": "Jcode Fork Assessment",
+  "title": "Kcode Fork Assessment",
   "subtitle": "Source-level assessment of KooshaPari/jcode (v0.85.0-k1.0.0) — a Rust TUI coding agent with MCP tools and swarm coordination.",
-  "purpose": "Evaluate the jcode fork's architecture, implementation quality, testing coverage, and user interface against the Agent Lab bootstrap profile criteria.",
+  "purpose": "Evaluate the kcode fork's architecture, implementation quality, testing coverage, and user interface against the Agent Lab bootstrap profile criteria.",
   "boundary": "Source-level assessment of the fork as of commit d0a32f240. No deployed binary, runtime execution, or end-user observation was measured.",
   "beneficiary": "Fork maintainer (KooshaPari) and downstream consumers.",
   "authorship": "AGENT_ORIGINATED",
   "intent_status": "Accepted for a bounded fork assessment; not a portfolio-wide commitment.",
-  "genesis_rationale": "The fork extends upstream jcode with elicitation overlays, swarm coordination enhancements, and AGENTS.md governance. Assessment validates that extensions maintain baseline quality.",
+  "genesis_rationale": "The fork extends upstream kcode with elicitation overlays, swarm coordination enhancements, and AGENTS.md governance. Assessment validates that extensions maintain baseline quality.",
   "alternatives": [
     "Full 1,080-catalog assessment across all domains",
     "Minimal 5-criteria smoke check",
@@ -153,7 +153,7 @@
   "lineage": {
     "previous_dossier_id": null,
     "change_class": "INITIAL_BASELINE",
-    "description": "First operational assessment of the jcode fork."
+    "description": "First operational assessment of the kcode fork."
   },
   "provenance_notice": "Source-level assessment. No deployed binary or runtime execution was measured. The 85% pass rate reflects source inspection against 22 bootstrap criteria, not operational product acceptance.",
   "row_notes": [
@@ -164,12 +164,12 @@
     {"instance_id": "I-05", "title": "Entry points inventoried", "interpretation": "CLI, MCP, TUI all have distinct entry points.", "next_action": "No action needed."},
     {"instance_id": "I-06", "title": "Background capabilities inventoried", "interpretation": "Swarm workers and background tasks documented.", "next_action": "No action needed."},
     {"instance_id": "I-07", "title": "Data ownership clear", "interpretation": "Crate boundaries enforce ownership.", "next_action": "No action needed."},
-    {"instance_id": "I-08", "title": "Generated projections", "interpretation": "NOT_APPLICABLE: jcode is not an assessment tool.", "next_action": "N/A."},
+    {"instance_id": "I-08", "title": "Generated projections", "interpretation": "NOT_APPLICABLE: kcode is not an assessment tool.", "next_action": "N/A."},
     {"instance_id": "I-09", "title": "Core operations correct", "interpretation": "cargo check passes; core functionality verified at source level.", "next_action": "No action needed."},
     {"instance_id": "I-10", "title": "Invalid input handling", "interpretation": "Structured validation present; errors not silent.", "next_action": "No action needed."},
     {"instance_id": "I-11", "title": "Error categories", "interpretation": "Error types distinguish categories clearly.", "next_action": "No action needed."},
     {"instance_id": "I-12", "title": "Test inventory", "interpretation": "FAIL: Significant coverage gaps across tools and services.", "next_action": "Add dedicated tests for uncovered modules."},
-    {"instance_id": "I-13", "title": "Grader evaluation", "interpretation": "NOT_APPLICABLE: jcode is not a grader.", "next_action": "N/A."},
+    {"instance_id": "I-13", "title": "Grader evaluation", "interpretation": "NOT_APPLICABLE: kcode is not a grader.", "next_action": "N/A."},
     {"instance_id": "I-14", "title": "Build documentation", "interpretation": "Cargo.toml complete; SDKROOT workaround in AGENTS.md.", "next_action": "Formalize build instructions."},
     {"instance_id": "I-15", "title": "Undocumented local paths", "interpretation": "FAIL: SDKROOT workaround is a documented but non-standard local path.", "next_action": "Fix build to work without SDKROOT override."},
     {"instance_id": "I-16", "title": "Operations discoverable", "interpretation": "MCP tools, CLI help, TUI all provide discovery.", "next_action": "No action needed."},

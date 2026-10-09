@@ -13,7 +13,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 sdk_dir="$repo_root/sdk/typescript"
-work="$(mktemp -d "${TMPDIR:-/tmp}/jcode-sdk-pack-XXXXXX")"
+work="$(mktemp -d "${TMPDIR:-/tmp}/kcode-sdk-pack-XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
 echo "== packing =="
@@ -27,7 +27,7 @@ echo "== installing into a fresh consumer =="
 cd "$work"
 npm init -y --silent >/dev/null
 runtime_tarball=""
-if command -v jcode >/dev/null 2>&1 && [ "$(uname -s)" = Linux ]; then
+if command -v kcode >/dev/null 2>&1 && [ "$(uname -s)" = Linux ]; then
   case "$(uname -m)" in
     x86_64) runtime_package=linux-x64 ;;
     aarch64) runtime_package=linux-arm64 ;;
@@ -38,8 +38,8 @@ if command -v jcode >/dev/null 2>&1 && [ "$(uname -s)" = Linux ]; then
     mkdir -p "$runtime_stage/bin"
     cp "$repo_root/sdk/npm/$runtime_package/package.json" "$runtime_stage/"
     cp "$repo_root/sdk/npm/$runtime_package/README.md" "$runtime_stage/"
-    cp "$(command -v jcode)" "$runtime_stage/bin/jcode"
-    chmod +x "$runtime_stage/bin/jcode"
+    cp "$(command -v kcode)" "$runtime_stage/bin/kcode"
+    chmod +x "$runtime_stage/bin/kcode"
     runtime_tarball="$(cd "$runtime_stage" && npm pack --silent)"
     runtime_tarball="$runtime_stage/$runtime_tarball"
   fi
@@ -53,8 +53,8 @@ fi
 
 echo "== ESM import =="
 node --input-type=module -e '
-import { JcodeClient, HarnessError, API_VERSION_MAJOR } from "@1jehuang/jcode-sdk";
-if (typeof JcodeClient !== "function") throw new Error("JcodeClient missing");
+import { KcodeClient, HarnessError, API_VERSION_MAJOR } from "@1jehuang/jcode-sdk";
+if (typeof KcodeClient !== "function") throw new Error("KcodeClient missing");
 if (typeof HarnessError !== "function") throw new Error("HarnessError missing");
 if (API_VERSION_MAJOR !== 1) throw new Error("unexpected protocol version");
 console.log("esm ok");
@@ -63,8 +63,8 @@ console.log("esm ok");
 if [ -n "$runtime_tarball" ]; then
   echo "== bundled runtime resolution =="
   node --input-type=module -e '
-  import { bundledJcodeBinary } from "@1jehuang/jcode-sdk";
-  const binary = bundledJcodeBinary();
+  import { bundledKcodeBinary } from "@1jehuang/jcode-sdk";
+  const binary = bundledKcodeBinary();
   if (!binary || !binary.includes("@1jehuang/jcode-linux-")) {
     throw new Error(`platform runtime was not resolved: ${binary}`);
   }
@@ -75,7 +75,7 @@ fi
 echo "== CJS require =="
 node --input-type=commonjs -e '
 const sdk = require("@1jehuang/jcode-sdk");
-if (typeof sdk.JcodeClient !== "function") throw new Error("JcodeClient missing under require");
+if (typeof sdk.KcodeClient !== "function") throw new Error("KcodeClient missing under require");
 console.log("cjs ok");
 '
 
@@ -95,10 +95,10 @@ cat > tsconfig.json <<'JSON'
 }
 JSON
 cat > consumer.ts <<'TS'
-import { JcodeClient, HarnessError, type TurnResult, type ApiEvent } from "@1jehuang/jcode-sdk";
+import { KcodeClient, HarnessError, type TurnResult, type ApiEvent } from "@1jehuang/jcode-sdk";
 
 export async function demo(prompt: string): Promise<TurnResult> {
-  const client = await JcodeClient.connect({ clientName: "package-test/1.0" });
+  const client = await KcodeClient.connect({ clientName: "package-test/1.0" });
   try {
     const session = await client.createSession(process.cwd());
     return await client.run(session.session_id, prompt, {
@@ -147,19 +147,19 @@ npx --no-install tsc -p tsconfig.json
 echo "types ok"
 
 # Everything above proves the tarball imports and typechecks. It does not prove
-# the thing a consumer actually does: install the package and launch jcode from
+# the thing a consumer actually does: install the package and launch kcode from
 # PATH, with no repo, no cargo, and no locally built binary. That path has its
 # own failure modes (a missing `api-bridge` subcommand in the installed build,
 # a leaked daemon, an instance home that never gets removed), and none of them
 # are visible from inside the repo.
-if command -v jcode >/dev/null 2>&1; then
+if command -v kcode >/dev/null 2>&1; then
   echo "== launching a private instance as a consumer would =="
   cat > launch-consumer.mjs <<'JS'
-import { JcodeClient } from "@1jehuang/jcode-sdk";
+import { KcodeClient } from "@1jehuang/jcode-sdk";
 import fs from "node:fs";
 
 // No `binary` option: use the platform npm package, exactly like a consumer.
-const client = await JcodeClient.launch({ workingDir: process.cwd() });
+const client = await KcodeClient.launch({ workingDir: process.cwd() });
 const home = client.instanceHome;
 
 const sessions = await client.listSessions();
@@ -178,17 +178,17 @@ if (fs.existsSync(home)) {
 console.log("launch ok");
 JS
 
-  daemons_before="$(pgrep -cf 'jcode --provider auto serve' || true)"
+  daemons_before="$(pgrep -cf 'kcode --provider auto serve' || true)"
   node launch-consumer.mjs
   sleep 3
-  daemons_after="$(pgrep -cf 'jcode --provider auto serve' || true)"
+  daemons_after="$(pgrep -cf 'kcode --provider auto serve' || true)"
   if [ "$daemons_before" != "$daemons_after" ]; then
     echo "FAIL: launch() leaked a daemon ($daemons_before -> $daemons_after)"
     exit 1
   fi
   echo "no daemon leaked ($daemons_before -> $daemons_after)"
 else
-  echo "== skipping launch check: jcode is not on PATH =="
+  echo "== skipping launch check: kcode is not on PATH =="
 fi
 
 echo "SDK package check passed."

@@ -1,4 +1,4 @@
-# Specification: Elicitation Overlay for Jcode TUI
+# Specification: Elicitation Overlay for Kcode TUI
 
 **Date:** 2026-09-14
 **Status:** Draft - awaiting TUI layout audit
@@ -8,7 +8,7 @@
 
 ## 1. Problem
 
-Agents need to ask the user structured questions mid-task (multi-choice, yes/no, text input). Currently jcode relies on phinbox's external OS popup (`mcp__phinbox__elicitate_mcp`) which breaks the TUI experience and adds an external dependency.
+Agents need to ask the user structured questions mid-task (multi-choice, yes/no, text input). Currently kcode relies on phinbox's external OS popup (`mcp__phinbox__elicitate_mcp`) which breaks the TUI experience and adds an external dependency.
 
 ## 2. Proposed Solution
 
@@ -173,13 +173,13 @@ if let Some(elicit) = &state.elicit_overlay {
 
 | File | Change | Est. Lines |
 |------|--------|-----------|
-| `crates/jcode-tui/src/tui/ui_overlays.rs` | Add `draw_elicit_overlay()` | +120 |
-| `crates/jcode-tui/src/tui/app/tui_state.rs` | Add `ElicitOverlayState` | +40 |
-| `crates/jcode-tui/src/tui/app/tui_event.rs` | Add `TuiEvent::ElicitRequest` | +10 |
-| `crates/jcode-tui/src/tui/app/key_dispatch.rs` | Add elicit key handling | +60 |
-| `crates/jcode-tui/src/tui/app/mod.rs` | Handle ElicitRequest event | +30 |
-| `crates/jcode-app-core/src/tool/elicitation.rs` | New ElicitationTool | +150 |
-| `crates/jcode-app-core/src/tool/mod.rs` | Register elicitation tool | +5 |
+| `crates/kcode-tui/src/tui/ui_overlays.rs` | Add `draw_elicit_overlay()` | +120 |
+| `crates/kcode-tui/src/tui/app/tui_state.rs` | Add `ElicitOverlayState` | +40 |
+| `crates/kcode-tui/src/tui/app/tui_event.rs` | Add `TuiEvent::ElicitRequest` | +10 |
+| `crates/kcode-tui/src/tui/app/key_dispatch.rs` | Add elicit key handling | +60 |
+| `crates/kcode-tui/src/tui/app/mod.rs` | Handle ElicitRequest event | +30 |
+| `crates/kcode-app-core/src/tool/elicitation.rs` | New ElicitationTool | +150 |
+| `crates/kcode-app-core/src/tool/mod.rs` | Register elicitation tool | +5 |
 | **Total** | | **~415 lines** |
 
 ## 7. Phases

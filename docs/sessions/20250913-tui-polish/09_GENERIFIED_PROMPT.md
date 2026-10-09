@@ -16,7 +16,7 @@ Read these files IN ORDER before doing anything else:
 
 ### Global Context (always load)
 1. `~/AGENTS.md` — primary harness config, coordinator rules, architecture mandates
-2. `~/.jcode/memories/global/harness-agents.md` — harness versions, fork scheme, cross-harness rules
+2. `~/.kcode/memories/global/harness-agents.md` — harness versions, fork scheme, cross-harness rules
 
 ### Repo-Specific Context (load for current repo)
 3. `<repo>/AGENTS.md` — project-specific rules
@@ -79,10 +79,10 @@ ONLY ask when:
 → Auto-proceeds on non-harmful work
 ```
 
-### /poke jcode (resume specific repo)
+### /poke kcode (resume specific repo)
 ```
-/poke jcode
-→ Loads: all context for /Users/kooshapari/CodeProjects/jcode
+/poke kcode
+→ Loads: all context for /Users/kooshapari/CodeProjects/kcode
 → Reports: upstream status, branch status, pending impl
 ```
 
@@ -98,7 +98,7 @@ ONLY ask when:
 ## MEMORY INTEGRATION
 
 The generified prompt should be stored in:
-- `~/.jcode/memories/global/session-bootstrap.md` (global)
-- `<repo>/.jcode/session-bootstrap.md` (project override)
+- `~/.kcode/memories/global/session-bootstrap.md` (global)
+- `<repo>/.kcode/session-bootstrap.md` (project override)
 
-On session start, jcode should auto-load these if they exist.
+On session start, kcode should auto-load these if they exist.

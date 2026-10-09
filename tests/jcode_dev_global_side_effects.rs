@@ -46,21 +46,21 @@ fn dev_setup_commands_cannot_touch_global_hotkeys_or_launchers() {
     let home = temp.path().join("home");
     std::fs::create_dir_all(&home).unwrap();
     let home = std::fs::canonicalize(home).unwrap();
-    let dev = home.join(".jcode-dev");
+    let dev = home.join(".kcode-dev");
     let xdg = dev.join("xdg");
     let fake_bin = temp.path().join("fake-bin");
     std::fs::create_dir_all(&fake_bin).unwrap();
 
     let protected_files = [
-        home.join(".jcode/config.toml"),
-        home.join(".config/jcode/config.toml"),
-        home.join("Library/LaunchAgents/com.jcode.hotkey.plist"),
+        home.join(".kcode/config.toml"),
+        home.join(".config/kcode/config.toml"),
+        home.join("Library/LaunchAgents/com.kcode.hotkey.plist"),
         home.join(".config/niri/config.kdl"),
         home.join(
             "Library/Application Support/Mozilla/NativeMessagingHosts/firefox_agent_bridge.json",
         ),
-        home.join(".config/herdr/agent-detection/jcode.toml"),
-        home.join(".config/herdr/plugins/local/jcode.toml"),
+        home.join(".config/herdr/agent-detection/kcode.toml"),
+        home.join(".config/herdr/plugins/local/kcode.toml"),
     ];
     for file in &protected_files {
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
@@ -71,7 +71,7 @@ fn dev_setup_commands_cannot_touch_global_hotkeys_or_launchers() {
         .map(|path| file_identity(path))
         .collect::<Vec<_>>();
     let protected_roots = [
-        home.join(".jcode"),
+        home.join(".kcode"),
         home.join(".config"),
         home.join("Library"),
     ];
@@ -100,7 +100,7 @@ fn dev_setup_commands_cannot_touch_global_hotkeys_or_launchers() {
         );
     }
 
-    let binary = PathBuf::from(env!("CARGO_BIN_EXE_jcode"));
+    let binary = PathBuf::from(env!("CARGO_BIN_EXE_kcode"));
     let mut commands = vec![
         vec!["setup-hotkey"],
         vec!["setup-launcher"],
@@ -121,17 +121,17 @@ fn dev_setup_commands_cannot_touch_global_hotkeys_or_launchers() {
             .args(&command)
             .env("HOME", &home)
             .env("PATH", format!("{}:/usr/bin:/bin", fake_bin.display()))
-            .env("JCODE_DEV_NAMESPACE", "1")
-            .env("JCODE_HOME", &dev)
-            .env("JCODE_INSTALL_DIR", dev.join("bin"))
-            .env("JCODE_RUNTIME_DIR", dev.join("run"))
+            .env("KCODE_DEV_NAMESPACE", "1")
+            .env("KCODE_HOME", &dev)
+            .env("KCODE_INSTALL_DIR", dev.join("bin"))
+            .env("KCODE_RUNTIME_DIR", dev.join("run"))
             .env("CARGO_TARGET_DIR", dev.join("cargo-target"))
             .env("XDG_CONFIG_HOME", xdg.join("config"))
             .env("XDG_DATA_HOME", xdg.join("data"))
             .env("XDG_STATE_HOME", xdg.join("state"))
             .env("XDG_CACHE_HOME", xdg.join("cache"))
-            .env_remove("JCODE_SOCKET")
-            .env_remove("JCODE_API_SOCKET")
+            .env_remove("KCODE_SOCKET")
+            .env_remove("KCODE_API_SOCKET")
             .output()
             .unwrap();
         assert!(
@@ -143,7 +143,7 @@ fn dev_setup_commands_cannot_touch_global_hotkeys_or_launchers() {
             assert!(stderr.contains("outside"), "{command:?}: {stderr}");
         } else {
             assert!(
-                stderr.contains("disabled in the jcode-dev namespace"),
+                stderr.contains("disabled in the kcode-dev namespace"),
                 "{command:?}: {stderr}"
             );
         }
@@ -169,9 +169,9 @@ fn dev_setup_commands_cannot_touch_global_hotkeys_or_launchers() {
 fn dev_auth_status_cannot_reuse_stable_gh_cli_credentials() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join("operator-home");
-    let dev = home.join(".jcode-dev");
+    let dev = home.join(".kcode-dev");
     let versions = dev.join("builds/versions/v1");
-    let current = dev.join("builds/current/jcode");
+    let current = dev.join("builds/current/kcode");
     let fake_bin = temp.path().join("fake-bin");
     let invoked = temp.path().join("gh-invoked");
     std::fs::create_dir_all(&versions).unwrap();
@@ -179,11 +179,11 @@ fn dev_auth_status_cannot_reuse_stable_gh_cli_credentials() {
     std::fs::create_dir_all(dev.join("home")).unwrap();
     std::fs::create_dir_all(&fake_bin).unwrap();
     std::fs::set_permissions(&dev, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let installed_binary = versions.join("jcode");
-    std::fs::copy(env!("CARGO_BIN_EXE_jcode"), &installed_binary).unwrap();
+    let installed_binary = versions.join("kcode");
+    std::fs::copy(env!("CARGO_BIN_EXE_kcode"), &installed_binary).unwrap();
     std::fs::set_permissions(
         &installed_binary,
-        std::fs::metadata(env!("CARGO_BIN_EXE_jcode"))
+        std::fs::metadata(env!("CARGO_BIN_EXE_kcode"))
             .unwrap()
             .permissions(),
     )
@@ -197,14 +197,14 @@ fn dev_auth_status_cannot_reuse_stable_gh_cli_credentials() {
         ),
     );
 
-    let wrapper = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/jcode-dev");
+    let wrapper = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/kcode-dev");
     let output = Command::new(wrapper)
         .args(["--provider", "copilot", "auth", "status", "--json"])
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .env_clear()
         .env("HOME", &home)
         .env("PATH", format!("{}:/usr/bin:/bin", fake_bin.display()))
-        .env("JCODE_COPILOT_ALLOW_GH_AUTH_TOKEN", "1")
+        .env("KCODE_COPILOT_ALLOW_GH_AUTH_TOKEN", "1")
         .output()
         .unwrap();
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Design-system discipline linter for the jcode iOS SwiftUI sources.
+"""Design-system discipline linter for the kcode iOS SwiftUI sources.
 
 Screenshots grade the *output*; this grades the *source*. A consistent UI comes
 from routing every color, font, and spacing value through the design tokens in

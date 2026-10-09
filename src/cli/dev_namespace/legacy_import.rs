@@ -21,11 +21,11 @@ pub(super) fn import(paths: &DevNamespacePaths, session_id: &str) -> Result<Vec<
 
     let user_home = paths.home.parent().context("invalid dev home path")?;
     let home_dir = open_directory_tree(user_home, false)?;
-    let production_dir = open_child_directory(&home_dir, ".jcode", false)?;
+    let production_dir = open_child_directory(&home_dir, ".kcode", false)?;
     let source_dir = open_child_directory(&production_dir, "sessions", false)
         .context("legacy sessions directory does not exist or is unsafe")?;
 
-    let dev_root = open_child_directory(&home_dir, ".jcode-dev", true)?;
+    let dev_root = open_child_directory(&home_dir, ".kcode-dev", true)?;
     let destination_dir = open_child_directory(&dev_root, "sessions", true)?;
 
     let mut sources = Vec::new();

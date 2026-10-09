@@ -15,28 +15,28 @@ fn env_lock() -> MutexGuard<'static, ()> {
 fn setup_env(home: &Path) -> Vec<(&'static str, Option<OsString>)> {
     let vars = [
         "HOME",
-        "JCODE_DEV_NAMESPACE",
-        "JCODE_HOME",
-        "JCODE_INSTALL_DIR",
-        "JCODE_RUNTIME_DIR",
+        "KCODE_DEV_NAMESPACE",
+        "KCODE_HOME",
+        "KCODE_INSTALL_DIR",
+        "KCODE_RUNTIME_DIR",
         "CARGO_TARGET_DIR",
         "XDG_CONFIG_HOME",
         "XDG_DATA_HOME",
         "XDG_STATE_HOME",
         "XDG_CACHE_HOME",
-        "JCODE_SOCKET",
-        "JCODE_API_SOCKET",
+        "KCODE_SOCKET",
+        "KCODE_API_SOCKET",
         "OPENAI_API_KEY",
         "CUSTOM_GATEWAY_KEY",
         "CLAUDE_CODE_OAUTH_TOKEN",
         "CLAUDE_CONFIG_DIR",
         "GROK_HOME",
-        "JCODE_GROK_CLI_PATH",
-        "JCODE_ANTHROPIC_HEADERS",
-        "JCODE_ANTHROPIC_AUTH_HEADER",
-        "JCODE_ANTHROPIC_API_BASE",
+        "KCODE_GROK_CLI_PATH",
+        "KCODE_ANTHROPIC_HEADERS",
+        "KCODE_ANTHROPIC_AUTH_HEADER",
+        "KCODE_ANTHROPIC_API_BASE",
         "ANTHROPIC_BASE_URL",
-        "JCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_BASE",
         "AWS_SECRET_ACCESS_KEY",
         "AWS_CONFIG_FILE",
         "AWS_PROFILE",
@@ -49,7 +49,7 @@ fn setup_env(home: &Path) -> Vec<(&'static str, Option<OsString>)> {
         "GOOGLE_APPLICATION_CREDENTIALS",
         "AZURE_CONFIG_DIR",
         "CLOUDSDK_CONFIG",
-        "JCODE_OPENROUTER_MAX_TOKENS",
+        "KCODE_OPENROUTER_MAX_TOKENS",
     ];
     let saved = vars
         .into_iter()
@@ -58,17 +58,17 @@ fn setup_env(home: &Path) -> Vec<(&'static str, Option<OsString>)> {
     let home = std::fs::canonicalize(home).unwrap();
     let paths = resolve_for_home(&home).unwrap();
     crate::env::set_var("HOME", &home);
-    crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
-    crate::env::set_var("JCODE_HOME", &paths.home);
-    crate::env::set_var("JCODE_INSTALL_DIR", &paths.install);
-    crate::env::set_var("JCODE_RUNTIME_DIR", &paths.runtime);
+    crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
+    crate::env::set_var("KCODE_HOME", &paths.home);
+    crate::env::set_var("KCODE_INSTALL_DIR", &paths.install);
+    crate::env::set_var("KCODE_RUNTIME_DIR", &paths.runtime);
     crate::env::set_var("CARGO_TARGET_DIR", &paths.target);
     crate::env::set_var("XDG_CONFIG_HOME", &paths.xdg_config);
     crate::env::set_var("XDG_DATA_HOME", &paths.xdg_data);
     crate::env::set_var("XDG_STATE_HOME", &paths.xdg_state);
     crate::env::set_var("XDG_CACHE_HOME", &paths.xdg_cache);
-    crate::env::remove_var("JCODE_SOCKET");
-    crate::env::remove_var("JCODE_API_SOCKET");
+    crate::env::remove_var("KCODE_SOCKET");
+    crate::env::remove_var("KCODE_API_SOCKET");
     saved
 }
 
@@ -105,7 +105,7 @@ fn resolves_distinct_absolute_dev_roots() {
 #[test]
 fn rejects_dev_root_symlink_into_production_home() {
     let temp = tempfile::tempdir().unwrap();
-    let production = temp.path().join(".jcode");
+    let production = temp.path().join(".kcode");
     std::fs::create_dir(&production).unwrap();
     let dev = temp.path().join(DEV_HOME_NAME);
     #[cfg(unix)]
@@ -134,7 +134,7 @@ fn rejects_dev_subdirectory_symlink_into_production_build_channels() {
     std::fs::create_dir_all(&paths.home).unwrap();
     #[cfg(unix)]
     std::fs::set_permissions(&paths.home, std::fs::Permissions::from_mode(0o700)).unwrap();
-    let production = temp.path().join(".jcode/builds/current");
+    let production = temp.path().join(".kcode/builds/current");
     std::fs::create_dir_all(&production).unwrap();
     #[cfg(unix)]
     std::os::unix::fs::symlink(&production, &paths.runtime).unwrap();
@@ -163,16 +163,16 @@ fn rejects_xdg_path_symlink_outside_the_dev_root() {
 #[test]
 fn rejects_overlapping_parent_fallback_paths() {
     assert!(paths_overlap(
-        Path::new("/home/u/.jcode-dev"),
+        Path::new("/home/u/.kcode-dev"),
         Path::new("/home/u")
     ));
     assert!(paths_overlap(
-        Path::new("/home/u/.jcode/builds/current"),
-        Path::new("/home/u/.jcode")
+        Path::new("/home/u/.kcode/builds/current"),
+        Path::new("/home/u/.kcode")
     ));
     assert!(!paths_overlap(
-        Path::new("/home/u/.jcode-dev"),
-        Path::new("/home/u/.jcode")
+        Path::new("/home/u/.kcode-dev"),
+        Path::new("/home/u/.kcode")
     ));
 }
 
@@ -183,10 +183,10 @@ fn validates_roots_and_fails_closed_on_inherited_path_overrides() {
     let _restore = RestoreEnv(setup_env(temp.path()));
     assert!(validate_environment().is_ok());
     for (name, bad) in [
-        ("JCODE_HOME", temp.path().join(".jcode")),
-        ("JCODE_INSTALL_DIR", temp.path().join(".local/bin")),
-        ("JCODE_RUNTIME_DIR", temp.path().join(".jcode/run")),
-        ("CARGO_TARGET_DIR", temp.path().join(".jcode/target")),
+        ("KCODE_HOME", temp.path().join(".kcode")),
+        ("KCODE_INSTALL_DIR", temp.path().join(".local/bin")),
+        ("KCODE_RUNTIME_DIR", temp.path().join(".kcode/run")),
+        ("CARGO_TARGET_DIR", temp.path().join(".kcode/target")),
         ("XDG_CONFIG_HOME", temp.path().join(".config")),
         ("XDG_DATA_HOME", temp.path().join(".local/share")),
         ("XDG_STATE_HOME", temp.path().join(".local/state")),
@@ -195,9 +195,9 @@ fn validates_roots_and_fails_closed_on_inherited_path_overrides() {
         crate::env::set_var(name, bad);
         assert!(validate_environment().is_err(), "accepted inherited {name}");
         let paths = resolve_for_home(temp.path()).unwrap();
-        crate::env::set_var("JCODE_HOME", &paths.home);
-        crate::env::set_var("JCODE_INSTALL_DIR", &paths.install);
-        crate::env::set_var("JCODE_RUNTIME_DIR", &paths.runtime);
+        crate::env::set_var("KCODE_HOME", &paths.home);
+        crate::env::set_var("KCODE_INSTALL_DIR", &paths.install);
+        crate::env::set_var("KCODE_RUNTIME_DIR", &paths.runtime);
         crate::env::set_var("CARGO_TARGET_DIR", &paths.target);
         crate::env::set_var("XDG_CONFIG_HOME", &paths.xdg_config);
         crate::env::set_var("XDG_DATA_HOME", &paths.xdg_data);
@@ -211,10 +211,10 @@ fn rejects_socket_override_outside_dev_runtime() {
     let _lock = env_lock();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
-    crate::env::set_var("JCODE_SOCKET", temp.path().join(".jcode/jcode.sock"));
+    crate::env::set_var("KCODE_SOCKET", temp.path().join(".kcode/kcode.sock"));
     assert!(validate_environment().is_err());
     assert!(validate_socket_override(Some("relative.sock")).is_err());
-    crate::env::set_var("JCODE_API_SOCKET", temp.path().join(".jcode/api.sock"));
+    crate::env::set_var("KCODE_API_SOCKET", temp.path().join(".kcode/api.sock"));
     assert!(validate_environment().is_err());
 }
 
@@ -223,7 +223,7 @@ fn dev_marker_is_not_accepted_without_the_verified_dev_home() {
     let _lock = env_lock();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
-    crate::env::set_var("JCODE_HOME", temp.path().join(".jcode"));
+    crate::env::set_var("KCODE_HOME", temp.path().join(".kcode"));
     assert!(!launcher_requested());
     assert!(validate_environment().is_err());
 }
@@ -247,16 +247,16 @@ fn provider_environment_isolated_from_inherited_keys_and_profiles() {
     crate::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "inherited-oauth-secret");
     crate::env::set_var("CLAUDE_CONFIG_DIR", "/stable/.claude");
     crate::env::set_var("GROK_HOME", "/stable/.grok");
-    crate::env::set_var("JCODE_GROK_CLI_PATH", "/stable/bin/grok");
-    crate::env::set_var("JCODE_ANTHROPIC_HEADERS", "x-api-key: inherited");
-    crate::env::set_var("JCODE_ANTHROPIC_AUTH_HEADER", "x-auth: inherited");
-    crate::env::set_var("JCODE_ANTHROPIC_API_BASE", "https://prod.example/v1");
+    crate::env::set_var("KCODE_GROK_CLI_PATH", "/stable/bin/grok");
+    crate::env::set_var("KCODE_ANTHROPIC_HEADERS", "x-api-key: inherited");
+    crate::env::set_var("KCODE_ANTHROPIC_AUTH_HEADER", "x-auth: inherited");
+    crate::env::set_var("KCODE_ANTHROPIC_API_BASE", "https://prod.example/v1");
     crate::env::set_var("ANTHROPIC_BASE_URL", "https://prod.example/v1");
-    crate::env::set_var("JCODE_OPENROUTER_API_BASE", "https://prod.example/v1");
+    crate::env::set_var("KCODE_OPENROUTER_API_BASE", "https://prod.example/v1");
     crate::env::set_var("AWS_SECRET_ACCESS_KEY", "inherited-aws-secret");
     crate::env::set_var("AWS_PROFILE", "production");
-    crate::env::set_var("JCODE_COPILOT_ALLOW_GH_AUTH_TOKEN", "1");
-    crate::env::set_var("JCODE_OPENROUTER_MAX_TOKENS", "4096");
+    crate::env::set_var("KCODE_COPILOT_ALLOW_GH_AUTH_TOKEN", "1");
+    crate::env::set_var("KCODE_OPENROUTER_MAX_TOKENS", "4096");
 
     let paths = validate_environment().unwrap();
     isolate_provider_environment(&paths);
@@ -266,15 +266,15 @@ fn provider_environment_isolated_from_inherited_keys_and_profiles() {
         "CUSTOM_GATEWAY_KEY",
         "CLAUDE_CODE_OAUTH_TOKEN",
         "CLAUDE_CONFIG_DIR",
-        "JCODE_GROK_CLI_PATH",
-        "JCODE_ANTHROPIC_HEADERS",
-        "JCODE_ANTHROPIC_AUTH_HEADER",
-        "JCODE_ANTHROPIC_API_BASE",
+        "KCODE_GROK_CLI_PATH",
+        "KCODE_ANTHROPIC_HEADERS",
+        "KCODE_ANTHROPIC_AUTH_HEADER",
+        "KCODE_ANTHROPIC_API_BASE",
         "ANTHROPIC_BASE_URL",
-        "JCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_BASE",
         "AWS_SECRET_ACCESS_KEY",
         "AWS_PROFILE",
-        "JCODE_COPILOT_ALLOW_GH_AUTH_TOKEN",
+        "KCODE_COPILOT_ALLOW_GH_AUTH_TOKEN",
     ] {
         assert!(
             std::env::var_os(name).is_none(),
@@ -289,7 +289,7 @@ fn provider_environment_isolated_from_inherited_keys_and_profiles() {
         std::env::var_os("GROK_HOME").unwrap(),
         paths.home.join(".grok")
     );
-    assert!(std::env::var_os("JCODE_GROK_CLI_PATH").is_none());
+    assert!(std::env::var_os("KCODE_GROK_CLI_PATH").is_none());
     assert_eq!(
         std::env::var_os("AZURE_CONFIG_DIR").unwrap(),
         paths.home.join("external/azure")
@@ -300,7 +300,7 @@ fn provider_environment_isolated_from_inherited_keys_and_profiles() {
     );
     assert_eq!(std::env::var("AWS_EC2_METADATA_DISABLED").unwrap(), "true");
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_MAX_TOKENS").unwrap(),
+        std::env::var("KCODE_OPENROUTER_MAX_TOKENS").unwrap(),
         "4096"
     );
 }
@@ -311,8 +311,8 @@ fn rejects_target_path_fallback_into_repo_or_production_home() {
     let paths = resolve_for_home(temp.path()).unwrap();
     assert_ne!(paths.target, temp.path().join("target"));
     assert!(paths_overlap(
-        &temp.path().join(".jcode/builds/shared-server"),
-        &temp.path().join(".jcode")
+        &temp.path().join(".kcode/builds/shared-server"),
+        &temp.path().join(".kcode")
     ));
 }
 
@@ -322,14 +322,14 @@ fn legacy_import_copies_only_selected_session_without_credentials_or_shared_inod
     let _lock = env_lock();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
-    let source_dir = temp.path().join(".jcode/sessions");
+    let source_dir = temp.path().join(".kcode/sessions");
     std::fs::create_dir_all(&source_dir).unwrap();
     let id = "session_test_123";
     let json = source_dir.join(format!("{id}.json"));
     let journal = source_dir.join(format!("{id}.journal.jsonl"));
     std::fs::write(&json, b"session record").unwrap();
     std::fs::write(&journal, b"journal record").unwrap();
-    std::fs::write(temp.path().join(".jcode/auth.json"), b"credential").unwrap();
+    std::fs::write(temp.path().join(".kcode/auth.json"), b"credential").unwrap();
 
     assert_eq!(import_legacy_session(id).unwrap().len(), 2);
     assert_eq!(std::fs::read(&json).unwrap(), b"session record");
@@ -360,14 +360,14 @@ fn legacy_import_refuses_overwrite_and_path_traversal() {
     let _lock = env_lock();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
-    let source = temp.path().join(".jcode/sessions");
+    let source = temp.path().join(".kcode/sessions");
     std::fs::create_dir_all(&source).unwrap();
     std::fs::write(source.join("session_safe.json"), b"original").unwrap();
     import_legacy_session("session_safe").unwrap();
     assert!(import_legacy_session("session_safe").is_err());
     assert!(import_legacy_session("../production").is_err());
     assert_eq!(
-        std::fs::read(temp.path().join(".jcode-dev/sessions/session_safe.json")).unwrap(),
+        std::fs::read(temp.path().join(".kcode-dev/sessions/session_safe.json")).unwrap(),
         b"original"
     );
 }
@@ -378,7 +378,7 @@ fn legacy_import_refuses_symlink_source_file() {
     let _lock = env_lock();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
-    let source = temp.path().join(".jcode/sessions");
+    let source = temp.path().join(".kcode/sessions");
     std::fs::create_dir_all(&source).unwrap();
     let protected = temp.path().join("protected.json");
     std::fs::write(&protected, b"protected").unwrap();
@@ -388,7 +388,7 @@ fn legacy_import_refuses_symlink_source_file() {
     assert!(
         !temp
             .path()
-            .join(".jcode-dev/sessions/session_link.json")
+            .join(".kcode-dev/sessions/session_link.json")
             .exists()
     );
 }

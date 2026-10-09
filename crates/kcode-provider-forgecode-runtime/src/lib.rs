@@ -1,0 +1,657 @@
+//! ForgeCode CLI provider runtime (subprocess transport), moved out of
+//! `kcode-base` so provider edits compile only this crate plus a binary
+//! relink instead of rebuilding the base -> app-core -> tui spine. The
+//! binary's composition root registers [`ForgeCodeProvider`] with
+//! `kcode_base::provider::external` at startup.
+
+mod config;
+pub mod parser;
+pub mod translator;
+
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+use kcode_message_types::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
+use kcode_provider_core::{EventStream, Provider};
+use serde_json::{Value, json};
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::{Arc, LazyLock, RwLock};
+use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::process::Command;
+use tokio::sync::{Mutex, mpsc};
+use tokio_stream::wrappers::ReceiverStream;
+
+use config::ForgeCodeCliConfig;
+use parser::CliOutput;
+use translator::CliOutputParser;
+
+/// Global mutex to serialize ForgeCode CLI requests.
+/// Prevents concurrent subprocess writes from racing.
+static FORGECODE_CLI_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+const DEFAULT_MODEL: &str = "default";
+
+/// Maximum number of retries for transient errors.
+const MAX_RETRIES: u32 = 5;
+
+/// Base delay for exponential backoff (in milliseconds).
+const RETRY_BASE_DELAY_MS: u64 = 1000;
+
+/// Extra delay for subprocess transport errors.
+const TRANSPORT_ERROR_DELAY_MS: u64 = 2000;
+
+/// Native tools that kcode handles locally (not ForgeCode built-ins).
+const NATIVE_TOOL_NAMES: &[&str] = &["selfdev", "communicate", "memory", "session_search", "bg"];
+
+#[derive(Clone)]
+pub struct ForgeCodeProvider {
+    config: ForgeCodeCliConfig,
+    model: Arc<RwLock<String>>,
+}
+
+impl ForgeCodeProvider {
+    pub fn new() -> Self {
+        let config = ForgeCodeCliConfig::from_env();
+        let model = config.model.clone();
+        Self {
+            config,
+            model: Arc::new(RwLock::new(model)),
+        }
+    }
+
+    fn tool_names_for_cli(&self, tools: &[ToolDefinition]) -> Vec<String> {
+        let mut seen = HashSet::new();
+        let mut names = Vec::new();
+        for tool in tools {
+            if NATIVE_TOOL_NAMES.contains(&tool.name.as_str()) {
+                continue;
+            }
+            let mapped = to_forgecode_tool_name(&tool.name);
+            if seen.insert(mapped.clone()) {
+                names.push(mapped);
+            }
+        }
+        names
+    }
+
+    fn extract_user_prompt(&self, messages: &[Message]) -> Result<String> {
+        for msg in messages.iter().rev() {
+            if msg.role != Role::User {
+                continue;
+            }
+            let mut parts = Vec::new();
+            for block in &msg.content {
+                match block {
+                    ContentBlock::Text { text, .. } => {
+                        parts.push(text.clone());
+                    }
+                    ContentBlock::ToolResult { content, .. } => {
+                        parts.push(content.clone());
+                    }
+                    ContentBlock::ToolUse { .. } => {}
+                    ContentBlock::Reasoning { .. }
+                    | ContentBlock::ReasoningTrace { .. }
+                    | ContentBlock::AnthropicThinking { .. }
+                    | ContentBlock::OpenAIReasoning { .. } => {}
+                    ContentBlock::Image { .. } => {}
+                    ContentBlock::OpenAICompaction { .. } => {}
+                }
+            }
+            if !parts.is_empty() {
+                return Ok(parts.join("\n\n"));
+            }
+        }
+        anyhow::bail!("No user prompt found for ForgeCode CLI request");
+    }
+}
+
+impl Default for ForgeCodeProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Provider trait implementation
+// ---------------------------------------------------------------------------
+
+#[async_trait]
+impl Provider for ForgeCodeProvider {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        system: &str,
+        resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        let tool_names = self.tool_names_for_cli(tools);
+        let prompt = self.extract_user_prompt(messages)?;
+        let current_model = self
+            .model
+            .read()
+            .map(|m| m.clone())
+            .unwrap_or_else(|_| self.config.model.clone());
+        let config = self.config.clone();
+        let system_prompt = system.to_string();
+        let resume = resume_session_id.map(|s| s.to_string());
+        let cwd = std::env::current_dir().ok();
+
+        let payload = json!({
+            "model": &current_model,
+            "tool_names": &tool_names,
+            "resume_present": resume.is_some(),
+        });
+        kcode_provider_core::fingerprint::log_provider_canonical_input(
+            "forgecode-cli",
+            &current_model,
+            "forgecode_cli_prompt",
+            &payload,
+            &[Value::String(prompt.clone())],
+            (!system_prompt.trim().is_empty())
+                .then(|| Value::String(system_prompt.clone()))
+                .as_ref(),
+            Some(&Value::Array(
+                tool_names
+                    .iter()
+                    .map(|name| Value::String(name.clone()))
+                    .collect(),
+            )),
+            Some(tool_names.len()),
+            &[
+                ("resume_present", resume.is_some().to_string()),
+                ("logical_message_count", messages.len().to_string()),
+            ],
+        );
+
+        let (tx, rx) = mpsc::channel::<Result<StreamEvent>>(100);
+
+        tokio::spawn(async move {
+            if tx
+                .send(Ok(StreamEvent::ConnectionType {
+                    connection: "cli subprocess".to_string(),
+                }))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            let mut last_error: Option<anyhow::Error> = None;
+
+            for attempt in 0..MAX_RETRIES {
+                if attempt > 0 {
+                    let base_delay = kcode_provider_core::attempt_tracker::retry_backoff_delay(
+                        attempt,
+                        RETRY_BASE_DELAY_MS,
+                    );
+                    let extra_delay = if let Some(ref e) = last_error {
+                        let err_str = e.to_string().to_lowercase();
+                        if err_str.contains("not ready") {
+                            TRANSPORT_ERROR_DELAY_MS
+                        } else {
+                            0
+                        }
+                    } else {
+                        0
+                    };
+                    let delay = base_delay + std::time::Duration::from_millis(extra_delay);
+                    tokio::time::sleep(delay).await;
+                    kcode_base::logging::info(&format!(
+                        "Retrying ForgeCode CLI request (attempt \
+                         {}/{}, delay {}ms)",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        delay.as_millis()
+                    ));
+                }
+
+                let _guard = FORGECODE_CLI_LOCK.lock().await;
+
+                match run_forgecode_cli(
+                    config.clone(),
+                    current_model.clone(),
+                    tool_names.clone(),
+                    system_prompt.clone(),
+                    resume.clone(),
+                    prompt.clone(),
+                    cwd.clone(),
+                    tx.clone(),
+                )
+                .await
+                {
+                    Ok(()) => return,
+                    Err(e) => {
+                        let error_str = format!("{e:#}").to_lowercase();
+                        if is_retryable_error(&error_str) && attempt + 1 < MAX_RETRIES {
+                            kcode_base::logging::info(&format!(
+                                "Transient error, will retry: {}",
+                                e
+                            ));
+                            last_error = Some(e);
+                            continue;
+                        }
+                        let _ = tx.send(Err(e)).await;
+                        return;
+                    }
+                }
+            }
+
+            if let Some(e) = last_error {
+                let _ = tx
+                    .send(Err(anyhow::anyhow!(
+                        "Failed after {} retries: {}",
+                        MAX_RETRIES,
+                        e
+                    )))
+                    .await;
+            }
+        });
+
+        Ok(Box::pin(ReceiverStream::new(rx)))
+    }
+
+    fn model(&self) -> String {
+        self.model
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn set_model(&self, model: &str) -> Result<()> {
+        if let Ok(mut current) = self.model.write() {
+            *current = model.to_string();
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
+                "Cannot change model while a request is in \
+                 progress"
+            ))
+        }
+    }
+
+    fn handles_tools_internally(&self) -> bool {
+        true
+    }
+
+    fn name(&self) -> &'static str {
+        "forgecode"
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        let model = self.model();
+        let config = self.config.clone();
+        Arc::new(ForgeCodeProvider {
+            config,
+            model: Arc::new(RwLock::new(model)),
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Subprocess execution
+// ---------------------------------------------------------------------------
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "ForgeCode CLI launch threads model, tools, system prompt, cwd, \
+              resume state, and stream channel explicitly"
+)]
+async fn run_forgecode_cli(
+    config: ForgeCodeCliConfig,
+    model: String,
+    tool_names: Vec<String>,
+    system: String,
+    resume_session_id: Option<String>,
+    prompt: String,
+    cwd: Option<PathBuf>,
+    tx: mpsc::Sender<Result<StreamEvent>>,
+) -> Result<()> {
+    let mut cmd = Command::new(&config.cli_path);
+    apply_dev_home(&mut cmd);
+    cmd.arg("-p")
+        .arg("--verbose")
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--input-format")
+        .arg("stream-json")
+        .arg("--model")
+        .arg(&model);
+
+    if let Some(mode) = &config.permission_mode {
+        cmd.arg("--permission-mode").arg(mode);
+    }
+
+    if let Some(ref resume) = resume_session_id {
+        cmd.arg("--resume").arg(resume);
+    } else if !system.trim().is_empty() {
+        cmd.arg("--append-system-prompt").arg(system);
+    }
+
+    if tool_names.is_empty() {
+        cmd.arg("--tools").arg("");
+    } else {
+        cmd.arg("--tools").arg(tool_names.join(","));
+    }
+
+    if let Some(dir) = cwd {
+        cmd.current_dir(dir);
+    }
+
+    cmd.kill_on_drop(true)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("Failed to spawn ForgeCode CLI using {}", config.cli_path))?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to capture ForgeCode CLI stdin"))?;
+
+    let payload = serde_json::json!({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": prompt,
+        }
+    });
+
+    async fn terminate_child(child: &mut tokio::process::Child) {
+        let _ = child.kill().await;
+        let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+    }
+
+    if let Err(err) = async {
+        stdin.write_all(payload.to_string().as_bytes()).await?;
+        stdin.write_all(b"\n").await?;
+        stdin.flush().await?;
+        Ok::<(), std::io::Error>(())
+    }
+    .await
+    {
+        terminate_child(&mut child).await;
+        return Err(err.into());
+    }
+    drop(stdin);
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to capture ForgeCode CLI stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to capture ForgeCode CLI stderr"))?;
+
+    let tx_stderr = tx.clone();
+    tokio::spawn(async move {
+        let mut reader = BufReader::new(stderr).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            kcode_base::logging::debug(&format!("[forgecode-cli] {}", line));
+        }
+        drop(tx_stderr);
+    });
+
+    let mut reader = BufReader::new(stdout).lines();
+    let mut parser = CliOutputParser::new();
+    let mut saw_output = false;
+
+    loop {
+        tokio::select! {
+            _ = tx.closed() => {
+                terminate_child(&mut child).await;
+                return Ok(());
+            }
+            line = reader.next_line() => {
+                let line = match line? {
+                    Some(line) => line,
+                    None => break,
+                };
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+                match serde_json::from_str::<CliOutput>(line) {
+                    Ok(output) => {
+                        for event in parser.handle_output(output) {
+                            if let StreamEvent::Error {
+                                message, ..
+                            } = &event
+                            {
+                                let err_lower =
+                                    message.to_lowercase();
+                                if !saw_output
+                                    && is_retryable_error(&err_lower)
+                                {
+                                    terminate_child(&mut child)
+                                        .await;
+                                    return Err(anyhow::anyhow!(
+                                        message.clone()
+                                    ));
+                                }
+                            }
+
+                            if matches!(
+                                event,
+                                StreamEvent::TextDelta(_)
+                                    | StreamEvent::ToolUseStart {
+                                        ..
+                                    }
+                                    | StreamEvent::ToolInputDelta(
+                                        _
+                                    )
+                                    | StreamEvent::ToolUseEnd
+                                    | StreamEvent::ToolResult {
+                                        ..
+                                    }
+                                    | StreamEvent::MessageEnd {
+                                        ..
+                                    }
+                                    | StreamEvent::ThinkingStart
+                                    | StreamEvent::ThinkingDelta(
+                                        _
+                                    )
+                                    | StreamEvent::ThinkingEnd
+                                    | StreamEvent::ThinkingDone {
+                                        ..
+                                    }
+                            ) {
+                                saw_output = true;
+                            }
+
+                            if tx.send(Ok(event)).await.is_err()
+                            {
+                                terminate_child(&mut child)
+                                    .await;
+                                return Ok(());
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        let event = StreamEvent::Error {
+                            message: format!(
+                                "Failed to parse ForgeCode CLI \
+                                 output: {}",
+                                err
+                            ),
+                            retry_after_secs: None,
+                        };
+                        if tx.send(Ok(event)).await.is_err() {
+                            terminate_child(&mut child).await;
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let status = child.wait().await?;
+    if !status.success() {
+        let event = StreamEvent::Error {
+            message: format!("ForgeCode CLI exited with status {}", status),
+            retry_after_secs: None,
+        };
+        let _ = tx.send(Ok(event)).await;
+    }
+
+    Ok(())
+}
+
+fn apply_dev_home(command: &mut Command) {
+    apply_dev_home_values(
+        command,
+        std::env::var_os("KCODE_DEV_NAMESPACE").is_some(),
+        std::env::var_os("KCODE_HOME").as_deref(),
+    );
+}
+
+fn apply_dev_home_values(command: &mut Command, dev: bool, home: Option<&std::ffi::OsStr>) {
+    if !dev {
+        return;
+    }
+    let Some(home) = home.map(PathBuf::from) else {
+        return;
+    };
+    command
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("XDG_CONFIG_HOME", home.join("xdg/config"))
+        .env("XDG_DATA_HOME", home.join("xdg/data"));
+}
+
+#[cfg(test)]
+mod dev_namespace_tests {
+    use super::apply_dev_home_values;
+    use tokio::process::Command;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn forgecode_cli_child_uses_dev_home_and_xdg_sentinel() {
+        let dev_home = "/tmp/jcode-dev-sentinel";
+        let mut command = Command::new("/bin/sh");
+        command.args([
+            "-c",
+            "printf '%s\\n%s\\n%s' \"$HOME\" \"$XDG_CONFIG_HOME\" \"$XDG_DATA_HOME\"",
+        ]);
+        apply_dev_home_values(&mut command, true, Some(std::ffi::OsStr::new(dev_home)));
+        let output = command.output().await.unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            format!("{dev_home}\n{dev_home}/xdg/config\n{dev_home}/xdg/data")
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn is_retryable_error(error_str: &str) -> bool {
+    kcode_provider_core::is_transient_transport_error(error_str)
+        || error_str.contains("not ready for writing")
+        || error_str.contains("502 bad gateway")
+        || error_str.contains("503 service unavailable")
+        || error_str.contains("504 gateway timeout")
+        || error_str.contains("overloaded")
+}
+
+fn to_forgecode_tool_name(name: &str) -> String {
+    match name {
+        "bash" => "Bash",
+        "read" => "Read",
+        "write" => "Write",
+        "edit" => "Edit",
+        "multiedit" => "MultiEdit",
+        "patch" => "Patch",
+        "apply_patch" => "ApplyPatch",
+        "glob" => "Glob",
+        "grep" => "Grep",
+        "ls" => "Ls",
+        "webfetch" => "WebFetch",
+        "websearch" => "WebSearch",
+        "open" => "Open",
+        "codesearch" => "CodeSearch",
+        "invalid" => "Invalid",
+        "skill" => "Skill",
+        "skill_manage" => "SkillManage",
+        "conversation_search" => "ConversationSearch",
+        "lsp" => "Lsp",
+        "task" | "subagent" => "Task",
+        "todo" | "todowrite" | "todoread" => "Todo",
+        "batch" => "Batch",
+        _ => name,
+    }
+    .to_string()
+}
+
+pub(crate) fn to_internal_tool_name(name: &str) -> String {
+    match name {
+        "Bash" => "bash",
+        "Read" => "read",
+        "Write" => "write",
+        "Edit" => "edit",
+        "MultiEdit" => "multiedit",
+        "Patch" => "patch",
+        "ApplyPatch" => "apply_patch",
+        "Glob" => "glob",
+        "Grep" => "grep",
+        "Ls" => "ls",
+        "WebFetch" => "webfetch",
+        "WebSearch" => "websearch",
+        "Open" => "open",
+        "Launch" => "open",
+        "CodeSearch" => "codesearch",
+        "Invalid" => "invalid",
+        "Skill" => "skill",
+        "SkillManage" => "skill_manage",
+        "ConversationSearch" => "conversation_search",
+        "Lsp" => "lsp",
+        "Task" => "subagent",
+        "Todo" | "TodoWrite" | "TodoRead" => "todo",
+        "Batch" => "batch",
+        _ => name,
+    }
+    .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tool_name_roundtrip() {
+        let names = [
+            "bash",
+            "read",
+            "write",
+            "edit",
+            "glob",
+            "grep",
+            "webfetch",
+            "websearch",
+            "open",
+            "todo",
+            "batch",
+        ];
+        for name in names {
+            let forge_name = to_forgecode_tool_name(name);
+            let back = to_internal_tool_name(&forge_name);
+            assert_eq!(back, name, "roundtrip failed for {name}");
+        }
+    }
+
+    #[test]
+    fn test_is_retryable_error() {
+        assert!(is_retryable_error("502 bad gateway"));
+        assert!(is_retryable_error("503 service unavailable"));
+        assert!(is_retryable_error("not ready for writing"));
+        assert!(is_retryable_error("overloaded"));
+        assert!(!is_retryable_error("permission denied"));
+    }
+}

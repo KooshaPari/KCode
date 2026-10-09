@@ -13,19 +13,19 @@ pub(super) fn validate_existing_dev_home(path: &Path) -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     if !metadata.is_dir() {
-        bail!("jcode-dev root is not a directory: {}", path.display());
+        bail!("kcode-dev root is not a directory: {}", path.display());
     }
     use std::os::unix::fs::MetadataExt;
     let expected_owner = unsafe { libc::geteuid() };
     if metadata.uid() != expected_owner {
         bail!(
-            "jcode-dev root is not owned by the current user: {}",
+            "kcode-dev root is not owned by the current user: {}",
             path.display()
         );
     }
     if metadata.mode() & 0o077 != 0 {
         bail!(
-            "jcode-dev root permissions expose it to other users: {}",
+            "kcode-dev root permissions expose it to other users: {}",
             path.display()
         );
     }
@@ -39,13 +39,13 @@ pub(super) fn reject_symlink_components(path: &Path) -> Result<()> {
             Component::Prefix(prefix) => cursor.push(prefix.as_os_str()),
             Component::RootDir => cursor.push(component.as_os_str()),
             Component::CurDir => {}
-            Component::ParentDir => bail!("jcode-dev path contains '..': {}", path.display()),
+            Component::ParentDir => bail!("kcode-dev path contains '..': {}", path.display()),
             Component::Normal(part) => {
                 cursor.push(part);
                 if std::fs::symlink_metadata(&cursor)
                     .is_ok_and(|metadata| metadata.file_type().is_symlink())
                 {
-                    bail!("jcode-dev path traverses symlink {}", cursor.display());
+                    bail!("kcode-dev path traverses symlink {}", cursor.display());
                 }
             }
         }
@@ -71,7 +71,7 @@ pub(super) fn reject_dynamic_symlinks(home: &Path) -> Result<()> {
             || name.starts_with("telemetry_session_starts_");
         if dynamic_file && entry.file_type()?.is_symlink() {
             bail!(
-                "jcode-dev path traverses dynamic symlink {}",
+                "kcode-dev path traverses dynamic symlink {}",
                 entry.path().display()
             );
         }
@@ -79,14 +79,14 @@ pub(super) fn reject_dynamic_symlinks(home: &Path) -> Result<()> {
     for relative in [
         "browser",
         "notifications",
-        "Applications/JcodeNotificationBroker.app",
+        "Applications/KcodeNotificationBroker.app",
         "telemetry_active_sessions",
         "active_pids",
         "streaming_pids",
         "internal_pids",
         "reload-recovery",
         "run/durable-state",
-        "run/jcode-swarm-state",
+        "run/kcode-swarm-state",
     ] {
         reject_symlink_tree(&home.join(relative))?;
     }
@@ -100,7 +100,7 @@ fn reject_symlink_tree(path: &Path) -> Result<()> {
         Err(error) => return Err(error.into()),
     };
     if metadata.file_type().is_symlink() {
-        bail!("jcode-dev path traverses symlink {}", path.display());
+        bail!("kcode-dev path traverses symlink {}", path.display());
     }
     if metadata.is_dir() {
         for entry in std::fs::read_dir(path)? {
@@ -113,18 +113,18 @@ fn reject_symlink_tree(path: &Path) -> Result<()> {
 /// Canonicalize existing ancestors while preserving a not-yet-created suffix.
 pub(super) fn canonicalize_existing_prefix(path: &Path) -> Result<PathBuf> {
     if !path.is_absolute() {
-        bail!("jcode-dev path must be absolute: {}", path.display());
+        bail!("kcode-dev path must be absolute: {}", path.display());
     }
     let mut ancestor = path;
     let mut suffix = Vec::new();
     while !ancestor.exists() {
         let name = ancestor
             .file_name()
-            .context("jcode-dev path has no existing ancestor")?;
+            .context("kcode-dev path has no existing ancestor")?;
         suffix.push(name.to_os_string());
         ancestor = ancestor
             .parent()
-            .context("jcode-dev path has no existing ancestor")?;
+            .context("kcode-dev path has no existing ancestor")?;
     }
     let mut resolved = std::fs::canonicalize(ancestor)?;
     for part in suffix.into_iter().rev() {
@@ -138,7 +138,7 @@ pub(super) fn validate_optional_path_under(name: &str, root: &Path) -> Result<()
         return Ok(());
     };
     if !value.is_absolute() || !canonicalize_existing_prefix(&value)?.starts_with(root) {
-        bail!("unsafe jcode-dev {name} path: {}", value.display());
+        bail!("unsafe kcode-dev {name} path: {}", value.display());
     }
     Ok(())
 }
@@ -148,7 +148,7 @@ pub(super) fn validate_socket_path(socket: &Path, runtime: &Path) -> Result<()> 
     let runtime = canonicalize_existing_prefix(runtime)?;
     if !socket.starts_with(&runtime) {
         bail!(
-            "jcode-dev socket {} is outside {}",
+            "kcode-dev socket {} is outside {}",
             socket.display(),
             runtime.display()
         );

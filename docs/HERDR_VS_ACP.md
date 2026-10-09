@@ -1,6 +1,6 @@
 # HERDR vs ACP
 
-This document answers a recurring architectural question: **if jcode already
+This document answers a recurring architectural question: **if kcode already
 implements the Agent Communication Protocol (ACP), why does it also ship a
 separate HERDR integration that emits screen-detection manifests and a Unix
 socket reporter?** Short answer: ACP and HERDR operate at different layers
@@ -16,7 +16,7 @@ not replace each other.
 | Identity | Session IDs the IDE controls | Pane IDs the terminal multiplexer owns |
 | Primary signal | Structured method calls (`session/update`, `fs/read_text_file`, …) | Terminal-output pattern matching (`agent-detection/*.toml`) for agents that will not — or cannot — speak any protocol |
 | Wire format | NDJSON over stdio / socket, `jsonrpc="2.0"` | Newline-delimited JSON over a Unix-domain socket |
-| Scope in this repo | `src/cli/acp.rs` (2,195 lines) | `crates/jcode-herdr/` (7 modules, 1,643 lines) |
+| Scope in this repo | `src/cli/acp.rs` (2,195 lines) | `crates/kcode-herdr/` (7 modules, 1,643 lines) |
 
 The two systems do not share an integration point in this repo. See
 [Touchpoints](#touchpoints) below for why and [Future Work](#future-work)
@@ -50,34 +50,34 @@ session; the session belongs to the editor. It is the right shape for a
 HERDR is a terminal-runtime pane orchestrator. It watches terminal panes
 and figures out what each pane is doing, so it can multiplex real-estate,
 restore sessions across restarts, and coordinate multiple agents that share
-a workspace. In this repo it is implemented in `crates/jcode-herdr/`:
+a workspace. In this repo it is implemented in `crates/kcode-herdr/`:
 
-- `crates/jcode-herdr/src/lib.rs` re-exports the public surface:
-  `HerdrEnv` (`crates/jcode-herdr/src/env.rs`),
-  `HerdrReporter` (`crates/jcode-herdr/src/reporter.rs`),
-  `AgentState` (`crates/jcode-herdr/src/state.rs`),
-  `PluginManifest` (`crates/jcode-herdr/src/plugin.rs`),
-  and the screen-manifest helpers (`crates/jcode-herdr/src/manifest.rs`).
-- `crates/jcode-herdr/src/env.rs` captures the HERDR env (`HERDR_ENV`,
+- `crates/kcode-herdr/src/lib.rs` re-exports the public surface:
+  `HerdrEnv` (`crates/kcode-herdr/src/env.rs`),
+  `HerdrReporter` (`crates/kcode-herdr/src/reporter.rs`),
+  `AgentState` (`crates/kcode-herdr/src/state.rs`),
+  `PluginManifest` (`crates/kcode-herdr/src/plugin/mod.rs`),
+  and the screen-manifest helpers (`crates/kcode-herdr/src/manifest.rs`).
+- `crates/kcode-herdr/src/env.rs` captures the HERDR env (`HERDR_ENV`,
   `HERDR_PANE_ID`, `HERDR_SOCKET_PATH`, `HERDR_BIN_PATH`,
   `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`) so the in-process reporter can
   find its pane and its socket.
-- `crates/jcode-herdr/src/socket.rs` is the wire layer. The Unix path is
-  at `crates/jcode-herdr/src/socket.rs:26` (`send_request`); the Windows
-  stub is at `crates/jcode-herdr/src/socket.rs:59` and surfaces a clear
+- `crates/kcode-herdr/src/socket.rs` is the wire layer. The Unix path is
+  at `crates/kcode-herdr/src/socket.rs:26` (`send_request`); the Windows
+  stub is at `crates/kcode-herdr/src/socket.rs:59` and surfaces a clear
   `"HERDR is not supported on this platform (Unix-only)"` error.
-- `crates/jcode-herdr/src/reporter.rs` implements debounce
-  (`crates/jcode-herdr/src/reporter.rs:125-148`), error-hold, and a
+- `crates/kcode-herdr/src/reporter.rs` implements debounce
+  (`crates/kcode-herdr/src/reporter.rs:125-148`), error-hold, and a
   monotonic per-source sequence counter at
-  `crates/jcode-herdr/src/reporter.rs:52`. These exist because terminal
+  `crates/kcode-herdr/src/reporter.rs:52`. These exist because terminal
   state is noisy — we do not want a 50ms token to flip the pane from
   `working` to `idle` and back.
-- `crates/jcode-herdr/src/manifest.rs` generates the screen-detection
+- `crates/kcode-herdr/src/manifest.rs` generates the screen-detection
   rules written to `~/.config/herdr/agent-detection/*.toml`
-  (`crates/jcode-herdr/src/manifest.rs:34` for `to_toml`,
-  `crates/jcode-herdr/src/manifest.rs:70` for the jcode manifest,
-  `crates/jcode-herdr/src/manifest.rs:115` for the ForgeCode manifest).
-- `crates/jcode-herdr/src/plugin.rs` is the in-process `herdr-plugin.toml`
+  (`crates/kcode-herdr/src/manifest.rs:34` for `to_toml`,
+  `crates/kcode-herdr/src/manifest.rs:70` for the kcode manifest,
+  `crates/kcode-herdr/src/manifest.rs:115` for the ForgeCode manifest).
+- `crates/kcode-herdr/src/plugin/mod.rs` is the in-process `herdr-plugin.toml`
   emitter added alongside this doc. It produces the local plugin
   manifest under `~/.config/herdr/plugins/local/` so users do not have
   to clone the upstream community plugins.
@@ -109,7 +109,7 @@ ACP and HERDR diverge on three axes:
 3. **Signal source.** ACP's primary signal is structured JSON-RPC: the
    agent emits `session/update` with rich deltas. HERDR's primary
    signal is the bottom of a terminal pane, matched against
-   `agent-detection/*.toml` rules (`crates/jcode-herdr/src/manifest.rs`).
+   `agent-detection/*.toml` rules (`crates/kcode-herdr/src/manifest.rs`).
    That signal is useful *even when the agent is not running ACP* — a
    shell-only workflow with no IDE, or an agent that does not speak
    ACP, still benefits from HERDR detecting that something is stuck.
@@ -144,7 +144,7 @@ work, for three concrete reasons rooted in this repo:
    agents that do not speak ACP at all.
 
 3. **HERDR's primary signal is terminal-output pattern matching.**
-   `crates/jcode-herdr/src/manifest.rs:70` produces a TOML document
+   `crates/kcode-herdr/src/manifest.rs:70` produces a TOML document
    keyed on text patterns like `"●"`, `"Thinking..."`, and the prompt
    character `❯`. That signal is the whole point of HERDR's value
    proposition: *detect what an agent is doing even when the agent
@@ -156,27 +156,26 @@ work, for three concrete reasons rooted in this repo:
 
 None required. They coexist:
 
-- An ACP-capable IDE running jcode in a HERDR pane gets both:
+- An ACP-capable IDE running kcode in a HERDR pane gets both:
   structured ACP traffic to the editor, and screen-detection-driven
   state from HERDR. The two observe different surfaces and do not
   conflict.
 - A non-ACP user (terminal-only, or a different agent) still gets
   HERDR's value via the screen manifests in
-  `~/.config/herdr/agent-detection/*.toml`. No ACP code is loaded on
-  that path — `src/cli/acp.rs` is only compiled into the binary when
-  the user actually invokes the ACP subcommand.
+  `~/.config/herdr/agent-detection/*.toml`. The ACP handler in
+  `src/cli/acp.rs` is not invoked on that path.
 
 ## Cross-platform guards
 
 HERDR is Unix-only because it depends on Unix-domain sockets and
 `cfg!(unix)` build paths:
 
-- `crates/jcode-herdr/src/socket.rs:7-12` documents the Unix-only
+- `crates/kcode-herdr/src/socket.rs:7-12` documents the Unix-only
   constraint.
-- `crates/jcode-herdr/src/socket.rs:17-25` is the Unix build path.
-- `crates/jcode-herdr/src/socket.rs:58-63` is the Windows stub,
+- `crates/kcode-herdr/src/socket.rs:17-25` is the Unix build path.
+- `crates/kcode-herdr/src/socket.rs:58-63` is the Windows stub,
   emitting `"HERDR is not supported on this platform (Unix-only)"`.
-- `crates/jcode-herdr/src/plugin.rs` exports
+- `crates/kcode-herdr/src/plugin/platforms.rs` defines
   `windows_install_hint()` (referenced from
   `src/cli/herdr.rs::run_herdr_install`) which prints a single line
   directing Windows users to WSL2 + a Herdr WSL build.
@@ -193,11 +192,11 @@ A speculative future integration could let HERDR pipe ACP
 agents — i.e., when an agent *also* exposes ACP, HERDR could prefer
 its structured state over screen-pattern matching. Concretely:
 
-1. The jcode binary's `--herdr` startup could spawn a one-shot ACP
+1. The kcode binary's `--herdr` startup could spawn a one-shot ACP
    `initialize` / `session/load` against the daemon's pane-id
    representative, then forward `session/update` events into
    `HerdrReporter::set_state_with_message` (currently at
-   `crates/jcode-herdr/src/reporter.rs:130`).
+   `crates/kcode-herdr/src/reporter.rs:130`).
 2. Screen manifests would remain the authoritative signal for
    non-ACP agents and as a tie-breaker when the ACP stream is silent.
 
@@ -215,9 +214,22 @@ keeping them separate is what lets each one stay small.
 
 ## See also
 
-- `docs/HERDR.md` — the HERDR integration contract (what jcode does
+- `docs/HERDR.md` — the HERDR integration contract (what kcode does
   for HERDR, what HERDR-side work is required, restore via
-  `jcode --resume <session-id>`).
+  `kcode --resume <session-id>`).
 - `docs/HERDR_INTEGRATION.md` — operational guide for
-  `jcode herdr status`, `jcode herdr install`, env vars, the
+  `kcode herdr status`, `kcode herdr install`, env vars, the
   reporter protocol, and the screen-manifest format.
+
+## Review corrections
+
+`kcode herdr install` writes each plugin to
+`~/.config/herdr/plugins/local/<name>/herdr-plugin.toml` and registers its
+containing directory through `herdr plugin link`. On native Windows it prints
+WSL guidance without writing files. The plugin IDs remain unchanged.
+
+Diagnostic body and SSE logging remain explicit raw-capture tools: enabling
+these variables intentionally includes prompt, tool, and response content.
+Use a dedicated capture directory. Unix capture directories/files are restricted
+to 0700/0600; unique create-new filenames prevent concurrent-request overwrites.
+Write failures disable that stream's capture without interrupting the response.

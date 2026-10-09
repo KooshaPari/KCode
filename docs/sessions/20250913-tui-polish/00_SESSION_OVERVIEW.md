@@ -37,7 +37,7 @@ Improve swarm panel readability in crowded multi-pane layouts (4x2 to 6x6+).
 - `Esc` — clear selection / exit focus
 
 ## Architecture
-- `jcode-tui-render/src/swarm_gallery/` — pure rendering (ratatui, no app state)
+- `kcode-tui-render/src/swarm_gallery/` — pure rendering (ratatui, no app state)
   - `util.rs` — status_accent, role_glyph, role_color, summary_line helpers
   - `types.rs` — GalleryMember, GalleryTodo, GalleryToolIntent structs
   - `strip.rs` — horizontal agent strip rendering + SwarmStripHint
@@ -48,8 +48,8 @@ Improve swarm panel readability in crowded multi-pane layouts (4x2 to 6x6+).
   - `hover.rs` — hover/focus detail popups
   - `render.rs` — gallery grid, header, tile conversion
   - `tests.rs` — 64 passing fuzz audit tests
-- `jcode-tui/src/tui/info_widget_swarm_gallery.rs` — bridges protocol types to render layer
-- `jcode-tui/src/tui/app/tui_state.rs` — keyboard handling, selection state
+- `kcode-tui/src/tui/info_widget_swarm_gallery.rs` — bridges protocol types to render layer
+- `kcode-tui/src/tui/app/tui_state.rs` — keyboard handling, selection state
 
 ## Future enhancements (protocol fields now available)
 - Agent performance metrics dashboard (input_tokens/output_tokens now on SwarmMemberRuntime)

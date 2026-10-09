@@ -57,12 +57,12 @@ fn assert_rejected_leaf_symlink(relative_path: &str, executable: bool) {
     std::os::unix::fs::symlink(&stable, &destination).unwrap();
 
     let _env_lock = crate::storage::lock_test_env();
-    let saved = ["JCODE_HOME", "JCODE_DEV_NAMESPACE"]
+    let saved = ["KCODE_HOME", "KCODE_DEV_NAMESPACE"]
         .map(|name| (name, std::env::var_os(name)))
         .to_vec();
     let _restore = super::RestoreEnv(saved);
-    crate::env::set_var("JCODE_HOME", &dev);
-    crate::env::set_var("JCODE_DEV_NAMESPACE", "1");
+    crate::env::set_var("KCODE_HOME", &dev);
+    crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
     assert!(
         crate::storage::reject_dev_home_symlink_path(&destination).is_err(),
         "per-use guard accepted symlinked leaf {relative_path}"
@@ -87,7 +87,7 @@ fn rejects_sensitive_root_symlinks_without_touching_stable_sentinels() {
     let cases = [
         (".grok", "auth.json"),
         ("external", ".codex/auth.json"),
-        ("config/jcode", "config.toml"),
+        ("config/kcode", "config.toml"),
         ("external/aws", "credentials"),
         ("external/azure", "Azure/TokenCache.dat"),
         ("external/gcloud", "credentials.db"),
@@ -103,7 +103,7 @@ fn rejects_sensitive_root_symlinks_without_touching_stable_sentinels() {
         ("provider-backends/grok/grok", "fake-tool"),
         (
             "Applications",
-            "JcodeNotificationBroker.app/Contents/MacOS/JcodeNotificationBroker",
+            "KcodeNotificationBroker.app/Contents/MacOS/KcodeNotificationBroker",
         ),
     ];
     for (root, sentinel) in cases {
@@ -118,7 +118,7 @@ fn rejects_sensitive_leaf_symlinks_without_reading_or_invoking_stable_targets() 
         "external/aws/config",
         "external/azure/msal_token_cache.json",
         "external/gcloud/credentials.db",
-        "config/jcode/openrouter.env",
+        "config/kcode/openrouter.env",
         "browser/.setup-complete",
         "session-memory/config",
         "schema-quirks.json",
@@ -130,12 +130,12 @@ fn rejects_sensitive_leaf_symlinks_without_reading_or_invoking_stable_targets() 
         "telemetry_active_sessions/session-123.active",
         "reload-recovery/session-123.json",
         "run/durable-state/swarm/swarm-123.json",
-        "run/jcode-swarm-state/swarm-123.json",
+        "run/kcode-swarm-state/swarm-123.json",
     ] {
         assert_rejected_leaf_symlink(path, false);
     }
     assert_rejected_leaf_symlink(
-        "Applications/JcodeNotificationBroker.app/Contents/MacOS/JcodeNotificationBroker",
+        "Applications/KcodeNotificationBroker.app/Contents/MacOS/KcodeNotificationBroker",
         true,
     );
     assert_rejected_leaf_symlink("provider-backends/grok-build/grok", true);
