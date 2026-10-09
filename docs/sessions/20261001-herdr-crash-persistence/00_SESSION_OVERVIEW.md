@@ -422,3 +422,102 @@ existing kcode installation will start persisting sessions immediately
 - **Latest kcode session**: `session_evergreen_1791516626775_251c14ff3297d065`
 - **Live jcode process**: PID 10715 in HelioLite (w8:pS)
 - **Original session (NOT orphaned)**: `~/.jcode/sessions/session_panda_1789273883949_ace2cf2f18024501.json`
+
+### Updates 2026-10-09 (round 8 — C1 verification REGRESSION at runtime)
+
+**REGRESSION FOUND.** Round 7's "4-level verification" claim was
+insufficient — the binary has the C1 code but is not firing at runtime.
+
+While looking for non-gated work, re-verified the test pane by counting
+events in `~/.config/herdr/herdr-server.log`:
+
+| Method | Total | kcode | jcode | codex | cursor | opencode |
+|---|---|---|---|---|---|---|
+| `pane.report_agent` | 174 | **0** | many | few | few | many |
+| `pane.report_agent_session` | 31 | **0** | 20 | 2 | 6 | 0 |
+| `pane.release_agent` | many | 26 | few | few | few | 0 |
+
+**All 26 kcode `pane.release_agent` events are herdr-internal screen-scraping
+events** (request_id pattern `herdr:kcode:release:*`), not from the kcode
+reporter. The actual kcode reporter (which should send
+`pane.report_agent`/`pane.report_agent_session`) has sent **0 events** in
+the entire log history.
+
+PID 22365 (`/Users/kooshapari/.local/bin/kcode --resume session_evergreen_...`)
+has been running for 51+ minutes with all HERDR env vars set
+(`HERDR_ENV=1`, `HERDR_PANE_ID=w7:p1R`, `HERDR_SOCKET_PATH=...`).
+`lsof -p 22365 | grep herdr` shows no socket connections — the reporter
+is not even attempting to connect.
+
+**Binary analysis:**
+- Binary at `~/.kcode/builds/versions/bb6174b21a/kcode` contains
+  `HerdrReporter`, `kcode_herdr::socket`, and the C1 fix strings
+  (`"herdr:kcode"`, `"herdr:kcode:<unique-request-id>"`, the
+  `("herdr:kcode", "kcode")` allowlist pair).
+- The C1 fix source code is identical at bb6174b21 and HEAD (5afb91c6b).
+- `init()`, `on_session_start()`, `send_state_report()`, and
+  `socket::send_fire_and_forget()` are all present in the binary.
+
+**What 4-level verification missed:**
+- Round 7 verified: source code, unit tests, binary strings, codex byproducts.
+- Round 7 MISSED: **runtime behavior** — does the binary actually
+  connect to the herdr socket when started with HERDR env vars?
+- The strings are in the binary as data/constants, but the
+  runtime code path is not being executed (or is silently failing).
+
+**Possible causes (not yet diagnosed):**
+1. The kcode binary was built from a state where the init call was
+   conditional on something that's not satisfied (e.g., a build flag).
+2. The init() runs but on_session_start() silently fails (the
+   fire-and-forget error is at `tracing::debug` level, invisible at
+   default log level).
+3. The init() is being called but the REPORTER static is in a
+   different state due to a build/runtime mismatch.
+4. The test process is in a state (e.g., waiting for TUI input) where
+   the init has been called but no event has fired YET — needs
+   verification with a fresh process or a state transition.
+
+**Recommended diagnostic steps (non-gated, would unblock the C1 fix):**
+1. Build a fresh kcode binary from current HEAD (`cargo build
+   --release` in `~/CodeProjects/Phenotype/repos/jcode`).
+2. Replace the canonical kcode binary at `~/.local/bin/kcode` (with
+   operator approval — this is a destructive change to a symlink).
+3. Restart the test pane (kill PID 22365, relaunch with --resume).
+4. Watch `herdr plugin log list --plugin kooshapari.kcode --limit 10`
+   for new events.
+5. Re-check the kcode event count in `herdr-server.log` after a state
+   transition (e.g., type something into the TUI to trigger
+   `spawn_report(AgentState::Working)`).
+
+**Pillar: source-level verification is not enough.** Strings in the
+binary prove the compiler saw the code, not that the runtime executes
+it. A "binary strings" verification is a weak signal — it confirms
+the build picked up the source, but says nothing about whether the
+init point is reached, whether the conditional branches match runtime
+state, or whether the fire-and-forget call actually connects.
+
+**Pillar: a "verified at N levels" claim must include at least one
+runtime observation.** Round 7's 4 levels were all static (source,
+unit test, binary, byproducts). The 5th level — "the binary, when
+run, actually produces the expected events" — was missing. This is
+exactly the kind of gap that lets a regression hide.
+
+**Pillar: round 7's claim that "the C1 fix is correct and shipped" was
+overconfident.** The 7th body still correctly identifies the herdr
+allowlist as the cause of the operator-visible error pattern. But the
+"kcode side is verified" claim was wrong — there's a kcode-side
+runtime issue that's a SEPARATE blocker from the herdr allowlist.
+Both blockers need to be cleared before crash persistence works.
+
+**Action:** Before filing the 7th issue, decide whether to:
+(a) Investigate the kcode-side runtime issue first (recommended) and
+file the 7th issue only after confirming kcode is firing events
+(which will then be rejected by herdr — confirming the allowlist is
+the next blocker); or
+(b) File the 7th issue as-is (herdr allowlist is still a real bug)
+and address the kcode-side runtime issue in a follow-up.
+
+The current 7th body asserts "The C1 fix is correct and shipped
+(verified at 4 levels...)". This assertion is FALSE. The 7th body
+needs a revision that removes or qualifies the verification claim.
+
