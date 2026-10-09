@@ -29,10 +29,7 @@ pub async fn run() -> Result<()> {
                 Some(Command::Debug { socket, .. }) => socket.as_deref(),
                 _ => None,
             };
-            crate::cli::dev_namespace::validate_socket_override(
-                &paths,
-                command_socket.or(args.socket.as_deref()),
-            )?;
+            crate::cli::dev_namespace::validate_socket_override(&paths, command_socket)?;
             #[cfg(unix)]
             let api_socket = match args.command.as_ref() {
                 Some(Command::ApiBridge { api_socket, .. }) => api_socket.as_deref(),
