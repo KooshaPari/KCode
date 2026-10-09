@@ -756,7 +756,7 @@ fn apply_openai_compatible_profile_env_impl(
     profile: Option<OpenAiCompatibleProfile>,
     respect_named_profile_lock: bool,
 ) {
-    if respect_named_profile_lock && std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_some() {
+    if respect_named_profile_lock && std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_some() {
         return;
     }
 
@@ -777,8 +777,8 @@ fn apply_openai_compatible_profile_env_impl(
         "KCODE_OPENROUTER_PROVIDER",
         "KCODE_OPENROUTER_NO_FALLBACK",
         "KCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
     ];
 
     for var in vars {
@@ -819,7 +819,7 @@ fn inline_key_env_name(profile_name: &str) -> String {
             }
         })
         .collect::<String>();
-    format!("JCODE_PROVIDER_{}_API_KEY", suffix)
+    format!("KCODE_PROVIDER_{}_API_KEY", suffix)
 }
 
 pub fn clear_anthropic_profile_env() {
@@ -961,8 +961,8 @@ pub fn apply_named_provider_profile_env_from_config(
 
     clear_anthropic_profile_env();
 
-    crate::env::remove_var("JCODE_PROVIDER_PROFILE_ACTIVE");
-    crate::env::remove_var("JCODE_PROVIDER_PROFILE_NAME");
+    crate::env::remove_var("KCODE_PROVIDER_PROFILE_ACTIVE");
+    crate::env::remove_var("KCODE_PROVIDER_PROFILE_NAME");
     crate::env::remove_var("KCODE_NAMED_PROVIDER_PROFILE");
     apply_openai_compatible_profile_env(None);
     crate::env::set_var("KCODE_OPENROUTER_API_BASE", &api_base);

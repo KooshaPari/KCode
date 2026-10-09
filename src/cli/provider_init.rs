@@ -1269,10 +1269,10 @@ fn disable_subscription_runtime_mode() {
 }
 
 fn disable_subscription_runtime_mode_preserving_active_provider_profile() {
-    if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_some()
+    if std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_some()
         || std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_some()
     {
-        crate::env::remove_var(crate::subscription_catalog::JCODE_SUBSCRIPTION_ACTIVE_ENV);
+        crate::env::remove_var(crate::subscription_catalog::KCODE_SUBSCRIPTION_ACTIVE_ENV);
     } else {
         disable_subscription_runtime_mode();
     }
@@ -1290,7 +1290,7 @@ pub fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
             // Bootstrap login still spawns the daemon with `--provider auto`. Mark the
             // just-selected compatible provider as active so the child process does
             // not clear these inherited runtime vars before credential detection.
-            crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
+            crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
         }
         LoginProviderTarget::AutoImport | LoginProviderTarget::Google => {}
         _ => {
@@ -1467,14 +1467,14 @@ async fn init_provider_with_options(
     // OpenRouter/OpenAI-compatible factory) and their model-picker routes.
     super::startup::register_external_provider_runtimes();
 
-    if let Ok(profile_name) = std::env::var("JCODE_PROVIDER_PROFILE_NAME")
+    if let Ok(profile_name) = std::env::var("KCODE_PROVIDER_PROFILE_NAME")
         && !profile_name.trim().is_empty()
     {
         crate::provider_catalog::apply_named_provider_profile_env(profile_name.trim())?;
-        crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
+        crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
     }
 
-    if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
+    if std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none()
         && std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none()
     {
         if let Some(profile) = profile_for_choice(choice) {
@@ -1699,7 +1699,7 @@ async fn init_provider_with_options(
                 "Using ForgeCode as the initial provider (use /model to switch)",
             );
             clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "forgecode");
+            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "forgecode");
             crate::provider::external::instantiate_external_provider(
                 crate::provider::external::FORGECODE_RUNTIME,
             )
@@ -1888,7 +1888,7 @@ async fn init_provider_with_options(
         })?;
     }
 
-    if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
+    if std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none()
         && std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none()
         && model.is_none()
     {

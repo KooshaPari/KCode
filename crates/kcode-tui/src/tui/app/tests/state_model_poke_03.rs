@@ -330,9 +330,7 @@ impl Provider for MixedModelRoutesProvider {
         "mixed"
     }
 
-    fn model(&self) -> String {
-        self.model.lock().unwrap().clone()
-    }
+    
 
     fn available_models_display(&self) -> Vec<String> {
         Self::routes()
@@ -354,9 +352,7 @@ impl Provider for MixedModelRoutesProvider {
         Ok(())
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 #[async_trait::async_trait]
@@ -405,9 +401,7 @@ impl Provider for EmptyPostLoginCatalogProvider {
         })
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 #[async_trait::async_trait]
@@ -426,27 +420,18 @@ impl Provider for FailingPostLoginCatalogProvider {
         "failing-catalog"
     }
 
-    fn model(&self) -> String {
-        "pre-auth-model".to_string()
-    }
+    
 
-    fn model_routes(&self) -> Vec<crate::provider::ModelRoute> {
-        vec![]
-    }
+    
 
-    fn set_model(&self, model: &str) -> Result<()> {
-        self.set_model_attempts.fetch_add(1, Ordering::SeqCst);
-        anyhow::bail!("unexpected attempt to switch to {model}")
-    }
+    
 
     async fn refresh_model_catalog(&self) -> Result<crate::provider::ModelCatalogRefreshSummary> {
         self.refreshes.fetch_add(1, Ordering::SeqCst);
         anyhow::bail!("fixture refresh failed before server auth-change catalog refresh")
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 #[async_trait::async_trait]
@@ -491,9 +476,7 @@ impl Provider for CountingModelRoutesProvider {
             .collect()
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 #[test]
@@ -1591,9 +1574,7 @@ impl Provider for AzureLoginMockProvider {
         "OpenRouter"
     }
 
-    fn model(&self) -> String {
-        self.model.lock().unwrap().clone()
-    }
+    
 
     fn set_model(&self, model: &str) -> Result<()> {
         let model = model
@@ -1628,9 +1609,7 @@ impl Provider for AzureLoginMockProvider {
         self.auth_changed.fetch_add(1, Ordering::SeqCst);
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 struct AzureLoginEnvGuard {

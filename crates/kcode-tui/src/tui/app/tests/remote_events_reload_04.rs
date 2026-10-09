@@ -1500,8 +1500,8 @@ fn test_info_widget_local_direct_api_runtime_shows_cost_based_usage() {
         "KCODE_OPENROUTER_TRANSPORT_STATE",
         "KCODE_OPENROUTER_CACHE_NAMESPACE",
         "KCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
     ];
     let _restore = RestoreEnv(
         tracked_env

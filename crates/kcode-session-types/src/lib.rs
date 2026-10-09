@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
-pub use jcode_message_types::ContentBlock;
-use jcode_message_types::{Message, Role, ToolCall};
+pub use kcode_message_types::ContentBlock;
+use kcode_message_types::{Message, Role, ToolCall};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -13,8 +13,8 @@ pub use transcription::{
 
 /// Identifies a session to resume, across the agent backends jcode can import
 /// from. This is pure data (only ids/paths) with no UI dependency; it lives in
-/// `jcode-session-types` so the foundation/import layer can match on it without
-/// depending on any `jcode-tui-*` crate. The session-picker UI re-exports it.
+/// `kcode-session-types` so the foundation/import layer can match on it without
+/// depending on any `kcode-tui-*` crate. The session-picker UI re-exports it.
 // Variant names are load-bearing for serde serialization (externally-tagged
 // enum format); renaming would change persisted data and cross-crate consumers.
 #[allow(clippy::enum_variant_names)]
@@ -232,9 +232,9 @@ pub struct EnvSnapshot {
     pub working_dir: Option<String>,
     pub provider: String,
     pub model: String,
-    pub jcode_version: String,
-    pub jcode_git_hash: Option<String>,
-    pub jcode_git_dirty: Option<bool>,
+    pub kcode_version: String,
+    pub kcode_git_hash: Option<String>,
+    pub kcode_git_dirty: Option<bool>,
     pub os: String,
     pub arch: String,
     pub pid: u32,
@@ -733,8 +733,8 @@ pub struct SessionSearchResult {
 #[derive(Debug, Clone, Default)]
 pub struct SessionSearchReport {
     pub results: Vec<SessionSearchResult>,
-    pub scanned_jcode_sessions: usize,
-    pub candidate_jcode_sessions: usize,
+    pub scanned_kcode_sessions: usize,
+    pub candidate_kcode_sessions: usize,
     pub scanned_external_sessions: usize,
     pub external_sources: Vec<&'static str>,
     pub read_errors: usize,
@@ -775,8 +775,8 @@ pub fn format_session_search_results(
 
     output.push_str(&format!(
         "_Scanned: {} Jcode sessions ({} candidates), {} external sessions{}{}._\n\n",
-        report.scanned_jcode_sessions,
-        report.candidate_jcode_sessions,
+        report.scanned_kcode_sessions,
+        report.candidate_kcode_sessions,
         report.scanned_external_sessions,
         if report.external_sources.is_empty() {
             String::new()

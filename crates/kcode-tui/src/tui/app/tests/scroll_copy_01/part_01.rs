@@ -293,9 +293,9 @@ impl Drop for CapturedClipboard {
 /// much as jcode. On a loaded developer machine or a shared CI runner they fail
 /// for reasons unrelated to the code under test, which trains everyone to
 /// ignore the suite. Correctness assertions stay always-on; opt into the timing
-/// ones with `JCODE_TEST_PERF_ASSERTIONS=1` on an idle machine (refs #592).
+/// ones with `KCODE_TEST_PERF_ASSERTIONS=1` on an idle machine (refs #592).
 fn perf_assertions_enabled() -> bool {
-    std::env::var("JCODE_TEST_PERF_ASSERTIONS")
+    std::env::var("KCODE_TEST_PERF_ASSERTIONS")
         .is_ok_and(|value| matches!(value.trim(), "1" | "true" | "yes"))
 }
 
@@ -307,7 +307,7 @@ fn assert_perf_budget(within_budget: bool, message: impl FnOnce() -> String) {
         assert!(within_budget, "{}", message());
     } else if !within_budget {
         eprintln!(
-            "note: perf budget exceeded ({}); set JCODE_TEST_PERF_ASSERTIONS=1 \
+            "note: perf budget exceeded ({}); set KCODE_TEST_PERF_ASSERTIONS=1 \
              on an idle machine to enforce it",
             message()
         );

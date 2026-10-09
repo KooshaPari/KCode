@@ -1,6 +1,6 @@
 //! Opt-in request-body capture for provider debugging.
 //!
-//! When `JCODE_PROVIDER_BODY_LOG` is set to a directory path, every outgoing
+//! When `KCODE_PROVIDER_BODY_LOG` is set to a directory path, every outgoing
 //! OpenAI-compatible chat request body is dumped there as a timestamped JSON
 //! file. This is the evidence tool for investigating provider-side corruption
 //! (e.g. MiniMax-M3 `<function_calls>` markup leaks) where raw SSE bodies are
@@ -8,7 +8,7 @@
 //!
 //! Raw captures intentionally retain prompt/tool content for diagnostics. Use a dedicated
 //! private directory; Unix directories/files are restricted to 0700/0600.
-//! Disabled by default: unset or empty `JCODE_PROVIDER_BODY_LOG` writes nothing.
+//! Disabled by default: unset or empty `KCODE_PROVIDER_BODY_LOG` writes nothing.
 
 use bytes::Bytes;
 use futures::StreamExt;
@@ -19,11 +19,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Dump the serialized request body to the body-log directory if enabled.
 ///
-/// Reads `JCODE_PROVIDER_BODY_LOG`; unset or empty disables the dump.
+/// Reads `KCODE_PROVIDER_BODY_LOG`; unset or empty disables the dump.
 /// Failures are logged at info level and never propagate: body logging must
 /// not break the request.
 pub fn maybe_dump_request_body(model: &str, request: &Value) {
-    let Ok(dir) = std::env::var("JCODE_PROVIDER_BODY_LOG") else {
+    let Ok(dir) = std::env::var("KCODE_PROVIDER_BODY_LOG") else {
         return;
     };
     if dir.is_empty() {
@@ -34,12 +34,12 @@ pub fn maybe_dump_request_body(model: &str, request: &Value) {
 
 /// Tee adapter: appends every raw SSE chunk to the capture file when enabled.
 ///
-/// When `JCODE_PROVIDER_SSE_LOG` is set to a directory, the raw response byte
+/// When `KCODE_PROVIDER_SSE_LOG` is set to a directory, the raw response byte
 /// stream is wrapped so each chunk is appended to
 /// `<dir>/<unix_ms>-<model>-sse.txt` before being parsed. This captures the
 /// model OUTPUT side (where the MiniMax-M3 markup corruption appears).
 ///
-/// Disabled by default: unset or empty `JCODE_PROVIDER_SSE_LOG` passes chunks
+/// Disabled by default: unset or empty `KCODE_PROVIDER_SSE_LOG` passes chunks
 /// through untouched. Failures never propagate: capture must not break the
 /// stream.
 pub fn capture_sse_stream<S>(
@@ -49,7 +49,7 @@ pub fn capture_sse_stream<S>(
 where
     S: futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 {
-    let dir = std::env::var_os("JCODE_PROVIDER_SSE_LOG")
+    let dir = std::env::var_os("KCODE_PROVIDER_SSE_LOG")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from);
     capture_sse_stream_to(stream, &model, dir.as_deref())
@@ -167,7 +167,7 @@ mod sse_log_tests {
 
     #[tokio::test]
     async fn disabled_by_default_passes_chunks_through() {
-        // No JCODE_PROVIDER_SSE_LOG: chunks pass through unchanged.
+        // No KCODE_PROVIDER_SSE_LOG: chunks pass through unchanged.
         let chunks: Vec<Result<bytes::Bytes, reqwest::Error>> = vec![
             Ok(bytes::Bytes::from_static(b"data: hello\n\n")),
             Ok(bytes::Bytes::from_static(b"data: world\n\n")),

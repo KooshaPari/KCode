@@ -57,16 +57,25 @@ pub fn clear_cache() -> Result<(), String> {
     }
     clear_layout_cache();
     if let Ok(mut state) = IMAGE_STATE.lock() {
-        state.clear();
+        state.entries.clear();
+        state.order.clear();
+        state.total_source_bytes = 0;
     }
     if let Ok(mut source) = SOURCE_CACHE.lock() {
-        source.clear();
+        source.entries.clear();
+        source.order.clear();
+        source.total_decoded_bytes = 0;
     }
     if let Ok(mut fitted) = FITTED_SOURCE_CACHE.lock() {
-        fitted.clear();
+        fitted.entries.clear();
+        fitted.order.clear();
+        fitted.total_decoded_bytes = 0;
     }
     if let Ok(mut kitty) = KITTY_VIEWPORT_STATE.lock() {
-        kitty.clear();
+        kitty.entries.clear();
+        kitty.recency.clear();
+        kitty.clock = 0;
+        kitty.total_pending_transmit_bytes = 0;
     }
     if let Ok(mut last) = LAST_RENDER.lock() {
         last.clear();

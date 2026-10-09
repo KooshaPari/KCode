@@ -160,7 +160,7 @@ pub use client::{
     SearchTextOptions, ToolCall, Transport, TurnResult, UnixTransport, Usage,
 };
 pub use diagnostics::{SocketState, Stage, describe_disconnect, explain, human_duration};
-pub use jcode_harness_api::{
+pub use kcode_harness_api::{
     enrich_sessions_from_local_swarm_state, enrich_sessions_from_swarm_state,
 };
 pub use errors::{Error, ErrorKind, Result};

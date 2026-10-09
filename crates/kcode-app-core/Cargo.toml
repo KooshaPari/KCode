@@ -1,5 +1,5 @@
 [package]
-name = "jcode-app-core"
+name = "kcode-app-core"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -15,9 +15,9 @@ name = "jcode_app_core"
 path = "src/lib.rs"
 
 [dependencies]
-# NOTE: the jemalloc allocator stats live in `jcode-base` (process_memory) and
-# local embeddings live in `jcode-base` (embedding); this crate forwards those
-# features to jcode-base rather than depending on the backing crates directly.
+# NOTE: the jemalloc allocator stats live in `kcode-base` (process_memory) and
+# local embeddings live in `kcode-base` (embedding); this crate forwards those
+# features tokcode-base rather than depending on the backing crates directly.
 
 # Async runtime
 tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
@@ -33,7 +33,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 
 # HERDR terminal runtime integration
-jcode-herdr = { path = "../jcode-herdr" }
+kcode-herdr = { path = "../kcode-herdr" }
 
 # CLI
 
@@ -50,12 +50,12 @@ chrono = { version = "0.4", features = ["serde"] }
 regex = "1"
 urlencoding = "2"        # URL encoding for web search
 uuid = { version = "1", features = ["v4", "v5"] }
-jcode-applet-types = { path = "../jcode-applet-types" }
+kcode-applet-types = { path = "../kcode-applet-types" }
 
-# Embeddings (local inference) live in jcode-base; this crate forwards the
-# `embeddings` feature to jcode-base rather than depending on jcode-embedding.
-jcode-harness-api = { path = "../jcode-harness-api" }
-jcode-import-core = { path = "../jcode-import-core" }
+# Embeddings (local inference) live inkcode-base; this crate forwards the
+# `embeddings` feature tokcode-base rather than depending onkcode-embedding.
+kcode-harness-api = { path = "../kcode-harness-api" }
+kcode-import-core = { path = "../kcode-import-core" }
 
 # OAuth
 base64 = "0.22"
@@ -63,16 +63,16 @@ sha2 = "0.10"
 rand = "0.9.3"
 url = "2"
 open = "5"               # Open URLs in browser
-jcode-agent-runtime = { path = "../jcode-agent-runtime" }
-jcode-ambient-types = { path = "../jcode-ambient-types" }
-jcode-notify-email = { path = "../jcode-notify-email" }
-jcode-provider-core = { path = "../jcode-provider-core" }
-jcode-schema-dialect = { path = "../jcode-schema-dialect" }
-# NOTE: jcode-app-core does NOT depend on any jcode-tui-* crate. They were
+kcode-agent-runtime = { path = "../kcode-agent-runtime" }
+kcode-ambient-types = { path = "../kcode-ambient-types" }
+kcode-notify-email = { path = "../kcode-notify-email" }
+kcode-provider-core = { path = "../kcode-provider-core" }
+kcode-schema-dialect = { path = "../kcode-schema-dialect" }
+# NOTE:kcode-app-core does NOT depend on anykcode-tui-* crate. They were
 # unused dead dependency edges here (the TUI declares them itself). Removing
-# them stops a jcode-tui-* edit from cascading a recompile through app-core.
-jcode-update-core = { path = "../jcode-update-core" }
-jcode-terminal-image = { path = "../jcode-terminal-image" }
+# them stops akcode-tui-* edit from cascading a recompile through app-core.
+kcode-update-core = { path = "../kcode-update-core" }
+kcode-terminal-image = { path = "../kcode-terminal-image" }
 
 # Streaming
 tokio-stream = "0.1"
@@ -85,35 +85,34 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 unicode-width = "0.2"   # Unicode character display width
 
 # PDF parsing (behind feature flag)
-jcode-pdf = { path = "../jcode-pdf", optional = true }
-jcode-build-support = { path = "../jcode-build-support" }
-jcode-build-meta = { path = "../jcode-build-meta" }
+kcode-pdf = { path = "../kcode-pdf", optional = true }
+kcode-build-support = { path = "../kcode-build-support" }
+kcode-build-meta = { path = "../kcode-build-meta" }
 
 # Foundational layer (provider, auth, config, session, message, memory, ...).
 # Re-exported via `pub use jcode_base::*` in lib.rs. default-features=false so
-# this crate controls jcode-base's optional features (see [features] below).
-jcode-base = { path = "../jcode-base", default-features = false }
-jcode-command-risk = { path = "../jcode-command-risk" }
-jcode-micro-compact = { path = "../jcode-micro-compact" }
-jcode-auto-dream = { path = "../jcode-auto-dream" }
-jcode-cache-vectors = { path = "../jcode-cache-vectors" }
-jcode-permission-bubble = { path = "../jcode-permission-bubble" }
-jcode-tool-search = { path = "../jcode-tool-search" }
-jcode-session-memory = { path = "../jcode-session-memory" }
-jcode-terminal-detect = { path = "../jcode-terminal-detect" }
-jcode-shell-integration = { path = "../jcode-shell-integration" }
-jcode-core = { path = "../jcode-core" }
-jcode-message-types = { path = "../jcode-message-types" }
-jcode-overnight-core = { path = "../jcode-overnight-core" }
-jcode-plan = { path = "../jcode-plan" }
-jcode-swarm-core = { path = "../jcode-swarm-core" }
-jcode-selfdev-types = { path = "../jcode-selfdev-types" }
-jcode-session-types = { path = "../jcode-session-types" }
-jcode-setup-hints = { path = "../jcode-setup-hints" }
-jcode-task-types = { path = "../jcode-task-types" }
-jcode-tool-core = { path = "../jcode-tool-core" }
-jcode-tool-search = { path = "../jcode-tool-search" }
-jcode-tool-types = { path = "../jcode-tool-types" }
+# this crate controlskcode-base's optional features (see [features] below).
+kcode-base = { path = "../kcode-base", default-features = false }
+kcode-command-risk = { path = "../kcode-command-risk" }
+kcode-micro-compact = { path = "../kcode-micro-compact" }
+kcode-auto-dream = { path = "../kcode-auto-dream" }
+kcode-cache-vectors = { path = "../kcode-cache-vectors" }
+kcode-permission-bubble = { path = "../kcode-permission-bubble" }
+kcode-tool-search = { path = "../kcode-tool-search" }
+kcode-session-memory = { path = "../kcode-session-memory" }
+kcode-terminal-detect = { path = "../kcode-terminal-detect" }
+kcode-shell-integration = { path = "../kcode-shell-integration" }
+kcode-core = { path = "../kcode-core" }
+kcode-message-types = { path = "../kcode-message-types" }
+kcode-overnight-core = { path = "../kcode-overnight-core" }
+kcode-plan = { path = "../kcode-plan" }
+kcode-swarm-core = { path = "../kcode-swarm-core" }
+kcode-selfdev-types = { path = "../kcode-selfdev-types" }
+kcode-session-types = { path = "../kcode-session-types" }
+kcode-setup-hints = { path = "../kcode-setup-hints" }
+kcode-task-types = { path = "../kcode-task-types" }
+kcode-tool-core = { path = "../kcode-tool-core" }
+kcode-tool-types = { path = "../kcode-tool-types" }
 
 # Archive extraction (for auto-update)
 flate2 = "1"
@@ -123,31 +122,31 @@ agentgrep = { git = "https://github.com/1jehuang/agentgrep.git", tag = "v0.1.7" 
 
 [features]
 default = ["pdf", "bedrock"]
-# jemalloc allocator stats live in jcode-base (process_memory); forward there.
-jemalloc = ["jcode-base/jemalloc"]
-jemalloc-prof = ["jcode-base/jemalloc-prof"]
-# local embeddings live in jcode-base (embedding); forward there.
-embeddings = ["jcode-base/embeddings"]
-# live AWS Bedrock support lives in jcode-base (provider/bedrock); forward there.
-bedrock = ["jcode-base/bedrock"]
+# jemalloc allocator stats live inkcode-base (process_memory); forward there.
+jemalloc = ["kcode-base/jemalloc"]
+jemalloc-prof = ["kcode-base/jemalloc-prof"]
+# local embeddings live inkcode-base (embedding); forward there.
+embeddings = ["kcode-base/embeddings"]
+# live AWS Bedrock support lives inkcode-base (provider/bedrock); forward there.
+bedrock = ["kcode-base/bedrock"]
 # Used only by the CentOS 7 portable Linux release build.
-linux-compat-vendored-openssl = ["jcode-notify-email/linux-compat-vendored-openssl"]
+linux-compat-vendored-openssl = ["kcode-notify-email/linux-compat-vendored-openssl"]
 # PDF text extraction lives in this crate (tool/read.rs).
-pdf = ["dep:jcode-pdf"]
+pdf = ["dep:kcode-pdf"]
 # Compiles this crate's test-only helpers/accessors (e.g. the
 # ExternalAuthReviewCandidate read accessors) as `pub` and forwards
-# jcode-base's `test-support` so downstream crates' test targets can reach the
+#kcode-base's `test-support` so downstream crates' test targets can reach the
 # whole stack's helpers. Never enabled in normal (non-test) builds.
-test-support = ["jcode-base/test-support"]
+test-support = ["kcode-base/test-support"]
 
 [dev-dependencies]
 # Used by async streaming tests (ambient/runner_tests, server/client_actions_tests).
 async-stream = "0.3"
-# Enables jcode-base's test-support helpers (storage::lock_test_env,
+# Enableskcode-base's test-support helpers (storage::lock_test_env,
 # auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests) for
 # *this* crate's own test target. Feature unification applies this only to
 # test/bench/example builds, not to a normal `cargo build`.
-jcode-base = { path = "../jcode-base", default-features = false, features = ["test-support"] }
+kcode-base = { path = "../kcode-base", default-features = false, features = ["test-support"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }

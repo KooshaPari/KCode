@@ -248,9 +248,7 @@ impl EventRecorder {
 }
 
 impl Default for EventRecorder {
-    fn default() -> Self {
-        Self::new()
-    }
+    
 }
 
 /// Get or initialize the global event recorder.
@@ -803,9 +801,7 @@ impl TestScript {
     }
 
     /// Export to JSON.
-    pub fn to_json(&self) -> String {
-        serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".to_string())
-    }
+    
 
     /// Load from JSON.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {

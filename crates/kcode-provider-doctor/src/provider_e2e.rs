@@ -1409,9 +1409,9 @@ impl NativeProviderKind {
                 // route identity is the managed Jcode subscription. Model
                 // switches use a bare model id so they stay on that runtime.
                 contract: WiringContract {
-                    api_method: kcode_base::subscription_catalog::JCODE_ROUTE_API_METHOD
+                    api_method: kcode_base::subscription_catalog::KCODE_ROUTE_API_METHOD
                         .to_string(),
-                    route_provider: kcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
+                    route_provider: kcode_base::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
                         .to_string(),
                     expected_runtime: "kcode",
                     expected_namespace: None,
@@ -2602,11 +2602,11 @@ mod tests {
         let contract = NativeProviderKind::Jcode.spec().contract;
         assert_eq!(
             contract.api_method,
-            kcode_base::subscription_catalog::JCODE_ROUTE_API_METHOD
+            kcode_base::subscription_catalog::KCODE_ROUTE_API_METHOD
         );
         assert_eq!(
             contract.route_provider,
-            kcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
+            kcode_base::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
         );
         assert_eq!(contract.expected_runtime, "kcode");
         assert!(contract.expected_namespace.is_none());

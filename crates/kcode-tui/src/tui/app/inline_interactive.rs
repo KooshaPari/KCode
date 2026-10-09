@@ -724,7 +724,7 @@ impl App {
             .filter(|route| {
                 route
                     .api_method
-                    .eq_ignore_ascii_case(crate::subscription_catalog::JCODE_ROUTE_API_METHOD)
+                    .eq_ignore_ascii_case(crate::subscription_catalog::KCODE_ROUTE_API_METHOD)
             })
             .filter_map(|route| crate::subscription_catalog::canonical_model_id(&route.model))
             .collect::<HashSet<_>>();
@@ -742,8 +742,8 @@ impl App {
         {
             routes.push(crate::provider::ModelRoute {
                 model: model.id.to_string(),
-                provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+                provider: crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+                api_method: crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
                 available: true,
                 detail: crate::subscription_catalog::routing_policy_detail(model),
                 usage: None,
@@ -782,7 +782,7 @@ impl App {
         // Do not mix in locally configured Anthropic/OpenAI credentials merely
         // because a curated model also belongs to one of those upstreams.
         let provider_is_kcode_subscription = remote_provider_name.is_some_and(|name| {
-            name.eq_ignore_ascii_case(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME)
+            name.eq_ignore_ascii_case(crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME)
         });
         if provider_is_kcode_subscription {
             routes.clear();
@@ -798,7 +798,7 @@ impl App {
             && routes.iter().all(|route| {
                 route
                     .api_method
-                    .eq_ignore_ascii_case(crate::subscription_catalog::JCODE_ROUTE_API_METHOD)
+                    .eq_ignore_ascii_case(crate::subscription_catalog::KCODE_ROUTE_API_METHOD)
             });
         if poisoned_by_kcode_subscription {
             // Version 1 could turn a mixed provider catalog into all-Jcode rows

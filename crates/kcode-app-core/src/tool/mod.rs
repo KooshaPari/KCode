@@ -854,16 +854,16 @@ impl Registry {
         // the registry without going through Agent::validate_tool_allowed.
         if matches!(
             resolved_name,
-            "selfdev" | "debug_socket" | "desktop_selfdev" | "jcode_docs"
+            "selfdev" | "debug_socket" | "desktop_selfdev" | "kcode_docs"
         ) {
             let desktop = ctx
                 .working_dir
                 .as_deref()
-                .and_then(jcode_selfdev_types::desktop_repo_root)
+                .and_then(kcode_selfdev_types::desktop_repo_root)
                 .is_some();
-            if desktop && resolved_name == "jcode_docs" {
+            if desktop && resolved_name == "kcode_docs" {
                 anyhow::bail!(
-                    "Tool 'jcode_docs' is disabled in Desktop self-development mode. Read the working tree documentation instead."
+                    "Tool 'kcode_docs' is disabled in Desktop self-development mode. Read the working tree documentation instead."
                 );
             }
             if desktop && matches!(resolved_name, "selfdev" | "debug_socket") {

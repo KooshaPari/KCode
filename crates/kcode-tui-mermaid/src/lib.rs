@@ -1110,6 +1110,7 @@ impl FittedSourceCache {
             total_decoded_bytes: 0,
         }
     }
+    
 
     fn touch(&mut self, key: FittedSourceKey) {
         if let Some(pos) = self.order.iter().position(|entry| *entry == key) {
@@ -1201,11 +1202,7 @@ impl FittedSourceCache {
         }
     }
 
-    fn clear(&mut self) {
-        self.entries.clear();
-        self.order.clear();
-        self.total_decoded_bytes = 0;
-    }
+    
 }
 
 /// Track what was rendered last frame for skip-redundant optimization
@@ -1555,10 +1552,14 @@ pub fn clear_image_state() {
         state.clear();
     }
     if let Ok(mut source) = SOURCE_CACHE.lock() {
-        source.clear();
+        source.entries.clear();
+        source.order.clear();
+        source.total_decoded_bytes = 0;
     }
     if let Ok(mut fitted) = FITTED_SOURCE_CACHE.lock() {
-        fitted.clear();
+        fitted.entries.clear();
+        fitted.order.clear();
+        fitted.total_decoded_bytes = 0;
     }
     if let Ok(mut kitty) = KITTY_VIEWPORT_STATE.lock() {
         kitty.clear();

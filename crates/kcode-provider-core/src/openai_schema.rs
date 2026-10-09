@@ -42,25 +42,7 @@ fn schema_has_type_info(schema: &Value) -> bool {
 /// Whether a schema declares enough type information for OpenAI strict mode.
 /// An "empty" schema like `{"description": "..."}` accepts any instance in JSON
 /// Schema, but OpenAI's strict subset requires a concrete type keyword.
-fn schema_has_type_info(schema: &Value) -> bool {
-    match schema {
-        Value::Bool(_) => false,
-        Value::Object(map) => [
-            "type",
-            "enum",
-            "const",
-            "$ref",
-            "anyOf",
-            "oneOf",
-            "allOf",
-            "properties",
-            "items",
-        ]
-        .iter()
-        .any(|key| map.contains_key(*key)),
-        _ => true,
-    }
-}
+
 
 pub fn schema_supports_strict(schema: &Value) -> bool {
     fn check_map(map: &serde_json::Map<String, Value>) -> bool {

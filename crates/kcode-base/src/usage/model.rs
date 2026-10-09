@@ -306,12 +306,7 @@ impl OpenAIUsageData {
         }
     }
 
-    fn is_rate_limited(&self) -> bool {
-        self.last_error
-            .as_ref()
-            .map(|e| e.contains("429") || e.contains("rate limit") || e.contains("Rate limited"))
-            .unwrap_or(false)
-    }
+    
 
     pub fn has_limits(&self) -> bool {
         self.five_hour.is_some() || self.seven_day.is_some() || self.spark.is_some()

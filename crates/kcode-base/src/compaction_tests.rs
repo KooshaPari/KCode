@@ -33,10 +33,10 @@ impl Provider for MockSummaryProvider {
         &self,
         prompt: &str,
         system: &str,
-    ) -> Result<(String, jcode_provider_core::SimpleCompletionUsage)> {
+    ) -> Result<(String, kcode_provider_core::SimpleCompletionUsage)> {
         Ok((
             self.complete_simple(prompt, system).await?,
-            jcode_provider_core::SimpleCompletionUsage::default(),
+            kcode_provider_core::SimpleCompletionUsage::default(),
         ))
     }
 }

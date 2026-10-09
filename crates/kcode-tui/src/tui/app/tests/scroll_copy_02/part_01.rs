@@ -612,13 +612,7 @@ fn test_copy_selection_mouse_drag_auto_copies_and_keeps_highlight() {
     let mut print_line = None;
     for abs_line in visible_start..visible_end {
         let text = crate::tui::ui::copy_viewport_line_text(abs_line).unwrap_or_default();
-        if text.contains("fn main() {") {
-            fn_line = Some((abs_line, text.clone()));
-        }
-        if text.contains("println!(\"hello\");") {
-            print_line = Some((abs_line, text));
-        }
-    }
+        if text.contains("
 
     let (fn_line_idx, fn_text) = fn_line.expect("fn line");
     let (print_line_idx, _print_text) = print_line.expect("println line");

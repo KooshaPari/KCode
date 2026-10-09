@@ -644,10 +644,6 @@ pub struct SessionLifecycleEvent {
     #[serde(default)]
     pub todo_gate_intent_count: u32,
     #[serde(default)]
-    pub todo_gate_alignment_count: u32,
-    #[serde(default)]
-    pub todo_gate_intent_count: u32,
-    #[serde(default)]
     pub todo_gate_completion_count: u32,
     #[serde(default)]
     pub todo_gate_spike_count: u32,
@@ -804,10 +800,6 @@ pub struct TurnEndEvent {
     pub todo_gate_ownership_count: u32,
     #[serde(default, alias = "todo_gate_hill_count")]
     pub todo_gate_feedback_loop_count: u32,
-    #[serde(default)]
-    pub todo_gate_alignment_count: u32,
-    #[serde(default)]
-    pub todo_gate_intent_count: u32,
     #[serde(default)]
     pub todo_gate_alignment_count: u32,
     #[serde(default)]

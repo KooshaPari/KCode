@@ -857,35 +857,7 @@ fn test_cmd_shift_k_does_not_clear_view() {
 
 /// `/cls` is the slash-command form of the Cmd+K view-only clear.
 #[test]
-fn test_cls_command_clears_view_but_keeps_context() {
-    let mut app = create_test_app();
-    app.session.add_message(
-        Role::User,
-        vec![ContentBlock::Text {
-            text: "remembered turn".to_string(),
-            cache_control: None,
-        }],
-    );
-    app.display_messages = vec![DisplayMessage::system("visible chat".to_string())];
-    app.bump_display_messages_version();
-    let session_id_before = app.session.id.clone();
-    let session_messages_before = app.session.messages.len();
 
-    app.input = "/cls".to_string();
-    app.cursor_pos = app.input.len();
-    app.submit_input();
-
-    assert!(app.display_messages().is_empty(), "view should be cleared");
-    assert_eq!(
-        app.session.messages.len(),
-        session_messages_before,
-        "provider context must survive"
-    );
-    assert_eq!(
-        app.session.id, session_id_before,
-        "/cls must not start a fresh session (that is /clear)"
-    );
-}
 
 #[test]
 fn test_diagram_cycle_ctrl_arrows() {

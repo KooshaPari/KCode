@@ -384,7 +384,7 @@ fn auth_issue_runtime_display_name_tracks_direct_compatible_profiles() {
         "KCODE_OPENROUTER_ALLOW_NO_AUTH",
         "KCODE_RUNTIME_PROVIDER",
         "KCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
     ]);
 
     crate::env::set_var("KCODE_RUNTIME_PROVIDER", "azure-openai");
@@ -418,8 +418,8 @@ fn auth_profile_env_application_flushes_stale_openrouter_catalog_state() {
         "KCODE_OPENROUTER_PROVIDER",
         "KCODE_OPENROUTER_NO_FALLBACK",
         "KCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
     ]);
 
     crate::env::set_var("KCODE_OPENROUTER_API_BASE", "https://openrouter.ai/api/v1");
@@ -444,8 +444,8 @@ fn auth_profile_env_application_flushes_stale_openrouter_catalog_state() {
     crate::env::set_var("KCODE_OPENROUTER_PROVIDER", "openrouter");
     crate::env::set_var("KCODE_OPENROUTER_NO_FALLBACK", "1");
     crate::env::set_var("KCODE_NAMED_PROVIDER_PROFILE", "openrouter");
-    crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
-    crate::env::set_var("JCODE_PROVIDER_PROFILE_NAME", "openrouter");
+    crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
+    crate::env::set_var("KCODE_PROVIDER_PROFILE_NAME", "openrouter");
 
     force_apply_openai_compatible_profile_env(Some(CEREBRAS_PROFILE));
 
@@ -482,8 +482,8 @@ fn auth_profile_env_application_flushes_stale_openrouter_catalog_state() {
     assert!(std::env::var_os("KCODE_OPENROUTER_PROVIDER").is_none());
     assert!(std::env::var_os("KCODE_OPENROUTER_NO_FALLBACK").is_none());
     assert!(std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none());
-    assert!(std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none());
-    assert!(std::env::var_os("JCODE_PROVIDER_PROFILE_NAME").is_none());
+    assert!(std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none());
+    assert!(std::env::var_os("KCODE_PROVIDER_PROFILE_NAME").is_none());
     assert_ne!(
         std::env::var("KCODE_OPENROUTER_STATIC_MODELS")
             .ok()
@@ -871,7 +871,7 @@ fn named_provider_inline_api_key_is_private_runtime_fallback() {
         "KCODE_OPENROUTER_TRANSPORT_STATE",
         "KCODE_OPENROUTER_MODEL_CATALOG",
         "KCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_MY_GATEWAY_API_KEY",
+        "KCODE_PROVIDER_MY_GATEWAY_API_KEY",
     ]);
 
     let cfg: crate::config::Config = toml::from_str(
@@ -890,10 +890,10 @@ fn named_provider_inline_api_key_is_private_runtime_fallback() {
         std::env::var("KCODE_OPENROUTER_API_KEY_NAME")
             .ok()
             .as_deref(),
-        Some("JCODE_PROVIDER_MY_GATEWAY_API_KEY")
+        Some("KCODE_PROVIDER_MY_GATEWAY_API_KEY")
     );
     assert_eq!(
-        std::env::var("JCODE_PROVIDER_MY_GATEWAY_API_KEY")
+        std::env::var("KCODE_PROVIDER_MY_GATEWAY_API_KEY")
             .ok()
             .as_deref(),
         Some("inline-secret")
@@ -1305,7 +1305,7 @@ fn minimax_default_provider_applies_minimax_api_key_env_not_openrouter() {
         "KCODE_OPENROUTER_ENV_FILE",
         "KCODE_OPENROUTER_API_BASE",
         "KCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
         "KCODE_NAMED_PROVIDER_PROFILE",
     ]);
     for v in [
@@ -1313,7 +1313,7 @@ fn minimax_default_provider_applies_minimax_api_key_env_not_openrouter() {
         "KCODE_OPENROUTER_ENV_FILE",
         "KCODE_OPENROUTER_API_BASE",
         "KCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
         "KCODE_NAMED_PROVIDER_PROFILE",
     ] {
         crate::env::remove_var(v);

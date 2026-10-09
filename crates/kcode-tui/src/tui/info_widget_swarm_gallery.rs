@@ -2,15 +2,15 @@
 //!
 //! All presentation logic (status colors, role glyphs, age formatting, header,
 //! sorting, layout config) lives in the shared
-//! [`jcode_tui_render::swarm_gallery`] module so the live TUI and the
+//! [`kcode_tui_render::swarm_gallery`] module so the live TUI and the
 //! `swarm_gallery_live` demo render identically. This adapter only handles
 //! turning a [`SwarmMemberStatus`] into a renderer-agnostic
 //! [`GalleryMember`] (label + body lines).
 
 use crate::plan::PlanItem;
 use crate::protocol::SwarmMemberStatus;
-use jcode_tui_core::keybind::alt_chord_lower;
-use jcode_tui_render::swarm_gallery::{
+use kcode_tui_core::keybind::alt_chord_lower;
+use kcode_tui_render::swarm_gallery::{
     GalleryMember, SwarmStripHint, display_order, humanize_age, is_active_status, render_gallery,
     render_swarm_dock, render_swarm_live_card, render_swarm_panel, render_swarm_strip,
     render_swarm_strip_vertical, status_accent, status_glyph,
@@ -98,13 +98,13 @@ pub(crate) fn members_to_gallery(members: &[SwarmMemberStatus]) -> Vec<GalleryMe
             todo_items: member
                 .todo_items
                 .iter()
-                .map(|t| jcode_tui_render::swarm_gallery::GalleryTodo {
+                .map(|t| kcode_tui_render::swarm_gallery::GalleryTodo {
                     content: t.content.clone(),
                     status: t.status.clone(),
                     tool_intents: t
                         .tool_intents
                         .iter()
-                        .map(|tool| jcode_tui_render::swarm_gallery::GalleryToolIntent {
+                        .map(|tool| kcode_tui_render::swarm_gallery::GalleryToolIntent {
                             tool_name: tool.tool_name.clone(),
                             intent: tool.intent.clone(),
                             status: tool.status.clone(),
@@ -140,7 +140,7 @@ pub(crate) fn render_swarm_chat_card_lines(
             gallery.label = label.to_string();
         }
     }
-    jcode_tui_render::swarm_gallery::render_swarm_chat_cards(&gallery_members, width)
+    kcode_tui_render::swarm_gallery::render_swarm_chat_cards(&gallery_members, width)
 }
 
 #[derive(Clone)]
@@ -800,7 +800,7 @@ fn summary_line_with_batch(
     width: usize,
     batch_info: &str,
 ) -> Line<'static> {
-    let inner = jcode_tui_render::swarm_gallery::summary_line_from_members(members, width);
+    let inner = kcode_tui_render::swarm_gallery::summary_line_from_members(members, width);
     if batch_info.is_empty() {
         return inner;
     }
@@ -808,7 +808,7 @@ fn summary_line_with_batch(
     let mut spans = inner.spans;
     spans.push(Span::styled(
         batch_info.to_string(),
-        Style::default().fg(jcode_tui_style::color::rgb(105, 105, 120)),
+        Style::default().fg(kcode_tui_style::color::rgb(105, 105, 120)),
     ));
     Line::from(spans)
 }
@@ -1005,7 +1005,7 @@ pub(crate) fn members_display_order(members: &[SwarmMemberStatus]) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jcode_tui_render::swarm_gallery::members_to_tiles;
+    use kcode_tui_render::swarm_gallery::members_to_tiles;
 
     fn member(
         id: &str,

@@ -363,13 +363,9 @@ impl MessageChannel for DiscordChannel {
         "discord"
     }
 
-    fn is_send_enabled(&self) -> bool {
-        true
-    }
+    
 
-    fn is_reply_enabled(&self) -> bool {
-        self.reply_enabled
-    }
+    
 
     async fn send(&self, text: &str) -> anyhow::Result<()> {
         let url = format!(
@@ -645,9 +641,7 @@ impl MessageChannel for JadeRelayChannel {
         "jade_relay"
     }
 
-    fn is_send_enabled(&self) -> bool {
-        true
-    }
+    
 
     fn is_reply_enabled(&self) -> bool {
         // Inbound Jade relay prompts are delivered by server::jade_relay so they

@@ -1,5 +1,5 @@
 [package]
-name = "jcode-tui"
+name = "kcode-tui"
 version = "0.1.0"
 edition = "2024"
 publish = false
@@ -7,7 +7,7 @@ publish = false
 # Presentation layer for jcode: the terminal UI (`tui`) and the offline replay
 # `video_export`, extracted out of the monolithic root `jcode` crate so they
 # compile as a separate rustc unit. This crate builds on top of the application
-# core (`jcode-app-core`) and re-exports it via `pub use jcode_app_core::*`, so
+# core (`kcode-app-core`) and re-exports it via `pub use jcode_app_core::*`, so
 # every existing `crate::<module>` path (e.g. `crate::config`, `crate::server`)
 # keeps resolving unchanged across the tui code that was moved here. The root
 # `jcode` crate (cli + bin) in turn re-exports this crate via
@@ -21,13 +21,13 @@ path = "src/lib.rs"
 # Application core (server, agent, provider, auth, session, tool, config, ...).
 # Re-exported via `pub use jcode_app_core::*` in lib.rs. default-features=false
 # so this crate (and ultimately the root crate) controls app-core's features.
-jcode-app-core = { path = "../jcode-app-core", default-features = false }
-jcode-herdr = { path = "../jcode-herdr" }
+kcode-app-core = { path = "../kcode-app-core", default-features = false }
+kcode-herdr = { path = "../kcode-herdr" }
 
 # Pure math kernels for the idle animations (3D samplers, glyph chooser,
 # HSV->RGB). Pinned to opt-level = 3 in all profiles via workspace Cargo.toml so
 # the hot trig loops stay optimized even in debug/selfdev builds.
-jcode-tui-anim = { path = "../jcode-tui-anim" }
+kcode-tui-anim = { path = "../kcode-tui-anim" }
 
 # Async runtime
 tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
@@ -64,58 +64,57 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 unicode-width = "0.2"
 
 # Presentation-layer workspace crates
-jcode-build-meta = { path = "../jcode-build-meta" }
-jcode-logging = { path = "../jcode-logging" }
-jcode-core = { path = "../jcode-core" }
-jcode-fuzzy = { path = "../jcode-fuzzy" }
-jcode-config-types = { path = "../jcode-config-types" }
-jcode-selfdev-types = { path = "../jcode-selfdev-types" }
-jcode-tool-core = { path = "../jcode-tool-core" }
-jcode-session-types = { path = "../jcode-session-types" }
-jcode-provider-core = { path = "../jcode-provider-core" }
-jcode-tui-markdown = { path = "../jcode-tui-markdown" }
-jcode-tui-messages = { path = "../jcode-tui-messages" }
-jcode-tui-core = { path = "../jcode-tui-core" }
-jcode-tui-mermaid = { path = "../jcode-tui-mermaid" }
-jcode-tui-account-picker = { path = "../jcode-tui-account-picker" }
-jcode-tui-render = { path = "../jcode-tui-render" }
-jcode-tui-visual-debug = { path = "../jcode-tui-visual-debug" }
-jcode-tui-session-picker = { path = "../jcode-tui-session-picker", features = ["serde"] }
-jcode-tui-style = { path = "../jcode-tui-style" }
+kcode-build-meta = { path = "../kcode-build-meta" }
+kcode-logging = { path = "../kcode-logging" }
+kcode-core = { path = "../kcode-core" }
+kcode-fuzzy = { path = "../kcode-fuzzy" }
+kcode-config-types = { path = "../kcode-config-types" }
+kcode-selfdev-types = { path = "../kcode-selfdev-types" }
+kcode-tool-core = { path = "../kcode-tool-core" }
+kcode-session-types = { path = "../kcode-session-types" }
+kcode-provider-core = { path = "../kcode-provider-core" }
+kcode-tui-markdown = { path = "../kcode-tui-markdown" }
+kcode-tui-messages = { path = "../kcode-tui-messages" }
+kcode-tui-core = { path = "../kcode-tui-core" }
+kcode-tui-mermaid = { path = "../kcode-tui-mermaid" }
+kcode-tui-account-picker = { path = "../kcode-tui-account-picker" }
+kcode-tui-render = { path = "../kcode-tui-render" }
+kcode-tui-visual-debug = { path = "../kcode-tui-visual-debug" }
+kcode-tui-session-picker = { path = "../kcode-tui-session-picker", features = ["serde"] }
+kcode-tui-style = { path = "../kcode-tui-style" }
 terminal-colorsaurus = "1.0"
-jcode-tui-permissions = { path = "../jcode-tui-permissions" }
-jcode-tui-tool-display = { path = "../jcode-tui-tool-display" }
-jcode-tui-usage-overlay = { path = "../jcode-tui-usage-overlay" }
-jcode-terminal-image = { path = "../jcode-terminal-image" }
-jcode-protocol = { path = "../jcode-protocol" }
-jcode-productivity-core = { path = "../jcode-productivity-core" }
-jcode-tool-core = { path = "../jcode-tool-core" }
-jcode-tui-workspace = { path = "../jcode-tui-workspace" }
-jcode-plan = { path = "../jcode-plan" }
+kcode-tui-permissions = { path = "../kcode-tui-permissions" }
+kcode-tui-tool-display = { path = "../kcode-tui-tool-display" }
+kcode-tui-usage-overlay = { path = "../kcode-tui-usage-overlay" }
+kcode-terminal-image = { path = "../kcode-terminal-image" }
+kcode-protocol = { path = "../kcode-protocol" }
+kcode-productivity-core = { path = "../kcode-productivity-core" }
+kcode-tui-workspace = { path = "../kcode-tui-workspace" }
+kcode-plan = { path = "../kcode-plan" }
 
 [features]
 default = ["pdf", "bedrock"]
 # Exposes bench-only debug helpers (e.g. debug_copy_selection_text_for_bench)
 # consumed by the dev `tui_bench` binary in the root crate.
 dev-bins = []
-# Forwarded to app-core (and onward to jcode-base) so the root crate's feature
+# Forwarded to app-core (and onward tokcode-base) so the root crate's feature
 # set fully controls the optional stacks.
-jemalloc = ["jcode-app-core/jemalloc"]
-jemalloc-prof = ["jcode-app-core/jemalloc-prof"]
-embeddings = ["jcode-app-core/embeddings"]
-pdf = ["jcode-app-core/pdf"]
-bedrock = ["jcode-app-core/bedrock"]
-linux-compat-vendored-openssl = ["jcode-app-core/linux-compat-vendored-openssl"]
-mmdr-size-api = ["jcode-tui-mermaid/mmdr-size-api"]
+jemalloc = ["kcode-app-core/jemalloc"]
+jemalloc-prof = ["kcode-app-core/jemalloc-prof"]
+embeddings = ["kcode-app-core/embeddings"]
+pdf = ["kcode-app-core/pdf"]
+bedrock = ["kcode-app-core/bedrock"]
+linux-compat-vendored-openssl = ["kcode-app-core/linux-compat-vendored-openssl"]
+mmdr-size-api = ["kcode-tui-mermaid/mmdr-size-api"]
 # Forwards the application core's `test-support` feature (and onward to
-# jcode-base) so downstream crates' test targets can reach the whole stack's
+#kcode-base) so downstream crates' test targets can reach the whole stack's
 # test helpers. Never enabled in normal (non-test) builds.
-test-support = ["jcode-app-core/test-support"]
+test-support = ["kcode-app-core/test-support"]
 
 [dev-dependencies]
 # Enables the downstream test-support helpers for *this* crate's own test
 # target. Feature unification applies this only to test/bench/example builds.
-jcode-app-core = { path = "../jcode-app-core", default-features = false, features = ["test-support"] }
+kcode-app-core = { path = "../kcode-app-core", default-features = false, features = ["test-support"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 global-hotkey = "0.7"
@@ -125,4 +124,4 @@ global-hotkey = "0.7"
 # an external recorder (pw-record, parecord, arecord, ...) so release builds
 # need no ALSA development headers.
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
-jcode-base = { path = "../jcode-base", default-features = false, features = ["voice-capture"] }
+kcode-base = { path = "../kcode-base", default-features = false, features = ["voice-capture"] }

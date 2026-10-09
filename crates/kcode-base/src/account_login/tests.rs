@@ -174,7 +174,7 @@ impl EnvGuard {
             "KCODE_ACCOUNT_ID",
             "KCODE_ACCOUNT_EMAIL",
             "KCODE_TIER",
-            "JCODE_SUBSCRIPTION_ACTIVE",
+            "KCODE_SUBSCRIPTION_ACTIVE",
         ];
         Self(
             keys.into_iter()

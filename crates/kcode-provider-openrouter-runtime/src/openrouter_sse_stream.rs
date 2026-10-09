@@ -279,7 +279,7 @@ async fn stream_response(
     req = apply_grok_cli_turn_headers(req, &auth, &model, conversation_id);
 
     // Opt-in evidence capture: dump the serialized request body when
-    // JCODE_PROVIDER_BODY_LOG is set (used to investigate provider-side
+    // KCODE_PROVIDER_BODY_LOG is set (used to investigate provider-side
     // markup corruption, e.g. MiniMax-M3 <function_calls> leaks).
     super::body_log::maybe_dump_request_body(&model, &request);
 

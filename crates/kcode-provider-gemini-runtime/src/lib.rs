@@ -1,16 +1,16 @@
 //! Gemini provider runtime (Google Code Assist OAuth + official Developer API
-//! key), moved out of `jcode-base` so provider edits compile only this crate
+//! key), moved out of `kcode-base` so provider edits compile only this crate
 //! plus a binary relink instead of rebuilding the base -> app-core -> tui
 //! spine. The binary's composition root registers [`GeminiProvider`] with
-//! `jcode_base::provider::external` at startup.
+//! `kcode_base::provider::external` at startup.
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::Utc;
-use jcode_base::auth::gemini as gemini_auth;
-use jcode_message_types::{ConnectionPhase, Message, StreamEvent, ToolDefinition};
-use jcode_provider_core::{EventStream, Provider};
-pub use jcode_provider_gemini::{
+use kcode_base::auth::gemini as gemini_auth;
+use kcode_message_types::{ConnectionPhase, Message, StreamEvent, ToolDefinition};
+use kcode_provider_core::{EventStream, Provider};
+pub use kcode_provider_gemini::{
     AVAILABLE_MODELS, CODE_ASSIST_API_VERSION, CODE_ASSIST_ENDPOINT, ClientMetadata,
     CodeAssistGenerateRequest, CodeAssistGenerateResponse, DEFAULT_MODEL, GEMINI_API_ENDPOINT,
     GEMINI_API_VERSION, GeminiCandidate, GeminiContent, GeminiFunctionCall,
@@ -59,12 +59,12 @@ enum GeminiAuthMode {
 
 impl GeminiProvider {
     fn persisted_catalog_path() -> Result<std::path::PathBuf> {
-        Ok(jcode_base::storage::app_config_dir()?.join("gemini_models_cache.json"))
+        Ok(kcode_base::storage::app_config_dir()?.join("gemini_models_cache.json"))
     }
 
     fn load_persisted_catalog() -> Option<PersistedCatalog> {
         let path = Self::persisted_catalog_path().ok()?;
-        jcode_base::storage::read_json(&path)
+        kcode_base::storage::read_json(&path)
             .ok()
             .filter(|catalog: &PersistedCatalog| !catalog.models.is_empty())
     }
@@ -80,8 +80,8 @@ impl GeminiProvider {
             models: models.to_vec(),
             fetched_at_rfc3339: Utc::now().to_rfc3339(),
         };
-        if let Err(error) = jcode_base::storage::write_json(&path, &payload) {
-            jcode_base::logging::warn(&format!(
+        if let Err(error) = kcode_base::storage::write_json(&path, &payload) {
+            kcode_base::logging::warn(&format!(
                 "Failed to persist Gemini model catalog {}: {}",
                 path.display(),
                 error
@@ -98,7 +98,7 @@ impl GeminiProvider {
     }
 
     pub fn new() -> Self {
-        let model = std::env::var("JCODE_GEMINI_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
+        let model = std::env::var("KCODE_GEMINI_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
         let provider = Self {
             client: gemini_http_client(),
             model: Arc::new(RwLock::new(model)),
@@ -135,7 +135,7 @@ impl GeminiProvider {
     /// An official Gemini Developer API key takes precedence over OAuth Code
     /// Assist credentials: it points at `generativelanguage.googleapis.com` with
     /// the key's own (often higher) quota, while OAuth uses the free
-    /// cloudcode-pa tier. Set `JCODE_GEMINI_FORCE_OAUTH=1` to pin OAuth even when
+    /// cloudcode-pa tier. Set `KCODE_GEMINI_FORCE_OAUTH=1` to pin OAuth even when
     /// a key is present.
     fn auth_mode() -> GeminiAuthMode {
         if !gemini_auth::force_oauth() && let Some(api_key) = gemini_auth::api_key() {
@@ -277,7 +277,7 @@ impl GeminiProvider {
 
         let models = extract_gemini_model_ids(&response);
         if !models.is_empty() {
-            jcode_base::logging::info(&format!(
+            kcode_base::logging::info(&format!(
                 "Discovered Gemini Code Assist models: {}",
                 models.join(", ")
             ));
@@ -297,7 +297,7 @@ impl GeminiProvider {
         let response: Value = match self.get_json_api_key(&url, api_key, "ListModels").await {
             Ok(response) => response,
             Err(err) => {
-                jcode_base::logging::info(&format!(
+                kcode_base::logging::info(&format!(
                     "Gemini Developer API model discovery failed: {err:#}"
                 ));
                 return Ok(Vec::new());
@@ -318,7 +318,7 @@ impl GeminiProvider {
 
         let models = merge_gemini_model_lists(raw);
         if !models.is_empty() {
-            jcode_base::logging::info(&format!(
+            kcode_base::logging::info(&format!(
                 "Discovered Gemini Developer API models: {}",
                 models.join(", ")
             ));
@@ -393,12 +393,12 @@ impl GeminiProvider {
 
             if !resp.status().is_success() {
                 let status = resp.status();
-                let body = jcode_base::util::http_error_body(resp, "HTTP error").await;
+                let body = kcode_base::util::http_error_body(resp, "HTTP error").await;
                 let transient =
                     status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
                 if transient && attempt < MAX_429_RETRIES {
                     let delay = Duration::from_millis(1500u64.saturating_mul(1u64 << attempt));
-                    jcode_base::logging::warn(&format!(
+                    kcode_base::logging::warn(&format!(
                         "Gemini {} hit transient HTTP {} (attempt {}/{}); retrying in {:?}",
                         method,
                         status.as_u16(),
@@ -451,7 +451,7 @@ impl GeminiProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = jcode_base::util::http_error_body(resp, "HTTP error").await;
+            let body = kcode_base::util::http_error_body(resp, "HTTP error").await;
             anyhow::bail!(
                 "Gemini request {} failed (HTTP {}): {}",
                 label,
@@ -487,7 +487,7 @@ impl GeminiProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = jcode_base::util::http_error_body(resp, "HTTP error").await;
+            let body = kcode_base::util::http_error_body(resp, "HTTP error").await;
             anyhow::bail!("Gemini {} failed (HTTP {}): {}", label, status, body.trim());
         }
 
@@ -513,7 +513,7 @@ impl GeminiProvider {
 
         if !resp.status().is_success() {
             let status = resp.status();
-            let body = jcode_base::util::http_error_body(resp, "HTTP error").await;
+            let body = kcode_base::util::http_error_body(resp, "HTTP error").await;
             anyhow::bail!(
                 "Gemini operation lookup failed (HTTP {}): {}",
                 status,
@@ -533,7 +533,7 @@ impl GeminiProvider {
     /// endpoint dislikes 400s the whole session rather than one tool. The
     /// historical fix was to append the keyword to a deny-list and ship a
     /// release (#754, #655); this recovers in the same turn instead, and
-    /// `jcode-schema-dialect` remembers it so later requests never send it.
+    /// `kcode-schema-dialect` remembers it so later requests never send it.
     ///
     /// Returns `None` when the error is not a recoverable schema rejection,
     /// so the caller falls through to its normal error handling. The quirk
@@ -553,15 +553,15 @@ impl GeminiProvider {
         system: &str,
         resume_session_id: Option<&str>,
     ) -> Option<Result<CodeAssistGenerateResponse>> {
-        let dialect = &jcode_schema_dialect::registry::GEMINI;
-        match jcode_schema_dialect::recover_from_error(error, dialect) {
-            jcode_schema_dialect::RecoveryAction::NotSchemaRelated => None,
-            jcode_schema_dialect::RecoveryAction::Unrecoverable { hint } => {
-                jcode_base::logging::warn(&format!("Gemini tool-schema rejection: {hint}"));
+        let dialect = &kcode_schema_dialect::registry::GEMINI;
+        match kcode_schema_dialect::recover_from_error(error, dialect) {
+            kcode_schema_dialect::RecoveryAction::NotSchemaRelated => None,
+            kcode_schema_dialect::RecoveryAction::Unrecoverable { hint } => {
+                kcode_base::logging::warn(&format!("Gemini tool-schema rejection: {hint}"));
                 None
             }
-            jcode_schema_dialect::RecoveryAction::RetryWithoutConstruct { description } => {
-                jcode_base::logging::warn(&format!("Gemini {description}"));
+            kcode_schema_dialect::RecoveryAction::RetryWithoutConstruct { description } => {
+                kcode_base::logging::warn(&format!("Gemini {description}"));
                 Some(
                     self.generate_content(state, model, messages, tools, system, resume_session_id)
                         .await,
@@ -625,7 +625,7 @@ impl GeminiProvider {
             "tools": tools_value.as_ref(),
             "tool_config": &request.request.tool_config,
         });
-        jcode_provider_core::fingerprint::log_provider_canonical_input(
+        kcode_provider_core::fingerprint::log_provider_canonical_input(
             "gemini",
             model,
             "gemini_generate_content",
@@ -758,7 +758,7 @@ impl Provider for GeminiProvider {
                     let mut fallback_response = None;
                     let mut last_err = err;
                     for fallback_model in gemini_fallback_models(&model) {
-                        jcode_base::logging::warn(&format!(
+                        kcode_base::logging::warn(&format!(
                             "Gemini model '{}' was not found; retrying with fallback '{}'",
                             model, fallback_model
                         ));
@@ -797,7 +797,7 @@ impl Provider for GeminiProvider {
                     // so the provider is unusable until jcode ships a new
                     // keyword. Learn the rejected construct from the error,
                     // persist it, and retry this turn without it. See
-                    // `jcode-schema-dialect`.
+                    // `kcode-schema-dialect`.
                     match provider
                         .retry_after_schema_rejection(
                             &err.to_string(),
@@ -944,7 +944,7 @@ impl Provider for GeminiProvider {
                                 .id
                                 .clone()
                                 .unwrap_or_else(|| Uuid::new_v4().to_string());
-                            let call_id = jcode_message_types::sanitize_tool_id(&raw_call_id);
+                            let call_id = kcode_message_types::sanitize_tool_id(&raw_call_id);
                             let _ = tx
                                 .send(Ok(StreamEvent::ToolUseStart {
                                     id: call_id,
@@ -999,7 +999,7 @@ impl Provider for GeminiProvider {
                             .as_deref()
                             .filter(|msg| !msg.trim().is_empty())
                             .map(|msg| {
-                                format!(": {}", jcode_base::util::truncate_str(msg.trim(), 300))
+                                format!(": {}", kcode_base::util::truncate_str(msg.trim(), 300))
                             })
                             .unwrap_or_default();
                         let _ = tx
@@ -1036,7 +1036,7 @@ impl Provider for GeminiProvider {
     fn set_model(&self, model: &str) -> Result<()> {
         // See `strip_own_model_prefix`: `--provider gemini` routes through this
         // runtime directly, so session restore hands it `gemini:<model>`.
-        let trimmed = jcode_provider_core::strip_own_model_prefix(model, "gemini:");
+        let trimmed = kcode_provider_core::strip_own_model_prefix(model, "gemini:");
         if trimmed.is_empty() {
             anyhow::bail!("Gemini model cannot be empty");
         }
@@ -1073,10 +1073,10 @@ impl Provider for GeminiProvider {
         self.available_models_display()
     }
 
-    fn model_routes(&self) -> Vec<jcode_provider_core::ModelRoute> {
+    fn model_routes(&self) -> Vec<kcode_provider_core::ModelRoute> {
         self.available_models_display()
             .into_iter()
-            .map(|model| jcode_provider_core::ModelRoute {
+            .map(|model| kcode_provider_core::ModelRoute {
                 model,
                 provider: "Gemini".to_string(),
                 api_method: "code-assist-oauth".to_string(),
@@ -1153,13 +1153,13 @@ fn gemini_http_client() -> reqwest::Client {
         .pool_max_idle_per_host(0)
         .tcp_keepalive(Some(Duration::from_secs(30)))
         .build()
-        .unwrap_or_else(|_| jcode_provider_core::shared_http_client())
+        .unwrap_or_else(|_| kcode_provider_core::shared_http_client())
 }
 
 /// User-Agent matching the official Gemini CLI. Override with
-/// `JCODE_GEMINI_USER_AGENT` if Google changes the accepted format.
+/// `KCODE_GEMINI_USER_AGENT` if Google changes the accepted format.
 fn gemini_user_agent() -> String {
-    if let Ok(ua) = std::env::var("JCODE_GEMINI_USER_AGENT")
+    if let Ok(ua) = std::env::var("KCODE_GEMINI_USER_AGENT")
         && !ua.trim().is_empty()
     {
         return ua;
@@ -1180,7 +1180,7 @@ fn is_transient_gemini_transport_error(err: &reqwest::Error) -> bool {
     // connect/timeout flags which don't always surface in the message text.
     err.is_connect()
         || err.is_timeout()
-        || jcode_provider_core::is_transient_transport_error(&err.to_string())
+        || kcode_provider_core::is_transient_transport_error(&err.to_string())
 }
 
 fn is_gemini_model_not_found_error(err: &anyhow::Error) -> bool {

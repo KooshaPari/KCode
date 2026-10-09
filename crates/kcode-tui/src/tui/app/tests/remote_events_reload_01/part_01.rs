@@ -1150,8 +1150,8 @@ fn test_handle_post_connect_plain_reconnect_does_not_trigger_client_reload_even_
     // (short alias `tigress` vs full `session_tigress_…`).
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::TempDir::new().expect("create temp home");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp_home.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp_home.path());
 
     let mut app = create_test_app();
     // Simulate a freshly-built launcher payload: mtime in the future means
@@ -1188,9 +1188,9 @@ fn test_handle_post_connect_plain_reconnect_does_not_trigger_client_reload_even_
     assert!(!app.should_quit, "must not quit on a plain reconnect");
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 

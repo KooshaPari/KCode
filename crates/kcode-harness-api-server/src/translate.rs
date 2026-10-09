@@ -2,7 +2,7 @@
 //! internal protocol. Kept side-effect free so it is trivially unit-testable.
 
 use crate::background_progress::parse_background_notification;
-use jcode_harness_api::{
+use kcode_harness_api::{
     ApiEvent, ErrorCode, HistoryMessage, ModelRouteInfo, ServerFrame, SessionInfo, TextMatch,
 };
 use rusqlite::{Connection, params};
@@ -16,7 +16,7 @@ use std::sync::{
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(test)]
-pub(crate) fn jcode_home_test_lock() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) fn kcode_home_test_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
     LOCK.get_or_init(|| std::sync::Mutex::new(()))
         .lock()
@@ -183,7 +183,7 @@ pub struct BridgeState {
     current_effort: Option<String>,
     available_routes: Vec<ModelRouteInfo>,
     /// Deltas can precede the first catalog or a delayed snapshot reply.
-    model_usage_updates: BTreeMap<(String, String, String), jcode_harness_api::ModelUsage>,
+    model_usage_updates: BTreeMap<(String, String, String), kcode_harness_api::ModelUsage>,
 }
 
 impl BridgeState {
@@ -506,7 +506,7 @@ impl BridgeState {
                     self.pending_create_dir = working_dir.clone();
                     if working_dir
                         .as_deref()
-                        .is_some_and(Self::path_is_inside_jcode_repo)
+                        .is_some_and(Self::path_is_inside_kcode_repo)
                     {
                         subscribe["selfdev"] = json!(true);
                     }
@@ -765,8 +765,8 @@ impl BridgeState {
                         session_id,
                     })
                     .collect();
-                jcode_harness_api::enrich_sessions_from_local_swarm_state(&mut sessions);
-                jcode_harness_api::enrich_sessions_from_local_edit_stats(&mut sessions);
+                kcode_harness_api::enrich_sessions_from_local_swarm_state(&mut sessions);
+                kcode_harness_api::enrich_sessions_from_local_edit_stats(&mut sessions);
                 let completed = list_started.elapsed();
                 eprintln!(
                     "harness API bridge: list_sessions ids={:.1}ms metadata={:.1}ms total={:.1}ms count={}",
@@ -1209,7 +1209,7 @@ impl BridgeState {
         }
         // Missing means empty; malformed must not clear a valid snapshot.
         let snapshot = if snapshot.is_null() {
-            jcode_harness_api::jcode_applet_types::AgentApplets::default()
+            kcode_harness_api::kcode_applet_types::AgentApplets::default()
         } else {
             serde_json::from_value(snapshot.clone()).ok()?
         };
@@ -1226,7 +1226,7 @@ impl BridgeState {
         // Missing history state means empty: native history omits empty panels.
         // Malformed snapshots must not clear a previously valid document.
         let snapshot = if snapshot.is_null() {
-            jcode_harness_api::SidePanelSnapshot::default()
+            kcode_harness_api::SidePanelSnapshot::default()
         } else {
             serde_json::from_value(snapshot.clone()).ok()?
         };
@@ -1957,7 +1957,7 @@ impl BridgeState {
                     route["model"].as_str(),
                     route["provider"].as_str(),
                     route["api_method"].as_str(),
-                    serde_json::from_value::<jcode_harness_api::ModelUsage>(route["usage"].clone()),
+                    serde_json::from_value::<kcode_harness_api::ModelUsage>(route["usage"].clone()),
                 ) else {
                     return vec![];
                 };
@@ -2114,10 +2114,10 @@ impl BridgeState {
             if let ApiEvent::Attached { session } | ApiEvent::SessionForked { session } =
                 &mut frame.event
             {
-                jcode_harness_api::enrich_sessions_from_local_edit_stats(std::slice::from_mut(
+                kcode_harness_api::enrich_sessions_from_local_edit_stats(std::slice::from_mut(
                     session,
                 ));
-                jcode_harness_api::enrich_sessions_from_local_swarm_state(std::slice::from_mut(
+                kcode_harness_api::enrich_sessions_from_local_swarm_state(std::slice::from_mut(
                     session,
                 ));
             }
@@ -2225,10 +2225,10 @@ impl BridgeState {
     ///
     /// Matched by content (a workspace manifest next to the crates directory)
     /// rather than by name, so a clone in any directory is recognised.
-    fn path_is_inside_jcode_repo(path: &str) -> bool {
+    fn path_is_inside_kcode_repo(path: &str) -> bool {
         let mut current = Some(std::path::Path::new(path));
         while let Some(dir) = current {
-            if dir.join("Cargo.toml").is_file() && dir.join("crates/jcode-base").is_dir() {
+            if dir.join("Cargo.toml").is_file() && dir.join("crates/kcode-base").is_dir() {
                 return true;
             }
             current = dir.parent();
@@ -2239,7 +2239,7 @@ impl BridgeState {
     /// Path of a session's persisted record, or `None` if the id is not a
     /// plain session id.
     ///
-    /// One funnel for three reasons. It honours `JCODE_HOME`, without which a
+    /// One funnel for three reasons. It honours `KCODE_HOME`, without which a
     /// launched instance reads the *user's* sessions: `peek_session` served
     /// the real transcripts of the jcode the user runs interactively, which
     /// defeats the isolation an embedded instance exists to provide. It
@@ -2259,7 +2259,7 @@ impl BridgeState {
         {
             return None;
         }
-        let home = match std::env::var_os("JCODE_HOME") {
+        let home = match std::env::var_os("KCODE_HOME") {
             Some(home) => std::path::PathBuf::from(home),
             None => std::path::Path::new(&std::env::var_os("HOME")?).join(".jcode"),
         };
@@ -2371,8 +2371,8 @@ impl BridgeState {
             .as_millis() as u64
     }
 
-    fn jcode_home() -> Option<std::path::PathBuf> {
-        std::env::var_os("JCODE_HOME")
+    fn kcode_home() -> Option<std::path::PathBuf> {
+        std::env::var_os("KCODE_HOME")
             .map(std::path::PathBuf::from)
             .or_else(|| {
                 std::env::var_os("HOME").map(|home| std::path::Path::new(&home).join(".jcode"))
@@ -2380,7 +2380,7 @@ impl BridgeState {
     }
 
     fn recent_session_index_path() -> Option<std::path::PathBuf> {
-        Some(Self::jcode_home()?.join("session-metadata-v1.sqlite3"))
+        Some(Self::kcode_home()?.join("session-metadata-v1.sqlite3"))
     }
 
     /// Name sessions recorded before first-prompt titles existed. Each
@@ -2463,7 +2463,7 @@ impl BridgeState {
                 }
                 std::iter::once(first)
                     .chain(texts)
-                    .find_map(jcode_session_types::prompt_title)
+                    .find_map(kcode_session_types::prompt_title)
             }
         }
         #[derive(Default)]
@@ -2641,7 +2641,7 @@ impl BridgeState {
                 .map(|entry| entry.session_id)
                 .collect();
         }
-        let Some(home) = Self::jcode_home() else {
+        let Some(home) = Self::kcode_home() else {
             return Vec::new();
         };
         let Ok(entries) = std::fs::read_dir(home.join("sessions")) else {
@@ -2703,7 +2703,7 @@ impl BridgeState {
     }
 
     fn archive_state_path() -> Option<std::path::PathBuf> {
-        Some(Self::jcode_home()?.join("sdk-archive.json"))
+        Some(Self::kcode_home()?.join("sdk-archive.json"))
     }
 
     fn state_write_guard() -> MutexGuard<'static, ()> {
@@ -2759,7 +2759,7 @@ impl BridgeState {
     }
 
     fn app_config_dir() -> Option<std::path::PathBuf> {
-        if let Some(home) = std::env::var_os("JCODE_HOME") {
+        if let Some(home) = std::env::var_os("KCODE_HOME") {
             return Some(std::path::Path::new(&home).join("config/jcode"));
         }
         #[cfg(target_os = "macos")]
@@ -2798,8 +2798,8 @@ impl BridgeState {
                 &["GEMINI_API_KEY", "GOOGLE_API_KEY"],
                 "gemini.env",
             )),
-            "jcode" | "subscription" | "jcode-subscription" => {
-                Some(("jcode", &["JCODE_API_KEY"], "jcode-subscription.env"))
+            "jcode" | "subscription" | "kcode-subscription" => {
+                Some(("jcode", &["KCODE_API_KEY"], "kcode-subscription.env"))
             }
             _ => None,
         }

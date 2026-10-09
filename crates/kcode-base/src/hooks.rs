@@ -556,14 +556,7 @@ mod tests {
     fn transform_test_config(hook: &str, timeout_ms: u64) -> impl Drop + use<> {
         struct EnvReset(Vec<(&'static str, Option<std::ffi::OsString>)>);
         impl Drop for EnvReset {
-            fn drop(&mut self) {
-                for (key, previous) in self.0.drain(..) {
-                    match previous {
-                        Some(value) => crate::env::set_var(key, value),
-                        None => crate::env::remove_var(key),
-                    }
-                }
-            }
+            
         }
         let reset = EnvReset(vec![
             (

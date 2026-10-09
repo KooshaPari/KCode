@@ -399,29 +399,10 @@ fn resume_terminal_candidates_windows() -> Vec<String> {
 }
 
 #[cfg(not(unix))]
-pub fn spawn_resume_in_new_terminal(
-    exe: &std::path::Path,
-    session_id: &str,
-    cwd: &std::path::Path,
-) -> Result<bool> {
-    spawn_resume_in_new_terminal_with_provider(exe, session_id, cwd, None)
-}
+
 
 #[cfg(not(unix))]
-pub fn spawn_resume_in_new_terminal_with_provider(
-    exe: &std::path::Path,
-    session_id: &str,
-    cwd: &std::path::Path,
-    provider_key: Option<&str>,
-) -> Result<bool> {
-    spawn_resume_in_new_terminal_with_context(
-        exe,
-        session_id,
-        cwd,
-        provider_key,
-        &SessionSpawnContext::default(),
-    )
-}
+
 
 #[cfg(not(unix))]
 pub fn spawn_resume_in_new_terminal_with_context(
@@ -521,29 +502,10 @@ pub fn spawn_resume_in_new_terminal_with_context(
 }
 
 #[cfg(not(unix))]
-pub fn spawn_selfdev_in_new_terminal(
-    exe: &std::path::Path,
-    session_id: &str,
-    cwd: &std::path::Path,
-) -> Result<bool> {
-    spawn_selfdev_in_new_terminal_with_provider(exe, session_id, cwd, None)
-}
+
 
 #[cfg(not(unix))]
-pub fn spawn_selfdev_in_new_terminal_with_provider(
-    exe: &std::path::Path,
-    session_id: &str,
-    cwd: &std::path::Path,
-    provider_key: Option<&str>,
-) -> Result<bool> {
-    spawn_selfdev_in_new_terminal_with_context(
-        exe,
-        session_id,
-        cwd,
-        provider_key,
-        &SessionSpawnContext::default(),
-    )
-}
+
 
 #[cfg(not(unix))]
 pub fn spawn_selfdev_in_new_terminal_with_context(

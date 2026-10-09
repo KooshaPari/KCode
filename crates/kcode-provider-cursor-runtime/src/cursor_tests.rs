@@ -57,13 +57,13 @@ fn merge_cursor_models_deduplicates_dynamic_entries() {
 
 #[test]
 fn available_models_display_seeds_from_persisted_catalog() {
-    let _guard = jcode_base::storage::lock_test_env();
+    let _guard = kcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    jcode_base::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    kcode_base::env::set_var("KCODE_HOME", temp.path());
 
     let path = CursorCliProvider::persisted_catalog_path().expect("catalog path");
-    jcode_base::storage::write_json(
+    kcode_base::storage::write_json(
         &path,
         &PersistedCatalog {
             models: vec!["cursor-disk-model".to_string()],
@@ -80,9 +80,9 @@ fn available_models_display_seeds_from_persisted_catalog() {
     );
 
     if let Some(prev_home) = prev_home {
-        jcode_base::env::set_var("JCODE_HOME", prev_home);
+        kcode_base::env::set_var("KCODE_HOME", prev_home);
     } else {
-        jcode_base::env::remove_var("JCODE_HOME");
+        kcode_base::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -100,13 +100,13 @@ fn set_model_accepts_composer_models() {
 #[test]
 fn runtime_cursor_api_key_reads_env() {
     let previous = std::env::var_os("CURSOR_API_KEY");
-    jcode_base::env::set_var("CURSOR_API_KEY", "cursor-env-test");
+    kcode_base::env::set_var("CURSOR_API_KEY", "cursor-env-test");
 
     assert_eq!(runtime_cursor_api_key().as_deref(), Some("cursor-env-test"));
 
     if let Some(previous) = previous {
-        jcode_base::env::set_var("CURSOR_API_KEY", previous);
+        kcode_base::env::set_var("CURSOR_API_KEY", previous);
     } else {
-        jcode_base::env::remove_var("CURSOR_API_KEY");
+        kcode_base::env::remove_var("CURSOR_API_KEY");
     }
 }

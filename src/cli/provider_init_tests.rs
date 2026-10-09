@@ -168,8 +168,8 @@ async fn explicit_openai_api_choice_overrides_configured_compatible_default() {
     let keys = [
         "KCODE_HOME",
         "OPENAI_API_KEY",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
         "KCODE_NAMED_PROVIDER_PROFILE",
         "KCODE_RUNTIME_PROVIDER",
         "KCODE_ACTIVE_PROVIDER",
@@ -301,10 +301,10 @@ fn test_init_provider_kcode_delegates_runtime_profile_to_wrapper() {
         .block_on(init_provider(&ProviderChoice::Jcode, None))
         .expect("init kcode provider");
 
-    // Display name is Jcode Subscription since b7b5977f8 (subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME).
+    // Display name is Jcode Subscription since b7b5977f8 (subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME).
     assert_eq!(
         provider.name(),
-        crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
+        crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
     );
     assert!(crate::subscription_catalog::is_runtime_mode_enabled());
     assert_eq!(
@@ -650,8 +650,8 @@ fn apply_login_provider_profile_env_keeps_an_explicit_named_profile() {
         "KCODE_OPENROUTER_API_BASE",
         "KCODE_OPENROUTER_API_KEY_NAME",
         "KCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
     ]
     .iter()
     .map(|k| (k.to_string(), std::env::var(k).ok()))
@@ -700,8 +700,8 @@ fn apply_login_provider_profile_env_preserves_compatible_profile_for_auto_spawn(
         "KCODE_OPENROUTER_TRANSPORT_STATE",
         "KCODE_OPENROUTER_ALLOW_NO_AUTH",
         "KCODE_OPENROUTER_STATIC_MODELS",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
         "KCODE_NAMED_PROVIDER_PROFILE",
     ]
     .iter()
@@ -729,7 +729,7 @@ fn apply_login_provider_profile_env_preserves_compatible_profile_for_auto_spawn(
         Some("opencode-go.env")
     );
     assert_eq!(
-        std::env::var("JCODE_PROVIDER_PROFILE_ACTIVE")
+        std::env::var("KCODE_PROVIDER_PROFILE_ACTIVE")
             .ok()
             .as_deref(),
         Some("1")
@@ -755,7 +755,7 @@ fn apply_login_provider_profile_env_preserves_compatible_profile_for_auto_spawn(
         Some("OPENCODE_API_KEY")
     );
     assert_eq!(
-        std::env::var("JCODE_PROVIDER_PROFILE_ACTIVE")
+        std::env::var("KCODE_PROVIDER_PROFILE_ACTIVE")
             .ok()
             .as_deref(),
         Some("1")
@@ -874,8 +874,8 @@ async fn auto_provider_uses_config_default_named_no_auth_provider() {
         "KCODE_OPENROUTER_ENV_FILE",
         "KCODE_OPENROUTER_DEFAULT_MODEL",
         "KCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
         "KCODE_NAMED_PROVIDER_PROFILE",
         "KCODE_RUNTIME_PROVIDER",
         "KCODE_ACTIVE_PROVIDER",
@@ -900,8 +900,8 @@ async fn auto_provider_uses_config_default_named_no_auth_provider() {
         "KCODE_OPENROUTER_ENV_FILE",
         "KCODE_OPENROUTER_DEFAULT_MODEL",
         "KCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
         "KCODE_NAMED_PROVIDER_PROFILE",
         "KCODE_RUNTIME_PROVIDER",
         "KCODE_ACTIVE_PROVIDER",

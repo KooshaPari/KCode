@@ -53,15 +53,15 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use interrupts::{NoToolCallOutcome, PostToolInterruptOutcome};
-pub use jcode_agent_runtime::{
+pub use kcode_agent_runtime::{
     BackgroundToolSignal, GracefulShutdownSignal, InterruptSignal, SoftInterruptMessage,
     SoftInterruptQueue, SoftInterruptSource, StreamError,
 };
 
-const JCODE_NATIVE_TOOLS: &[&str] = &["selfdev", "desktop_selfdev", "communicate"];
+const KCODE_NATIVE_TOOLS: &[&str] = &["selfdev", "desktop_selfdev", "communicate"];
 static RECOVERED_TEXT_WRAPPED_TOOL_CALLS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
-static JCODE_REPO_SOURCE_STATE: LazyLock<(Option<String>, Option<bool>)> = LazyLock::new(|| {
+static KCODE_REPO_SOURCE_STATE: LazyLock<(Option<String>, Option<bool>)> = LazyLock::new(|| {
     crate::build::get_repo_dir()
         .map(|repo_dir| {
             (
@@ -280,7 +280,7 @@ pub struct Agent {
     /// telemetry slot and of any TUI clients viewing this agent.
     concurrency_session: Option<crate::telemetry::ConcurrencySession>,
     /// Time-based trigger controlling when micro-compaction runs.
-    micro_compact_trigger: jcode_micro_compact::TimeBasedTrigger,
+    micro_compact_trigger: kcode_micro_compact::TimeBasedTrigger,
 }
 
 impl Agent {
@@ -294,7 +294,7 @@ impl Agent {
     }
 
     fn should_track_client_cache(&self) -> bool {
-        match std::env::var("JCODE_TRACK_CLIENT_CACHE") {
+        match std::env::var("KCODE_TRACK_CLIENT_CACHE") {
             Ok(value) => {
                 let value = value.trim();
                 !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
@@ -757,7 +757,7 @@ impl Agent {
                         manager.discard_oversized_openai_native_compaction();
                     let messages = {
                         let all_messages = self.session.provider_messages();
-                        if self.provider.uses_jcode_compaction() {
+                        if self.provider.uses_kcode_compaction() {
                             let action =
                                 manager.ensure_context_fits(all_messages, self.provider.clone());
                             match action {
@@ -829,7 +829,7 @@ impl Agent {
         }
 
         let fast_snapshot =
-            if !self.provider.uses_jcode_compaction() && self.session.compaction.is_none() {
+            if !self.provider.uses_kcode_compaction() && self.session.compaction.is_none() {
                 let previous_count = self.cache_tracker.previous_message_count();
                 let prefix_hashes = self.session.provider_message_prefix_hashes();
                 let current_count = prefix_hashes.len();
@@ -1009,7 +1009,7 @@ impl Agent {
             .working_dir
             .as_deref()
             .map(std::path::Path::new)
-            .and_then(jcode_selfdev_types::desktop_repo_root)
+            .and_then(kcode_selfdev_types::desktop_repo_root)
             .is_some()
     }
 

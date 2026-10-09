@@ -97,9 +97,7 @@ impl Provider for SwitchableMockProvider {
         }
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 
     fn switch_active_provider_to(&self, provider: &str) -> Result<()> {
         *self.active_provider.lock().unwrap() = provider.to_string();
@@ -203,9 +201,7 @@ impl Provider for AuthRefreshingMockProvider {
         *self.logged_in.lock().unwrap() = true;
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 #[derive(Clone)]
@@ -237,9 +233,7 @@ impl Provider for AsyncAuthRefreshingMockProvider {
         self.completed.store(true, Ordering::SeqCst);
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 fn create_auth_refresh_test_app() -> App {
@@ -322,9 +316,7 @@ impl Provider for AntigravityMockProvider {
         ]
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 fn create_antigravity_picker_test_app() -> App {
@@ -443,9 +435,7 @@ impl Provider for LoginSmokeModelProvider {
         ]
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 fn create_login_smoke_model_app() -> App {
@@ -481,9 +471,7 @@ impl Provider for FailingModelSwitchProvider {
         "failing-model-switch"
     }
 
-    fn model(&self) -> String {
-        "gpt-5.4".to_string()
-    }
+    
 
     fn model_routes(&self) -> Vec<crate::provider::ModelRoute> {
         vec![crate::provider::ModelRoute {
@@ -501,9 +489,7 @@ impl Provider for FailingModelSwitchProvider {
         anyhow::bail!("credentials expired")
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 fn create_failing_model_switch_test_app() -> App {
@@ -645,9 +631,7 @@ impl Provider for DualMethodMockProvider {
         Ok(())
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 fn create_dual_method_test_app() -> (App, StdArc<StdMutex<Option<String>>>) {

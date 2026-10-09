@@ -7,7 +7,7 @@ use crate::protocol::{NotificationType, ServerEvent};
 use crate::session::Session;
 use anyhow::Result;
 use futures::future::try_join_all;
-use jcode_swarm_core::{
+use kcode_swarm_core::{
     completion_notification_message, normalize_completion_report, truncate_detail,
 };
 use serde::Deserialize;
@@ -24,12 +24,12 @@ fn status_age_secs(last_status_change: Instant) -> u64 {
 }
 
 /// Maximum number of live members (agents) in a single swarm. Re-exported from
-/// `jcode_swarm_core` so the server, tools, and prompts all agree on the one
+/// `kcode_swarm_core` so the server, tools, and prompts all agree on the one
 /// runaway-prevention cap for the task-graph model. Normal and light swarms are
 /// root-only, one-level fan-out. Deep-swarm roots may create recursive trees with
 /// no depth limit, but both the configurable live-worker budget and this absolute
 /// cap still apply.
-pub(super) use jcode_swarm_core::MAX_SWARM_MEMBERS;
+pub(super) use kcode_swarm_core::MAX_SWARM_MEMBERS;
 
 /// Walk the `report_back_to_session_id` chain upward from `session_id`,
 /// returning the list of ancestor session ids (parent first, root last).
@@ -116,7 +116,7 @@ fn swarm_status_debounce_member_threshold() -> usize {
     static CACHED: OnceLock<AtomicUsize> = OnceLock::new();
     CACHED
         .get_or_init(|| {
-            let configured = std::env::var("JCODE_SWARM_STATUS_DEBOUNCE_MEMBER_THRESHOLD")
+            let configured = std::env::var("KCODE_SWARM_STATUS_DEBOUNCE_MEMBER_THRESHOLD")
                 .ok()
                 .and_then(|value| value.trim().parse::<usize>().ok())
                 .filter(|value| *value > 0)
@@ -130,7 +130,7 @@ fn swarm_status_debounce_ms() -> u64 {
     static CACHED: OnceLock<AtomicU64> = OnceLock::new();
     CACHED
         .get_or_init(|| {
-            let configured = std::env::var("JCODE_SWARM_STATUS_DEBOUNCE_MS")
+            let configured = std::env::var("KCODE_SWARM_STATUS_DEBOUNCE_MS")
                 .ok()
                 .and_then(|value| value.trim().parse::<u64>().ok())
                 .filter(|value| *value > 0)
@@ -167,21 +167,21 @@ fn log_swarm_lifecycle(phase: &str, fields: Vec<(&str, String)>) {
 
 pub(super) fn swarm_task_heartbeat_interval() -> Duration {
     Duration::from_secs(configured_positive_u64(
-        "JCODE_SWARM_TASK_HEARTBEAT_SECS",
+        "KCODE_SWARM_TASK_HEARTBEAT_SECS",
         DEFAULT_SWARM_TASK_HEARTBEAT_SECS,
     ))
 }
 
 pub(super) fn swarm_task_stale_after() -> Duration {
     Duration::from_secs(configured_positive_u64(
-        "JCODE_SWARM_TASK_STALE_AFTER_SECS",
+        "KCODE_SWARM_TASK_STALE_AFTER_SECS",
         DEFAULT_SWARM_TASK_STALE_AFTER_SECS,
     ))
 }
 
 pub(super) fn swarm_task_sweep_interval() -> Duration {
     Duration::from_secs(configured_positive_u64(
-        "JCODE_SWARM_TASK_SWEEP_INTERVAL_SECS",
+        "KCODE_SWARM_TASK_SWEEP_INTERVAL_SECS",
         DEFAULT_SWARM_TASK_SWEEP_INTERVAL_SECS,
     ))
 }
@@ -191,7 +191,7 @@ pub(super) fn swarm_task_sweep_interval() -> Duration {
 /// history to grow forever.
 pub(super) fn swarm_terminal_member_retention() -> Duration {
     Duration::from_secs(configured_positive_u64(
-        "JCODE_SWARM_TERMINAL_MEMBER_RETENTION_SECS",
+        "KCODE_SWARM_TERMINAL_MEMBER_RETENTION_SECS",
         DEFAULT_SWARM_TERMINAL_MEMBER_RETENTION_SECS,
     ))
 }
@@ -200,7 +200,7 @@ pub(super) fn swarm_terminal_member_retention() -> Duration {
 /// has elapsed. Startup loading performs the same pruning synchronously.
 pub(super) fn swarm_terminal_member_gc_interval() -> Duration {
     Duration::from_secs(configured_positive_u64(
-        "JCODE_SWARM_TERMINAL_MEMBER_GC_INTERVAL_SECS",
+        "KCODE_SWARM_TERMINAL_MEMBER_GC_INTERVAL_SECS",
         DEFAULT_SWARM_TERMINAL_MEMBER_GC_INTERVAL_SECS,
     ))
 }
@@ -209,7 +209,7 @@ pub(super) fn swarm_terminal_member_gc_interval() -> Duration {
 /// See [`DEFAULT_SWARM_STATUS_BROADCAST_TERMINAL_SECS`].
 pub(super) fn swarm_status_broadcast_terminal_retention() -> Duration {
     Duration::from_secs(configured_positive_u64(
-        "JCODE_SWARM_STATUS_BROADCAST_TERMINAL_SECS",
+        "KCODE_SWARM_STATUS_BROADCAST_TERMINAL_SECS",
         DEFAULT_SWARM_STATUS_BROADCAST_TERMINAL_SECS,
     ))
 }
@@ -264,7 +264,7 @@ pub(super) fn member_status_is_dead(status: &str) -> bool {
 const DEFAULT_SWARM_IDLE_WORKER_REAP_SECS: u64 = 30 * 60;
 
 pub(super) fn swarm_idle_worker_reap_after() -> Option<Duration> {
-    let secs = std::env::var("JCODE_SWARM_IDLE_WORKER_REAP_SECS")
+    let secs = std::env::var("KCODE_SWARM_IDLE_WORKER_REAP_SECS")
         .ok()
         .and_then(|value| value.trim().parse::<u64>().ok())
         .unwrap_or(DEFAULT_SWARM_IDLE_WORKER_REAP_SECS);
@@ -1225,7 +1225,7 @@ pub(super) async fn set_member_task_label(
     task_text: &str,
     swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
 ) {
-    let Some(label) = jcode_swarm_core::derive_swarm_task_label(task_text) else {
+    let Some(label) = kcode_swarm_core::derive_swarm_task_label(task_text) else {
         return;
     };
     let mut members = swarm_members.write().await;
@@ -1740,7 +1740,7 @@ mod tests {
     use crate::plan::PlanItem;
     use crate::protocol::{NotificationType, ServerEvent};
     use crate::server::{SwarmMember, VersionedPlan};
-    use jcode_swarm_core::{
+    use kcode_swarm_core::{
         append_swarm_completion_report_instructions, summarize_plan_items, truncate_detail,
     };
     use std::collections::{HashMap, HashSet};
@@ -1905,14 +1905,14 @@ mod tests {
     #[test]
     fn idle_worker_reap_window_env_zero_disables() {
         let _env_lock = crate::storage::lock_test_env();
-        crate::env::set_var("JCODE_SWARM_IDLE_WORKER_REAP_SECS", "0");
+        crate::env::set_var("KCODE_SWARM_IDLE_WORKER_REAP_SECS", "0");
         assert_eq!(super::swarm_idle_worker_reap_after(), None);
-        crate::env::set_var("JCODE_SWARM_IDLE_WORKER_REAP_SECS", "90");
+        crate::env::set_var("KCODE_SWARM_IDLE_WORKER_REAP_SECS", "90");
         assert_eq!(
             super::swarm_idle_worker_reap_after(),
             Some(Duration::from_secs(90))
         );
-        crate::env::remove_var("JCODE_SWARM_IDLE_WORKER_REAP_SECS");
+        crate::env::remove_var("KCODE_SWARM_IDLE_WORKER_REAP_SECS");
         assert!(super::swarm_idle_worker_reap_after().is_some());
     }
 
@@ -2173,7 +2173,7 @@ mod tests {
     /// `broadcast_swarm_status_now` snapshots member statuses under
     /// `swarm_members.read()`, drops the guard, then awaits
     /// `fanout_session_event` (a `swarm_members.write()` acquisition) before
-    /// sending. Swarms below `JCODE_SWARM_STATUS_DEBOUNCE_MEMBER_THRESHOLD`
+    /// sending. Swarms below `KCODE_SWARM_STATUS_DEBOUNCE_MEMBER_THRESHOLD`
     /// (default 2) take this immediate, non-debounced path on every status
     /// change, so two concurrent broadcasts can deliver an old snapshot after
     /// a newer one on the same ordered mpsc channel. A last-write-wins

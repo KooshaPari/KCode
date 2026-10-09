@@ -1,6 +1,6 @@
 use super::openrouter_sse_stream::run_stream_with_retries;
 use super::*;
-use jcode_base::provider::{ModelCatalogRefreshSummary, summarize_model_catalog_refresh};
+use kcode_base::provider::{ModelCatalogRefreshSummary, summarize_model_catalog_refresh};
 
 #[async_trait]
 impl Provider for OpenRouterProvider {
@@ -94,7 +94,7 @@ impl Provider for OpenRouterProvider {
             false
         };
 
-        let api_messages = jcode_provider_openrouter::request::build_chat_messages(
+        let api_messages = kcode_provider_openrouter::request::build_chat_messages(
             &effective_messages,
             system,
             allow_reasoning,
@@ -115,7 +115,7 @@ impl Provider for OpenRouterProvider {
                         "description": t.description,
                         // Sanitized so bare `{"type":"object"}` MCP tool
                         // schemas do not 400 on strict endpoints (issue #446).
-                        "parameters": jcode_provider_openrouter::request::sanitize_tool_parameters_schema(&t.input_schema),
+                        "parameters": kcode_provider_openrouter::request::sanitize_tool_parameters_schema(&t.input_schema),
                     }
                 })
             })
@@ -140,7 +140,7 @@ impl Provider for OpenRouterProvider {
 
         let sent_reasoning_config = reasoning_effort.as_deref().is_some_and(|effort| {
             let resolved =
-                jcode_base::prompt::swarm_root_reasoning_effort(effort).unwrap_or(effort);
+                kcode_base::prompt::swarm_root_reasoning_effort(effort).unwrap_or(effort);
             self.apply_resolved_reasoning_effort(&mut request, resolved, strict_openai_schema)
         });
 
@@ -208,7 +208,7 @@ impl Provider for OpenRouterProvider {
         // Merge user-configured extra request-body fields last so they can
         // satisfy non-standard backend requirements (e.g. NVIDIA NIM
         // DeepSeek-V4 `chat_template_kwargs`) and intentionally override any
-        // jcode-generated field with the same key (issue #341).
+        // kcode-generated field with the same key (issue #341).
         if let Some(extra) = self.extra_body.as_ref()
             && let Some(request_obj) = request.as_object_mut()
         {
@@ -232,7 +232,7 @@ impl Provider for OpenRouterProvider {
             .and_then(|value| value.as_array())
             .map(|tools| tools.len())
             .unwrap_or(0);
-        jcode_provider_core::fingerprint::log_provider_canonical_input(
+        kcode_provider_core::fingerprint::log_provider_canonical_input(
             if self.supports_provider_features {
                 "openrouter"
             } else {
@@ -257,7 +257,7 @@ impl Provider for OpenRouterProvider {
         );
 
         // OpenRouter uses HTTPS/SSE transport only
-        jcode_base::logging::info("OpenRouter transport: HTTPS (SSE)");
+        kcode_base::logging::info("OpenRouter transport: HTTPS (SSE)");
 
         let (tx, rx) = mpsc::channel::<Result<StreamEvent>>(100);
         let client = self.client.clone();
@@ -376,7 +376,7 @@ impl Provider for OpenRouterProvider {
         let (model_id, provider) = if self.supports_provider_features {
             let (model_id, provider) = parse_model_spec(trimmed);
             let model_id = if provider.is_some() {
-                jcode_base::provider::openrouter_catalog_model_id(&model_id).unwrap_or(model_id)
+                kcode_base::provider::openrouter_catalog_model_id(&model_id).unwrap_or(model_id)
             } else {
                 model_id
             };
@@ -388,7 +388,7 @@ impl Provider for OpenRouterProvider {
             (trimmed.to_string(), None)
         };
         if let Some(profile_id) = self.profile_id.as_deref()
-            && !jcode_base::provider_catalog::openai_compatible_profile_model_supports_chat(
+            && !kcode_base::provider_catalog::openai_compatible_profile_model_supports_chat(
                 profile_id, &model_id,
             )
         {
@@ -433,7 +433,7 @@ impl Provider for OpenRouterProvider {
             .ok()
             .and_then(|effort| effort.clone());
         if let Some(stored_effort) = stored_effort
-            && !jcode_base::prompt::is_swarm_effort(&stored_effort)
+            && !kcode_base::prompt::is_swarm_effort(&stored_effort)
             && !self.available_efforts().contains(&stored_effort.as_str())
             && let Ok(mut effort) = self.reasoning_effort.try_write()
         {
@@ -484,14 +484,14 @@ impl Provider for OpenRouterProvider {
 
     fn available_efforts(&self) -> Vec<&'static str> {
         if self.supports_deepseek_reasoning_effort() {
-            jcode_provider_core::DEEPSEEK_SELECTABLE_EFFORTS.to_vec()
+            kcode_provider_core::DEEPSEEK_SELECTABLE_EFFORTS.to_vec()
         } else if self.supports_openai_reasoning_effort() {
-            jcode_provider_core::OPENAI_SELECTABLE_EFFORTS.to_vec()
+            kcode_provider_core::OPENAI_SELECTABLE_EFFORTS.to_vec()
         } else if Self::profile_supports_unified_reasoning(
             self.profile_id.as_deref(),
             self.send_openrouter_headers,
         ) {
-            jcode_provider_core::OPENROUTER_SELECTABLE_EFFORTS.to_vec()
+            kcode_provider_core::OPENROUTER_SELECTABLE_EFFORTS.to_vec()
         } else {
             vec![]
         }
@@ -593,7 +593,7 @@ impl Provider for OpenRouterProvider {
         self.available_models_display()
     }
 
-    fn model_routes(&self) -> Vec<jcode_provider_core::ModelRoute> {
+    fn model_routes(&self) -> Vec<kcode_provider_core::ModelRoute> {
         let (provider_label, api_method, detail) = self
             .direct_openai_compatible_route_parts()
             .unwrap_or_else(|| {
@@ -609,7 +609,7 @@ impl Provider for OpenRouterProvider {
 
         self.available_models_display()
             .into_iter()
-            .filter(|model| jcode_base::provider::is_listable_model_name(model))
+            .filter(|model| kcode_base::provider::is_listable_model_name(model))
             .map(|model| {
                 let fallback_not_live = is_direct_profile
                     && live_model_ids
@@ -625,7 +625,7 @@ impl Provider for OpenRouterProvider {
                 } else {
                     detail.clone()
                 };
-                jcode_provider_core::ModelRoute {
+                kcode_provider_core::ModelRoute {
                     model,
                     provider: provider_label.clone(),
                     api_method: api_method.clone(),
@@ -743,7 +743,7 @@ impl Provider for OpenRouterProvider {
         // Config loading seeds explicit per-model context windows here. They
         // must outrank built-in profile family guesses. See #1087.
         if let Some(limit) =
-            jcode_base::provider::cached_context_limit_for_model(&normalized_model_id)
+            kcode_base::provider::cached_context_limit_for_model(&normalized_model_id)
         {
             return limit;
         }
@@ -765,7 +765,7 @@ impl Provider for OpenRouterProvider {
         }
         if let Some(profile_id) = self.profile_id.as_deref()
             && let Some(limit) =
-                jcode_base::provider_catalog::openai_compatible_profile_context_limit(
+                kcode_base::provider_catalog::openai_compatible_profile_context_limit(
                     profile_id, &model_id,
                 )
         {
@@ -779,8 +779,8 @@ impl Provider for OpenRouterProvider {
         if super::ollama_context::is_ollama_api_base(&self.api_base, self.profile_id.as_deref()) {
             return super::ollama_context::OLLAMA_DEFAULT_SERVING_CONTEXT as usize;
         }
-        jcode_provider_core::context_limit_for_model_with_provider(&model_id, Some(self.name()))
-            .unwrap_or(jcode_provider_core::DEFAULT_CONTEXT_LIMIT)
+        kcode_provider_core::context_limit_for_model_with_provider(&model_id, Some(self.name()))
+            .unwrap_or(kcode_provider_core::DEFAULT_CONTEXT_LIMIT)
     }
 
     fn fork(&self) -> Arc<dyn Provider> {
@@ -832,7 +832,7 @@ impl OpenRouterProvider {
     /// writes should use.
     ///
     /// Every `new_named_openai_compatible()` constructor sets the process-global
-    /// `JCODE_OPENROUTER_CACHE_NAMESPACE` env var, so with several named
+    /// `KCODE_OPENROUTER_CACHE_NAMESPACE` env var, so with several named
     /// profiles in one process the last one constructed wins and all profiles
     /// collide on a single `<last-profile>_models.json`. The background refresh
     /// path already passes an explicit namespace; the foreground paths did not.
@@ -850,7 +850,7 @@ impl OpenRouterProvider {
     /// (#607) and a `source_api_base` that matches this endpoint.
     pub(crate) fn load_usable_model_disk_cache_entry(
         &self,
-    ) -> Option<jcode_provider_openrouter::DiskCache> {
+    ) -> Option<kcode_provider_openrouter::DiskCache> {
         self.load_disk_cache_entry_for_this_profile()
             .filter(|entry| self.model_disk_cache_source_matches(entry))
     }
@@ -859,12 +859,12 @@ impl OpenRouterProvider {
     /// namespace env var for user-named profiles (#607).
     pub(crate) fn load_disk_cache_entry_for_this_profile(
         &self,
-    ) -> Option<jcode_provider_openrouter::DiskCache> {
+    ) -> Option<kcode_provider_openrouter::DiskCache> {
         match self.foreground_cache_namespace() {
             Some(namespace) => {
-                jcode_provider_openrouter::load_disk_cache_entry_for_namespace(&namespace)
+                kcode_provider_openrouter::load_disk_cache_entry_for_namespace(&namespace)
             }
-            None => jcode_provider_openrouter::load_disk_cache_entry(),
+            None => kcode_provider_openrouter::load_disk_cache_entry(),
         }
     }
 
@@ -875,7 +875,7 @@ impl OpenRouterProvider {
         let Some(id) = self.profile_id.as_deref() else {
             return false;
         };
-        match jcode_base::provider_catalog::openai_compatible_profile_by_id(id) {
+        match kcode_base::provider_catalog::openai_compatible_profile_by_id(id) {
             // A `[providers.<name>]` block that shadows a built-in profile name
             // but points somewhere else is still a user-declared endpoint, so
             // its explicit model list must be preserved.
@@ -942,7 +942,7 @@ impl OpenRouterProvider {
 }
 
 /// Whether one catalog entry declares `image` as an accepted input modality.
-fn declares_image_input(model: &jcode_provider_openrouter::ModelInfo) -> bool {
+fn declares_image_input(model: &kcode_provider_openrouter::ModelInfo) -> bool {
     model
         .input
         .iter()

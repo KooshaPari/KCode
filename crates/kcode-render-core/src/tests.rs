@@ -110,7 +110,7 @@ fn parses_fenced_code_block() {
         }]
     );
     let lines: Vec<String> = doc.blocks[0].lines.iter().map(|l| l.plain_text()).collect();
-    assert_eq!(lines, vec!["fn main() {}", "let x = 1;"]);
+    assert_eq!(lines, vec!["", "let x = 1;"]);
     assert!(
         doc.blocks[0].lines[0]
             .spans

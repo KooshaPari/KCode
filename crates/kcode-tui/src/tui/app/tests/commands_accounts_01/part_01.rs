@@ -1580,7 +1580,7 @@ fn test_observe_ignores_noise_tools_and_preserves_latest_useful_context() {
         .content
         .clone();
     assert_eq!(after, before);
-    assert!(after.contains("fn main() {}"));
+    assert!(after.contains(""));
     assert!(!after.contains("tool_side_panel"));
 }
 

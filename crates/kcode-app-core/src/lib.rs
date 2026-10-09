@@ -52,11 +52,11 @@ pub mod turn_cancel_registry;
 pub mod update;
 
 /// Terminal emulator detection, escape-sequence helpers, and shell
-/// integration for jcode.  Delegates to `jcode-terminal-detect` and
-/// `jcode-shell-integration`.
+/// integration for jcode.  Delegates to `kcode-terminal-detect` and
+/// `kcode-shell-integration`.
 pub mod terminal {
-    pub use jcode_terminal_detect as detect;
-    pub use jcode_shell_integration as shell;
+    pub use kcode_terminal_detect as detect;
+    pub use kcode_shell_integration as shell;
 }
 
 use std::sync::Mutex;

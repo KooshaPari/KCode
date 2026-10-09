@@ -108,13 +108,9 @@ impl AuthProviderId {
 pub struct RuntimeProviderKey(pub String);
 
 impl RuntimeProviderKey {
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
+    
 
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
+    
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -122,13 +118,9 @@ impl RuntimeProviderKey {
 pub struct CatalogNamespace(pub String);
 
 impl CatalogNamespace {
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
+    
 
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
+    
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]

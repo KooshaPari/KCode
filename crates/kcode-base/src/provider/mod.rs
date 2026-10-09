@@ -114,9 +114,6 @@ pub fn active_provider_fork() -> Option<Arc<dyn Provider>> {
 /// Provider-agnostic streaming idle-timeout budgets. See
 /// [`stream_timeout`] for the base budget and the reasoning-effort scaling that
 /// keeps long silent thinks from looking like dead connections (issue #434).
-pub use stream_timeout::{
-    MAX_STREAM_IDLE_TIMEOUT_MULTIPLIER, max_stream_idle_timeout, stream_idle_timeout,
-    stream_idle_timeout_for_effort, stream_idle_timeout_multiplier_for_effort,
 };
 
 /// Multiplier applied to the base streaming idle timeout for a given reasoning
@@ -1130,8 +1127,8 @@ impl MultiProvider {
                     });
                 if switching_from_named_anthropic {
                     crate::env::remove_var("KCODE_NAMED_PROVIDER_PROFILE");
-                    crate::env::remove_var("JCODE_PROVIDER_PROFILE_ACTIVE");
-                    crate::env::remove_var("JCODE_PROVIDER_PROFILE_NAME");
+                    crate::env::remove_var("KCODE_PROVIDER_PROFILE_ACTIVE");
+                    crate::env::remove_var("KCODE_PROVIDER_PROFILE_NAME");
                     crate::provider_catalog::clear_anthropic_profile_env();
                     crate::env::set_var(
                         "KCODE_RUNTIME_PROVIDER",

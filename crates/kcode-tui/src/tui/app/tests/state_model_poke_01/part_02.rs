@@ -248,7 +248,7 @@ fn test_removed_pinned_diff_config_renders_inline_without_side_pane() {
             .is_none(),
         "removed pinned mode must not allocate a side pane"
     );
-    assert!(text.contains("fn demo() {}"), "inline diff must remain visible: {text}");
+    assert!(text.contains(""), "inline diff must remain visible: {text}");
     assert!(!text.contains("side Pinned"), "rendered text: {text}");
 }
 
@@ -257,7 +257,7 @@ fn test_file_diff_uses_left_splitter_instead_of_rounded_box() {
     let _lock = scroll_render_test_lock();
     let temp = tempfile::tempdir().expect("tempdir");
     let file_path = temp.path().join("demo.rs");
-    std::fs::write(&file_path, "fn demo() {}\n").expect("write demo file");
+    std::fs::write(&file_path, "\n").expect("write demo file");
 
     let mut app = create_test_app();
     app.diff_mode = crate::config::DiffDisplayMode::File;

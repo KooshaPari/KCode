@@ -181,21 +181,11 @@ impl From<String> for SwarmLifecycleStatus {
 }
 
 impl Serialize for SwarmLifecycleStatus {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.as_str().as_ref())
-    }
+    
 }
 
 impl<'de> Deserialize<'de> for SwarmLifecycleStatus {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        Ok(Self::from(String::deserialize(deserializer)?))
-    }
+    
 }
 
 /// Durable, persistable portion of a swarm member.

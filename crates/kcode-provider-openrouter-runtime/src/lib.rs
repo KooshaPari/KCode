@@ -1346,7 +1346,7 @@ impl OpenRouterProvider {
     /// (e.g. NVIDIA NIM) even though `name()` is fixed at `"openrouter"`.
     pub fn runtime_display_name(&self) -> String {
         if self.is_kcode_subscription_runtime() {
-            return kcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string();
+            return kcode_base::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string();
         }
 
         // Direct OpenAI-compatible profile (NVIDIA NIM, DeepSeek, Z.AI, ...).
@@ -1390,8 +1390,8 @@ impl OpenRouterProvider {
 
         if self.is_kcode_subscription_runtime() {
             return Some((
-                kcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                kcode_base::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+                kcode_base::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+                kcode_base::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
                 self.api_base.clone(),
             ));
         }

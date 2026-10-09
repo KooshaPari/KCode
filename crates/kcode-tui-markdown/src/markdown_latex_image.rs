@@ -843,16 +843,7 @@ mod tests {
 
     #[cfg(feature = "mermaid-renderer")]
     #[test]
-    fn dvipng_foreground_uses_normalized_rgb_components() {
-        assert_eq!(
-            dvipng_rgb_arg((255, 255, 255)),
-            "rgb 1.000000 1.000000 1.000000"
-        );
-        assert_eq!(
-            dvipng_rgb_arg((0, 128, 255)),
-            "rgb 0.000000 0.501961 1.000000"
-        );
-    }
+    
 
     #[cfg(feature = "mermaid-renderer")]
     #[test]

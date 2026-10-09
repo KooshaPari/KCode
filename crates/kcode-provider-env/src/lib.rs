@@ -274,19 +274,19 @@ mod tests {
     #[test]
     fn loads_api_key_from_env_before_config_file() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let _guard = EnvGuard::new(&["KCODE_HOME", "JCODE_PROVIDER_ENV_TEST_KEY"]);
+        let _guard = EnvGuard::new(&["KCODE_HOME", "KCODE_PROVIDER_ENV_TEST_KEY"]);
         kcode_core::env::set_var("KCODE_HOME", temp.path());
 
         save_env_value_to_env_file(
-            "JCODE_PROVIDER_ENV_TEST_KEY",
+            "KCODE_PROVIDER_ENV_TEST_KEY",
             "provider-env-test.env",
             Some("file-key"),
         )
         .expect("save file key");
-        kcode_core::env::set_var("JCODE_PROVIDER_ENV_TEST_KEY", "env-key");
+        kcode_core::env::set_var("KCODE_PROVIDER_ENV_TEST_KEY", "env-key");
 
         assert_eq!(
-            load_api_key_from_env_or_config("JCODE_PROVIDER_ENV_TEST_KEY", "provider-env-test.env")
+            load_api_key_from_env_or_config("KCODE_PROVIDER_ENV_TEST_KEY", "provider-env-test.env")
                 .as_deref(),
             Some("env-key")
         );
@@ -295,20 +295,20 @@ mod tests {
     #[test]
     fn loads_and_removes_values_from_sandboxed_config_file() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let _guard = EnvGuard::new(&["KCODE_HOME", "JCODE_PROVIDER_ENV_TEST_VALUE"]);
+        let _guard = EnvGuard::new(&["KCODE_HOME", "KCODE_PROVIDER_ENV_TEST_VALUE"]);
         kcode_core::env::set_var("KCODE_HOME", temp.path());
 
         save_env_value_to_env_file(
-            "JCODE_PROVIDER_ENV_TEST_VALUE",
+            "KCODE_PROVIDER_ENV_TEST_VALUE",
             "provider-env-test.env",
             Some("file-value"),
         )
         .expect("save file value");
 
-        kcode_core::env::remove_var("JCODE_PROVIDER_ENV_TEST_VALUE");
+        kcode_core::env::remove_var("KCODE_PROVIDER_ENV_TEST_VALUE");
         assert_eq!(
             load_env_value_from_env_or_config(
-                "JCODE_PROVIDER_ENV_TEST_VALUE",
+                "KCODE_PROVIDER_ENV_TEST_VALUE",
                 "provider-env-test.env"
             )
             .as_deref(),
@@ -316,14 +316,14 @@ mod tests {
         );
 
         save_env_value_to_env_file(
-            "JCODE_PROVIDER_ENV_TEST_VALUE",
+            "KCODE_PROVIDER_ENV_TEST_VALUE",
             "provider-env-test.env",
             None,
         )
         .expect("remove file value");
         assert_eq!(
             load_env_value_from_env_or_config(
-                "JCODE_PROVIDER_ENV_TEST_VALUE",
+                "KCODE_PROVIDER_ENV_TEST_VALUE",
                 "provider-env-test.env"
             ),
             None
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn loads_api_key_with_zero_width_space_from_config_file() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let _guard = EnvGuard::new(&["KCODE_HOME", "JCODE_PROVIDER_FOO_API_KEY"]);
+        let _guard = EnvGuard::new(&["KCODE_HOME", "KCODE_PROVIDER_FOO_API_KEY"]);
         kcode_core::env::set_var("KCODE_HOME", temp.path());
 
         // Write an env file with a U+200B zero-width space prefixed onto the key,
@@ -380,12 +380,12 @@ mod tests {
         std::fs::create_dir_all(&config_dir).expect("create config dir");
         std::fs::write(
             config_dir.join("provider-foo.env"),
-            "JCODE_PROVIDER_FOO_API_KEY=\u{200B}sk-mykey123\n",
+            "KCODE_PROVIDER_FOO_API_KEY=\u{200B}sk-mykey123\n",
         )
         .expect("write env file");
 
         assert_eq!(
-            load_api_key_from_env_or_config("JCODE_PROVIDER_FOO_API_KEY", "provider-foo.env")
+            load_api_key_from_env_or_config("KCODE_PROVIDER_FOO_API_KEY", "provider-foo.env")
                 .as_deref(),
             Some("sk-mykey123")
         );
@@ -394,13 +394,13 @@ mod tests {
     #[test]
     fn loads_api_key_with_invisible_chars_from_env_var() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let _guard = EnvGuard::new(&["KCODE_HOME", "JCODE_PROVIDER_BAR_API_KEY"]);
+        let _guard = EnvGuard::new(&["KCODE_HOME", "KCODE_PROVIDER_BAR_API_KEY"]);
         kcode_core::env::set_var("KCODE_HOME", temp.path());
         // NBSP + BOM padding around the env-provided key.
-        kcode_core::env::set_var("JCODE_PROVIDER_BAR_API_KEY", "\u{00A0}sk-env-key\u{FEFF}");
+        kcode_core::env::set_var("KCODE_PROVIDER_BAR_API_KEY", "\u{00A0}sk-env-key\u{FEFF}");
 
         assert_eq!(
-            load_api_key_from_env_or_config("JCODE_PROVIDER_BAR_API_KEY", "provider-bar.env")
+            load_api_key_from_env_or_config("KCODE_PROVIDER_BAR_API_KEY", "provider-bar.env")
                 .as_deref(),
             Some("sk-env-key")
         );

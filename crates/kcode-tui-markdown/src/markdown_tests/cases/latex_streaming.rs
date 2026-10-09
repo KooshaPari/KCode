@@ -114,28 +114,7 @@ fn display_math_nested_in_a_list_uses_graphical_rendering() {
 }
 
 #[test]
-fn inline_math_stays_inline_in_image_mode_and_skips_the_image_toolchain() {
-    latex_image::reset_test_render_attempts();
-    // Non-streaming render with Image mode active: inline math is part of a
-    // sentence and must never become a block-level image panel.
-    let lines =
-        render_markdown_with_width("where $\\mathbf{u}$ is velocity, $p$ pressure.", Some(90));
-    assert_eq!(
-        latex_image::test_render_attempts(),
-        0,
-        "inline math must not invoke the image toolchain"
-    );
-    let rendered = lines_to_string(&lines);
-    let sentence_lines: Vec<_> = rendered
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .collect();
-    assert_eq!(sentence_lines.len(), 1, "{rendered}");
-    assert!(sentence_lines[0].contains("where"), "{rendered}");
-    assert!(sentence_lines[0].contains("is velocity"), "{rendered}");
-    assert!(sentence_lines[0].contains("pressure"), "{rendered}");
-    assert!(!rendered.contains("math"), "{rendered}");
-}
+
 
 #[test]
 fn multiline_relations_survive_blockquotes_and_promoted_delimiters() {

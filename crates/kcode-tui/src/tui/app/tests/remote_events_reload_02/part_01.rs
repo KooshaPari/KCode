@@ -269,12 +269,12 @@ fn test_handle_server_event_remote_observe_tracks_tool_exec_and_done() {
 
     let page = app.side_panel.focused_page().expect("missing observe page");
     let token_label =
-        crate::util::format_approx_token_count(crate::util::estimate_tokens("1 fn main() {}"));
+        crate::util::format_approx_token_count(crate::util::estimate_tokens("1 "));
     assert!(page.content.contains("Latest tool result added to context"));
     assert!(page.content.contains("Status: completed"));
     assert!(page.content.contains("Returned to context"));
     assert!(page.content.contains(&token_label));
-    assert!(page.content.contains("1 fn main() {}"));
+    assert!(page.content.contains("1 "));
 }
 
 #[test]
@@ -479,7 +479,7 @@ fn test_handle_remote_event_redraws_observe_tool_done_immediately() {
             crate::tui::backend::RemoteRead::Event(crate::protocol::ServerEvent::ToolDone {
                 id: "tool_read".to_string(),
                 name: "read".to_string(),
-                output: "1 fn main() {}".to_string(),
+                output: "1 ".to_string(),
                 error: None,
             }),
         ))

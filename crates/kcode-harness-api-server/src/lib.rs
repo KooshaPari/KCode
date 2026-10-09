@@ -227,7 +227,7 @@ pub async fn run_bridge(api_socket: PathBuf, legacy_socket: PathBuf) -> Result<(
         api_socket.display(),
         legacy_socket.display()
     );
-    // Backwards-compat: also bind the legacy `jcode-api.sock` path on Unix so
+    // Backwards-compat: also bind the legacy `kcode-api.sock` path on Unix so
     // legacy desktop clients (built against the pre-rename API) can still
     // connect for one release cycle. We only do this if a legacy socket is
     // already present — we never create a fresh one, since that would shadow

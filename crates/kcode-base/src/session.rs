@@ -9,7 +9,7 @@ use crate::storage::{active_pids_dir, register_active_pid, unregister_active_pid
 
 /// RAII guard that marks a session as actively streaming for its lifetime.
 ///
-/// Wraps the on-disk streaming marker from `jcode-storage` (cleared on every
+/// Wraps the on-disk streaming marker from `kcode-storage` (cleared on every
 /// exit path so presence UIs never show a phantom streaming session) and
 /// additionally holds a macOS power assertion so the system does not
 /// idle-sleep in the middle of a streaming model response.
@@ -46,8 +46,8 @@ pub use crash::{
     CrashedSessionsInfo, detect_crashed_sessions, find_recent_crashed_sessions,
     find_session_by_name_or_id, recover_crashed_sessions, recover_crashed_sessions_by_ids,
 };
-pub use jcode_session_types::prompt_title;
-pub use jcode_session_types::{
+pub use kcode_session_types::prompt_title;
+pub use kcode_session_types::{
     EnvSnapshot, GitState, SessionImproveMode, SessionStatus, StoredCompactionState,
     StoredDisplayRole, StoredMemoryInjection, StoredMessage, StoredTokenUsage,
 };
@@ -291,11 +291,11 @@ fn env_flag_enabled(name: &str) -> bool {
 }
 
 fn default_is_test_session() -> bool {
-    env_flag_enabled("JCODE_TEST_SESSION")
+    env_flag_enabled("KCODE_TEST_SESSION")
 }
 
 fn default_fork_max_depth() -> u8 {
-    jcode_permission_bubble::MAX_FORK_DEPTH as u8
+    kcode_permission_bubble::MAX_FORK_DEPTH as u8
 }
 
 pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
@@ -304,21 +304,21 @@ pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
         return Some("jcode".to_string());
     }
 
-    if let Ok(runtime_provider) = std::env::var("JCODE_RUNTIME_PROVIDER") {
+    if let Ok(runtime_provider) = std::env::var("KCODE_RUNTIME_PROVIDER") {
         let runtime_provider = runtime_provider.trim().to_ascii_lowercase();
         if !runtime_provider.is_empty() && runtime_provider != "openai-compatible" {
             return Some(runtime_provider);
         }
     }
 
-    if let Ok(namespace) = std::env::var("JCODE_OPENROUTER_CACHE_NAMESPACE") {
+    if let Ok(namespace) = std::env::var("KCODE_OPENROUTER_CACHE_NAMESPACE") {
         let namespace = namespace.trim().to_ascii_lowercase();
         if !namespace.is_empty() {
             return Some(namespace);
         }
     }
 
-    if let Ok(active) = std::env::var("JCODE_ACTIVE_PROVIDER") {
+    if let Ok(active) = std::env::var("KCODE_ACTIVE_PROVIDER") {
         let active = active.trim().to_ascii_lowercase();
         if !active.is_empty() {
             return Some(active);
@@ -1395,7 +1395,7 @@ request in this new forked session, using the inherited conversation only as con
     pub fn strip_oversized_images(&mut self, target_total_chars: usize) -> usize {
         let mut contents: Vec<&mut Vec<ContentBlock>> =
             self.messages.iter_mut().map(|m| &mut m.content).collect();
-        let stripped = jcode_compaction_core::strip_large_images_in_contents(
+        let stripped = kcode_compaction_core::strip_large_images_in_contents(
             &mut contents,
             target_total_chars,
         );

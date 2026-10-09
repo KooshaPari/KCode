@@ -19,7 +19,7 @@
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use anyhow::Context;
 use anyhow::Result;
-use jcode_storage as storage;
+use kcode_storage as storage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{self, IsTerminal};
@@ -52,7 +52,7 @@ use macos_terminal::load_preferred_macos_terminal;
 #[cfg(any(test, target_os = "macos"))]
 use macos_terminal::{
     MacTerminalKind, effective_macos_terminal, escape_applescript_text, escape_shell_single_quotes,
-    launch_command_for_macos_terminal, paused_jcode_shell_command, save_preferred_macos_terminal,
+    launch_command_for_macos_terminal, paused_kcode_shell_command, save_preferred_macos_terminal,
 };
 #[cfg(windows)]
 use windows_setup::{
@@ -173,7 +173,7 @@ impl Default for SetupHintsState {
 ///   migrate so the plan file and per-entry scripts are written, enabling the
 ///   baked per-repo hotkeys auto-import can add.
 /// - 5: the listener launches configured repos directly through
-///   `jcode-terminal-launch`, avoiding the generated shell-script hop on hotkey
+///   `kcode-terminal-launch`, avoiding the generated shell-script hop on hotkey
 ///   press. Scripts/plan are still written for compatibility and diagnostics.
 /// - 6: direct launches pass `--spawn-hotkey` into the new Jcode process so
 ///   global shortcut proficiency is recorded by the same cross-platform path.
@@ -220,7 +220,7 @@ impl StartupHints {
 
 impl SetupHintsState {
     fn path() -> Result<PathBuf> {
-        Ok(storage::jcode_dir()?.join("setup_hints.json"))
+        Ok(storage::kcode_dir()?.join("setup_hints.json"))
     }
 
     pub fn load() -> Self {
@@ -279,7 +279,7 @@ impl SetupHintsState {
 
 #[cfg(any(test, target_os = "macos", target_os = "linux", windows))]
 fn mac_hotkey_support_dir() -> Result<PathBuf> {
-    Ok(storage::jcode_dir()?.join("hotkey"))
+    Ok(storage::kcode_dir()?.join("hotkey"))
 }
 
 /// File holding the last project directory jcode was launched from. The `Cmd+'`
@@ -309,13 +309,13 @@ fn mac_hotkey_plan_file() -> Result<PathBuf> {
 /// Returns the default (empty -> built-in 3 hotkeys) when the file is missing or
 /// the section is absent. Best-effort: a malformed config falls back to default
 /// rather than blocking hotkey install.
-fn load_launch_hotkeys_config() -> jcode_config_types::LaunchHotkeysConfig {
+fn load_launch_hotkeys_config() -> kcode_config_types::LaunchHotkeysConfig {
     #[derive(serde::Deserialize, Default)]
     struct Wrapper {
         #[serde(default)]
-        launch_hotkeys: jcode_config_types::LaunchHotkeysConfig,
+        launch_hotkeys: kcode_config_types::LaunchHotkeysConfig,
     }
-    let Ok(dir) = storage::jcode_dir() else {
+    let Ok(dir) = storage::kcode_dir() else {
         return Default::default();
     };
     let path = dir.join("config.toml");
@@ -341,7 +341,7 @@ pub fn record_launch_dirs(dir: &std::path::Path, repo_dir: Option<&std::path::Pa
     #[cfg(any(target_os = "macos", target_os = "linux", windows))]
     {
         if let Err(err) = record_launch_dirs_inner(dir, repo_dir) {
-            jcode_logging::warn(&format!("failed to record launch dirs for hotkeys: {err}"));
+            kcode_logging::warn(&format!("failed to record launch dirs for hotkeys: {err}"));
         }
     }
     #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
@@ -421,7 +421,7 @@ fn mac_hotkey_launch_agent_plist(
     <string>{stderr_path}</string>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>JCODE_PREFERRED_TERMINAL</key>
+        <key>KCODE_PREFERRED_TERMINAL</key>
         <string>{terminal}</string>
     </dict>
 </dict>
@@ -441,16 +441,16 @@ fn mac_hotkey_launch_agent_plist(
 /// the launch command to an executable `.command` file and `open` it, which
 /// Terminal/iTerm run in a new window without any automation permission.
 #[cfg(target_os = "macos")]
-pub fn launch_jcode_in_macos_terminal(extra_args: &[String]) -> Result<()> {
+pub fn launch_kcode_in_macos_terminal(extra_args: &[String]) -> Result<()> {
     let terminal = effective_macos_terminal();
     let exe = std::env::current_exe()?;
     let exe_path = exe.to_string_lossy().into_owned();
-    let shell_command = macos_terminal::paused_jcode_shell_command_with_args(&exe_path, extra_args);
+    let shell_command = macos_terminal::paused_kcode_shell_command_with_args(&exe_path, extra_args);
 
     let command = match macos_terminal::no_automation_launch(terminal, &shell_command) {
         macos_terminal::NoAutomationLaunch::Shell(command) => command,
         macos_terminal::NoAutomationLaunch::CommandFile { app } => {
-            let dir = storage::jcode_dir()?.join("launcher");
+            let dir = storage::kcode_dir()?.join("launcher");
             std::fs::create_dir_all(&dir)?;
             let script_path = dir.join("open_session.command");
             std::fs::write(
@@ -817,7 +817,7 @@ pub(crate) fn install_cli_launch_hints_notice() {
             }
         }
         Ok(_) => {}
-        Err(err) => jcode_logging::warn(&format!(
+        Err(err) => kcode_logging::warn(&format!(
             "could not install external CLI launch-shortcut reminders: {err}"
         )),
     }
@@ -966,7 +966,7 @@ mod macos_run_loop {
 #[cfg(target_os = "macos")]
 fn run_macos_hotkey_listener() -> Result<()> {
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
-    use jcode_terminal_launch::{TerminalCommand, spawn_command_in_new_terminal_with};
+    use kcode_terminal_launch::{TerminalCommand, spawn_command_in_new_terminal_with};
 
     // `global-hotkey` on macOS registers a Carbon hotkey (`RegisterEventHotKey`)
     // whose events are dispatched through the application's Carbon event target,
@@ -989,7 +989,7 @@ fn run_macos_hotkey_listener() -> Result<()> {
     // The listener runs as its own launchd process and never goes through the
     // normal startup path, so initialize logging here. Diagnostics land in the
     // standard jcode log plus the plist's StandardOut/ErrorPath.
-    jcode_logging::init();
+    kcode_logging::init();
     macos_hotkey_log("starting macOS jcode launch hotkey listener");
 
     let status = macos_run_loop::promote_to_ui_element();
@@ -1060,7 +1060,7 @@ fn run_macos_hotkey_listener() -> Result<()> {
             let command = TerminalCommand::new(&exe_path, args)
                 .fresh_spawn()
                 .kind("hotkey")
-                .spawn_env("JCODE_SPAWN_LABEL", launch.label.clone());
+                .spawn_env("KCODE_SPAWN_LABEL", launch.label.clone());
             match spawn_command_in_new_terminal_with(&command, &cwd, |cmd| cmd.spawn().map(|_| ()))
             {
                 Ok(true) => {}
@@ -1137,7 +1137,7 @@ fn load_direct_hotkey_launches() -> Vec<DirectHotkeyLaunch> {
 /// differently ordered spelling.
 pub fn record_launch_hotkey_use(chord: &str) {
     let Some(chord) = keymap::KeyChord::parse(chord).map(|chord| chord.canonical()) else {
-        jcode_logging::warn(&format!(
+        kcode_logging::warn(&format!(
             "ignored invalid launch hotkey usage chord: {chord}"
         ));
         return;
@@ -1146,7 +1146,7 @@ pub fn record_launch_hotkey_use(chord: &str) {
     let uses = state.launch_hotkey_usage.entry(chord.clone()).or_insert(0);
     *uses = uses.saturating_add(1);
     if let Err(err) = state.save() {
-        jcode_logging::warn(&format!(
+        kcode_logging::warn(&format!(
             "failed to record launch hotkey usage for {chord}: {err}"
         ));
     }
@@ -1159,7 +1159,7 @@ pub fn record_launch_hotkey_use(chord: &str) {
 /// even before/without the structured logger.
 #[cfg(target_os = "macos")]
 fn macos_hotkey_log(message: &str) {
-    jcode_logging::info(message);
+    kcode_logging::info(message);
     eprintln!("[jcode hotkey] {message}");
 }
 
@@ -1229,7 +1229,7 @@ pub fn maybe_show_setup_hints() -> Option<StartupHints> {
         match mac_hotkey_action_for_state(&state, load_launch_hotkeys_config().enabled) {
             MacHotkeyAction::Install => {
                 if let Err(err) = auto_install_macos_hotkey_listener(&mut state) {
-                    jcode_logging::warn(&format!(
+                    kcode_logging::warn(&format!(
                         "failed to auto-install macOS Cmd+; hotkey listener: {err}"
                     ));
                 }
@@ -1239,14 +1239,14 @@ pub fn maybe_show_setup_hints() -> Option<StartupHints> {
                 // updated listener (and current binary path) takes effect on
                 // update without requiring them to re-run setup.
                 if let Err(err) = migrate_macos_hotkey_listener(&mut state) {
-                    jcode_logging::warn(&format!(
+                    kcode_logging::warn(&format!(
                         "failed to migrate macOS Cmd+; hotkey listener: {err}"
                     ));
                 }
             }
             MacHotkeyAction::Disable => {
                 if let Err(err) = uninstall_macos_hotkey_listener() {
-                    jcode_logging::warn(&format!(
+                    kcode_logging::warn(&format!(
                         "failed to remove disabled macOS hotkey listener: {err}"
                     ));
                 }
@@ -1272,19 +1272,19 @@ pub fn maybe_show_setup_hints() -> Option<StartupHints> {
                         state.launch_hotkey_tracking_version = LAUNCH_HOTKEY_TRACKING_VERSION;
                         let _ = state.save();
                         if action == LinuxHotkeySetupAction::Install {
-                            jcode_logging::info(&format!(
+                            kcode_logging::info(&format!(
                                 "Automatically installed {} launch hotkeys on first launch",
                                 comp.name()
                             ));
                         } else {
-                            jcode_logging::info(&format!(
+                            kcode_logging::info(&format!(
                                 "Migrated {} launch hotkeys to usage tracking v{}",
                                 comp.name(),
                                 LAUNCH_HOTKEY_TRACKING_VERSION
                             ));
                         }
                     }
-                    Err(err) => jcode_logging::warn(&format!(
+                    Err(err) => kcode_logging::warn(&format!(
                         "failed to automatically configure {} launch hotkeys: {err}",
                         comp.name()
                     )),
@@ -1302,9 +1302,9 @@ pub fn maybe_show_setup_hints() -> Option<StartupHints> {
                 Ok(()) => {
                     state.launch_hotkey_tracking_version = LAUNCH_HOTKEY_TRACKING_VERSION;
                     let _ = state.save();
-                    jcode_logging::info("Migrated Windows launch hotkeys to usage tracking");
+                    kcode_logging::info("Migrated Windows launch hotkeys to usage tracking");
                 }
-                Err(err) => jcode_logging::warn(&format!(
+                Err(err) => kcode_logging::warn(&format!(
                     "failed to migrate Windows launch hotkeys to usage tracking: {err}"
                 )),
             }
@@ -1517,17 +1517,17 @@ fn linux_hotkey_sentinel(comp: linux_env::LinuxCompositor) -> &'static str {
 fn linux_hotkeys_installed(comp: linux_env::LinuxCompositor) -> bool {
     use linux_env::LinuxCompositor;
     match comp {
-        LinuxCompositor::Gnome => gnome_keybinding_list().contains("/jcode-launch-"),
+        LinuxCompositor::Gnome => gnome_keybinding_list().contains("/kcode-launch-"),
         LinuxCompositor::Cinnamon => {
-            dconf_read("/org/cinnamon/desktop/keybindings/custom-list").contains("jcode-launch-")
+            dconf_read("/org/cinnamon/desktop/keybindings/custom-list").contains("kcode-launch-")
         }
         LinuxCompositor::Mate => {
-            dconf_list("/org/mate/desktop/keybindings/").contains("jcode-launch-")
+            dconf_list("/org/mate/desktop/keybindings/").contains("kcode-launch-")
         }
         LinuxCompositor::Xfce => xfce_shortcut_commands_text().contains("/launch_jcode_"),
         LinuxCompositor::Kde => kde_globalshortcutsrc_path()
             .and_then(|p| std::fs::read_to_string(p).ok())
-            .map(|text| text.contains("[services][jcode-launch-"))
+            .map(|text| text.contains("[services][kcode-launch-"))
             .unwrap_or(false),
         other => linux_hotkey_config_path(other)
             .and_then(|p| std::fs::read_to_string(p).ok())
@@ -1704,7 +1704,7 @@ fn install_niri_launch_hotkeys() -> Result<bool> {
 
     storage::write_bytes(&config_path, result.text.as_bytes())
         .with_context(|| format!("writing {}", config_path.display()))?;
-    jcode_logging::info(&format!(
+    kcode_logging::info(&format!(
         "installed {} niri launch hotkey(s) into {}",
         hotkeys.len(),
         config_path.display()
@@ -1761,7 +1761,7 @@ fn install_flat_launch_hotkeys(comp: linux_env::LinuxCompositor) -> Result<bool>
 
     storage::write_bytes(&config_path, result.text.as_bytes())
         .with_context(|| format!("writing {}", config_path.display()))?;
-    jcode_logging::info(&format!(
+    kcode_logging::info(&format!(
         "installed {} {} launch hotkey(s) into {}",
         binds.len(),
         comp.name(),
@@ -1869,7 +1869,7 @@ fn install_gnome_launch_hotkeys() -> Result<bool> {
         )?;
     }
 
-    jcode_logging::info(&format!(
+    kcode_logging::info(&format!(
         "installed {} GNOME launch hotkey(s) via dconf",
         keybindings.len()
     ));
@@ -1907,7 +1907,7 @@ fn install_cinnamon_launch_hotkeys() -> Result<bool> {
         )?;
     }
 
-    jcode_logging::info(&format!(
+    kcode_logging::info(&format!(
         "installed {} Cinnamon launch hotkey(s) via dconf",
         keybindings.len()
     ));
@@ -1934,7 +1934,7 @@ fn install_mate_launch_hotkeys() -> Result<bool> {
         changed |= dconf_write_checked(&format!("{base}binding"), &gvariant_string(&kb.binding))?;
     }
 
-    jcode_logging::info(&format!(
+    kcode_logging::info(&format!(
         "installed {} MATE launch hotkey(s) via dconf",
         keybindings.len()
     ));
@@ -2015,7 +2015,7 @@ fn install_xfce_launch_hotkeys() -> Result<bool> {
         changed = true;
     }
 
-    jcode_logging::info(&format!(
+    kcode_logging::info(&format!(
         "installed {} XFCE launch hotkey(s) via xfconf",
         wanted.len()
     ));
@@ -2062,7 +2062,7 @@ fn install_kde_launch_hotkeys() -> Result<bool> {
         .stderr(std::process::Stdio::null())
         .status();
 
-    jcode_logging::info(&format!(
+    kcode_logging::info(&format!(
         "installed {} KDE launch hotkey(s) ({} + desktop files)",
         shortcuts.len(),
         rc_path.display()
@@ -2130,9 +2130,9 @@ fn backup_compositor_config(config_path: &std::path::Path) {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "config".to_string());
-    let backup = config_path.with_file_name(format!("{file_name}.bak-jcode-hotkeys-{ts}"));
+    let backup = config_path.with_file_name(format!("{file_name}.bak-kcode-hotkeys-{ts}"));
     if let Err(err) = std::fs::copy(config_path, &backup) {
-        jcode_logging::warn(&format!(
+        kcode_logging::warn(&format!(
             "failed to back up compositor config before hotkey install: {err}"
         ));
     }
@@ -2157,11 +2157,11 @@ fn reload_compositor_config(comp: linux_env::LinuxCompositor) {
         .status()
     {
         Ok(status) if status.success() => {}
-        Ok(status) => jcode_logging::warn(&format!(
+        Ok(status) => kcode_logging::warn(&format!(
             "{} exited with {status} while reloading hotkey binds",
             cmd[0]
         )),
-        Err(err) => jcode_logging::warn(&format!("failed to run {} reload: {err}", cmd[0])),
+        Err(err) => kcode_logging::warn(&format!("failed to run {} reload: {err}", cmd[0])),
     }
 }
 
@@ -2298,7 +2298,7 @@ pub(crate) fn conflict_hint_decision(signature: &str, previous: &str) -> Conflic
 /// The actual diagnostics are always available on demand via the `/keys`
 /// command; this only surfaces the proactive heads-up.
 pub fn maybe_show_keymap_conflict_hint(
-    keybindings: &jcode_config_types::KeybindingsConfig,
+    keybindings: &kcode_config_types::KeybindingsConfig,
 ) -> Option<StartupHints> {
     if !io::stdin().is_terminal() || !io::stderr().is_terminal() {
         return None;
@@ -2319,7 +2319,7 @@ pub fn maybe_show_keymap_conflict_hint(
 /// Returns the optional notice and whether `state` was mutated (and therefore
 /// should be persisted by the caller).
 pub(crate) fn keymap_conflict_hint_for(
-    keybindings: &jcode_config_types::KeybindingsConfig,
+    keybindings: &kcode_config_types::KeybindingsConfig,
     snapshot: &keymap::KeymapSnapshot,
     state: &mut SetupHintsState,
 ) -> (Option<StartupHints>, bool) {
@@ -2345,11 +2345,11 @@ pub(crate) fn keymap_conflict_hint_for(
 
 /// Whether the current terminal triggers jcode's glyph-safe color quantization
 /// (macOS VS Code integrated terminal / Apple Terminal). Mirrors the detection
-/// in `jcode-tui-style`'s color module and `jcode-app-core::perf` so the
+/// in `kcode-tui-style`'s color module and `kcode-app-core::perf` so the
 /// disclosure fires exactly when the behavior is active. Overridable with
-/// `JCODE_GLYPH_SAFE_MODE=on|off`.
+/// `KCODE_GLYPH_SAFE_MODE=on|off`.
 fn glyph_safe_mode_active() -> bool {
-    if let Ok(raw) = std::env::var("JCODE_GLYPH_SAFE_MODE") {
+    if let Ok(raw) = std::env::var("KCODE_GLYPH_SAFE_MODE") {
         match raw.trim().to_ascii_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => return true,
             "0" | "false" | "no" | "off" => return false,
@@ -2400,7 +2400,7 @@ pub(crate) fn glyph_safe_notice_for(
 its glyph cache under jcode's full-color animations, rendering letters as boxes. \
 jcode automatically quantizes colors to the 256-palette here to keep text readable; \
 the only tradeoff is slightly reduced color fidelity. Animations still run. \
-For full color, use Ghostty, iTerm2, kitty, or WezTerm, or set JCODE_GLYPH_SAFE_MODE=off."
+For full color, use Ghostty, iTerm2, kitty, or WezTerm, or set KCODE_GLYPH_SAFE_MODE=off."
         .to_string();
     (
         Some(StartupHints::with_status_and_display(
@@ -2480,7 +2480,7 @@ fn create_desktop_shortcut(state: &mut SetupHintsState) -> Result<()> {
         state.desktop_shortcut_created = true;
         let _ = state.save();
 
-        jcode_logging::info(&format!("Created macOS app bundle: {}", app_dir.display()));
+        kcode_logging::info(&format!("Created macOS app bundle: {}", app_dir.display()));
     }
 
     #[cfg(not(any(test, target_os = "macos")))]
@@ -2505,7 +2505,7 @@ fn uninstall_macos_hotkey_listener() -> Result<()> {
         .args(["unload", plist_path.to_string_lossy().as_ref()])
         .status();
     std::fs::remove_file(&plist_path).context("failed to remove jcode hotkey LaunchAgent plist")?;
-    jcode_logging::info("Removed macOS launch-hotkey LaunchAgent (launch_hotkeys.enabled = false)");
+    kcode_logging::info("Removed macOS launch-hotkey LaunchAgent (launch_hotkeys.enabled = false)");
     Ok(())
 }
 
@@ -2517,7 +2517,7 @@ fn auto_install_macos_hotkey_listener(state: &mut SetupHintsState) -> Result<()>
     state.hotkey_listener_version = HOTKEY_LISTENER_VERSION;
     state.launch_hotkey_tracking_version = LAUNCH_HOTKEY_TRACKING_VERSION;
     state.save()?;
-    jcode_logging::info(&format!(
+    kcode_logging::info(&format!(
         "Installed macOS Cmd+; hotkey listener for {}",
         terminal.label()
     ));
@@ -2539,7 +2539,7 @@ fn migrate_macos_hotkey_listener(state: &mut SetupHintsState) -> Result<()> {
     state.hotkey_listener_version = HOTKEY_LISTENER_VERSION;
     state.launch_hotkey_tracking_version = LAUNCH_HOTKEY_TRACKING_VERSION;
     state.save()?;
-    jcode_logging::info(&format!(
+    kcode_logging::info(&format!(
         "Migrated macOS Cmd+; hotkey listener to v{} for {}",
         HOTKEY_LISTENER_VERSION,
         terminal.label()
@@ -2564,7 +2564,7 @@ pub fn reinstall_launch_hotkeys_after_config_change() {
             // Explicit opt-out: tear the LaunchAgent down instead of
             // rewriting it (issue #670).
             if let Err(err) = uninstall_macos_hotkey_listener() {
-                jcode_logging::warn(&format!(
+                kcode_logging::warn(&format!(
                     "failed to remove disabled macOS hotkey listener: {err}"
                 ));
             }
@@ -2572,11 +2572,11 @@ pub fn reinstall_launch_hotkeys_after_config_change() {
         }
         let preferred = load_preferred_macos_terminal();
         match install_macos_hotkey_listener(preferred) {
-            Ok(terminal) => jcode_logging::info(&format!(
+            Ok(terminal) => kcode_logging::info(&format!(
                 "Reinstalled launch hotkeys after config change for {}",
                 terminal.label()
             )),
-            Err(err) => jcode_logging::warn(&format!("failed to reinstall launch hotkeys: {err}")),
+            Err(err) => kcode_logging::warn(&format!("failed to reinstall launch hotkeys: {err}")),
         }
     }
 
@@ -2594,12 +2594,12 @@ pub fn reinstall_launch_hotkeys_after_config_change() {
             return;
         }
         match install_linux_launch_hotkeys(comp) {
-            Ok(true) => jcode_logging::info(&format!(
+            Ok(true) => kcode_logging::info(&format!(
                 "Refreshed {} launch hotkeys after config change",
                 comp.name()
             )),
             Ok(false) => {}
-            Err(err) => jcode_logging::warn(&format!(
+            Err(err) => kcode_logging::warn(&format!(
                 "failed to refresh {} launch hotkeys: {err}",
                 comp.name()
             )),

@@ -251,58 +251,7 @@ fn smoothness_plain_text_commit_preserves_the_live_viewport() {
 }
 
 #[test]
-fn smoothness_plain_text_commit_preserves_the_live_viewport() {
-    let _render_lock = scroll_render_test_lock();
-    let mut app = create_test_app();
-    app.session.short_name = Some("test".to_string());
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    let _guard = rt.enter();
-    let mut remote = crate::tui::backend::RemoteConnection::dummy();
 
-    app.push_display_message(DisplayMessage::user(
-        "Explain why smooth terminal streaming matters.".to_string(),
-    ));
-    let response = (1..=36)
-        .map(|i| {
-            format!(
-                "{i}. Smooth terminal streaming keeps long responses readable and visually stable."
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    app.replace_streaming_text(response);
-    app.is_processing = true;
-    app.status = ProcessingStatus::Streaming;
-    app.current_message_id = Some(7);
-
-    let backend = ratatui::backend::TestBackend::new(120, 40);
-    let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
-    let mut recorder = jcode_tui_core::anchor_stability::AnchorStabilityRecorder::new();
-
-    // Settle the fully revealed live view before isolating the completion
-    // transition. The committed assistant message should render identically;
-    // only the compact turn footer is new.
-    for _ in 0..3 {
-        observe_smoothness_frame(&app, &mut terminal, &mut recorder);
-    }
-    app.handle_server_event(crate::protocol::ServerEvent::MessageEnd { stop_reason: None }, &mut remote);
-    app.handle_server_event(crate::protocol::ServerEvent::Done { id: 7 }, &mut remote);
-    for _ in 0..3 {
-        observe_smoothness_frame(&app, &mut terminal, &mut recorder);
-    }
-
-    let report = recorder.report();
-    assert_eq!(report.reposition_events, 0, "no rows may jump: {report:?}");
-    assert_eq!(report.blink_events, 0, "no rows may blink: {report:?}");
-    assert_eq!(
-        report.mass_reflow_events, 0,
-        "committing plain text must not reflow the viewport: {report:?}"
-    );
-    assert_eq!(
-        report.big_pop_events, 0,
-        "the footer must not turn a stable response into a large pop: {report:?}"
-    );
-}
 
 #[test]
 fn smoothness_benchmark_mid_transcript_growth_settles_quickly() {

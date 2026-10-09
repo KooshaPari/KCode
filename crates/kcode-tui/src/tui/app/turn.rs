@@ -319,7 +319,7 @@ impl App {
             let mut saw_message_end = false;
             let mut call_output_tokens_seen: u64 = 0;
             // Latest provider-reported usage for this API call, for usage_report.
-            let mut call_usage = jcode_provider_core::SimpleCompletionUsage::default();
+            let mut call_usage = kcode_provider_core::SimpleCompletionUsage::default();
             let model_at_request_start = self.provider.model();
             let mut interleaved = false; // Track if we interleaved a message mid-stream
             // Track tool results from provider (already executed by Claude Code CLI)

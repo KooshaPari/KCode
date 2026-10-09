@@ -851,15 +851,15 @@ pub fn remote_model_routes_fallback(
     remote_available_entries: &[String],
 ) -> Vec<ModelRoute> {
     if remote_provider_name.is_some_and(|name| {
-        name.eq_ignore_ascii_case(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME)
+        name.eq_ignore_ascii_case(crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME)
     }) {
         return remote_available_entries
             .iter()
             .filter(|model| is_listable_model_name(model))
             .map(|model| ModelRoute {
                 model: model.clone(),
-                provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+                provider: crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+                api_method: crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
                 available: true,
                 detail: "kcode subscription routing · managed server-side".to_string(),
                 usage: None,
@@ -1056,7 +1056,7 @@ pub fn remote_model_routes_lightweight_fallback(
     current_model: &str,
 ) -> Vec<ModelRoute> {
     let is_kcode_subscription = remote_provider_name.is_some_and(|name| {
-        name.eq_ignore_ascii_case(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME)
+        name.eq_ignore_ascii_case(crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME)
     });
     let provider = remote_provider_name
         .map(str::to_string)
@@ -1070,7 +1070,7 @@ pub fn remote_model_routes_lightweight_fallback(
             model: model.clone(),
             provider: provider.clone(),
             api_method: if is_kcode_subscription {
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string()
+                crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string()
             } else {
                 "remote-catalog".to_string()
             },

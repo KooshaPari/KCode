@@ -1429,16 +1429,7 @@ mod tests {
         }
     }
 
-    fn todo_in_group(group: Option<&str>, id: &str) -> TodoItem {
-        TodoItem {
-            content: format!("task {id}"),
-            status: "pending".to_string(),
-            priority: "medium".to_string(),
-            id: id.to_string(),
-            group: group.map(str::to_string),
-            ..Default::default()
-        }
-    }
+    
 
     /// Issue #695: after the agent moves to a new task and replaces the todo
     /// list, goals from the finished task must not keep showing in the panel.

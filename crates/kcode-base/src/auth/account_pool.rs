@@ -251,13 +251,13 @@ pub fn apply_default_account(key: &str) -> Result<bool> {
 /// Pool key of the Jcode subscription. It joins auto-switch by default but
 /// always comes last among defaulted members: it is the fallback once the
 /// user's own subscriptions run out.
-pub const JCODE_SUBSCRIPTION_KEY: &str = "kcode";
+pub const KCODE_SUBSCRIPTION_KEY: &str = "kcode";
 
 /// Default auto-switch membership for an account the user never placed:
 /// subscription logins (OAuth, device sign-in, the Jcode subscription) join,
 /// metered API keys stay manual so nobody is silently billed per token.
 pub fn default_member(key: &str, api_key: bool) -> bool {
-    key == JCODE_SUBSCRIPTION_KEY || !api_key
+    key == KCODE_SUBSCRIPTION_KEY || !api_key
 }
 
 fn path() -> Result<PathBuf> {
@@ -312,7 +312,7 @@ impl AccountPool {
                 continue;
             }
             if self.is_member(key, *default) {
-                if key == JCODE_SUBSCRIPTION_KEY {
+                if key == KCODE_SUBSCRIPTION_KEY {
                     last = Some(key.as_str());
                 } else {
                     members.push(key);

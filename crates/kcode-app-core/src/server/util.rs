@@ -635,9 +635,7 @@ mod reload_target_tests {
     use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime};
 
-    fn t(secs: u64) -> SystemTime {
-        SystemTime::UNIX_EPOCH + Duration::from_secs(secs)
-    }
+    
 
     fn candidate(path: &str) -> (PathBuf, &'static str) {
         (PathBuf::from(path), "shared-server")
@@ -753,9 +751,7 @@ mod pick_newest_candidate_tests {
     use std::path::PathBuf;
     use std::time::{Duration, SystemTime};
 
-    fn t(secs: u64) -> SystemTime {
-        SystemTime::UNIX_EPOCH + Duration::from_secs(secs)
-    }
+    
 
     fn entry(
         path: &str,

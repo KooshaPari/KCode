@@ -7,14 +7,14 @@ pub const KCODE_ACCOUNT_EMAIL_ENV: &str = "KCODE_ACCOUNT_EMAIL";
 pub const KCODE_TIER_ENV: &str = "KCODE_TIER";
 pub const KCODE_ENV_FILE: &str = "kcode-subscription.env";
 pub const KCODE_CACHE_NAMESPACE: &str = "kcode-subscription";
-pub const JCODE_SUBSCRIPTION_ACTIVE_ENV: &str = "JCODE_SUBSCRIPTION_ACTIVE";
+pub const KCODE_SUBSCRIPTION_ACTIVE_ENV: &str = "KCODE_SUBSCRIPTION_ACTIVE";
 pub const DEFAULT_KCODE_API_BASE: &str = "https://api.kcode.sh/v1";
 pub const KCODE_PRICING_URL: &str = "https://kcode.sh/pricing";
 pub const KCODE_ACCOUNT_URL: &str = "https://kcode.sh/account";
 /// User-facing runtime identity. Keep "Subscription" in the name so picker,
 /// header, status, and diagnostics never resemble a generic model host.
-pub const JCODE_PROVIDER_DISPLAY_NAME: &str = "Jcode Subscription";
-pub const JCODE_ROUTE_API_METHOD: &str = "kcode-subscription";
+pub const KCODE_PROVIDER_DISPLAY_NAME: &str = "Jcode Subscription";
+pub const KCODE_ROUTE_API_METHOD: &str = "kcode-subscription";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum JcodeTier {
@@ -478,7 +478,7 @@ pub fn has_router_base() -> bool {
 }
 
 pub fn is_runtime_mode_enabled() -> bool {
-    std::env::var(JCODE_SUBSCRIPTION_ACTIVE_ENV)
+    std::env::var(KCODE_SUBSCRIPTION_ACTIVE_ENV)
         .ok()
         .map(|value| {
             matches!(
@@ -490,7 +490,7 @@ pub fn is_runtime_mode_enabled() -> bool {
 }
 
 pub fn apply_runtime_env() {
-    crate::env::set_var(JCODE_SUBSCRIPTION_ACTIVE_ENV, "1");
+    crate::env::set_var(KCODE_SUBSCRIPTION_ACTIVE_ENV, "1");
     crate::env::set_var(
         "KCODE_OPENROUTER_API_BASE",
         configured_api_base().unwrap_or_else(|| DEFAULT_KCODE_API_BASE.to_string()),
@@ -506,7 +506,7 @@ pub fn apply_runtime_env() {
 }
 
 pub fn clear_runtime_env() {
-    crate::env::remove_var(JCODE_SUBSCRIPTION_ACTIVE_ENV);
+    crate::env::remove_var(KCODE_SUBSCRIPTION_ACTIVE_ENV);
     crate::env::remove_var("KCODE_OPENROUTER_API_BASE");
     crate::env::remove_var("KCODE_OPENROUTER_API_KEY_NAME");
     crate::env::remove_var("KCODE_OPENROUTER_ENV_FILE");

@@ -1,7 +1,7 @@
 //! Anthropic provider shared helpers (compatibility shim).
 //!
 //! The direct Anthropic Messages API *runtime* (`AnthropicProvider`) now lives
-//! in the downstream `jcode-provider-anthropic-runtime` crate so provider
+//! in the downstream `kcode-provider-anthropic-runtime` crate so provider
 //! edits do not rebuild the base -> app-core -> tui spine. The binary's
 //! composition root registers it via [`crate::provider::external`].
 //!
@@ -17,8 +17,8 @@ use anyhow::{Context, Result};
 use std::sync::atomic::{AtomicU8, Ordering};
 use uuid::Uuid;
 
-pub use jcode_provider_core::CredentialMode as AnthropicCredentialMode;
-use jcode_provider_core::{
+pub use kcode_provider_core::CredentialMode as AnthropicCredentialMode;
+use kcode_provider_core::{
     ANTHROPIC_OAUTH_BETA_HEADERS, anthropic_effectively_1m,
     anthropic_stainless_arch as stainless_arch, anthropic_stainless_os as stainless_os,
 };
@@ -93,13 +93,13 @@ pub const AVAILABLE_MODELS: &[&str] = &[
 ];
 
 pub fn load_anthropic_api_key() -> Result<String> {
-    if std::env::var("JCODE_ANTHROPIC_AUTH")
+    if std::env::var("KCODE_ANTHROPIC_AUTH")
         .ok()
         .is_some_and(|value| value.eq_ignore_ascii_case("none"))
     {
         return Ok(String::new());
     }
-    if let Ok(env_name) = std::env::var("JCODE_ANTHROPIC_API_KEY_NAME") {
+    if let Ok(env_name) = std::env::var("KCODE_ANTHROPIC_API_KEY_NAME") {
         let env_name = env_name.trim();
         if !env_name.is_empty() {
             if let Ok(value) = std::env::var(env_name)
@@ -107,7 +107,7 @@ pub fn load_anthropic_api_key() -> Result<String> {
             {
                 return Ok(value);
             }
-            if let Ok(env_file) = std::env::var("JCODE_ANTHROPIC_ENV_FILE")
+            if let Ok(env_file) = std::env::var("KCODE_ANTHROPIC_ENV_FILE")
                 && let Some(value) = crate::provider_catalog::load_env_value_from_config_file(
                     env_name,
                     env_file.trim(),
@@ -132,7 +132,7 @@ pub fn load_anthropic_api_key() -> Result<String> {
         "anthropic.env",
     )
     .context("No Anthropic API key found")?;
-    if std::env::var("JCODE_LOG_SERVICE_TIER").is_ok() {
+    if std::env::var("KCODE_LOG_SERVICE_TIER").is_ok() {
         let prefix: String = key.chars().take(14).collect();
         eprintln!(
             "[anthropic] resolved API key prefix={prefix}... (len={})",

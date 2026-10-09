@@ -49,10 +49,10 @@ use std::path::Path;
 use std::sync::{Mutex, RwLock};
 use std::time::Instant;
 
-/// Cached auth status plus the `JCODE_HOME` it was computed under.
+/// Cached auth status plus the `KCODE_HOME` it was computed under.
 ///
-/// Auth probes read credential files relative to `JCODE_HOME`. Tests swap
-/// `JCODE_HOME` to per-test temp dirs, and a status computed under one home
+/// Auth probes read credential files relative to `KCODE_HOME`. Tests swap
+/// `KCODE_HOME` to per-test temp dirs, and a status computed under one home
 /// must never be served for another (issue #361: parallel provider tests
 /// intermittently observed another test's auth snapshot through this global
 /// cache). In production the home never changes, so the key check is free.
@@ -64,7 +64,7 @@ static AUTH_STATUS_FAST_CACHE: std::sync::LazyLock<RwLock<Option<CachedAuthStatu
     std::sync::LazyLock::new(|| RwLock::new(None));
 
 fn auth_cache_home_key() -> Option<std::ffi::OsString> {
-    std::env::var_os("JCODE_HOME")
+    std::env::var_os("KCODE_HOME")
 }
 
 const AUTH_STATUS_CACHE_TTL_SECS: u64 = 30;
@@ -113,7 +113,7 @@ enum AuthProbeMode {
 pub fn browser_suppressed(cli_no_browser: bool) -> bool {
     cli_no_browser
         || env_truthy("NO_BROWSER")
-        || env_truthy("JCODE_NO_BROWSER")
+        || env_truthy("KCODE_NO_BROWSER")
         || running_in_test_harness()
         || browser_unusable_here()
 }
@@ -143,12 +143,12 @@ fn browser_unusable_here() -> bool {
 /// Used to keep tests from opening real browser windows (OAuth login pages,
 /// files) on the developer's desktop: many login/onboarding flows are
 /// exercised by TUI tests, and without this guard each test run could pop
-/// multiple browser tabs. Set `JCODE_ALLOW_BROWSER_IN_TESTS=1` to opt out
+/// multiple browser tabs. Set `KCODE_ALLOW_BROWSER_IN_TESTS=1` to opt out
 /// (e.g. for an intentionally interactive live test).
 pub fn running_in_test_harness() -> bool {
     static IN_TEST_HARNESS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *IN_TEST_HARNESS.get_or_init(|| {
-        if env_truthy("JCODE_ALLOW_BROWSER_IN_TESTS") {
+        if env_truthy("KCODE_ALLOW_BROWSER_IN_TESTS") {
             return false;
         }
         std::env::current_exe()
@@ -189,7 +189,7 @@ fn env_truthy(key: &str) -> bool {
 }
 
 fn auth_timing_logging_enabled() -> bool {
-    env_truthy("JCODE_AUTH_TIMING")
+    env_truthy("KCODE_AUTH_TIMING")
 }
 
 fn openai_api_key_configured() -> bool {
@@ -215,7 +215,7 @@ fn log_auth_status_snapshot(event: &str, status: &AuthStatus) {
         event,
         "all",
         &[
-            ("jcode", auth_state_label(status.jcode)),
+            ("jcode", auth_state_label(status.kcode)),
             ("claude", auth_state_label(status.anthropic.state)),
             ("openai", auth_state_label(status.openai)),
             ("openrouter", auth_state_label(status.openrouter)),
@@ -355,7 +355,7 @@ impl AuthStatus {
     /// The only blocking case is the very first call in a process with no
     /// cached snapshot at all, which matches the old behavior for frame one.
     /// Tests always take the blocking path: background refreshes racing
-    /// per-test `JCODE_HOME` swaps would poison the shared cache.
+    /// per-test `KCODE_HOME` swaps would poison the shared cache.
     pub fn check_fast_nonblocking() -> Self {
         if running_in_test_harness() {
             return Self::check_fast();
@@ -410,7 +410,7 @@ impl AuthStatus {
     /// Returns true if at least one provider has usable credentials.
     pub fn has_any_available(&self) -> bool {
         self.anthropic.state == AuthState::Available
-            || self.jcode == AuthState::Available
+            || self.kcode == AuthState::Available
             || self.openai == AuthState::Available
             || self.openrouter == AuthState::Available
             || self.azure == AuthState::Available
@@ -439,7 +439,7 @@ impl AuthStatus {
             vec![
                 ("surface", surface.to_string()),
                 ("any_available", self.has_any_available().to_string()),
-                ("jcode", self.jcode.label().to_string()),
+                ("jcode", self.kcode.label().to_string()),
                 ("anthropic", self.anthropic.state.label().to_string()),
                 ("anthropic_oauth", self.anthropic.has_oauth.to_string()),
                 ("anthropic_api", self.anthropic.has_api_key.to_string()),
@@ -479,7 +479,7 @@ impl AuthStatus {
                     AuthState::NotConfigured
                 }
             }
-            LoginProviderAuthStateKey::Jcode => self.jcode,
+            LoginProviderAuthStateKey::Jcode => self.kcode,
             LoginProviderAuthStateKey::Anthropic => self.anthropic.state,
             LoginProviderAuthStateKey::OpenAi => self.openai,
             LoginProviderAuthStateKey::Azure => self.azure,
@@ -580,12 +580,12 @@ impl AuthStatus {
                     if crate::subscription_catalog::has_router_base() {
                         format!(
                             "API key (`{}`) + router base",
-                            crate::subscription_catalog::JCODE_API_KEY_ENV
+                            crate::subscription_catalog::KCODE_API_KEY_ENV
                         )
                     } else {
                         format!(
                             "API key (`{}`), router base pending",
-                            crate::subscription_catalog::JCODE_API_KEY_ENV
+                            crate::subscription_catalog::KCODE_API_KEY_ENV
                         )
                     }
                 } else {
@@ -745,11 +745,11 @@ impl AuthStatus {
             ),
             crate::provider_catalog::LoginProviderTarget::Jcode => {
                 let (source, detail) = summarize_sources(vec![
-                    env_source(crate::subscription_catalog::JCODE_API_KEY_ENV),
+                    env_source(crate::subscription_catalog::KCODE_API_KEY_ENV),
                     config_source(
-                        crate::subscription_catalog::JCODE_API_KEY_ENV,
-                        crate::subscription_catalog::JCODE_ENV_FILE,
-                        "~/.config/jcode/jcode-subscription.env",
+                        crate::subscription_catalog::KCODE_API_KEY_ENV,
+                        crate::subscription_catalog::KCODE_ENV_FILE,
+                        "~/.config/jcode/kcode-subscription.env",
                     ),
                 ]);
                 (
@@ -846,7 +846,7 @@ impl AuthStatus {
                         "~/.config/jcode/bedrock.env",
                     ),
                     env_source("AWS_PROFILE"),
-                    env_source("JCODE_BEDROCK_PROFILE"),
+                    env_source("KCODE_BEDROCK_PROFILE"),
                     env_source("AWS_ACCESS_KEY_ID"),
                 ]);
                 (
@@ -979,7 +979,7 @@ fn build_auth_status_uncached(mode: AuthProbeMode) -> (AuthStatus, Vec<(&'static
     let mut status = AuthStatus::default();
     let mut timings = Vec::new();
 
-    record_auth_probe_step(&mut timings, "jcode", || probe_jcode_status(&mut status));
+    record_auth_probe_step(&mut timings, "jcode", || probe_kcode_status(&mut status));
     record_auth_probe_step(&mut timings, "anthropic", || {
         probe_anthropic_status(&mut status)
     });
@@ -1102,38 +1102,16 @@ fn refreshable_token_state_with(
 /// Only report `Expired` when the refresh token itself is missing or was
 /// already permanently rejected (revoked / `invalid_grant`), which is the case
 /// where the user genuinely has to log in again.
-fn refreshable_token_state(provider_id: &str, result: anyhow::Result<(bool, String)>) -> AuthState {
-    refreshable_token_state_with(result, |refresh_token| {
-        crate::auth::refresh_state::refresh_token_is_known_rejected(provider_id, refresh_token)
-    })
-}
+
 
 /// Pure decision core of [`refreshable_token_state`], with the persisted
 /// "this refresh token was permanently rejected" lookup injected so it can be
 /// unit tested without touching `$HOME`.
-fn refreshable_token_state_with(
-    result: anyhow::Result<(bool, String)>,
-    is_known_rejected: impl Fn(&str) -> bool,
-) -> AuthState {
-    match result {
-        Ok((is_expired, refresh_token)) => {
-            if !is_expired {
-                return AuthState::Available;
-            }
-            let refresh_token = refresh_token.trim();
-            if refresh_token.is_empty() || is_known_rejected(refresh_token) {
-                AuthState::Expired
-            } else {
-                AuthState::Available
-            }
-        }
-        Err(_) => AuthState::NotConfigured,
-    }
-}
 
-fn probe_jcode_status(status: &mut AuthStatus) {
+
+fn probe_kcode_status(status: &mut AuthStatus) {
     if crate::subscription_catalog::has_credentials() {
-        status.jcode = AuthState::Available;
+        status.kcode = AuthState::Available;
     }
 }
 

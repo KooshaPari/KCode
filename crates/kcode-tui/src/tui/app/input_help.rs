@@ -114,7 +114,7 @@ impl App {
             }
             "memory" => "/memory [on|off|status]\nToggle memory features for this session.",
             "log" => {
-                "/log mark [note]\nWrite a distinctive JCODE_LOG_MARK line to ~/.jcode/logs/jcode-YYYY-MM-DD.log with the current session, provider, model, working directory, and optional note. Use this to mark a spot for agents to inspect later."
+                "/log mark [note]\nWrite a distinctive KCODE_LOG_MARK line to ~/.jcode/logs/jcode-YYYY-MM-DD.log with the current session, provider, model, working directory, and optional note. Use this to mark a spot for agents to inspect later."
             }
             "goals" => {
                 "/goals\nOpen the goals overview in the side panel.\n\n/goals resume\nResume the most relevant active goal for this session/project.\n\n/goals show <id>\nOpen a specific goal in the side panel."
@@ -243,7 +243,7 @@ impl App {
         // Mac keyboards have no "Alt" key; show the ⌥ keycap instead.
         let help = help.replace(
             "Alt+",
-            &format!("{}+", jcode_tui_core::keybind::alt_label()),
+            &format!("{}+", kcode_tui_core::keybind::alt_label()),
         );
         Some(help)
     }

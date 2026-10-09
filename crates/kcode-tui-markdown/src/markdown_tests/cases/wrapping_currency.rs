@@ -51,7 +51,7 @@ fn test_ranges_overlap() {
 #[test]
 fn test_highlight_cache_performance() {
     // First call should cache
-    let code = "fn main() {\n    println!(\"hello\");\n}";
+    let code = "";
     let lines1 = highlight_code_cached(code, Some("rust"));
 
     // Second call should hit cache

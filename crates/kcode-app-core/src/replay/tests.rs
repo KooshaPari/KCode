@@ -485,7 +485,7 @@ fn test_tool_ids_match_between_start_and_done() {
             t: 500,
             kind: TimelineEventKind::ToolDone {
                 name: "file_read".to_string(),
-                output: "fn main() {}".to_string(),
+                output: "".to_string(),
                 is_error: false,
             },
         },

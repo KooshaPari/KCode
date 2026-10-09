@@ -532,8 +532,8 @@ use theme_support::{
     system_message_color, tool_color, user_bg, user_color, user_text,
 };
 
-pub(crate) use jcode_tui_markdown::{CopyTargetKind, RawCopyTarget};
-pub(crate) use jcode_tui_messages::{
+pub(crate) use kcode_tui_markdown::{CopyTargetKind, RawCopyTarget};
+pub(crate) use kcode_tui_messages::{
     CopyTarget, EditToolRange, ImageRegion, MessageBoundary, PreparedChatFrame, PreparedMessages,
     PreparedSection, PreparedSectionKind, WrappedLineMap,
 };
@@ -1254,9 +1254,7 @@ enum CacheEntryKind {
 }
 
 impl FullPrepCacheState {
-    fn total_bytes(&self) -> usize {
-        self.entries.iter().map(|entry| entry.prepared_bytes).sum()
-    }
+    
 
     fn get_exact_with_kind(
         &mut self,
@@ -1544,7 +1542,7 @@ impl Drop for RenderStateTestGuard {
 /// unlocked ones (`create_test_app`, used by ~570 tests). Acquiring
 /// unconditionally would deadlock the former; not acquiring at all lets the
 /// latter wipe state from under the former, which is the race behind
-/// jcode-tui's intermittent layout failures.
+/// kcode-tui's intermittent layout failures.
 ///
 /// Tracking ownership per thread lets one function serve both: the outermost
 /// holder owns the guard, and nested calls become no-ops.
@@ -1713,7 +1711,7 @@ impl CopyViewportSnapshot {
             .image_regions
             .iter()
             .find(|region| {
-                region.render == jcode_tui_messages::ImageRegionRender::Fit
+                region.render == kcode_tui_messages::ImageRegionRender::Fit
                     && region.abs_line_idx == abs_line + 1
             })
             .map(|region| region.hash)
@@ -2579,7 +2577,7 @@ pub(crate) fn inline_image_body_target_from_screen(
         CopyViewportData::Dense { .. } => return None,
     };
     let region = prepared.image_regions.iter().find(|region| {
-        region.render == jcode_tui_messages::ImageRegionRender::Fit
+        region.render == kcode_tui_messages::ImageRegionRender::Fit
             && point.abs_line >= region.abs_line_idx
             && point.abs_line < region.end_line
     })?;
@@ -2675,7 +2673,7 @@ pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
     // follows the same policy. User-configured colors remain exact.
     // Attribute explicit palette overrides before light-theme contrast repair
     // can make distinct muted source grays converge to the same rendered ink.
-    jcode_tui_style::adapt_buffer_for_display(frame.buffer_mut());
+    kcode_tui_style::adapt_buffer_for_display(frame.buffer_mut());
     adapt_buffer_for_emoji_preference(frame.buffer_mut());
     // Cache eviction/clearing can outlive the last visible image. Carry Kitty
     // deletion commands on any completed frame so terminal-side pixel storage
@@ -2987,7 +2985,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             let focus_key = crate::tui::keybind::swarm_panel_focus_key_label();
             // Use the same smooth cadence as the primary status spinner.
             let spinner_frame = (app.animation_elapsed()
-                * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS)
+                * kcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS)
                 as usize;
             // Focused budget: chips + hints + a ~14-line detail viewport, but
             // never more than a third of the chat column so the transcript
@@ -3371,7 +3369,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     } else if swarm_page_active {
         let members = app.filtered_swarm_members();
         let spinner_frame =
-            (app.animation_elapsed() * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS) as usize;
+            (app.animation_elapsed() * kcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS) as usize;
         let mut lines = super::info_widget::swarm_gallery::render_swarm_page_lines(
             &members,
             app.swarm_panel_selected(),

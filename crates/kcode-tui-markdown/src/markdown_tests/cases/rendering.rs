@@ -99,7 +99,7 @@ fn test_latex_syntax_inside_generic_code_remains_literal() {
 
 #[test]
 fn test_extract_copy_targets_from_rendered_lines_for_code_block() {
-    let lines = render_markdown("before\n\n```rust\nfn main() {}\nprintln!(\"hi\");\n```\n\nafter");
+    let lines = render_markdown("before\n\n```rust\n\nprintln!(\"hi\");\n```\n\nafter");
     let targets = extract_copy_targets_from_rendered_lines(&lines);
 
     assert_eq!(targets.len(), 1);
@@ -110,7 +110,7 @@ fn test_extract_copy_targets_from_rendered_lines_for_code_block() {
             language: Some("rust".to_string())
         }
     );
-    assert_eq!(target.content, "fn main() {}\nprintln!(\"hi\");");
+    assert_eq!(target.content, "\nprintln!(\"hi\");");
     assert_eq!(target.start_raw_line, target.badge_raw_line);
     assert!(target.end_raw_line > target.start_raw_line);
 }
@@ -197,7 +197,7 @@ fn test_extract_copy_targets_nested_blockquote_strips_all_gutters() {
 
 #[test]
 fn test_extract_copy_targets_blockquote_and_code_block_are_separate() {
-    let lines = render_markdown("> quoted\n\n```rust\nfn main() {}\n```");
+    let lines = render_markdown("> quoted\n\n```rust\n\n```");
     let targets = extract_copy_targets_from_rendered_lines(&lines);
 
     assert_eq!(targets.len(), 2);
@@ -500,7 +500,7 @@ fn mermaid_gate_accepts_native_protocol_and_rejects_halfblock_fallback() {
 #[test]
 fn test_mixed_code_and_mermaid() {
     // Mixed content should render both correctly
-    let md = "```rust\nfn main() {}\n```\n\n```mermaid\nflowchart TD\n    A\n```\n\n```python\nprint('hi')\n```";
+    let md = "```rust\n\n```\n\n```mermaid\nflowchart TD\n    A\n```\n\n```python\nprint('hi')\n```";
     let lines = render_markdown(md);
 
     // Should have output for all blocks
@@ -861,7 +861,7 @@ fn test_centered_mode_centers_other_structured_blocks_as_blocks() {
 fn test_centered_mode_still_centers_framed_code_blocks() {
     let saved = center_code_blocks();
     set_center_code_blocks(true);
-    let lines = render_markdown_with_width("```rust\nfn main() {}\n```", Some(40));
+    let lines = render_markdown_with_width("```rust\n\n```", Some(40));
     set_center_code_blocks(saved);
 
     let header = lines

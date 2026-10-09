@@ -478,7 +478,7 @@ impl JcodeClient {
             ensure_runtime(&LaunchOptions::default(), &|_| {})?;
         }
         // Backwards-compat: if the caller passed the default new socket path and
-        // the new socket does not exist but the legacy `jcode-api.sock` does,
+        // the new socket does not exist but the legacy `kcode-api.sock` does,
         // transparently fall back so legacy installs continue to work for one
         // release cycle.
         let resolved_path = if options.socket_path.is_none() && !path.exists() {

@@ -386,7 +386,7 @@ fn test_remote_kcode_subscription_fallback_keeps_managed_route_identity() {
         "gpt-5.6-sol".to_string(),
     ];
     let routes = remote_model_routes_fallback(
-        Some(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME),
+        Some(crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME),
         &models,
     );
 
@@ -403,8 +403,8 @@ fn test_remote_kcode_subscription_fallback_keeps_managed_route_identity() {
         ]
     );
     assert!(routes.iter().all(|route| {
-        route.provider == crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
-            && route.api_method == crate::subscription_catalog::JCODE_ROUTE_API_METHOD
+        route.provider == crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
+            && route.api_method == crate::subscription_catalog::KCODE_ROUTE_API_METHOD
             && route.available
     }));
 }

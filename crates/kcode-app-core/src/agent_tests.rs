@@ -261,7 +261,7 @@ impl Provider for NativeAutoCompactionProvider {
         true
     }
 
-    fn uses_jcode_compaction(&self) -> bool {
+    fn uses_kcode_compaction(&self) -> bool {
         false
     }
 
@@ -281,10 +281,10 @@ impl Provider for NativeAutoCompactionProvider {
         &self,
         prompt: &str,
         system: &str,
-    ) -> Result<(String, jcode_provider_core::SimpleCompletionUsage)> {
+    ) -> Result<(String, kcode_provider_core::SimpleCompletionUsage)> {
         Ok((
             self.complete_simple(prompt, system).await?,
-            jcode_provider_core::SimpleCompletionUsage::default(),
+            kcode_provider_core::SimpleCompletionUsage::default(),
         ))
     }
 }
@@ -327,21 +327,13 @@ impl Provider for NativeCompactionStreamProvider {
         Ok(Box::pin(ReceiverStream::new(rx)))
     }
 
-    fn name(&self) -> &str {
-        "openai"
-    }
+    
 
-    fn supports_compaction(&self) -> bool {
-        true
-    }
+    
 
-    fn uses_jcode_compaction(&self) -> bool {
-        false
-    }
+    
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(Self)
-    }
+    
 }
 
 #[test]
@@ -569,9 +561,7 @@ impl Provider for MidStreamModelSwitchProvider {
         "claude"
     }
 
-    fn model(&self) -> String {
-        self.model.lock().unwrap().clone()
-    }
+    
 
     fn fork(&self) -> Arc<dyn Provider> {
         Arc::new(Self {
@@ -888,18 +878,18 @@ async fn new_agent_registers_active_pid_and_clear_swaps_it() {
 #[tokio::test]
 async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_tools = std::env::var_os("JCODE_TOOLS");
-    let prev_disabled_tools = std::env::var_os("JCODE_DISABLED_TOOLS");
-    let prev_tool_profile = std::env::var_os("JCODE_TOOL_PROFILE");
-    let prev_disable_base_tools = std::env::var_os("JCODE_DISABLE_BASE_TOOLS");
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let prev_tools = std::env::var_os("KCODE_TOOLS");
+    let prev_disabled_tools = std::env::var_os("KCODE_DISABLED_TOOLS");
+    let prev_tool_profile = std::env::var_os("KCODE_TOOL_PROFILE");
+    let prev_disable_base_tools = std::env::var_os("KCODE_DISABLE_BASE_TOOLS");
     let temp_home = tempfile::TempDir::new().expect("temp home");
 
-    crate::env::set_var("JCODE_HOME", temp_home.path());
-    crate::env::remove_var("JCODE_TOOLS");
-    crate::env::remove_var("JCODE_DISABLED_TOOLS");
-    crate::env::remove_var("JCODE_TOOL_PROFILE");
-    crate::env::remove_var("JCODE_DISABLE_BASE_TOOLS");
+    crate::env::set_var("KCODE_HOME", temp_home.path());
+    crate::env::remove_var("KCODE_TOOLS");
+    crate::env::remove_var("KCODE_DISABLED_TOOLS");
+    crate::env::remove_var("KCODE_TOOL_PROFILE");
+    crate::env::remove_var("KCODE_DISABLE_BASE_TOOLS");
     crate::config::Config::invalidate_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -910,8 +900,8 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     let tool_name = "gmail";
 
     assert!(
-        tool_names.iter().any(|name| name == "jcode_docs"),
-        "jcode_docs must be model-visible in regular sessions"
+        tool_names.iter().any(|name| name == "kcode_docs"),
+        "kcode_docs must be model-visible in regular sessions"
     );
     assert!(
         !tool_names.iter().any(|name| name == "selfdev"),
@@ -933,21 +923,21 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
         .expect("gmail must be executable by default");
 
     agent
-        .validate_tool_allowed("jcode_docs")
-        .expect("jcode_docs must be executable in regular sessions");
+        .validate_tool_allowed("kcode_docs")
+        .expect("kcode_docs must be executable in regular sessions");
     agent.set_canary("docs-tool-regression");
     let definitions = agent.tool_definitions().await;
     assert!(definitions.iter().any(|tool| tool.name == "selfdev"));
     assert!(
-        !definitions.iter().any(|tool| tool.name == "jcode_docs"),
-        "jcode_docs must not be model-visible in self-dev sessions"
+        !definitions.iter().any(|tool| tool.name == "kcode_docs"),
+        "kcode_docs must not be model-visible in self-dev sessions"
     );
     assert!(
         !agent
             .tool_definitions()
             .await
             .iter()
-            .any(|tool| tool.name == "jcode_docs"),
+            .any(|tool| tool.name == "kcode_docs"),
         "cached provider definitions must also exclude bundled docs"
     );
     assert!(
@@ -955,20 +945,20 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
             .tool_names()
             .await
             .iter()
-            .any(|name| name == "jcode_docs"),
+            .any(|name| name == "kcode_docs"),
         "debug tool introspection must agree with provider definitions"
     );
     assert!(
         agent
-            .execute_tool("jcode_docs", serde_json::json!({"action": "list"}))
+            .execute_tool("kcode_docs", serde_json::json!({"action": "list"}))
             .await
             .is_err(),
         "direct execution must reject bundled docs in self-dev mode"
     );
     assert!(
         agent
-            .validate_tool_allowed("jcode_docs")
-            .expect_err("jcode_docs must not be executable in self-dev sessions")
+            .validate_tool_allowed("kcode_docs")
+            .expect_err("kcode_docs must not be executable in self-dev sessions")
             .to_string()
             .contains("disabled in self-development mode")
     );
@@ -979,14 +969,14 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
             .tool_definitions()
             .await
             .iter()
-            .any(|tool| tool.name == "jcode_docs"),
-        "jcode_docs must remain available after leaving self-dev mode"
+            .any(|tool| tool.name == "kcode_docs"),
+        "kcode_docs must remain available after leaving self-dev mode"
     );
     agent
-        .validate_tool_allowed("jcode_docs")
-        .expect("jcode_docs must be executable again outside self-dev mode");
+        .validate_tool_allowed("kcode_docs")
+        .expect("kcode_docs must be executable again outside self-dev mode");
 
-    crate::env::set_var("JCODE_DISABLED_TOOLS", tool_name);
+    crate::env::set_var("KCODE_DISABLED_TOOLS", tool_name);
     crate::config::Config::invalidate_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1011,29 +1001,29 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     assert!(err.to_string().contains("disabled"));
 
     if let Some(previous) = prev_home {
-        crate::env::set_var("JCODE_HOME", previous);
+        crate::env::set_var("KCODE_HOME", previous);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
     if let Some(previous) = prev_tools {
-        crate::env::set_var("JCODE_TOOLS", previous);
+        crate::env::set_var("KCODE_TOOLS", previous);
     } else {
-        crate::env::remove_var("JCODE_TOOLS");
+        crate::env::remove_var("KCODE_TOOLS");
     }
     if let Some(previous) = prev_disabled_tools {
-        crate::env::set_var("JCODE_DISABLED_TOOLS", previous);
+        crate::env::set_var("KCODE_DISABLED_TOOLS", previous);
     } else {
-        crate::env::remove_var("JCODE_DISABLED_TOOLS");
+        crate::env::remove_var("KCODE_DISABLED_TOOLS");
     }
     if let Some(previous) = prev_tool_profile {
-        crate::env::set_var("JCODE_TOOL_PROFILE", previous);
+        crate::env::set_var("KCODE_TOOL_PROFILE", previous);
     } else {
-        crate::env::remove_var("JCODE_TOOL_PROFILE");
+        crate::env::remove_var("KCODE_TOOL_PROFILE");
     }
     if let Some(previous) = prev_disable_base_tools {
-        crate::env::set_var("JCODE_DISABLE_BASE_TOOLS", previous);
+        crate::env::set_var("KCODE_DISABLE_BASE_TOOLS", previous);
     } else {
-        crate::env::remove_var("JCODE_DISABLE_BASE_TOOLS");
+        crate::env::remove_var("KCODE_DISABLE_BASE_TOOLS");
     }
     crate::config::Config::invalidate_cache();
 }
@@ -1220,15 +1210,15 @@ async fn build_memory_prompt_nonblocking_defers_pending_memory_during_tool_loop(
         fn drop(&mut self) {
             crate::memory::clear_all_pending_memory();
             match &self.0 {
-                Some(home) => crate::env::set_var("JCODE_HOME", home),
-                None => crate::env::remove_var("JCODE_HOME"),
+                Some(home) => crate::env::set_var("KCODE_HOME", home),
+                None => crate::env::remove_var("KCODE_HOME"),
             }
             crate::config::Config::invalidate_cache();
         }
     }
     let home = tempfile::tempdir().expect("isolated memory home");
-    let _restore = RestoreMemoryHome(std::env::var_os("JCODE_HOME"));
-    crate::env::set_var("JCODE_HOME", home.path());
+    let _restore = RestoreMemoryHome(std::env::var_os("KCODE_HOME"));
+    crate::env::set_var("KCODE_HOME", home.path());
     crate::config::Config::invalidate_cache();
     crate::memory::clear_all_pending_memory();
 
@@ -1298,8 +1288,8 @@ async fn build_memory_prompt_nonblocking_defers_pending_memory_during_tool_loop(
 #[tokio::test]
 async fn memory_injection_message_defaults_to_ephemeral_history() {
     let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_PERSIST_MEMORY_INJECTIONS");
-    crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", "false");
+    let previous = std::env::var_os("KCODE_PERSIST_MEMORY_INJECTIONS");
+    crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", "false");
     crate::config::invalidate_config_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1322,8 +1312,8 @@ async fn memory_injection_message_defaults_to_ephemeral_history() {
     assert!(message_text(&message).contains("Use ephemeral mode"));
 
     match previous {
-        Some(value) => crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", value),
-        None => crate::env::remove_var("JCODE_PERSIST_MEMORY_INJECTIONS"),
+        Some(value) => crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", value),
+        None => crate::env::remove_var("KCODE_PERSIST_MEMORY_INJECTIONS"),
     }
     crate::config::invalidate_config_cache();
 }
@@ -1331,8 +1321,8 @@ async fn memory_injection_message_defaults_to_ephemeral_history() {
 #[tokio::test]
 async fn memory_injection_message_can_persist_to_history() {
     let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_PERSIST_MEMORY_INJECTIONS");
-    crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", "true");
+    let previous = std::env::var_os("KCODE_PERSIST_MEMORY_INJECTIONS");
+    crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", "true");
     crate::config::invalidate_config_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1360,8 +1350,8 @@ async fn memory_injection_message_can_persist_to_history() {
     );
 
     match previous {
-        Some(value) => crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", value),
-        None => crate::env::remove_var("JCODE_PERSIST_MEMORY_INJECTIONS"),
+        Some(value) => crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", value),
+        None => crate::env::remove_var("KCODE_PERSIST_MEMORY_INJECTIONS"),
     }
     crate::config::invalidate_config_cache();
 }
@@ -1370,8 +1360,8 @@ async fn memory_injection_message_can_persist_to_history() {
 async fn mark_closed_persists_soft_interrupts_for_restore_after_reload() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("temp dir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
     let registry = Registry::new(provider.clone()).await;
@@ -1402,9 +1392,9 @@ async fn mark_closed_persists_soft_interrupts_for_restore_after_reload() {
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -1417,8 +1407,8 @@ async fn env_snapshot_detail_is_minimal_for_empty_sessions_and_full_after_histor
 
     assert_eq!(agent.env_snapshot_detail(), EnvSnapshotDetail::Minimal);
     let minimal = agent.build_env_snapshot("create", agent.env_snapshot_detail());
-    assert!(minimal.jcode_git_hash.is_none());
-    assert!(minimal.jcode_git_dirty.is_none());
+    assert!(minimal.kcode_git_hash.is_none());
+    assert!(minimal.kcode_git_dirty.is_none());
     assert!(minimal.working_git.is_none());
 
     agent
@@ -1472,9 +1462,7 @@ struct VerboseFakeMcpTool {
 
 #[async_trait]
 impl crate::tool::Tool for VerboseFakeMcpTool {
-    fn name(&self) -> &str {
-        &self.name
-    }
+    
     fn description(&self) -> &str {
         &self.description
     }
@@ -1484,13 +1472,7 @@ impl crate::tool::Tool for VerboseFakeMcpTool {
             "properties": {"value": {"type": "string"}}
         })
     }
-    async fn execute(
-        &self,
-        _input: serde_json::Value,
-        _ctx: crate::tool::ToolContext,
-    ) -> anyhow::Result<ToolOutput> {
-        Ok(ToolOutput::new("ok"))
-    }
+    
 }
 
 async fn register_fake_deferred_mcp_surface(registry: &Registry) {
@@ -2173,9 +2155,7 @@ impl Provider for StrandedToolUseProvider {
         "stranded-tool-use"
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 /// End-to-end guard for the incident. Before the fix the agent took the
@@ -2277,9 +2257,7 @@ impl Provider for FableGuardrailProvider {
         "claude-fable-5".to_string()
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 #[tokio::test]
@@ -2358,13 +2336,13 @@ fn system_prompt_override_restores_and_does_not_leak_across_sessions() {
     impl Drop for RestoreHome {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(home) => crate::env::set_var("JCODE_HOME", home),
-                None => crate::env::remove_var("JCODE_HOME"),
+                Some(home) => crate::env::set_var("KCODE_HOME", home),
+                None => crate::env::remove_var("KCODE_HOME"),
             }
         }
     }
-    let _restore = RestoreHome(std::env::var_os("JCODE_HOME"));
-    crate::env::set_var("JCODE_HOME", home.path());
+    let _restore = RestoreHome(std::env::var_os("KCODE_HOME"));
+    crate::env::set_var("KCODE_HOME", home.path());
     for prompt in ["custom system prompt", ""] {
         let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
         let mut agent = Agent::new(provider.clone(), Registry::empty());
@@ -2400,28 +2378,15 @@ struct NativeDeferredToolsProvider;
 
 #[async_trait]
 impl Provider for NativeDeferredToolsProvider {
-    async fn complete(
-        &self,
-        _messages: &[Message],
-        _tools: &[ToolDefinition],
-        _system: &str,
-        _resume_session_id: Option<&str>,
-    ) -> Result<EventStream> {
-        let (_tx, rx) = tokio_mpsc::channel::<Result<StreamEvent>>(1);
-        Ok(Box::pin(ReceiverStream::new(rx)))
-    }
+    
 
-    fn name(&self) -> &str {
-        "claude"
-    }
+    
 
     fn supports_deferred_tools(&self) -> bool {
         true
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(Self)
-    }
+    
 }
 
 async fn native_deferred_agent(mode: crate::config::McpToolsMode) -> Agent {
@@ -2539,16 +2504,7 @@ struct SwitchableDeferredProvider(Arc<std::sync::atomic::AtomicBool>);
 
 #[async_trait]
 impl Provider for SwitchableDeferredProvider {
-    async fn complete(
-        &self,
-        _messages: &[Message],
-        _tools: &[ToolDefinition],
-        _system: &str,
-        _resume_session_id: Option<&str>,
-    ) -> Result<EventStream> {
-        let (_tx, rx) = tokio_mpsc::channel::<Result<StreamEvent>>(1);
-        Ok(Box::pin(ReceiverStream::new(rx)))
-    }
+    
 
     fn name(&self) -> &str {
         "switchable"
@@ -2751,16 +2707,8 @@ impl crate::tool::Tool for IdentifiedFakeMcpTool {
     fn description(&self) -> &str {
         "fake identified mcp tool"
     }
-    fn parameters_schema(&self) -> serde_json::Value {
-        serde_json::json!({"type": "object"})
-    }
-    async fn execute(
-        &self,
-        _input: serde_json::Value,
-        _ctx: crate::tool::ToolContext,
-    ) -> anyhow::Result<ToolOutput> {
-        Ok(ToolOutput::new("ok"))
-    }
+    
+    
 }
 
 /// Dotted MCP names (YC's `hiring.create_job`) are sanitized for providers,
@@ -2807,15 +2755,10 @@ fn skill_installed_mid_session_keeps_system_prompt_stable_and_is_announced_once(
     let home = tempfile::tempdir().unwrap();
     struct RestoreHome(Option<std::ffi::OsString>);
     impl Drop for RestoreHome {
-        fn drop(&mut self) {
-            match self.0.take() {
-                Some(home) => crate::env::set_var("JCODE_HOME", home),
-                None => crate::env::remove_var("JCODE_HOME"),
-            }
-        }
+        
     }
-    let _restore = RestoreHome(std::env::var_os("JCODE_HOME"));
-    crate::env::set_var("JCODE_HOME", home.path());
+    let _restore = RestoreHome(std::env::var_os("KCODE_HOME"));
+    crate::env::set_var("KCODE_HOME", home.path());
 
     let project = tempfile::tempdir().unwrap();
     let write_skill = |name: &str, description: &str| {

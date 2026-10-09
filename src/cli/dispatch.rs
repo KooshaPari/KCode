@@ -101,8 +101,8 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         .filter(|value| !value.is_empty())
     {
         provider_catalog::apply_named_provider_profile_env(profile_name)?;
-        crate::env::set_var("JCODE_PROVIDER_PROFILE_NAME", profile_name);
-        crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
+        crate::env::set_var("KCODE_PROVIDER_PROFILE_NAME", profile_name);
+        crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
         args.provider = ProviderChoice::OpenaiCompatible;
     }
 

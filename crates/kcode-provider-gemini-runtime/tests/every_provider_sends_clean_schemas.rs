@@ -402,24 +402,24 @@ fn a_keyword_no_deny_list_has_ever_heard_of_reaches_no_provider() {
     const NOVEL: &str = "someKeywordFromADraftThatDoesNotExistYet";
 
     let gemini = serde_json::to_value(
-        jcode_provider_gemini::build_tools(&novel).expect("gemini tools"),
+        kcode_provider_gemini::build_tools(&novel).expect("gemini tools"),
     )
     .expect("serialize");
     assert!(!contains_key(&gemini, NOVEL), "gemini forwarded it: {gemini}");
 
-    let openai = serde_json::to_value(jcode_provider_openai::request::build_tools(&novel))
+    let openai = serde_json::to_value(kcode_provider_openai::request::build_tools(&novel))
         .expect("serialize");
     assert!(!contains_key(&openai, NOVEL), "openai forwarded it: {openai}");
 
     let anthropic =
-        serde_json::to_value(jcode_provider_anthropic::format_tools(&novel, false, false))
+        serde_json::to_value(kcode_provider_anthropic::format_tools(&novel, false, false))
             .expect("serialize");
     assert!(
         !contains_key(&anthropic, NOVEL),
         "anthropic forwarded it: {anthropic}"
     );
 
-    let openrouter = jcode_provider_openrouter::request::sanitize_tool_parameters_schema(
+    let openrouter = kcode_provider_openrouter::request::sanitize_tool_parameters_schema(
         &novel[0].input_schema,
     );
     assert!(
@@ -428,7 +428,7 @@ fn a_keyword_no_deny_list_has_ever_heard_of_reaches_no_provider() {
     );
 
     for model in ["gemini-3-flash", "claude-sonnet-4-5", "gpt-oss-120b"] {
-        let antigravity = jcode_provider_antigravity::antigravity_compatible_schema(
+        let antigravity = kcode_provider_antigravity::antigravity_compatible_schema(
             &novel[0].input_schema,
             model,
         );

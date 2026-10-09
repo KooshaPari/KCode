@@ -86,7 +86,7 @@ impl MultiProvider {
         let initial_provider = Self::initial_provider_from_env();
         let mut default_named_provider_profile: Option<String> = None;
         if initial_provider.is_none()
-            && std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
+            && std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none()
             && std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none()
             && let Some(pref) = provider_state.default_provider_key()
         {
@@ -99,8 +99,8 @@ impl MultiProvider {
                     pref, cfg,
                 ) {
                     Ok(profile_name) => {
-                        crate::env::set_var("JCODE_PROVIDER_PROFILE_NAME", &profile_name);
-                        crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
+                        crate::env::set_var("KCODE_PROVIDER_PROFILE_NAME", &profile_name);
+                        crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
                         default_named_provider_profile = Some(profile_name);
                     }
                     Err(err) => crate::logging::warn(&format!(

@@ -1,5 +1,5 @@
 use super::*;
-use jcode_base::message::{ContentBlock, Message, Role};
+use kcode_base::message::{ContentBlock, Message, Role};
 
 struct EnvVarGuard {
     key: &'static str,
@@ -9,19 +9,19 @@ struct EnvVarGuard {
 impl EnvVarGuard {
     fn set_path(key: &'static str, value: &std::path::Path) -> Self {
         let previous = std::env::var_os(key);
-        jcode_base::env::set_var(key, value);
+        kcode_base::env::set_var(key, value);
         Self { key, previous }
     }
 
     fn set_value(key: &'static str, value: &str) -> Self {
         let previous = std::env::var_os(key);
-        jcode_base::env::set_var(key, value);
+        kcode_base::env::set_var(key, value);
         Self { key, previous }
     }
 
     fn unset(key: &'static str) -> Self {
         let previous = std::env::var_os(key);
-        jcode_base::env::remove_var(key);
+        kcode_base::env::remove_var(key);
         Self { key, previous }
     }
 }
@@ -29,9 +29,9 @@ impl EnvVarGuard {
 impl Drop for EnvVarGuard {
     fn drop(&mut self) {
         if let Some(previous) = &self.previous {
-            jcode_base::env::set_var(self.key, previous);
+            kcode_base::env::set_var(self.key, previous);
         } else {
-            jcode_base::env::remove_var(self.key);
+            kcode_base::env::remove_var(self.key);
         }
     }
 }
@@ -120,9 +120,9 @@ fn available_models_display_prefers_discovered_models_and_current_model() {
 
 #[test]
 fn available_models_display_without_discovery_uses_current_model_only() {
-    let _guard = jcode_base::storage::lock_test_env();
+    let _guard = kcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let provider = GeminiProvider::new();
     provider.set_model("gemini-4-pro-preview").unwrap();
@@ -135,12 +135,12 @@ fn available_models_display_without_discovery_uses_current_model_only() {
 
 #[test]
 fn available_models_display_seeds_from_persisted_catalog() {
-    let _guard = jcode_base::storage::lock_test_env();
+    let _guard = kcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let path = GeminiProvider::persisted_catalog_path().expect("catalog path");
-    jcode_base::storage::write_json(
+    kcode_base::storage::write_json(
         &path,
         &PersistedCatalog {
             models: vec!["gemini-3-pro-preview".to_string()],
@@ -598,11 +598,11 @@ fn parses_candidate_finish_message() {
 
 #[test]
 fn auth_mode_prefers_api_key_when_present() {
-    let _guard = jcode_base::storage::lock_test_env();
+    let _guard = kcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _google = EnvVarGuard::unset("GOOGLE_API_KEY");
-    let _force = EnvVarGuard::unset("JCODE_GEMINI_FORCE_OAUTH");
+    let _force = EnvVarGuard::unset("KCODE_GEMINI_FORCE_OAUTH");
     let _key = EnvVarGuard::set_value("GEMINI_API_KEY", "test-developer-key");
 
     match GeminiProvider::auth_mode() {
@@ -613,31 +613,31 @@ fn auth_mode_prefers_api_key_when_present() {
 
 #[test]
 fn auth_mode_force_oauth_overrides_api_key() {
-    let _guard = jcode_base::storage::lock_test_env();
+    let _guard = kcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _google = EnvVarGuard::unset("GOOGLE_API_KEY");
     let _key = EnvVarGuard::set_value("GEMINI_API_KEY", "test-developer-key");
-    let _force = EnvVarGuard::set_value("JCODE_GEMINI_FORCE_OAUTH", "1");
+    let _force = EnvVarGuard::set_value("KCODE_GEMINI_FORCE_OAUTH", "1");
 
     assert!(matches!(GeminiProvider::auth_mode(), GeminiAuthMode::Oauth));
 }
 
 #[test]
 fn auth_mode_defaults_to_oauth_without_api_key() {
-    let _guard = jcode_base::storage::lock_test_env();
+    let _guard = kcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _key = EnvVarGuard::unset("GEMINI_API_KEY");
     let _google = EnvVarGuard::unset("GOOGLE_API_KEY");
-    let _force = EnvVarGuard::unset("JCODE_GEMINI_FORCE_OAUTH");
+    let _force = EnvVarGuard::unset("KCODE_GEMINI_FORCE_OAUTH");
 
     assert!(matches!(GeminiProvider::auth_mode(), GeminiAuthMode::Oauth));
 }
 
 #[test]
 fn developer_api_base_url_defaults_to_generativelanguage() {
-    let _guard = jcode_base::storage::lock_test_env();
+    let _guard = kcode_base::storage::lock_test_env();
     let _endpoint = EnvVarGuard::unset("GEMINI_API_ENDPOINT");
     let _version = EnvVarGuard::unset("GEMINI_API_VERSION");
 
@@ -649,7 +649,7 @@ fn developer_api_base_url_defaults_to_generativelanguage() {
 
 #[test]
 fn developer_api_base_url_honors_env_overrides() {
-    let _guard = jcode_base::storage::lock_test_env();
+    let _guard = kcode_base::storage::lock_test_env();
     let _endpoint = EnvVarGuard::set_value("GEMINI_API_ENDPOINT", "https://example.test/");
     let _version = EnvVarGuard::set_value("GEMINI_API_VERSION", "/v9/");
 
@@ -737,7 +737,7 @@ fn system_instruction_tool_guard_with_empty_system_still_emits_guidance() {
 #[test]
 fn fully_unsigned_history_has_no_signature_to_replay() {
     let messages = unsigned_tool_history();
-    let contents = jcode_provider_gemini::build_contents(&messages);
+    let contents = kcode_provider_gemini::build_contents(&messages);
     let signed_calls = contents
         .iter()
         .flat_map(|content| content.parts.iter())
@@ -753,9 +753,9 @@ fn fully_unsigned_history_has_no_signature_to_replay() {
 #[test]
 fn downgrade_policy_removes_every_function_call_part() {
     let messages = unsigned_tool_history();
-    let contents = jcode_provider_gemini::build_contents_with_signature_policy(
+    let contents = kcode_provider_gemini::build_contents_with_signature_policy(
         &messages,
-        jcode_provider_gemini::SignaturePolicy::DowngradeToolCallsToText,
+        kcode_provider_gemini::SignaturePolicy::DowngradeToolCallsToText,
     );
     let parts: Vec<_> = contents
         .iter()
@@ -786,21 +786,21 @@ fn downgrade_policy_removes_every_function_call_part() {
 #[test]
 fn missing_thought_signature_errors_are_recognized_from_backend_bodies() {
     // Exact bodies reported in #482 and #518.
-    assert!(jcode_provider_gemini::is_missing_thought_signature_error(
+    assert!(kcode_provider_gemini::is_missing_thought_signature_error(
         "Antigravity generateContent failed (HTTP 400 Bad Request): {\"error\": {\"code\": 400, \
          \"message\": \"Function call is missing a thought_signature in functionCall parts. This \
          is required for tools to work correctly, and missing thought_signature may lead to \
          degraded model performance. Additional data, function call [default_api:bash], position \
          7.\", \"status\": \"INVALID_ARGUMENT\"}}"
     ));
-    assert!(jcode_provider_gemini::is_missing_thought_signature_error(
+    assert!(kcode_provider_gemini::is_missing_thought_signature_error(
         "missing a thoughtSignature"
     ));
     // Unrelated failures must not trigger the lossy downgrade retry.
-    assert!(!jcode_provider_gemini::is_missing_thought_signature_error(
+    assert!(!kcode_provider_gemini::is_missing_thought_signature_error(
         "Antigravity generateContent failed (HTTP 429): rate limit exceeded"
     ));
-    assert!(!jcode_provider_gemini::is_missing_thought_signature_error(
+    assert!(!kcode_provider_gemini::is_missing_thought_signature_error(
         "MALFORMED_FUNCTION_CALL"
     ));
 }
@@ -918,7 +918,7 @@ fn build_tools_keeps_required_when_the_object_declares_no_properties() {
 }
 
 #[test]
-fn gemini_uses_jcode_compaction_so_long_sessions_have_a_safety_net() {
+fn gemini_uses_kcode_compaction_so_long_sessions_have_a_safety_net() {
     // Regression guard: `supports_compaction()` gates the ENTIRE compaction
     // block in `Agent::messages_for_provider`, including the emergency
     // hard-compact and payload truncation at the 95% critical threshold.
@@ -930,8 +930,8 @@ fn gemini_uses_jcode_compaction_so_long_sessions_have_a_safety_net() {
         "Gemini must opt into jcode compaction; it has no native fallback"
     );
     assert!(
-        provider.uses_jcode_compaction(),
-        "uses_jcode_compaction() inherits supports_compaction(); both must be true \
+        provider.uses_kcode_compaction(),
+        "uses_kcode_compaction() inherits supports_compaction(); both must be true \
          or the proactive/semantic modes and emergency recovery never run"
     );
 }

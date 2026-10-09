@@ -594,13 +594,9 @@ impl RelayLauncherClient {
         }
     }
 
-    fn url(&self, path: &str) -> String {
-        self.config.api.url(path)
-    }
+    
 
-    fn auth(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        self.config.api.auth(req)
-    }
+    
 
     async fn run(
         &self,

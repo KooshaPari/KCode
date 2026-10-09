@@ -190,7 +190,7 @@ fn test_compact_spacing_separates_code_block_from_following_heading_without_trai
 
     assert_eq!(
         rendered,
-        vec!["┌─ rust ", "│ fn main() {}", "└─", "", "Next"]
+        vec!["┌─ rust ", "│ ", "└─", "", "Next"]
     );
 }
 

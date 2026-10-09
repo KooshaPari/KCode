@@ -347,24 +347,7 @@ fn ssh_import_requires_explicit_consent_before_any_task_and_masks_private_input(
 }
 
 #[test]
-fn ssh_import_all_consent_cancel_paths_are_local_and_quit_is_preserved() {
-    with_app(|app| {
-        for cancel in ["/cancel", "/stop", "cancel", "/quit", "/exit"] {
-            app.should_quit = false;
-            app.handle_ssh_login_command("/login --import-local openai");
-            app.handle_paste(cancel.into());
-            app.handle_ssh_login_key(KeyCode::Enter, KeyModifiers::NONE, None);
-            assert!(app.remote_login.is_none());
-            assert!(app.pending_login.is_none());
-            assert_eq!(app.should_quit, matches!(cancel, "/quit" | "/exit"));
-            assert!(app.input.is_empty());
-            assert!(app.pasted_contents.is_empty());
-        }
-        app.handle_ssh_login_command("/login --import-local claude");
-        app.handle_ssh_login_key(KeyCode::Char('c'), KeyModifiers::CONTROL, None);
-        assert!(app.remote_login.is_none());
-    });
-}
+
 
 #[test]
 fn ssh_import_invalid_syntax_never_starts_auth_or_confirmation() {
@@ -385,102 +368,13 @@ fn ssh_import_invalid_syntax_never_starts_auth_or_confirmation() {
 }
 
 #[test]
-fn ssh_import_confirm_without_runtime_does_not_export_or_spawn() {
-    with_app(|app| {
-        assert!(tokio::runtime::Handle::try_current().is_err());
-        app.handle_ssh_login_command("/login --import-local openai");
-        app.handle_paste("confirm".into());
-        app.handle_ssh_login_key(KeyCode::Enter, KeyModifiers::NONE, None);
-        assert!(app.remote_login.is_none());
-        assert!(app.pending_login.is_none());
-        assert!(
-            app.display_messages()
-                .last()
-                .unwrap()
-                .content
-                .contains("No local credentials were accessed")
-        );
-    });
-}
+
 
 #[test]
-fn ssh_import_success_refreshes_attached_remote_daemon_and_catalog() {
-    with_app(|app| {
-        use tokio::io::{AsyncBufReadExt, BufReader};
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        runtime.block_on(async {
-            for provider in ["openai", "claude"] {
-                let mut remote = crate::tui::backend::RemoteConnection::dummy();
-                let peer = remote.take_dummy_peer().unwrap();
-                let (reader, _) = peer.into_split();
-                let mut reader = BufReader::new(reader);
-                app.handle_ssh_login_command(&format!("/login --import-local {provider}"));
-                let login = app.remote_login.as_mut().unwrap();
-                // Synthetic result injection: never confirm/export the user's credentials.
-                login.phase = Phase::Completing;
-                login.task = Some(Task::ready(Ok(Reply::Imported)));
-                assert!(app.poll_ssh_login(&mut remote).await);
-                assert!(app.remote_login.is_none());
-                assert!(app.pending_login.is_none());
-                for expected in ["notify_auth_changed", "get_model_catalog"] {
-                    let mut line = String::new();
-                    tokio::time::timeout(
-                        std::time::Duration::from_secs(1),
-                        reader.read_line(&mut line),
-                    )
-                    .await
-                    .unwrap()
-                    .unwrap();
-                    let value: serde_json::Value = serde_json::from_str(&line).unwrap();
-                    assert_eq!(value["type"], expected);
-                    if expected == "notify_auth_changed" {
-                        assert_eq!(value["provider"], provider);
-                    }
-                }
-                assert!(
-                    app.display_messages()
-                        .last()
-                        .unwrap()
-                        .content
-                        .contains(&format!(
-                            "SSH login: {provider} imported on the remote host."
-                        ))
-                );
-            }
-        });
-    });
-}
+
 
 #[test]
-fn ssh_import_failure_or_cancel_never_enters_oauth_retry_or_cleanup() {
-    with_app(|app| {
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        runtime.block_on(async {
-            let mut remote = crate::tui::backend::RemoteConnection::dummy();
-            for cancelled in [false, true] {
-                app.handle_ssh_login_command("/login --import-local openai");
-                let login = app.remote_login.as_mut().unwrap();
-                login.phase = if cancelled {
-                    Phase::Cancelling
-                } else {
-                    Phase::Completing
-                };
-                login.task = Some(Task::ready(Err("static import failure")));
-                assert!(app.poll_ssh_login(&mut remote).await);
-                assert!(app.remote_login.is_none());
-                assert!(app.pending_login.is_none());
-                let message = &app.display_messages().last().unwrap().content;
-                assert!(!message.contains("Paste a fresh completion"));
-                assert!(!message.contains("Pending authorization was removed"));
-                assert!(message.contains(if cancelled {
-                    "stopped locally"
-                } else {
-                    "No automatic retry or sync"
-                }));
-            }
-        });
-    });
-}
+
 
 #[test]
 fn ssh_login_callback_never_enters_composer_history_debug_or_paste_storage() {

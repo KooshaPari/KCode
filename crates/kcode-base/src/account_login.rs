@@ -248,12 +248,8 @@ impl EmailLogin {
     pub fn code_length(&self) -> usize {
         self.code_length
     }
-    pub fn expires_in(&self) -> Duration {
-        self.expires_in
-    }
-    pub fn is_expired(&self) -> bool {
-        self.started_at.elapsed() >= self.expires_in
-    }
+    
+    
 }
 
 impl fmt::Debug for EmailLogin {

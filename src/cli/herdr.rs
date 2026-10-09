@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 /// Print HERDR pane info: env vars, socket path, pane ID, and reporter state.
 pub(crate) fn run_herdr_status() -> Result<()> {
-    let env = jcode_herdr::env::HerdrEnv::capture();
+    let env = kcode_herdr::env::HerdrEnv::capture();
     let reporter_active = crate::herdr::is_active();
 
     println!("HERDR Pane Status");
@@ -60,16 +60,16 @@ pub(crate) fn run_herdr_install() -> Result<()> {
     let dir = herdr_agent_detection_dir()?;
     std::fs::create_dir_all(&dir)?;
 
-    let jcode_manifest = jcode_herdr::manifest::jcode_manifest();
-    let forgecode_manifest = jcode_herdr::manifest::forgecode_manifest();
+    let kcode_manifest = kcode_herdr::manifest::kcode_manifest();
+    let forgecode_manifest = kcode_herdr::manifest::forgecode_manifest();
 
-    let jcode_path = dir.join("jcode.toml");
+    let kcode_path = dir.join("jcode.toml");
     let forgecode_path = dir.join("forgecode.toml");
 
-    jcode_herdr::manifest::write_manifest(&jcode_manifest, &jcode_path)?;
-    println!("Installed {}", jcode_path.display());
+    kcode_herdr::manifest::write_manifest(&kcode_manifest, &kcode_path)?;
+    println!("Installed {}", kcode_path.display());
 
-    jcode_herdr::manifest::write_manifest(&forgecode_manifest, &forgecode_path)?;
+    kcode_herdr::manifest::write_manifest(&forgecode_manifest, &forgecode_path)?;
     println!("Installed {}", forgecode_path.display());
 
     println!();

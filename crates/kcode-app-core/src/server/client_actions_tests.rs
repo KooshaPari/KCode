@@ -96,9 +96,7 @@ impl Provider for StreamingMockProvider {
         Ok(Box::pin(stream))
     }
 
-    fn name(&self) -> &str {
-        "mock"
-    }
+    
 
     fn fork(&self) -> Arc<dyn Provider> {
         Arc::new(self.clone())

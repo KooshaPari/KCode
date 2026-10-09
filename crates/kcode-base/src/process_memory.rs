@@ -141,9 +141,7 @@ pub fn snapshot() -> ProcessMemorySnapshot {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn snapshot() -> ProcessMemorySnapshot {
-    snapshot_with_source("snapshot")
-}
+
 
 #[cfg(target_os = "linux")]
 pub fn snapshot_with_source(source: impl Into<String>) -> ProcessMemorySnapshot {

@@ -730,9 +730,7 @@ impl Provider for CompleteImmediatelyProvider {
         "complete-immediately"
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(Self)
-    }
+    
 }
 
 #[derive(Clone, Default)]
@@ -769,9 +767,7 @@ impl Provider for FanoutStreamProvider {
         "fanout-stream"
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(Self)
-    }
+    
 }
 
 #[async_trait]
@@ -1863,9 +1859,7 @@ impl Provider for SystemPromptCaptureProvider {
     fn name(&self) -> &str {
         "prompt-capture"
     }
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 #[tokio::test]
@@ -1938,12 +1932,7 @@ async fn system_prompt_socket_creation_attach_resume_fork_and_no_leaking() {
     let (client_reader, mut client_writer) = client_stream.into_split();
     let mut client_reader = BufReader::new(client_reader);
 
-    async fn send(writer: &mut crate::transport::WriteHalf, value: serde_json::Value) {
-        writer
-            .write_all(format!("{value}\n").as_bytes())
-            .await
-            .unwrap();
-    }
+    
     async fn until(
         reader: &mut BufReader<crate::transport::ReadHalf>,
         predicate: impl Fn(&ServerEvent) -> bool,

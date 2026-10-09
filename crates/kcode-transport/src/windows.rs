@@ -256,13 +256,7 @@ pub struct SplitReadRef<'a> {
 }
 
 impl<'a> AsyncRead for SplitReadRef<'a> {
-    fn poll_read(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> std::task::Poll<io::Result<()>> {
-        std::pin::Pin::new(&mut self.get_mut().inner).poll_read(cx, buf)
-    }
+    
 }
 
 /// Borrowed write reference for `stream.split()`.
@@ -271,27 +265,11 @@ pub struct SplitWriteRef<'a> {
 }
 
 impl<'a> AsyncWrite for SplitWriteRef<'a> {
-    fn poll_write(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-        buf: &[u8],
-    ) -> std::task::Poll<io::Result<usize>> {
-        std::pin::Pin::new(&mut self.get_mut().inner).poll_write(cx, buf)
-    }
+    
 
-    fn poll_flush(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<io::Result<()>> {
-        std::pin::Pin::new(&mut self.get_mut().inner).poll_flush(cx)
-    }
+    
 
-    fn poll_shutdown(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<io::Result<()>> {
-        std::pin::Pin::new(&mut self.get_mut().inner).poll_shutdown(cx)
-    }
+    
 }
 
 /// Synchronous named pipe stream for blocking IPC (used by communicate tool).

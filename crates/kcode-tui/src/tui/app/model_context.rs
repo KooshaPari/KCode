@@ -23,7 +23,7 @@ impl App {
     }
 
     fn failover_config_hint() -> &'static str {
-        "To turn this off, set [provider].cross_provider_failover = \"manual\" in ~/.jcode/config.toml or export JCODE_CROSS_PROVIDER_FAILOVER=manual."
+        "To turn this off, set [provider].cross_provider_failover = \"manual\" in ~/.jcode/config.toml or export KCODE_CROSS_PROVIDER_FAILOVER=manual."
     }
 
     /// Shared post-switch bookkeeping for every local model/provider switch
@@ -201,13 +201,13 @@ impl App {
         // Prefer the same authoritative credential that drives billing identity
         // so we never offer the active route as its own fallback.
         let provider =
-            jcode_provider_core::parse_provider_hint(&self.current_provider_label_for_fallback());
+            kcode_provider_core::parse_provider_hint(&self.current_provider_label_for_fallback());
         let credential = if self.is_remote {
             self.remote_resolved_credential
         } else {
             self.provider.active_resolved_credential()
         };
-        use jcode_provider_core::{ActiveProvider, ResolvedCredential};
+        use kcode_provider_core::{ActiveProvider, ResolvedCredential};
         match (provider, credential) {
             (Some(ActiveProvider::Claude), Some(ResolvedCredential::Oauth)) => {
                 Some("claude-oauth".to_string())
@@ -356,8 +356,8 @@ impl App {
     /// Whether `model` already is the guardrail reroute target
     /// (`claude-opus-4-8`), tolerating case, `[1m]` suffixes, and dated ids.
     fn is_guardrail_reroute_model(model: &str) -> bool {
-        let canonical = jcode_provider_core::model_id::canonical(model);
-        jcode_provider_core::model_id::strip_date_suffix(&canonical) == GUARDRAIL_REROUTE_MODEL
+        let canonical = kcode_provider_core::model_id::canonical(model);
+        kcode_provider_core::model_id::strip_date_suffix(&canonical) == GUARDRAIL_REROUTE_MODEL
     }
 
     /// Pick the best available `claude-opus-4-8` route for a guardrail
@@ -661,7 +661,7 @@ impl App {
             self.provider.name().to_string()
         };
 
-        // Shared heuristic (jcode-compaction-core): keeps the sidebar figure
+        // Shared heuristic (kcode-compaction-core): keeps the sidebar figure
         // consistent with the compaction manager's observed-token feed.
         crate::compaction::effective_context_tokens_from_usage(
             &provider_name,
@@ -743,7 +743,7 @@ impl App {
     }
 
     pub(super) fn update_compaction_usage_from_stream(&mut self) {
-        if self.is_remote || !self.provider.uses_jcode_compaction() {
+        if self.is_remote || !self.provider.uses_kcode_compaction() {
             return;
         }
         let Some(tokens) = self.current_stream_context_tokens() else {

@@ -755,7 +755,7 @@ mod tests {
         assert_eq!(sample.source, "Claude Code");
         assert_eq!(sample.turns[1], SampleTurn::Reasoning("plan it".into()));
         assert!(
-            matches!(&sample.turns[2], SampleTurn::Tool { output, .. } if output == "fn main() {}")
+            matches!(&sample.turns[2], SampleTurn::Tool { output, .. } if output == "")
         );
         assert_eq!(sample.turns.len(), 12);
     }

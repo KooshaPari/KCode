@@ -925,6 +925,7 @@ pub mod ranking {
     impl<T, K: Ord> Eq for TopKOrdItem<T, K> {}
 
     impl<T, K: Ord> PartialOrd for TopKOrdItem<T, K> {
+        
         fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
             Some(self.cmp(other))
         }

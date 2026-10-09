@@ -1635,9 +1635,7 @@ impl InlineInteractiveState {
                 .all(|entry| matches!(entry.action, PickerAction::AgentTarget(_)))
     }
 
-    pub fn uses_compact_navigation(&self) -> bool {
-        self.schema().layout == InlineInteractiveLayout::Compact
-    }
+    
 
     pub fn preview_submit_hint(&self) -> &'static str {
         self.schema().preview_submit_hint

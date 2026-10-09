@@ -593,11 +593,5 @@ impl EnvStringGuard {
 }
 
 impl Drop for EnvStringGuard {
-    fn drop(&mut self) {
-        if let Some(previous) = &self.previous {
-            crate::env::set_var(self.key, previous);
-        } else {
-            crate::env::remove_var(self.key);
-        }
-    }
+    
 }

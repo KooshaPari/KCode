@@ -54,11 +54,11 @@ pub fn has_api_key() -> bool {
 }
 
 /// True when the `gemini` provider must stay on Code Assist OAuth even though
-/// an API key exists (`JCODE_GEMINI_FORCE_OAUTH`, or `[provider]
+/// an API key exists (`KCODE_GEMINI_FORCE_OAUTH`, or `[provider]
 /// gemini_force_oauth = true`, which the config loader mirrors into that env
 /// var). The `gemini-api` provider is unaffected: it always uses the key.
 pub fn force_oauth() -> bool {
-    std::env::var("JCODE_GEMINI_FORCE_OAUTH")
+    std::env::var("KCODE_GEMINI_FORCE_OAUTH")
         .map(|v| {
             let v = v.trim();
             !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false")
@@ -156,12 +156,12 @@ struct GeminiCliOAuthCredentials {
 /// Resolve the Gemini CLI command from the environment or a sensible default.
 ///
 /// Preference order:
-/// 1. `JCODE_GEMINI_CLI_PATH` (supports a full command like `npx @google/gemini-cli`)
+/// 1. `KCODE_GEMINI_CLI_PATH` (supports a full command like `npx @google/gemini-cli`)
 /// 2. `gemini` on PATH
 /// 3. `npx @google/gemini-cli`
 pub fn gemini_cli_command() -> GeminiCliCommand {
     resolve_gemini_cli_command_with(
-        std::env::var("JCODE_GEMINI_CLI_PATH").ok().as_deref(),
+        std::env::var("KCODE_GEMINI_CLI_PATH").ok().as_deref(),
         super::command_exists,
     )
 }
@@ -183,7 +183,7 @@ pub fn has_cached_auth() -> bool {
 }
 
 pub fn tokens_path() -> Result<std::path::PathBuf> {
-    Ok(crate::storage::jcode_dir()?.join("gemini_oauth.json"))
+    Ok(crate::storage::kcode_dir()?.join("gemini_oauth.json"))
 }
 
 pub fn gemini_cli_oauth_path() -> Result<std::path::PathBuf> {

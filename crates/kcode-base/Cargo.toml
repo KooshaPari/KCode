@@ -1,14 +1,14 @@
 [package]
-name = "jcode-base"
+name = "kcode-base"
 version = "0.1.0"
 edition = "2024"
 publish = false
 
 # Foundational layer of the jcode application core: the downward-closed set of
 # modules (provider, auth, config, session, message, memory, telemetry, ...)
-# that the server/tool/agent layer depends on. Split out of `jcode-app-core` so
+# that the server/tool/agent layer depends on. Split out of `kcode-app-core` so
 # the two halves compile as separate rustc units, halving peak compile memory.
-# `jcode-app-core` re-exports this crate (`pub use jcode_base::*`) so that every
+# `kcode-app-core` re-exports this crate (`pub use jcode_base::*`) so that every
 # existing `crate::<module>` path keeps resolving unchanged.
 
 [lib]
@@ -50,44 +50,44 @@ uuid = { version = "1", features = ["v4", "v5"] }
 proctitle = "0.1"
 
 # Embeddings (local inference) - behind feature flag (163 crates, slow to compile)
-jcode-embedding = { path = "../jcode-embedding", optional = true }
-jcode-gateway-types = { path = "../jcode-gateway-types" }
-jcode-import-core = { path = "../jcode-import-core" }
-jcode-logging = { path = "../jcode-logging" }
-jcode-permission-bubble = { path = "../jcode-permission-bubble" }
+kcode-embedding = { path = "../kcode-embedding", optional = true }
+kcode-gateway-types = { path = "../kcode-gateway-types" }
+kcode-import-core = { path = "../kcode-import-core" }
+kcode-logging = { path = "../kcode-logging" }
+kcode-permission-bubble = { path = "../kcode-permission-bubble" }
 
 # OAuth
 base64 = "0.22"
 sha2 = "0.10"
-jcode-transport = { path = "../jcode-transport" }
+kcode-transport = { path = "../kcode-transport" }
 rand = "0.9.3"
 hex = "0.4"
 url = "2"
 open = "5"               # Open URLs in browser
-jcode-auth-types = { path = "../jcode-auth-types" }
-jcode-azure-auth = { path = "../jcode-azure-auth" }
-jcode-agent-runtime = { path = "../jcode-agent-runtime" }
-jcode-provider-metadata = { path = "../jcode-provider-metadata" }
-jcode-provider-env = { path = "../jcode-provider-env" }
-jcode-provider-core = { path = "../jcode-provider-core" }
+kcode-auth-types = { path = "../kcode-auth-types" }
+kcode-azure-auth = { path = "../kcode-azure-auth" }
+kcode-agent-runtime = { path = "../kcode-agent-runtime" }
+kcode-provider-metadata = { path = "../kcode-provider-metadata" }
+kcode-provider-env = { path = "../kcode-provider-env" }
+kcode-provider-core = { path = "../kcode-provider-core" }
 # default-features=false so this crate's `bedrock` feature (below) controls the
 # AWS SDK stack; the pure model-metadata/credential-detection layer is always on.
-jcode-provider-bedrock = { path = "../jcode-provider-bedrock", default-features = false }
-jcode-provider-antigravity = { path = "../jcode-provider-antigravity" }
-jcode-provider-copilot = { path = "../jcode-provider-copilot" }
-jcode-provider-openai = { path = "../jcode-provider-openai" }
-jcode-provider-openrouter = { path = "../jcode-provider-openrouter" }
-jcode-provider-gemini = { path = "../jcode-provider-gemini" }
-# NOTE: this foundation layer intentionally does NOT depend on any `jcode-tui-*`
+kcode-provider-bedrock = { path = "../kcode-provider-bedrock", default-features = false }
+kcode-provider-antigravity = { path = "../kcode-provider-antigravity" }
+kcode-provider-copilot = { path = "../kcode-provider-copilot" }
+kcode-provider-openai = { path = "../kcode-provider-openai" }
+kcode-provider-openrouter = { path = "../kcode-provider-openrouter" }
+kcode-provider-gemini = { path = "../kcode-provider-gemini" }
+# NOTE: this foundation layer intentionally does NOT depend on any `kcode-tui-*`
 # crate. The two pure-data/string symbols it used to reach for (`ResumeTarget`,
-# `reasoning_line_markup`) were moved to `jcode-session-types` and
-# `jcode-render-core` respectively, so the layering inversion (foundation
+# `reasoning_line_markup`) were moved to `kcode-session-types` and
+# `kcode-render-core` respectively, so the layering inversion (foundation
 # depending on presentation) is gone.
-jcode-render-core = { path = "../jcode-render-core" }
-jcode-terminal-launch = { path = "../jcode-terminal-launch" }
-jcode-terminal-image = { path = "../jcode-terminal-image" }
-jcode-telemetry-core = { path = "../jcode-telemetry-core" }
-jcode-usage-types = { path = "../jcode-usage-types" }
+kcode-render-core = { path = "../kcode-render-core" }
+kcode-terminal-launch = { path = "../kcode-terminal-launch" }
+kcode-terminal-image = { path = "../kcode-terminal-image" }
+kcode-telemetry-core = { path = "../kcode-telemetry-core" }
+kcode-usage-types = { path = "../kcode-usage-types" }
 
 # Native microphone input is opt-in so CLI builds need no audio development libraries.
 cpal = { version = "0.15", optional = true }
@@ -96,30 +96,30 @@ cpal = { version = "0.15", optional = true }
 
 # Terminal I/O (event stream for interactive auth/secret prompts). NOTE: the
 # heavier presentation deps (ratatui widgets, arboard clipboard) were dropped
-# from this foundation layer; they are unused here and live only in `jcode-tui`.
+# from this foundation layer; they are unused here and live only in `kcode-tui`.
 crossterm = { version = "0.29", features = ["event-stream"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }  # Only PNG/JPEG (skip avif/rav1e, exr, gif, tiff, etc)
 
-# NOTE: PDF text extraction (jcode-pdf) lives in the upper jcode-app-core crate
+# NOTE: PDF text extraction (kcode-pdf) lives in the upperkcode-app-core crate
 # (tool/read.rs), not here.
-jcode-background-types = { path = "../jcode-background-types" }
-jcode-batch-types = { path = "../jcode-batch-types" }
-jcode-build-meta = { path = "../jcode-build-meta" }
-jcode-compaction-core = { path = "../jcode-compaction-core" }
-jcode-config-types = { path = "../jcode-config-types" }
-jcode-core = { path = "../jcode-core" }
-jcode-memory-types = { path = "../jcode-memory-types" }
-jcode-message-types = { path = "../jcode-message-types" }
-jcode-plan = { path = "../jcode-plan" }
-jcode-protocol = { path = "../jcode-protocol" }
-jcode-session-types = { path = "../jcode-session-types" }
-jcode-selfdev-types = { path = "../jcode-selfdev-types" }
-jcode-storage = { path = "../jcode-storage" }
-jcode-task-types = { path = "../jcode-task-types" }
-jcode-tool-core = { path = "../jcode-tool-core" }
-jcode-tool-types = { path = "../jcode-tool-types" }
-jcode-side-panel-types = { path = "../jcode-side-panel-types" }
-jcode-applet-types = { path = "../jcode-applet-types" }
+kcode-background-types = { path = "../kcode-background-types" }
+kcode-batch-types = { path = "../kcode-batch-types" }
+kcode-build-meta = { path = "../kcode-build-meta" }
+kcode-compaction-core = { path = "../kcode-compaction-core" }
+kcode-config-types = { path = "../kcode-config-types" }
+kcode-core = { path = "../kcode-core" }
+kcode-memory-types = { path = "../kcode-memory-types" }
+kcode-message-types = { path = "../kcode-message-types" }
+kcode-plan = { path = "../kcode-plan" }
+kcode-protocol = { path = "../kcode-protocol" }
+kcode-session-types = { path = "../kcode-session-types" }
+kcode-selfdev-types = { path = "../kcode-selfdev-types" }
+kcode-storage = { path = "../kcode-storage" }
+kcode-task-types = { path = "../kcode-task-types" }
+kcode-tool-core = { path = "../kcode-tool-core" }
+kcode-tool-types = { path = "../kcode-tool-types" }
+kcode-side-panel-types = { path = "../kcode-side-panel-types" }
+kcode-applet-types = { path = "../kcode-applet-types" }
 
 # Gzip/deflate decoding (provider import helpers, browser extension unzip)
 flate2 = "1"
@@ -131,7 +131,7 @@ default = ["bedrock"]
 # Compiles the in-crate test helpers (storage::lock_test_env,
 # auth::test_sandbox, bus::reset_models_updated_publish_state_for_tests, ...) as
 # `pub` so downstream crates' test targets can reach them. Enabled as a
-# dev-dependency feature by jcode-app-core / jcode / etc.; never in normal
+# dev-dependency feature bykcode-app-core / jcode / etc.; never in normal
 # (non-test) builds.
 test-support = []
 voice-capture = ["dep:cpal"]
@@ -144,11 +144,11 @@ jemalloc-prof = [
     "jemalloc",
     "tikv-jemalloc-ctl/profiling",
 ]
-embeddings = ["dep:jcode-embedding"]
+embeddings = ["dep:kcode-embedding"]
 # Live AWS Bedrock support (the ~20-crate AWS SDK stack) lives in
-# jcode-provider-bedrock (aws-sdk); forward there. Without it the Bedrock
+#kcode-provider-bedrock (aws-sdk); forward there. Without it the Bedrock
 # provider still compiles but live calls return an explanatory error.
-bedrock = ["jcode-provider-bedrock/aws-sdk"]
+bedrock = ["kcode-provider-bedrock/aws-sdk"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Power", "Win32_System_Registry", "Win32_System_SystemServices", "Win32_System_Threading"] }
@@ -160,7 +160,7 @@ global-hotkey = "0.7"
 # Dev-only cycle (cargo permits dev-dependencies on dependents): base's
 # MultiProvider routing tests exercise the real OpenRouter/OpenAI-compatible
 # runtime through the composition-root registry, exactly like the binary.
-jcode-provider-openrouter-runtime = { path = "../jcode-provider-openrouter-runtime" }
+kcode-provider-openrouter-runtime = { path = "../kcode-provider-openrouter-runtime" }
 # Paused-time (auto-advancing virtual clock) tests for the background stall watchdog.
 tokio = { version = "1", features = ["test-util"] }
 

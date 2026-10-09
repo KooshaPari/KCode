@@ -179,17 +179,9 @@ pub struct McpCallTool {
 }
 
 impl McpCallTool {
-    pub fn new(manager: Arc<RwLock<McpManager>>) -> Self {
-        Self {
-            manager,
-            registry: None,
-        }
-    }
+    
 
-    pub fn with_registry(mut self, registry: crate::tool::Registry) -> Self {
-        self.registry = Some(registry.downgrade());
-        self
-    }
+    
 }
 
 #[async_trait]
@@ -345,17 +337,9 @@ pub struct McpManagementTool {
 }
 
 impl McpManagementTool {
-    pub fn new(manager: Arc<RwLock<McpManager>>) -> Self {
-        Self {
-            manager,
-            registry: None,
-        }
-    }
+    
 
-    pub fn with_registry(mut self, registry: crate::tool::Registry) -> Self {
-        self.registry = Some(registry.downgrade());
-        self
-    }
+    
 }
 
 #[async_trait]

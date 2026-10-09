@@ -273,15 +273,11 @@ impl Tool for EndAmbientCycleTool {
 pub struct ScheduleAmbientTool;
 
 impl Default for ScheduleAmbientTool {
-    fn default() -> Self {
-        Self::new()
-    }
+    
 }
 
 impl ScheduleAmbientTool {
-    pub fn new() -> Self {
-        Self
-    }
+    
 }
 
 #[derive(Deserialize)]
@@ -388,15 +384,11 @@ impl Tool for ScheduleAmbientTool {
 pub struct RequestPermissionTool;
 
 impl Default for RequestPermissionTool {
-    fn default() -> Self {
-        Self::new()
-    }
+    
 }
 
 impl RequestPermissionTool {
-    pub fn new() -> Self {
-        Self
-    }
+    
 }
 
 #[derive(Deserialize)]
@@ -716,15 +708,11 @@ impl Tool for RequestPermissionTool {
 pub struct ScheduleTool;
 
 impl Default for ScheduleTool {
-    fn default() -> Self {
-        Self::new()
-    }
+    
 }
 
 impl ScheduleTool {
-    pub fn new() -> Self {
-        Self
-    }
+    
 }
 
 #[derive(Deserialize)]
@@ -1032,15 +1020,11 @@ fn nudge_schedule_runner() {
 pub struct SendChannelMessageTool;
 
 impl Default for SendChannelMessageTool {
-    fn default() -> Self {
-        Self::new()
-    }
+    
 }
 
 impl SendChannelMessageTool {
-    pub fn new() -> Self {
-        Self
-    }
+    
 }
 
 #[async_trait]

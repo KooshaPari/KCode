@@ -1731,7 +1731,7 @@ mod tests {
             route(
                 "gpt-5.5",
                 "Jcode Subscription",
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD,
+                crate::subscription_catalog::KCODE_ROUTE_API_METHOD,
                 true,
             ),
         ];
@@ -1746,7 +1746,7 @@ mod tests {
             report.route_sample,
             vec![format!(
                 "`gpt-5.5` via {}",
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD
+                crate::subscription_catalog::KCODE_ROUTE_API_METHOD
             )]
         );
         assert_eq!(

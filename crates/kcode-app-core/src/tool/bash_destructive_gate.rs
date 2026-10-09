@@ -102,7 +102,7 @@ mod tests {
         for command in [
             "cargo test --lib > \"$KCODE_SCRATCH_DIR/tests.log\" 2>&1",
             "git diff > \"${KCODE_SCRATCH_DIR}/before.patch\"",
-            "env | grep -E '^(KCODE_|JCODE_)'",
+            "env | grep -E '^(KCODE_|KCODE_)'",
             "command -v sudo && sudo -n true",
             "find /sys -type l -exec readlink {} \\;",
             "find /etc -type f -exec sed -n '1,10p' {} \\;",

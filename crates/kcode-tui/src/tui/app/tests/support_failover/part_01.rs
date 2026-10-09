@@ -105,9 +105,7 @@ impl Provider for RefreshSummaryProvider {
         "refresh-summary"
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 
     async fn refresh_model_catalog(&self) -> Result<crate::provider::ModelCatalogRefreshSummary> {
         Ok(self.summary.clone())
@@ -171,9 +169,7 @@ impl Provider for OpenRouterSpecCaptureProvider {
         Ok(())
     }
 
-    fn fork(&self) -> Arc<dyn Provider> {
-        Arc::new(self.clone())
-    }
+    
 }
 
 pub(crate) fn create_test_app() -> App {

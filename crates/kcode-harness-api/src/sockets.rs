@@ -73,14 +73,14 @@ pub fn api_socket_path() -> PathBuf {
 
 /// Path of the pre-rename API socket, used by clients as a fallback when
 /// `api_socket_path()` is not yet bound (i.e. the daemon is still running an
-/// older binary that listens on `jcode-api.sock`). `KCODE_API_SOCKET` is
+/// older binary that listens on `kcode-api.sock`). `KCODE_API_SOCKET` is
 /// honoured; an explicit `KCODE_API_SOCKET_LEGACY` override exists for tests
 /// that need to point at a non-default legacy location.
 pub fn legacy_api_socket_path() -> PathBuf {
     if let Ok(custom) = std::env::var("KCODE_API_SOCKET_LEGACY") {
         return PathBuf::from(custom);
     }
-    runtime_dir().join("jcode-api.sock")
+    runtime_dir().join("kcode-api.sock")
 }
 
 /// Path of the internal daemon socket the bridge translates onto.
@@ -120,7 +120,7 @@ mod tests {
     fn legacy_api_socket_path_uses_legacy_filename() {
         assert_eq!(
             legacy_api_socket_path().file_name().unwrap(),
-            "jcode-api.sock"
+            "kcode-api.sock"
         );
     }
 

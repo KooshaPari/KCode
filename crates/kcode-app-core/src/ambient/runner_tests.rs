@@ -96,9 +96,7 @@ impl Provider for StreamingTestProvider {
         Ok(Box::pin(stream))
     }
 
-    fn name(&self) -> &str {
-        "test"
-    }
+    
 
     fn fork(&self) -> Arc<dyn Provider> {
         Arc::new(self.clone())
@@ -109,7 +107,7 @@ impl Provider for StreamingTestProvider {
 async fn runner_stays_alive_to_service_schedules_when_ambient_disabled() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let provider: Arc<dyn Provider> = Arc::new(TestProvider);
     let runner = AmbientRunnerHandle::new(Arc::new(crate::safety::SafetySystem::new()));
@@ -128,7 +126,7 @@ async fn runner_stays_alive_to_service_schedules_when_ambient_disabled() {
 async fn assert_visible_launch_error_falls_back(error_kind: std::io::ErrorKind) {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let provider: Arc<dyn Provider> = Arc::new(StreamingTestProvider::default());
     let runner = AmbientRunnerHandle::new(Arc::new(crate::safety::SafetySystem::new()));
@@ -168,7 +166,7 @@ async fn missing_visible_launcher_falls_back_to_headless() {
 async fn spawn_target_creates_one_child_session_and_runs_task() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let provider = StreamingTestProvider::default();
     provider.queue_response(vec![

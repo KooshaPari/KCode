@@ -122,9 +122,9 @@ fn full_and_split_prompt_builders_use_the_same_one_line_skill_descriptions() {
 #[test]
 fn test_load_agents_md_files_uses_sandboxed_global_files() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path().join("external")).unwrap();
 
     std::fs::write(
@@ -157,9 +157,9 @@ fn test_load_agents_md_files_uses_sandboxed_global_files() {
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -344,11 +344,11 @@ fn sponsored_discovery_is_not_injected_into_the_system_prompt() {
 }
 
 #[test]
-fn test_prompt_overlay_files_are_loaded_from_project_and_global_jcode_dirs() {
+fn test_prompt_overlay_files_are_loaded_from_project_and_global_kcode_dirs() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path()).unwrap();
     std::fs::write(
         temp.path().join("prompt-overlay.md"),
@@ -383,18 +383,18 @@ fn test_prompt_overlay_files_are_loaded_from_project_and_global_jcode_dirs() {
     assert!(info.prompt_overlay_chars > 0);
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
 #[test]
-fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
+fn test_preferred_tools_files_are_loaded_from_project_and_global_kcode_dirs() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path()).unwrap();
     std::fs::write(
         temp.path().join("preferred-tools.md"),
@@ -451,18 +451,18 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
     assert!(split_info.preferred_tools_chars > 0);
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
 #[test]
 fn test_swarm_prompt_prefers_project_then_global_then_default() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path()).unwrap();
 
     let project_dir = tempfile::TempDir::new().unwrap();
@@ -492,9 +492,9 @@ fn test_swarm_prompt_prefers_project_then_global_then_default() {
     assert_eq!(prompt, "global swarm routing");
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -650,11 +650,11 @@ fn classify_effort_distinguishes_reasoning_from_swarm_modes() {
 fn project_system_prompt_file_replaces_default_base_prompt() {
     use crate::prompt::load_base_system_prompt;
 
-    let dir = std::env::temp_dir().join(format!("jcode-sysprompt-{}", std::process::id()));
-    let jcode_dir = dir.join(".jcode");
-    std::fs::create_dir_all(&jcode_dir).unwrap();
+    let dir = std::env::temp_dir().join(format!("kcode-sysprompt-{}", std::process::id()));
+    let kcode_dir = dir.join(".jcode");
+    std::fs::create_dir_all(&kcode_dir).unwrap();
     std::fs::write(
-        jcode_dir.join("system-prompt.md"),
+        kcode_dir.join("system-prompt.md"),
         "You are a custom agent.\n",
     )
     .unwrap();
@@ -669,37 +669,11 @@ fn project_system_prompt_file_replaces_default_base_prompt() {
     assert!(!prompt.contains("Jcode is open source"));
 
     // Empty override falls back to the built-in default.
-    std::fs::write(jcode_dir.join("system-prompt.md"), "   \n").unwrap();
+    std::fs::write(kcode_dir.join("system-prompt.md"), "   \n").unwrap();
     assert_eq!(load_base_system_prompt(Some(&dir)), DEFAULT_SYSTEM_PROMPT);
 
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
-fn project_system_prompt_file_replaces_default_base_prompt() {
-    use crate::prompt::load_base_system_prompt;
 
-    let dir = std::env::temp_dir().join(format!("jcode-sysprompt-{}", std::process::id()));
-    let jcode_dir = dir.join(".jcode");
-    std::fs::create_dir_all(&jcode_dir).unwrap();
-    std::fs::write(
-        jcode_dir.join("system-prompt.md"),
-        "You are a custom agent.\n",
-    )
-    .unwrap();
-
-    assert_eq!(
-        load_base_system_prompt(Some(&dir)),
-        "You are a custom agent."
-    );
-
-    let (prompt, _info) = build_system_prompt_full(None, &[], false, None, Some(&dir));
-    assert!(prompt.contains("You are a custom agent."));
-    assert!(!prompt.contains("Jcode is open source"));
-
-    // Empty override falls back to the built-in default.
-    std::fs::write(jcode_dir.join("system-prompt.md"), "   \n").unwrap();
-    assert_eq!(load_base_system_prompt(Some(&dir)), DEFAULT_SYSTEM_PROMPT);
-
-    std::fs::remove_dir_all(&dir).ok();
-}

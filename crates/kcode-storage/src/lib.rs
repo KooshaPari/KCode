@@ -164,7 +164,7 @@ fn ensure_private_runtime_dir(path: &Path) {
 ///
 /// Resolution order:
 /// 1. `KCODE_HOME` env var (new canonical)
-/// 2. `JCODE_HOME` env var (legacy backwards-compat, deprecated; warns once)
+/// 2. `KCODE_HOME` env var (legacy backwards-compat, deprecated; warns once)
 /// 3. `~/.kcode/` if it exists (new default)
 /// 4. `~/.jcode/` if it exists (legacy default, backwards-compat)
 /// 5. `~/.kcode/` (default for fresh installs)
@@ -174,15 +174,15 @@ fn ensure_private_runtime_dir(path: &Path) {
 pub fn home_dir() -> Option<PathBuf> {
     use std::sync::atomic::{AtomicBool, Ordering};
 
-    static JCODE_HOME_WARNED: AtomicBool = AtomicBool::new(false);
+    static KCODE_HOME_WARNED: AtomicBool = AtomicBool::new(false);
 
     if let Ok(path) = std::env::var("KCODE_HOME") {
         return Some(PathBuf::from(path));
     }
-    if let Ok(path) = std::env::var("JCODE_HOME") {
-        if !JCODE_HOME_WARNED.swap(true, Ordering::Relaxed) {
+    if let Ok(path) = std::env::var("KCODE_HOME") {
+        if !KCODE_HOME_WARNED.swap(true, Ordering::Relaxed) {
             eprintln!(
-                "warning: JCODE_HOME is deprecated; use KCODE_HOME instead \
+                "warning: KCODE_HOME is deprecated; use KCODE_HOME instead \
                  (legacy value will be honored for one release cycle)"
             );
         }

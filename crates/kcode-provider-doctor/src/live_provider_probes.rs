@@ -12,21 +12,21 @@
 use anyhow::{Context, anyhow, ensure};
 use serde::Deserialize;
 
-use jcode_base::message::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
-use jcode_base::provider::Provider;
-use jcode_base::provider_catalog::{OpenAiCompatibleProfile, ResolvedOpenAiCompatibleProfile};
-use jcode_provider_anthropic_runtime::AnthropicProvider;
-use jcode_provider_antigravity_runtime::AntigravityProvider;
+use kcode_base::message::{ContentBlock, Message, Role, StreamEvent, ToolDefinition};
+use kcode_base::provider::Provider;
+use kcode_base::provider_catalog::{OpenAiCompatibleProfile, ResolvedOpenAiCompatibleProfile};
+use kcode_provider_anthropic_runtime::AnthropicProvider;
+use kcode_provider_antigravity_runtime::AntigravityProvider;
 
 /// Resolve the per-request timeout for an OpenAI-compatible smoke probe.
 ///
 /// Defaults to `default_secs` (the historical hard-coded values), but callers can
-/// raise it via `JCODE_LIVE_SMOKE_TIMEOUT_SECS` for slow reasoning models (e.g.
+/// raise it via `KCODE_LIVE_SMOKE_TIMEOUT_SECS` for slow reasoning models (e.g.
 /// NVIDIA's 550B Nemotron Ultra, which emits long hidden reasoning and can take
 /// well over a minute to return a single completion). The override applies a floor
 /// so it can only extend, never shorten, the built-in deadline.
 fn smoke_timeout(default_secs: u64) -> std::time::Duration {
-    let secs = std::env::var("JCODE_LIVE_SMOKE_TIMEOUT_SECS")
+    let secs = std::env::var("KCODE_LIVE_SMOKE_TIMEOUT_SECS")
         .ok()
         .and_then(|raw| raw.trim().parse::<u64>().ok())
         .map(|override_secs| override_secs.max(default_secs))
@@ -51,7 +51,7 @@ fn apply_provider_auth(
     resolved: &ResolvedOpenAiCompatibleProfile,
     api_key: &str,
 ) -> reqwest::RequestBuilder {
-    let req = jcode_base::provider_catalog::apply_openai_compatible_catalog_auth(
+    let req = kcode_base::provider_catalog::apply_openai_compatible_catalog_auth(
         request,
         &resolved.api_base,
         api_key,
@@ -102,9 +102,9 @@ pub async fn fetch_live_openai_compatible_models(
     profile: OpenAiCompatibleProfile,
     api_key: &str,
 ) -> anyhow::Result<Vec<String>> {
-    let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
+    let resolved = kcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
     let url = format!("{}/models", resolved.api_base.trim_end_matches('/'));
-    let request = jcode_base::provider::shared_http_client().get(&url);
+    let request = kcode_base::provider::shared_http_client().get(&url);
     let request = apply_provider_auth(request, &resolved, api_key);
     let response = tokio::time::timeout(std::time::Duration::from_secs(20), request.send())
         .await
@@ -133,7 +133,7 @@ pub async fn fetch_live_openai_compatible_models(
         .map(|model| normalize_openai_compatible_model_id(&resolved, model.id.trim()))
         .filter(|model| {
             !model.is_empty()
-                && jcode_base::provider_catalog::openai_compatible_profile_model_supports_chat(
+                && kcode_base::provider_catalog::openai_compatible_profile_model_supports_chat(
                     resolved.id.as_str(),
                     model,
                 )
@@ -190,9 +190,9 @@ pub async fn run_live_openai_compatible_smoke(
     profile: OpenAiCompatibleProfile,
     api_key: &str,
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
-    let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
+    let resolved = kcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
     let use_responses = needs_responses_api(model, &resolved.api_base);
     let (url, body) = if use_responses {
         let url = format!(
@@ -221,7 +221,7 @@ pub async fn run_live_openai_compatible_smoke(
         });
         (url, body)
     };
-    let request = jcode_base::provider::shared_http_client()
+    let request = kcode_base::provider::shared_http_client()
         .post(&url)
         .json(&body);
     let request = apply_provider_auth(request, &resolved, api_key);
@@ -267,8 +267,8 @@ pub async fn run_live_openai_compatible_smoke(
         resolved.display_name,
         content
     );
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("http_status", serde_json::json!(status.as_u16()))
@@ -284,8 +284,8 @@ pub async fn run_live_openai_compatible_smoke(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use jcode_base::provider_catalog::resolve_openai_compatible_profile;
-    use jcode_provider_metadata::{
+    use kcode_base::provider_catalog::resolve_openai_compatible_profile;
+    use kcode_provider_metadata::{
         GEMINI_OPENAI_COMPAT_PROFILE, OPENAI_NATIVE_OPENAI_COMPAT_PROFILE,
     };
 
@@ -439,9 +439,9 @@ pub async fn run_live_openai_compatible_stream_smoke(
     profile: OpenAiCompatibleProfile,
     api_key: &str,
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
-    let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
+    let resolved = kcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
     let url = format!(
         "{}/chat/completions",
         resolved.api_base.trim_end_matches('/')
@@ -454,7 +454,7 @@ pub async fn run_live_openai_compatible_stream_smoke(
         "stream": true,
         "stream_options": {"include_usage": true}
     });
-    let request = jcode_base::provider::shared_http_client()
+    let request = kcode_base::provider::shared_http_client()
         .post(&url)
         .json(&body);
     let request = apply_provider_auth(request, &resolved, api_key);
@@ -516,8 +516,8 @@ pub async fn run_live_openai_compatible_stream_smoke(
         resolved.display_name,
         content
     );
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::STREAMING_CHAT_COMPLETION,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::STREAMING_CHAT_COMPLETION,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("http_status", serde_json::json!(status.as_u16()))
@@ -534,9 +534,9 @@ pub async fn run_live_openai_compatible_tool_smoke(
     profile: OpenAiCompatibleProfile,
     api_key: &str,
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
-    let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
+    let resolved = kcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
     let url = format!(
         "{}/chat/completions",
         resolved.api_base.trim_end_matches('/')
@@ -569,7 +569,7 @@ pub async fn run_live_openai_compatible_tool_smoke(
     if !resolved.api_base.contains("fptcloud.com") {
         body["tool_choice"] = serde_json::json!("auto");
     }
-    let request = jcode_base::provider::shared_http_client()
+    let request = kcode_base::provider::shared_http_client()
         .post(&url)
         .json(&body);
     let request = apply_provider_auth(request, &resolved, api_key);
@@ -604,7 +604,7 @@ pub async fn run_live_openai_compatible_tool_smoke(
         !tool_calls.is_empty(),
         "{} live tool-call smoke returned no tool calls: {}",
         resolved.display_name,
-        jcode_base::util::truncate_str(text.trim(), 1200)
+        kcode_base::util::truncate_str(text.trim(), 1200)
     );
     let function = tool_calls[0]
         .get("function")
@@ -624,7 +624,7 @@ pub async fn run_live_openai_compatible_tool_smoke(
         .get("arguments")
         .and_then(|arguments| arguments.as_str())
         .context("live tool-call smoke response missing string arguments")?;
-    let parsed_arguments = jcode_base::message::ToolCall::parse_streamed_input_to_object(arguments);
+    let parsed_arguments = kcode_base::message::ToolCall::parse_streamed_input_to_object(arguments);
     ensure!(
         parsed_arguments.is_object(),
         "{} live tool-call smoke returned non-object tool arguments: {:?}",
@@ -636,8 +636,8 @@ pub async fn run_live_openai_compatible_tool_smoke(
         .and_then(|choices| choices.get(0))
         .cloned()
         .unwrap_or(serde_json::Value::Null);
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::TOOL_CALL_PARSE,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::TOOL_CALL_PARSE,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("http_status", serde_json::json!(status.as_u16()))
@@ -914,7 +914,7 @@ async fn consume_native_stream(
                         .native_result_sender()
                         .context("native provider emitted a tool call without a result bridge")?;
                     sender
-                        .send(jcode_base::provider::NativeToolResult::success(
+                        .send(kcode_base::provider::NativeToolResult::success(
                             request_id,
                             "TOOL_RESULT_TOKEN=42. Report this token back to confirm you read it."
                                 .to_string(),
@@ -967,7 +967,7 @@ async fn consume_native_stream(
 /// text and reached a clean end-of-message.
 pub async fn run_live_claude_native_smoke(
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
     let provider = build_native_claude_provider(model)?;
     let messages = vec![Message {
@@ -997,12 +997,12 @@ pub async fn run_live_claude_native_smoke(
     ensure!(
         outcome.text.contains("AUTH_TEST_OK"),
         "native Claude smoke returned unexpected content: {:?} ({})",
-        jcode_base::util::truncate_str(outcome.text.trim(), 200),
+        kcode_base::util::truncate_str(outcome.text.trim(), 200),
         outcome.diagnostics()
     );
 
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("model", serde_json::json!(model))
@@ -1024,7 +1024,7 @@ pub async fn run_live_claude_native_smoke(
 /// checkpoint exists to guard.
 pub async fn run_live_claude_native_stream_smoke(
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
     let provider = build_native_claude_provider(model)?;
     let messages = vec![Message {
@@ -1088,12 +1088,12 @@ pub async fn run_live_claude_native_stream_smoke(
     ensure!(
         outcome.text.contains("STREAM_TEST_OK"),
         "native Claude stream smoke returned unexpected content: {:?} ({})",
-        jcode_base::util::truncate_str(outcome.text.trim(), 200),
+        kcode_base::util::truncate_str(outcome.text.trim(), 200),
         outcome.diagnostics()
     );
 
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::STREAMING_CHAT_COMPLETION,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::STREAMING_CHAT_COMPLETION,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("model", serde_json::json!(model))
@@ -1123,12 +1123,12 @@ pub async fn run_live_claude_native_stream_smoke(
 ///      produces a coherent final answer.
 ///
 /// This single round-trip is the evidence for the `tool_call_parse`,
-/// `tool_execution_loop`, `tool_result_followup`, and `real_jcode_tool_smoke`
+/// `tool_execution_loop`, `tool_result_followup`, and `real_kcode_tool_smoke`
 /// checkpoints (mirroring how the OpenAI-compatible tool probe derives all
 /// four from one exchange).
 pub async fn run_live_claude_native_tool_smoke(
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
     let provider = build_native_claude_provider(model)?;
 
@@ -1176,7 +1176,7 @@ pub async fn run_live_claude_native_tool_smoke(
         !first.tool_calls.is_empty(),
         "native Claude tool smoke produced no tool call (stop_reason={:?}, text={:?})",
         first.stop_reason,
-        jcode_base::util::truncate_str(first.text.trim(), 200)
+        kcode_base::util::truncate_str(first.text.trim(), 200)
     );
     let tool_call = first.tool_calls[0].clone();
     ensure!(
@@ -1184,7 +1184,7 @@ pub async fn run_live_claude_native_tool_smoke(
         "native Claude tool smoke called unexpected tool {:?} (expected {tool_name})",
         tool_call.name
     );
-    let parsed_arguments = jcode_base::message::ToolCall::parse_streamed_input_to_object(
+    let parsed_arguments = kcode_base::message::ToolCall::parse_streamed_input_to_object(
         if tool_call.input_json.trim().is_empty() {
             "{}"
         } else {
@@ -1240,15 +1240,15 @@ pub async fn run_live_claude_native_tool_smoke(
     ensure!(
         second.text.contains("42"),
         "native Claude tool follow-up did not reflect the tool result token: {:?}",
-        jcode_base::util::truncate_str(second.text.trim(), 200)
+        kcode_base::util::truncate_str(second.text.trim(), 200)
     );
 
     // Total usage spans both turns so spend accounting reflects the full
     // round-trip.
     let total_input = first.input_tokens + second.input_tokens;
     let total_output = first.output_tokens + second.output_tokens;
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::TOOL_CALL_PARSE,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::TOOL_CALL_PARSE,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("model", serde_json::json!(model))
@@ -1268,7 +1268,7 @@ pub async fn run_live_claude_native_tool_smoke(
 /// (extended thinking) or hid it behind an opaque signal.
 pub async fn run_live_claude_native_reasoning_smoke(
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let provider = build_native_claude_provider(model)?;
     run_live_native_provider_reasoning_smoke(&provider, model, "Claude").await
 }
@@ -1295,7 +1295,7 @@ fn build_native_antigravity_provider(model: &str) -> anyhow::Result<AntigravityP
 /// Stage: non-streaming chat completion (a single coherent final answer).
 pub async fn run_live_antigravity_native_smoke(
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
     let provider = build_native_antigravity_provider(model)?;
     let messages = vec![Message {
@@ -1325,12 +1325,12 @@ pub async fn run_live_antigravity_native_smoke(
     ensure!(
         outcome.text.contains("AUTH_TEST_OK"),
         "native Antigravity smoke returned unexpected content: {:?} ({})",
-        jcode_base::util::truncate_str(outcome.text.trim(), 200),
+        kcode_base::util::truncate_str(outcome.text.trim(), 200),
         outcome.diagnostics()
     );
 
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("model", serde_json::json!(model))
@@ -1352,7 +1352,7 @@ pub async fn run_live_antigravity_native_smoke(
 /// text and reached a clean end-of-message rather than requiring many deltas.
 pub async fn run_live_antigravity_native_stream_smoke(
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
     let provider = build_native_antigravity_provider(model)?;
     let messages = vec![Message {
@@ -1412,12 +1412,12 @@ pub async fn run_live_antigravity_native_stream_smoke(
     ensure!(
         outcome.text.contains("STREAM_TEST_OK"),
         "native Antigravity stream smoke returned unexpected content: {:?} ({})",
-        jcode_base::util::truncate_str(outcome.text.trim(), 200),
+        kcode_base::util::truncate_str(outcome.text.trim(), 200),
         outcome.diagnostics()
     );
 
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::STREAMING_CHAT_COMPLETION,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::STREAMING_CHAT_COMPLETION,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("model", serde_json::json!(model))
@@ -1446,10 +1446,10 @@ pub async fn run_live_antigravity_native_stream_smoke(
 /// reproduces the `400 ... "Function call is missing a thought_signature ...
 /// position N"` field failure (a single round-trip cannot). Evidence for the
 /// `tool_call_parse`, `tool_execution_loop`, `tool_result_followup`, and
-/// `real_jcode_tool_smoke` checkpoints.
+/// `real_kcode_tool_smoke` checkpoints.
 pub async fn run_live_antigravity_native_tool_smoke(
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let provider = build_native_antigravity_provider(model)?;
     run_live_native_provider_tool_smoke(&provider, model, "Antigravity").await
 }
@@ -1461,7 +1461,7 @@ pub async fn run_live_antigravity_native_tool_smoke(
 /// hides it behind an opaque signal (Gemini-3 thought signatures are opaque).
 pub async fn run_live_antigravity_native_reasoning_smoke(
     model: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let provider = build_native_antigravity_provider(model)?;
     run_live_native_provider_reasoning_smoke(&provider, model, "Antigravity").await
 }
@@ -1487,7 +1487,7 @@ pub async fn run_live_native_provider_smoke(
     provider: &dyn Provider,
     model: &str,
     label: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
     let messages = vec![Message {
         role: Role::User,
@@ -1516,12 +1516,12 @@ pub async fn run_live_native_provider_smoke(
     ensure!(
         outcome.text.contains("AUTH_TEST_OK"),
         "native {label} smoke returned unexpected content: {:?} ({})",
-        jcode_base::util::truncate_str(outcome.text.trim(), 200),
+        kcode_base::util::truncate_str(outcome.text.trim(), 200),
         outcome.diagnostics()
     );
 
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::NON_STREAMING_CHAT_COMPLETION,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("model", serde_json::json!(model))
@@ -1545,7 +1545,7 @@ pub async fn run_live_native_provider_stream_smoke(
     provider: &dyn Provider,
     model: &str,
     label: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
     let messages = vec![Message {
         role: Role::User,
@@ -1604,12 +1604,12 @@ pub async fn run_live_native_provider_stream_smoke(
     ensure!(
         outcome.text.contains("STREAM_TEST_OK"),
         "native {label} stream smoke returned unexpected content: {:?} ({})",
-        jcode_base::util::truncate_str(outcome.text.trim(), 200),
+        kcode_base::util::truncate_str(outcome.text.trim(), 200),
         outcome.diagnostics()
     );
 
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::STREAMING_CHAT_COMPLETION,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::STREAMING_CHAT_COMPLETION,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("model", serde_json::json!(model))
@@ -1648,7 +1648,7 @@ pub async fn run_live_native_provider_reasoning_smoke(
     provider: &dyn Provider,
     model: &str,
     label: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
     // A small logic word problem with a single unambiguous numeric answer (4
     // cows: chickens c + cows w give c + w = 7 heads and 2c + 4w = 22 legs, so
@@ -1697,13 +1697,13 @@ pub async fn run_live_native_provider_reasoning_smoke(
     ensure!(
         !outcome.text.trim().is_empty() && answered,
         "native {label} reasoning smoke produced no coherent answer: {:?} ({})",
-        jcode_base::util::truncate_str(outcome.text.trim(), 200),
+        kcode_base::util::truncate_str(outcome.text.trim(), 200),
         outcome.diagnostics()
     );
 
     let classification = outcome.reasoning_capability();
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::REASONING_CAPABILITY,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::REASONING_CAPABILITY,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("model", serde_json::json!(model))
@@ -1764,7 +1764,7 @@ pub async fn run_live_native_provider_tool_smoke(
     provider: &dyn Provider,
     model: &str,
     label: &str,
-) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
+) -> anyhow::Result<kcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
 
     let tool_name = "read";
@@ -1807,7 +1807,7 @@ pub async fn run_live_native_provider_tool_smoke(
         !first.tool_calls.is_empty(),
         "native {label} tool smoke produced no tool call (stop_reason={:?}, text={:?})",
         first.stop_reason,
-        jcode_base::util::truncate_str(first.text.trim(), 200)
+        kcode_base::util::truncate_str(first.text.trim(), 200)
     );
     let tool_call = first.tool_calls[0].clone();
     ensure!(
@@ -1848,7 +1848,7 @@ pub async fn run_live_native_provider_tool_smoke(
     ensure!(
         second.text.contains("42"),
         "native {label} tool follow-up did not reflect the tool result token: {:?}",
-        jcode_base::util::truncate_str(second.text.trim(), 200)
+        kcode_base::util::truncate_str(second.text.trim(), 200)
     );
 
     // Phase 2 (best-effort): drive an agentic loop that requires reading TWO
@@ -2024,8 +2024,8 @@ pub async fn run_live_native_provider_tool_smoke(
         parallel_tool_calls = "verified";
     }
 
-    let mut stage = jcode_base::live_tests::LiveVerificationStage::passed(
-        jcode_base::live_tests::checkpoints::TOOL_CALL_PARSE,
+    let mut stage = kcode_base::live_tests::LiveVerificationStage::passed(
+        kcode_base::live_tests::checkpoints::TOOL_CALL_PARSE,
     )
     .with_duration_ms(started.elapsed().as_millis() as u64)
     .with_evidence("model", serde_json::json!(model))
@@ -2059,7 +2059,7 @@ pub async fn run_live_native_provider_tool_smoke(
 /// Parse a streamed tool-call argument blob into a JSON object (empty object for
 /// a blank payload), shared by the native tool smoke probes.
 fn parse_tool_arguments(input_json: &str) -> serde_json::Value {
-    jcode_base::message::ToolCall::parse_streamed_input_to_object(if input_json.trim().is_empty() {
+    kcode_base::message::ToolCall::parse_streamed_input_to_object(if input_json.trim().is_empty() {
         "{}"
     } else {
         input_json.trim()
