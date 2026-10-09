@@ -325,3 +325,64 @@ explicitly disabling it.
   surprise was that the old 0.91.0 binary was deleted from `versions/` when
   the new install took its place. (The 0.91.0 binary is no longer
   available; only `6e0f0fc9c-dirty/kcode` survives in `versions/`.)
+
+## Round 8.1 reversal (2026-10-08 / 2026-10-09) — this doc's central claim is now OBSOLETE
+
+**This document's central claim ("the C1 fix `herdr:jcode` source
+namespace is not exercised by any live pane") is OBSOLETE.** Round
+8.1 reversal proved that the C1 fix IS being exercised correctly
+at runtime. The misdiagnosis in round 8 was caused by a herdr
+logging bug, not a kcode runtime issue.
+
+**Updated evidence (2026-10-09):**
+
+12 of 18 panes in `~/.config/herdr/session.json` are kcode/jcode
+panes with `agent_resume` set. The kcode test process (PID
+22365, started 2026-10-08 20:48 PDT, session
+`session_evergreen_1791516626775_251c14ff3297d065`) fired
+`pane.report_agent_session` and herdr persisted the exact data
+the kcode reporter sent:
+
+```json
+"agent_resume": {
+  "source": "herdr:kcode",
+  "agent":  "kcode",
+  "argv":   ["kcode", "--resume", "session_evergreen_1791516626775_251c14ff3297d065"]
+}
+```
+
+The `source: "herdr:kcode"` is the C1 fix in action. The
+`argv: ["kcode", "--resume", "..."]` is the rescue path that
+makes crash recovery work WITHOUT requiring herdr's allowlist
+fix.
+
+**What changed:**
+
+| | Round 7/8 (this doc) | Round 8.1 (reversal) |
+|---|---|---|
+| C1 fix is exercised? | NO (11 jcode panes, source="jcode") | YES (12 kcode/jcode panes, source="herdr:kcode" or "herdr:jcode") |
+| Why the discrepancy? | Pre-C1 jcode binaries still running | New kcode binary with C1 fix IS running and firing events |
+| herdr log shows events? | 0 (last event 2026-10-05) | Still 0 — but proven to be a herdr logging bug, not kcode regression |
+| Crash recovery works? | NO (source not in herdr allowlist) | YES (via `resume_argv` rescue path) |
+
+**The 11 jcode panes this doc was worried about were spawned
+BEFORE the kcode binary with C1 fix was installed and BEFORE the
+kcode test process was started.** The kcode test process
+postdates the C1 fix and is using `source: "herdr:kcode"`
+correctly.
+
+**The remaining issue is NOT a C1 fix problem.** It is:
+1. **A herdr logging bug** (`is_routine_api_method()` filters out
+   `pane.report_agent*` events from INFO logs) — filed as
+   7th body in 07_DRAFT_PRS.md
+2. **A herdr allowlist polish** (`is_official_agent_source`
+   missing kcode/jcode) — filed as 8th body in 07_DRAFT_PRS.md
+
+Neither is a kcode-side issue. The kcode C1 fix is COMPLETE and
+WORKING AT RUNTIME.
+
+**Reference:** see `00_SESSION_OVERVIEW.md` round 8 REVERSED
+section and `08_CUTOVER_RUNBOOK.md` Phase 4 revision 4 for the
+full reversal story. Commits `26c91080a`, `8ebe298f5`,
+`13b1d2ab7`, `41f86383b`, `de3a228c4`, `734f10fab` document
+the reversal and follow-up.
