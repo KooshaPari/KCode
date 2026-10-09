@@ -870,3 +870,6 @@ pub fn check_shift_enter_anomaly(
         ));
     }
 }
+
+#[cfg(test)]
+static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

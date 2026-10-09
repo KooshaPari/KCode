@@ -17,6 +17,10 @@ const JCODE_TO_KCODE_ENV: &[(&str, &str)] = &[
     ("JCODE_API_SOCKET", "KCODE_API_SOCKET"),
     ("JCODE_CONFIG", "KCODE_CONFIG"),
     ("JCODE_DEV_NAMESPACE", "KCODE_DEV_NAMESPACE"),
+    (
+        "JCODE_SESSION_MEMORY_TEMPLATE",
+        "KCODE_SESSION_MEMORY_TEMPLATE",
+    ),
     // JCODE_HOME handled in kcode_dir() with explicit deprecation message
 ];
 

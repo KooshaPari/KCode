@@ -399,24 +399,29 @@ mod tests {
     #[test]
     fn dev_namespace_does_not_discover_grok_auth_file() {
         let _lock = crate::storage::lock_test_env();
-        let home = std::env::temp_dir().join(format!("kcode-grok-dev-{}", std::process::id()));
-        let auth = home.join(".grok/auth.json");
+        struct Restore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                for (name, value) in self.0.drain(..) {
+                    match value {
+                        Some(value) => crate::env::set_var(name, value),
+                        None => crate::env::remove_var(name),
+                    }
+                }
+            }
+        }
+        let _restore = Restore(
+            ["HOME", "KCODE_DEV_NAMESPACE"]
+                .map(|name| (name, std::env::var_os(name)))
+                .to_vec(),
+        );
+        let home = tempfile::tempdir().unwrap();
+        let auth = home.path().join(".grok/auth.json");
         std::fs::create_dir_all(auth.parent().unwrap()).unwrap();
         std::fs::write(&auth, br#"{"account":{"key":"inherited-test-token"}}"#).unwrap();
-        let prior_home = std::env::var_os("HOME");
-        let prior_marker = std::env::var_os("KCODE_DEV_NAMESPACE");
-        crate::env::set_var("HOME", &home);
+        crate::env::set_var("HOME", home.path());
         crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
         assert!(!has_cached_login());
-        match prior_home {
-            Some(value) => crate::env::set_var("HOME", value),
-            None => crate::env::remove_var("HOME"),
-        }
-        match prior_marker {
-            Some(value) => crate::env::set_var("KCODE_DEV_NAMESPACE", value),
-            None => crate::env::remove_var("KCODE_DEV_NAMESPACE"),
-        }
-        std::fs::remove_dir_all(home).unwrap();
     }
 
     #[test]

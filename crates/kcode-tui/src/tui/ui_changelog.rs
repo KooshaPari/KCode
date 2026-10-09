@@ -200,7 +200,17 @@ fn unseen_changelog_entries(
         if let Some(parent) = state_file.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let _ = std::fs::write(state_file, first.hash);
+        use std::io::Write;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW).mode(0o600);
+        }
+        if let Ok(mut file) = options.open(&state_file) {
+            let _ = file.write_all(first.hash.as_bytes());
+        }
     }
     new_entries
 }

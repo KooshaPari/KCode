@@ -106,9 +106,10 @@ fn dev_setup_commands_cannot_touch_global_hotkeys_or_launchers() {
         vec!["setup-launcher"],
         vec!["browser", "setup"],
         vec!["herdr-install"],
-        vec!["menubar"],
         vec!["--provider", "claude", "auth", "import", "--stdin"],
     ];
+    #[cfg(target_os = "macos")]
+    commands.push(vec!["menubar"]);
     #[cfg(unix)]
     commands.push(vec!["api", "--api-socket", "/tmp/production-api.sock"]);
     commands.push(vec!["debug", "-s", "/tmp/production-debug.sock"]);

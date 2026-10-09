@@ -9,7 +9,8 @@ use std::sync::MutexGuard;
 mod store_roots;
 
 fn env_lock() -> MutexGuard<'static, ()> {
-    crate::storage::lock_test_env()
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 fn setup_env(home: &Path) -> Vec<(&'static str, Option<OsString>)> {
@@ -218,7 +219,13 @@ fn rejects_socket_override_outside_dev_runtime() {
     let _restore = RestoreEnv(setup_env(temp.path()));
     crate::env::set_var("KCODE_SOCKET", temp.path().join(".kcode/kcode.sock"));
     assert!(validate_environment().is_err());
-    assert!(validate_socket_override(Some("relative.sock")).is_err());
+    assert!(
+        validate_socket_override(
+            &resolve_for_home(temp.path()).unwrap(),
+            Some("relative.sock")
+        )
+        .is_err()
+    );
     crate::env::set_var("KCODE_API_SOCKET", temp.path().join(".kcode/api.sock"));
     assert!(validate_environment().is_err());
 }

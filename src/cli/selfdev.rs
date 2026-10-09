@@ -105,7 +105,7 @@ pub async fn run_self_dev(should_build: bool, resume_session: Option<String>) ->
         if should_build {
             anyhow::bail!(
                 "Refusing to publish this self-dev build into the normal jcode installation. \
-                 Use `jcode-dev self-dev --build` to build in ~/.kcode-dev."
+                 Use `kcode-dev self-dev --build` to build in ~/.kcode-dev."
             );
         }
         None
@@ -150,7 +150,7 @@ pub async fn run_self_dev(should_build: bool, resume_session: Option<String>) ->
         }
 
         output::stderr_info(if dev_namespace.is_some() {
-            "✓ Build complete; updated the isolated jcode-dev channels"
+            "✓ Build complete; updated the isolated kcode-dev channels"
         } else {
             "✓ Build complete; updated current launcher"
         });

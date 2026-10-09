@@ -19,10 +19,11 @@ impl Drop for EnvRestore {
 fn notification_inbox_and_broker_symlinks_are_rejected_before_write_or_launch() {
     let _lock = crate::storage::lock_test_env();
     let keys = [
+        "HOME",
         "KCODE_HOME",
         "KCODE_DEV_NAMESPACE",
-        "JCODE_MACOS_NOTIFICATION_BROKER_APP",
-        "JCODE_MACOS_NOTIFICATION_INBOX",
+        "KCODE_MACOS_NOTIFICATION_BROKER_APP",
+        "KCODE_MACOS_NOTIFICATION_INBOX",
     ];
     let _restore = EnvRestore(
         keys.into_iter()
@@ -33,8 +34,8 @@ fn notification_inbox_and_broker_symlinks_are_rejected_before_write_or_launch() 
     let home = temp.path().join(".kcode-dev");
     let stable = temp.path().join(".jcode-stable");
     let marker = temp.path().join("broker-invoked");
-    let bundle = stable.join("Jcode Notifications.app");
-    let executable = bundle.join("Contents/MacOS/jcode-notification-broker");
+    let bundle = stable.join("Kcode Notifications.app");
+    let executable = bundle.join("Contents/MacOS/kcode-notification-broker");
     std::fs::create_dir_all(executable.parent().unwrap()).expect("broker bundle");
     std::fs::write(
         &executable,
@@ -45,7 +46,7 @@ fn notification_inbox_and_broker_symlinks_are_rejected_before_write_or_launch() 
         .expect("executable mode");
     let before = std::fs::symlink_metadata(&executable).expect("executable metadata");
     let identity = (before.dev(), before.ino(), before.permissions().mode());
-    let app_path = home.join("Applications/Jcode Notifications.app");
+    let app_path = home.join("Applications/Kcode Notifications.app");
     std::fs::create_dir_all(app_path.parent().unwrap()).expect("application parent");
     std::os::unix::fs::symlink(&bundle, &app_path).expect("broker bundle symlink");
 
@@ -65,10 +66,11 @@ fn notification_inbox_and_broker_symlinks_are_rejected_before_write_or_launch() 
     std::fs::create_dir_all(inbox.parent().unwrap()).expect("inbox parent");
     std::os::unix::fs::symlink(&inbox_target, &inbox).expect("inbox symlink");
 
+    crate::env::set_var("HOME", temp.path());
     crate::env::set_var("KCODE_HOME", &home);
     crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
-    crate::env::set_var("JCODE_MACOS_NOTIFICATION_BROKER_APP", &app_path);
-    crate::env::set_var("JCODE_MACOS_NOTIFICATION_INBOX", &inbox);
+    crate::env::set_var("KCODE_MACOS_NOTIFICATION_BROKER_APP", &app_path);
+    crate::env::set_var("KCODE_MACOS_NOTIFICATION_INBOX", &inbox);
     let envelope = MacosNotificationEnvelope {
         schema_version: MACOS_NOTIFICATION_SCHEMA_VERSION,
         notification_id: "negative-control".to_string(),

@@ -56,11 +56,12 @@ fn assert_rejected_leaf_symlink(relative_path: &str, executable: bool) {
     std::fs::create_dir_all(destination.parent().unwrap()).unwrap();
     std::os::unix::fs::symlink(&stable, &destination).unwrap();
 
-    let _env_lock = crate::storage::lock_test_env();
-    let saved = ["KCODE_HOME", "KCODE_DEV_NAMESPACE"]
+    let _env_lock = super::env_lock();
+    let saved = ["HOME", "KCODE_HOME", "KCODE_DEV_NAMESPACE"]
         .map(|name| (name, std::env::var_os(name)))
         .to_vec();
     let _restore = super::RestoreEnv(saved);
+    crate::env::set_var("HOME", home);
     crate::env::set_var("KCODE_HOME", &dev);
     crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
     assert!(

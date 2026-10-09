@@ -49,7 +49,7 @@ pub fn render_session_template(content: &str, variables: &HashMap<String, String
     let Ok(kcode_home) = crate::storage::kcode_dir() else {
         return substitutor.substitute(content);
     };
-    let template_dir = std::env::var_os("JCODE_SESSION_MEMORY_TEMPLATE")
+    let template_dir = std::env::var_os("KCODE_SESSION_MEMORY_TEMPLATE")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| kcode_home.join("session-memory/config"));
     let template_path = template_dir.join("template.md");
@@ -120,7 +120,7 @@ mod isolation_tests {
             [
                 "KCODE_HOME",
                 "KCODE_DEV_NAMESPACE",
-                "JCODE_SESSION_MEMORY_TEMPLATE",
+                "KCODE_SESSION_MEMORY_TEMPLATE",
             ]
             .into_iter()
             .map(|key| (key, std::env::var_os(key)))
@@ -137,7 +137,7 @@ mod isolation_tests {
         std::os::unix::fs::symlink(&target, template_dir.join("template.md")).unwrap();
         crate::env::set_var("KCODE_HOME", &home);
         crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
-        crate::env::remove_var("JCODE_SESSION_MEMORY_TEMPLATE");
+        crate::env::remove_var("KCODE_SESSION_MEMORY_TEMPLATE");
 
         let rendered = render_session_template("local content", &HashMap::new());
 

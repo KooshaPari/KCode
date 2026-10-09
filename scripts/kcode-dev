@@ -139,7 +139,7 @@ for path in "$root" "$root/bin" "$root/run" "$root/builds" \
   [[ ! -L "$path" ]] || fail "refusing symlinked namespace component: $path"
 done
 check_dynamic_roots
-[[ -d "$root" ]] || fail 'dev namespace is not installed; run scripts/install_kcode_dev.sh'
+[[ -d "$root" ]] || fail 'dev namespace is not installed; run scripts/install_jcode_dev.sh'
 check_private_root
 
 binary="$root/builds/current/kcode"
