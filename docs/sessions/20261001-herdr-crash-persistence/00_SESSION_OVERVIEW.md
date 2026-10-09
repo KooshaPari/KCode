@@ -618,3 +618,70 @@ The 8th body should be:
    - "Round 7's kcode-side verification was correct; round 8's
      misdiagnosis was a herdr logging bug"
 
+### Updates 2026-10-09 (round 8.1 follow-up — verification, label taxonomy, deeper logging issue)
+
+**Three additional commits pushed today** to fully document round
+8.1 reversal:
+
+| SHA | Description |
+|---|---|
+| `13b1d2ab7` | 07_DRAFT_PRS — 7th body root cause FOUND in herdr/src/logging.rs |
+| `41f86383b` | 07_DRAFT_PRS — update label taxonomy to herdr's actual flat schema |
+
+**Verification work (non-gated):**
+
+- **All 18 panes in session.json cataloged**: 12 kcode/jcode
+  panes have `agent_resume` set (rescue path); 4 codex panes
+  have `agent_session` (canonical path); 2 empty. This proves
+  rescue path works universally for kcode/jcode.
+- **18-pair allowlist verified against live herdr source**:
+  `is_official_agent_source` in `src/agent_resume.rs` has
+  exactly 18 (source, agent) pairs; kcode and jcode are missing.
+- **`planner_allows_supported_agents` test verified**: 18
+  `assert_eq!(plan(...).argv, ...)` blocks, one per agent. The
+  test exercises `is_official_agent_source` transitively.
+- **kcode/jcode resume form verified**: `kcode --help` and
+  `jcode --help` both show `--resume [<RESUME>]` (long-flag,
+  matching claude). Only codex uses positional `resume`. The
+  8th body's `plan()` arms for kcode/jcode are therefore correct.
+- **kcode test process still running**: PID 22365, 1h 30m+,
+  session_evergreen_1791516626775_251c14ff3297d065. Process
+  fired one `pane.report_agent_session` event at startup
+  (20:46:01 PDT) then idled. No new state events expected
+  until the agent transitions state.
+
+**Label taxonomy finding (herdr live labels fetched):**
+
+- herdr uses FLAT labels (`bug`, `p2`, `api`) NOT nested
+  (`priority/medium`, `area/api`)
+- There is NO `good-first-issue` label in herdr's taxonomy
+- Closest equivalents: `auto-fix` (mechanical, no design
+  decisions) and `intends-to-pr` (intent to PR after approval)
+- `triaged` = screened, root cause found
+- Updated both filing commands in 07_DRAFT_PRS.md to use the
+  correct labels
+
+**Deeper logging observation (added to 7th body as "Related
+observations"):**
+
+While investigating the routine-method filter, I found that
+`api_request_completed()` in `src/logging.rs` logs at INFO when
+`outcome != "ok"` but does NOT include the `err` reason field.
+The result: 205 error entries in herdr-server.log tell you
+**that** processing failed but not **why**. The error reason
+is in the handler code, not in the log. This is a separate,
+larger concern than the routine-method filter and was added
+to the 7th body as a "Related observations" section for
+follow-up. (Filed as a follow-up note, NOT as a separate body
+file — would need operator approval to open a 9th body file.)
+
+**Operator ledger updated to 728 lines** (684 → 728). New
+pillars 7, 8, 9 added in round 8.1 follow-up:
+- 7: Always fetch the live label taxonomy, never guess from
+  memory or project conventions
+- 8: The rescue path in `pane.report_agent_session` is what
+  makes crash persistence work for kcode/jcode without an
+  allowlist entry
+- 9: When investigating a logging bug, audit all adjacent
+  logging functions in the same file for related issues
+
