@@ -248,3 +248,90 @@ verifiable from the file + pane list. SIGKILL of a live pane is
 - Test: `crates/kcode-herdr/src/reporter.rs::tests::reporter_source_format`.
 - C9 fix (binary): `27bd2299c` (opt-in gate) + `bfbcf898f` (install verifier).
 - Full SIGKILL write-up: `10_SIGKILL_NON_TTY.md`.
+
+## Phase 4 (revision 1) — Lessons learned 2026-10-09
+
+The original Phase 4 protocol (SIGKILL one kcode process, expect herdr to auto-relaunch) **does not work**. Real herdr behavior on a single-pane agent SIGKILL:
+
+1. The agent's `agent_resume` is **cleared** (herdr does not preserve it across a SIGKILL).
+2. The pane shell is **reset to a bare zsh prompt** (herdr does not re-execute the resume command).
+3. The pane's `agent_status` returns to `unknown` and `agent` is `null`.
+
+The auto-relaunch only happens on **server restore** (`resume_agents_on_restore = true` triggers
+on a full herdr restart, not a single-pane SIGKILL). The Phase 4 protocol must therefore
+exercise the server-restart path, not the single-pane path.
+
+### What I observed on HelioLite (w8:pS), 2026-10-09T00:31-00:39
+
+**Pre-SIGKILL** (PID 87093):
+```json
+{
+  "source": "jcode",
+  "agent": "jcode",
+  "argv": ["jcode", "--resume", "session_panda_1789273883949_ace2cf2f18024501"]
+}
+```
+
+**After `kill -9 87093` (no relaunch)**:
+- `agent_resume`: `null`
+- `agent_status`: `unknown`
+- Foreground process: `zsh` (bare shell, not the jcode binary)
+
+**Attempted relaunches (all failed)**:
+- `herdr pane run w8:pS <kcode>` — kcode exits immediately (no `HERDR_PANE_ID` env, so it's treated as a non-agent invocation, then exits with rc=0).
+- `herdr pane run w8:pS HERDR_PANE_ID=w8:pS <kcode>` — same.
+- `herdr pane run w8:pS <full HERDR env> <kcode>` — same.
+- `herdr pane send-text w8:pS "<kcode cmd>"` — text is buffered, no Enter is sent. The next send-text appends to the same line. The shell never executes the command.
+- `herdr agent start w8:pS --kind kcode` — `kcode` is not in the supported kinds list (`pi, claude, codex, gemini, cursor, devin, agy, cline, omp, mastracode, opencode, copilot, kimi, kiro, droid, amp, grok, hermes, kilo, qodercli, qwen, letta, maki, muse`).
+
+**HelioLite post-test state (2026-10-09T00:39)**:
+- Pane shell is at a clean zsh prompt.
+- `agent_resume` is `null`.
+- The user can manually run `kcode --resume <sid>` in the pane to restore it (any of the
+  available sessions in `~/.kcode/sessions/` will work, e.g. `session_panda_1791432647461_af97ae39c9a2f77d`).
+- The original session `session_panda_1789273883949_ace2cf2f18024501` is NOT in the current
+  kcode session store; it was an earlier kcode install's session and has been deleted.
+
+### Revised Phase 4 protocol (replaces the SIGKILL-one-pane procedure)
+
+**Goal:** verify the C1 fix's `herdr:{agent_label}` source namespace is emitted by the new
+kcode binary when it registers as a herdr agent.
+
+**Pre-conditions (unchanged):**
+- `kcode v0.0.0-dev (6e0f0fc9c, dirty)` is on PATH.
+- `~/.kcode/builds/versions/6e0f0fc9c-dirty/kcode` carries `flags=0x20002`.
+- `cargo test -p kcode-herdr` is green.
+
+**Steps:**
+
+1. Pick a kcode pane (`herdr pane list`, look for `agent_status: working` or `idle`).
+2. **Stop herdr with live-handoff** to flush agent state to session.json:
+   ```bash
+   herdr server stop --handoff
+   ```
+3. **Restart herdr** (it will re-launch every pane with `agent_resume` set, in stagger mode
+   per `resume_stagger_ms`):
+   ```bash
+   herdr &
+   ```
+4. Wait ~30s for the relaunches to settle.
+5. **Inspect the post-restart `agent_resume` for the target pane:**
+   ```bash
+   python3 -c "..."  # same walker as before
+   ```
+6. **Pass criteria:** the new `agent_resume.source` is `"herdr:kcode"` (or `"herdr:{kind}"`
+   for any future manifest entry), `agent` is `"kcode"`, and `argv[0]` is `"kcode"`.
+7. **Fail criteria:** the new `agent_resume.source` is `"kcode:kcode"` (wrong namespace, the
+   C1 fix is NOT in the running binary) or `agent_resume` is `null` (herdr didn't re-launch
+   any agent for that pane).
+
+**Why this is the correct protocol:**
+- `resume_agents_on_restore = true` is the only path that re-executes the resume command.
+- The C1 fix only fires when kcode registers as a herdr agent (the `HERDR_ENV=1` path).
+- The single-pane SIGKILL path is a separate code path that the operator would have to
+  restore manually (via `agent start` with a kcode manifest entry, or by typing the resume
+  command into the pane shell).
+
+**Caveat:** the C4 cutover (herdr server stop + restart) is exactly the Phase 4 protocol
+above. Combining C1 and C4 is therefore the natural way to run the verification — the
+operator gates C4 anyway.
