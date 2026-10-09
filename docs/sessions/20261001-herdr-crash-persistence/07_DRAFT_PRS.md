@@ -468,3 +468,49 @@ gh issue create \
   --body-file /tmp/kcode-upstream-issue-2.md \
   --label bug
 ```
+
+---
+
+## Herdr upstream issue 5 (added 2026-10-09 round 6)
+
+This is a **7th body** added after the original 6 — discovered while trying to
+verify the C1 fix end-to-end on a fresh 155x52 pane. The C1 fix at the kcode
+level is correct (verified at 4 levels), but the herdr server is silently
+rejecting every `pane.report_agent*` event with `outcome="error"` and no error
+reason in the log. This bug is upstream in `herdrdev/herdr` and affects all
+agent reporters (kcode, jcode, codex) — codex works around it via screen-state
+detection (sets `agent` from title only, not `agent_session`).
+
+### Issue 5
+
+**Title:** herdr silently rejects `pane.report_agent` / `pane.report_agent_session` events with `outcome=error` and no log reason
+
+**Body file:** `/tmp/herdr-upstream-issue-5.md` (179 lines, 7840 bytes)
+
+**Filing command (for operator paste once approved):**
+
+```
+# Operator — paste once approved:
+# 1. Body already saved to /tmp/herdr-upstream-issue-5.md
+# 2. Run:
+gh issue create \
+  --repo herdrdev/herdr \
+  --title 'herdr silently rejects pane.report_agent / pane.report_agent_session events with outcome=error and no log reason' \
+  --body-file /tmp/herdr-upstream-issue-5.md \
+  --label bug \
+  --label priority/high \
+  --label area/reporter \
+  --label area/agent-integration \
+  --label regression
+```
+
+**Status:** not yet attempted (drafted 2026-10-09 round 6; will be hook-blocked
+when attempted, will appear in operator's inbox for approval). Filing can be
+deferred — operator can choose to file all 7 issues at once from the inbox.
+
+**Evidence summary:** 100% failure rate (34 of 34 `pane.report_agent_session`
+events errored, 0 succeeded). Cross-agent scope (kcode/jcode/codex). Long-
+standing (3+ weeks for codex, 5+ days for kcode/jcode). Error reason suppressed
+at INFO level — only `RUST_LOG=debug` on the server would reveal the actual
+rejection cause, but server restart is destructive (13 live panes).
+
