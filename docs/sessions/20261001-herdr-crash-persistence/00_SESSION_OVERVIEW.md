@@ -178,3 +178,23 @@ kcode sessions will re-emit and confirm `herdr:kcode`).
 - Upstream PR: not attempted.
 - K1 (Ghostty reload): operator-local.
 - **`kcode herdr-install`:** DONE in this round. Plugin linked.
+
+
+### Updates 2026-10-09 (round 5b — C8: 6 issue bodies staged, all inbox-routed)
+
+All 6 issue bodies were staged at /tmp/herdr-upstream-issue-1..4.md and /tmp/kcode-upstream-issue-1..2.md.
+
+The body files were submitted as draft commands in 07_DRAFT_PRS.md. Each gh-issue invocation in 07 was attempted in this round; all hook-blocked and routed to the operator's inbox for approval. Each call produced a distinct request_id:
+
+| Body | request_id | Status |
+|---|---|---|
+| herdr body 1 (round 3) | hook-7f9e101ff5ed0314fba30372841bc427 | inbox-pending |
+| kcode body 1 (round 5) | hook-b8c9612453cccd127642d4fdef025a9d | inbox-pending |
+| herdr body 2 | hook-3eeb1768d96cf4c546791bc69b206f51 | inbox-pending |
+| herdr body 3 | hook-115a45257b574fcc0d544b48c97d6848 | inbox-pending |
+| herdr body 4 | hook-48ce225e6b010be0ff737856722a7708 | inbox-pending |
+| kcode body 2 | hook-43d81eeae6f9ce4b8ccb4c11789df562 | inbox-pending |
+
+The operator can approve each from the inbox. Once approved, the issue will be created on the upstream repo. No further agent action needed.
+
+Workflow note: when batching issue-create calls via for-loops in bash, the hook treats them as ONE command and produces ONE request_id. To get distinct request_ids, each call must be in its own bash invocation.
