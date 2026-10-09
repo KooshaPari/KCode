@@ -535,13 +535,15 @@ change that's likely to merge quickly.
 
 **Title:** `pane.report_agent` and `pane.report_agent_session` events are received but not logged in herdr-server.log
 
-**Body file:** `/tmp/herdr-upstream-issue-5.md` (139 lines, ~5 KB). The
-body was completely rewritten to be about the herdr logging bug, NOT
-about the `is_official_agent_source` allowlist. The original 7th body
-content (allowlist) is now the 8th body. This reframe was triggered by
-round 8.1 discovering that the C1 fix IS working at runtime (proven by
-session.json persistence), and the "0 events in herdr-server.log" was
-actually a herdr logging bug, not a kcode regression.
+**Body file:** `/tmp/herdr-upstream-issue-5.md` (now ~190 lines, includes
+file path, function name, code snippet, root cause analysis, and
+3-line suggested fix). **Root cause found 2026-10-08 round 8.1
+follow-up** by reading herdr's actual `src/logging.rs` source:
+`is_routine_api_method()` (lines 75-110) routes
+`pane.report_agent*` and `pane.report_metadata` to
+`tracing::debug!()` level, which is filtered out by the default
+`herdr=info` EnvFilter. The fix is to remove these methods from
+the routine-method allowlist (~3 lines).
 
 **Filing command (for operator paste once approved):**
 
