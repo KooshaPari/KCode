@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analyze OpenAI persistent-websocket reuse and KV-cache effectiveness from kcode logs.
+"""Analyze OpenAI persistent-websocket reuse and KV-cache effectiveness from jcode logs.
 
 Motivation
 ----------
@@ -16,14 +16,14 @@ This script quantifies:
   * realized cache hit rate per provider
   * OpenAI zero/low-read events
 
-Use it before/after changing ``KCODE_OPENAI_WS_IDLE_RECONNECT_SECS`` (or the
+Use it before/after changing ``JCODE_OPENAI_WS_IDLE_RECONNECT_SECS`` (or the
 default) to confirm idle-reconnect churn drops and reuse/cache rates rise.
 
 Usage
 -----
     python3 scripts/analyze_openai_ws_cache.py [LOGFILE ...]
 
-With no arguments it scans ~/.kcode/logs/kcode-*.log.
+With no arguments it scans ~/.jcode/logs/jcode-*.log.
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _log_files(argv: list[str]) -> list[str]:
     if argv:
         return argv
     home = os.environ.get("HOME", "")
-    return sorted(glob.glob(os.path.join(home, ".kcode", "logs", "kcode-*.log")))
+    return sorted(glob.glob(os.path.join(home, ".jcode", "logs", "jcode-*.log")))
 
 
 _KV_FIELD_RE = re.compile(r"(\w+)=([^\s]+)")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Populate the platform npm packages from kcode release tarballs.
+# Populate the platform npm packages from jcode release tarballs.
 set -euo pipefail
 
 if [ "$#" -ne 1 ]; then
@@ -20,9 +20,9 @@ prepare() {
   chmod +x "$package_dir/bin/$installed_binary"
 }
 
-prepare linux-x64 kcode-linux-x86_64.tar.gz kcode-linux-x86_64 kcode
-prepare linux-arm64 kcode-linux-aarch64.tar.gz kcode-linux-aarch64 kcode
-prepare darwin-x64 kcode-macos-x86_64.tar.gz kcode-macos-x86_64 kcode
-prepare darwin-arm64 kcode-macos-aarch64.tar.gz kcode-macos-aarch64 kcode
-prepare win32-x64 kcode-windows-x86_64.tar.gz kcode-windows-x86_64.exe kcode.exe
-prepare win32-arm64 kcode-windows-aarch64.tar.gz kcode-windows-aarch64.exe kcode.exe
+prepare linux-x64 jcode-linux-x86_64.tar.gz jcode-linux-x86_64 jcode
+prepare linux-arm64 jcode-linux-aarch64.tar.gz jcode-linux-aarch64 jcode
+prepare darwin-x64 jcode-macos-x86_64.tar.gz jcode-macos-x86_64 jcode
+prepare darwin-arm64 jcode-macos-aarch64.tar.gz jcode-macos-aarch64 jcode
+prepare win32-x64 jcode-windows-x86_64.tar.gz jcode-windows-x86_64.exe jcode.exe
+prepare win32-arm64 jcode-windows-aarch64.tar.gz jcode-windows-aarch64.exe jcode.exe

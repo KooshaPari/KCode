@@ -68,41 +68,41 @@ def moving_rows(client, seconds: float) -> dict[int, int]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--watch-s", type=float, default=2.0)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     flick.ROWS, flick.COLS = 48, 160
     binary = str(Path(args.binary).resolve())
-    scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-donut-live-", dir=str(scratch)))
+    scratch = Path(os.environ.get("JCODE_SCRATCH_DIR") or tempfile.gettempdir())
+    root = Path(tempfile.mkdtemp(prefix="jcode-donut-live-", dir=str(scratch)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)
 
     env = os.environ.copy()
     env.update({
-        "KCODE_HOME": str(home), "KCODE_RUNTIME_DIR": str(run),
-        "KCODE_SOCKET": str(run / "kcode.sock"), "KCODE_NO_TELEMETRY": "1",
-        "KCODE_DEBUG_CONTROL": "1", "KCODE_TEMP_SERVER": "1",
-        "KCODE_SERVER_OWNER_PID": str(os.getpid()), "KCODE_PERF_TIER": "full",
-        "KCODE_THEME": "dark",
+        "JCODE_HOME": str(home), "JCODE_RUNTIME_DIR": str(run),
+        "JCODE_SOCKET": str(run / "jcode.sock"), "JCODE_NO_TELEMETRY": "1",
+        "JCODE_DEBUG_CONTROL": "1", "JCODE_TEMP_SERVER": "1",
+        "JCODE_SERVER_OWNER_PID": str(os.getpid()), "JCODE_PERF_TIER": "full",
+        "JCODE_THEME": "dark",
     })
     env.setdefault("ANTHROPIC_API_KEY", "sk-ant-donut-live")
-    debug_sock = run / "kcode-debug.sock"
+    debug_sock = run / "jcode-debug.sock"
     cmd_path, resp_path = run / "client_cmd", run / "client_resp"
 
     log_fh = (root / "server.log").open("wb")
     server = subprocess.Popen(
-        [binary, "serve", "--socket", env["KCODE_SOCKET"], "--debug-socket",
+        [binary, "serve", "--socket", env["JCODE_SOCKET"], "--debug-socket",
          "--no-update", "--no-selfdev"],
         env=env, stdout=log_fh, stderr=subprocess.STDOUT, preexec_fn=os.setsid)
 
     client = None
     out: dict = {"binary": binary}
     try:
-        flick.wait_for_socket(Path(env["KCODE_SOCKET"]))
+        flick.wait_for_socket(Path(env["JCODE_SOCKET"]))
         flick.wait_for_socket(debug_sock)
         sid = flick.dbg(debug_sock, f"create_session:{REPO_ROOT}").strip()
         if sid.startswith("{"):

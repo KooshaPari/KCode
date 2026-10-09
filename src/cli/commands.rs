@@ -248,7 +248,7 @@ fn run_cloud_sessions_helper_command(action: CloudSessionsSubcommand) -> Result<
 }
 
 fn cloud_sessions_config_path() -> Result<PathBuf> {
-    Ok(crate::storage::kcode_dir()?.join("cloud_sessions.json"))
+    Ok(crate::storage::jcode_dir()?.join("cloud_sessions.json"))
 }
 
 fn load_cloud_sessions_config() -> Result<Option<CloudSessionsConfig>> {
@@ -471,7 +471,7 @@ struct SyncCandidate {
 }
 
 fn cloud_sessions_sync_state_path() -> Result<PathBuf> {
-    Ok(crate::storage::kcode_dir()?.join("cloud_sessions_sync.json"))
+    Ok(crate::storage::jcode_dir()?.join("cloud_sessions_sync.json"))
 }
 
 fn load_cloud_sessions_sync_state() -> Result<CloudSessionsSyncState> {
@@ -514,7 +514,7 @@ fn resolve_sync_sessions_dir(override_path: Option<&str>) -> Result<PathBuf> {
     if let Some(path) = override_path.map(str::trim).filter(|path| !path.is_empty()) {
         return Ok(expand_home_path(path));
     }
-    Ok(crate::storage::kcode_dir()?.join("sessions"))
+    Ok(crate::storage::jcode_dir()?.join("sessions"))
 }
 
 fn expand_home_path(path: &str) -> PathBuf {
@@ -1356,7 +1356,7 @@ fn resolve_jade_sessions_helper(override_path: Option<&str>) -> Result<PathBuf> 
         return Ok(PathBuf::from(path));
     }
 
-    if let Some(path) = std::env::var_os("KCODE_JADE_SESSIONS_HELPER")
+    if let Some(path) = std::env::var_os("JCODE_JADE_SESSIONS_HELPER")
         .filter(|path| !path.is_empty())
         .map(PathBuf::from)
     {
@@ -1379,7 +1379,7 @@ fn resolve_jade_sessions_helper(override_path: Option<&str>) -> Result<PathBuf> 
     }
 
     anyhow::bail!(
-        "Could not find Jade session helper. Set --helper PATH or KCODE_JADE_SESSIONS_HELPER. Expected a private helper like ~/jade/scripts/jade_sessions.py"
+        "Could not find Jade session helper. Set --helper PATH or JCODE_JADE_SESSIONS_HELPER. Expected a private helper like ~/jade/scripts/jade_sessions.py"
     );
 }
 
@@ -1537,7 +1537,7 @@ async fn run_ambient_visible() -> Result<()> {
 
     let _ = crossterm::execute!(
         std::io::stdout(),
-        crossterm::terminal::SetTitle(terminal_title("🤖 kcode ambient cycle"))
+        crossterm::terminal::SetTitle(terminal_title("🤖 jcode ambient cycle"))
     );
 
     let result = app.run(terminal).await;
@@ -1576,11 +1576,11 @@ pub enum MemorySubcommand {
     ClearTest,
 }
 
-pub async fn run_memory_command(cmd: MemorySubcommand) -> Result<()> {
-    run_memory_command_for_dir(cmd, std::env::current_dir().ok()).await
+pub fn run_memory_command(cmd: MemorySubcommand) -> Result<()> {
+    run_memory_command_for_dir(cmd, std::env::current_dir().ok())
 }
 
-async fn run_memory_command_for_dir(
+fn run_memory_command_for_dir(
     cmd: MemorySubcommand,
     project_dir: Option<std::path::PathBuf>,
 ) -> Result<()> {
@@ -1642,15 +1642,13 @@ async fn run_memory_command_for_dir(
 
         MemorySubcommand::Search { query, semantic } => {
             if semantic {
-                match crate::memory_jev::recall(&manager, &query, 20, memory::MemoryScope::All)
-                    .await
-                {
+                match manager.find_similar(&query, 0.3, 20) {
                     Ok(results) => {
                         if results.is_empty() {
                             println!("No memories found matching '{}'", query);
                         } else {
                             println!(
-                                "Found {} memories matching '{}' (Jev relevance):\n",
+                                "Found {} memories matching '{}' (semantic):\n",
                                 results.len(),
                                 query
                             );
@@ -1661,7 +1659,7 @@ async fn run_memory_command_for_dir(
                                     format!(" [{}]", entry.tags.join(", "))
                                 };
                                 println!(
-                                    "- [{}] {}{}\n  id: {} (relevance: {:.0}%)",
+                                    "- [{}] {}{}\n  id: {} (score: {:.0}%)",
                                     entry.category,
                                     entry.content,
                                     tags_str,
@@ -1673,9 +1671,7 @@ async fn run_memory_command_for_dir(
                         }
                     }
                     Err(e) => {
-                        // A credential or transport failure is not an empty
-                        // result and must give scripts a nonzero exit status.
-                        return Err(e.context("Jev memory search failed"));
+                        eprintln!("Search failed: {}", e);
                     }
                 }
             } else {
@@ -1815,7 +1811,7 @@ async fn run_memory_command_for_dir(
         }
 
         MemorySubcommand::ClearTest => {
-            let test_dir = storage::kcode_dir()?.join("memory").join("test");
+            let test_dir = storage::jcode_dir()?.join("memory").join("test");
             if test_dir.exists() {
                 let count = std::fs::read_dir(&test_dir)?.count();
                 std::fs::remove_dir_all(&test_dir)?;
@@ -1867,22 +1863,22 @@ pub fn run_pair_command(list: bool, revoke: Option<String>) -> Result<()> {
     let gw_config = &crate::config::config().gateway;
 
     if !gw_config.enabled {
-        eprintln!("\x1b[33m⚠\x1b[0m  Gateway is disabled. Enable it in ~/.kcode/config.toml:\n");
+        eprintln!("\x1b[33m⚠\x1b[0m  Gateway is disabled. Enable it in ~/.jcode/config.toml:\n");
         eprintln!("    \x1b[2m[gateway]\x1b[0m");
         eprintln!("    \x1b[2menabled = true\x1b[0m");
         eprintln!("    \x1b[2mport = {}\x1b[0m\n", gw_config.port);
-        eprintln!("  Then restart the kcode server.\n");
+        eprintln!("  Then restart the jcode server.\n");
     }
 
     let code = registry.generate_pairing_code();
     let connect_host = resolve_connect_host(&gw_config.bind_addr);
     let pair_uri = format!(
-        "kcode://pair?host={}&port={}&code={}",
+        "jcode://pair?host={}&port={}&code={}",
         connect_host, gw_config.port, code
     );
 
     eprintln!();
-    eprintln!("  \x1b[1mScan with the kcode iOS app:\x1b[0m\n");
+    eprintln!("  \x1b[1mScan with the jcode iOS app:\x1b[0m\n");
     match crate::login_qr::render_unicode_qr(&pair_uri) {
         Ok(qr) => {
             for line in qr.lines() {
@@ -1906,7 +1902,7 @@ pub fn run_pair_command(list: bool, revoke: Option<String>) -> Result<()> {
 
     if connect_host == gateway::UNKNOWN_CONNECT_HOST {
         eprintln!(
-            "\n  \x1b[33mTip:\x1b[0m set KCODE_GATEWAY_HOST to your reachable Tailscale hostname."
+            "\n  \x1b[33mTip:\x1b[0m set JCODE_GATEWAY_HOST to your reachable Tailscale hostname."
         );
     }
 
@@ -1928,49 +1924,14 @@ pub fn run_pair_command(list: bool, revoke: Option<String>) -> Result<()> {
 
 pub use gateway::{detect_tailscale_dns_name, parse_tailscale_dns_name, resolve_connect_host};
 
-pub async fn run_browser(action: &str, requested: Option<&str>) -> Result<()> {
+pub async fn run_browser(action: &str) -> Result<()> {
     match action {
-        "setup" => browser::run_setup_command_for(requested).await?,
-        "detect" => {
-            let target = browser::resolve_target_browser(requested)?;
-            println!("Browser detection");
-            println!(
-                "  target: {} ({})",
-                target.kind.display_name(),
-                target.source.describe()
-            );
-            match crate::browser_detect::system_default_browser_id() {
-                Some(id) => println!("  system default: {}", id),
-                None => println!("  system default: unknown"),
-            }
-            let installed: Vec<&str> = crate::browser_detect::ALL_BROWSERS
-                .iter()
-                .filter(|k| k.is_installed())
-                .map(|k| k.id())
-                .collect();
-            println!(
-                "  installed: {}",
-                if installed.is_empty() {
-                    "none detected".to_string()
-                } else {
-                    installed.join(", ")
-                }
-            );
-            if let Some(saved) = browser::saved_browser_preference() {
-                println!("  configured by setup: {}", saved.id());
-            }
-            println!("\nOverride with `kcode browser setup <browser>` or KCODE_BROWSER=<browser>.");
-        }
+        "setup" => browser::run_setup_command().await?,
         "status" => {
-            let target = browser::resolve_target_browser(requested)?;
-            let name = target.kind.display_name();
-            let status = browser::ensure_browser_ready_noninteractive_for(&target).await?;
+            let status = browser::ensure_browser_ready_noninteractive().await?;
             println!("Browser automation");
             println!("  backend: {}", status.backend);
-            println!("  browser: {} ({})", status.browser, status.detected_via);
-            if let Some(connected) = &status.connected_browser {
-                println!("  connected browser: {}", connected);
-            }
+            println!("  browser: {}", status.browser);
             println!(
                 "  binary: {}",
                 if status.binary_installed {
@@ -2011,26 +1972,23 @@ pub async fn run_browser(action: &str, requested: Option<&str>) -> Result<()> {
                 println!("\nBuilt-in browser tool is ready.");
             } else if status.responding && !status.compatible {
                 println!(
-                    "\nThe browser bridge is connected, but the installed extension is out of date for this kcode build. Run `kcode browser setup` to repair or update it."
+                    "\nThe browser bridge is connected, but the installed Firefox extension is out of date for this jcode build. Run `jcode browser setup` to repair or update it."
                 );
-            } else if status.binary_installed && !browser::is_browser_running(target.kind) {
+            } else if status.binary_installed && !browser::is_firefox_running() {
                 println!(
-                    "\n{} is not running, so the bridge cannot respond. Start {} (or run a browser tool action, which launches it automatically), then re-check status. Setup is one-time and does not need to be re-run.",
-                    name, name
+                    "\nFirefox is not running, so the bridge cannot respond. Start Firefox (or run a browser tool action, which launches it automatically), then re-check status. Setup is one-time and does not need to be re-run."
                 );
             } else if status.binary_installed {
                 println!(
-                    "\n{} is running, but the bridge is not responding. Check that the Browser Agent Bridge extension is enabled ({}). Run `kcode browser setup` only to repair the install.",
-                    name,
-                    target.kind.extensions_page()
+                    "\nFirefox is running, but the bridge is not responding. Check that the Browser Agent Bridge extension is enabled in the running profile. Run `jcode browser setup` only to repair the install."
                 );
             } else {
-                println!("\nRun `kcode browser setup` to install or repair it.");
+                println!("\nRun `jcode browser setup` to install or repair it.");
             }
         }
         other => {
             eprintln!("Unknown browser action: {}", other);
-            eprintln!("Available: setup [browser], status [browser], detect");
+            eprintln!("Available: setup, status");
             std::process::exit(1);
         }
     }
@@ -2130,13 +2088,13 @@ pub fn run_server_promote_command(version: Option<&str>, emit_json: bool) -> Res
     let promoted = previous.as_deref() != Some(version.as_str());
     let detail = if promoted {
         format!(
-            "shared-server channel {} -> {}. Run `kcode server reload` to apply it to the running daemon.",
+            "shared-server channel {} -> {}. Run `jcode server reload` to apply it to the running daemon.",
             previous.as_deref().unwrap_or("<unset>"),
             version
         )
     } else {
         format!(
-            "shared-server channel already points to {}. Run `kcode server reload` if the running daemon has not applied it.",
+            "shared-server channel already points to {}. Run `jcode server reload` if the running daemon has not applied it.",
             version
         )
     };
@@ -2152,38 +2110,6 @@ pub fn run_server_promote_command(version: Option<&str>, emit_json: bool) -> Res
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         println!("{}", report.detail);
-    }
-    Ok(())
-}
-
-#[derive(Debug, Serialize)]
-struct ServerReloadReport {
-    socket: String,
-    had_listener: bool,
-    forced: bool,
-    reloaded: bool,
-    already_current: bool,
-    handoff_ready: bool,
-    detail: String,
-}
-
-fn validate_server_reload_report(report: &ServerReloadReport) -> Result<()> {
-    // A reload that asked the old server to hand over, and then never saw the
-    // new one take the socket, did not succeed. It is the one outcome a caller
-    // cannot infer from the exit status alone: until now every path here
-    // returned Ok(()), and the distinction lived only inside the JSON body.
-    //
-    // Scope is deliberately narrow, because the comment below documents that
-    // an installer may call `kcode server reload` unconditionally. The two
-    // states that are arguably a success keep exit 0: there was nothing
-    // running (`had_listener == false`), or the binary was already current
-    // (`already_current`). Only the not-ready handoff, where the daemon is
-    // genuinely not serving yet, reports failure.
-    if report.had_listener && !report.already_current && !report.handoff_ready {
-        anyhow::bail!(
-            "kcode server reload was requested but the new server never became ready: {}",
-            report.detail
-        );
     }
     Ok(())
 }
@@ -2204,43 +2130,41 @@ fn validate_server_reload_report(report: &ServerReloadReport) -> Result<()> {
 /// - If no server is running, this is a successful no-op so installers can call
 ///   it unconditionally.
 pub async fn run_server_reload_command(force: bool, emit_json: bool) -> Result<()> {
-    let mut stdout = std::io::stdout().lock();
-    run_server_reload_command_to(force, emit_json, &mut stdout).await
-}
-
-async fn run_server_reload_command_to(
-    force: bool,
-    emit_json: bool,
-    stdout: &mut impl Write,
-) -> Result<()> {
     use crate::protocol::ServerEvent;
     use std::time::Duration;
 
     let socket = crate::server::socket_path();
 
-    let mut emit = |report: ServerReloadReport| -> Result<()> {
-        let outcome = validate_server_reload_report(&report);
+    #[derive(Serialize)]
+    struct ServerReloadReport {
+        socket: String,
+        had_listener: bool,
+        forced: bool,
+        reloaded: bool,
+        already_current: bool,
+        handoff_ready: bool,
+        detail: String,
+    }
+
+    let emit = |report: ServerReloadReport| -> Result<()> {
         if emit_json {
-            serde_json::to_writer_pretty(&mut *stdout, &report)?;
-            stdout.write_all(b"\n")?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
         } else if !report.detail.is_empty() {
-            writeln!(stdout, "{}", report.detail)?;
+            println!("{}", report.detail);
         }
-        // Keep printing the report above the status check so --json output is
-        // byte-identical for callers that parse it.
-        outcome
+        Ok(())
     };
 
     // No server? Nothing to reload. This is a success so an installer can call
-    // `kcode server reload` unconditionally after swapping the binary.
+    // `jcode server reload` unconditionally after swapping the binary.
     if !crate::server::has_live_listener(&socket).await {
         // Reap a stale socket left by a crashed daemon so the next launch binds
         // cleanly instead of wedging in a connect-retry loop.
         let reaped = crate::server::reap_stale_socket_if_dead(&socket).await;
         let detail = if reaped {
-            "No running kcode server found; cleared a stale socket.".to_string()
+            "No running jcode server found; cleared a stale socket.".to_string()
         } else {
-            "No running kcode server found; nothing to reload.".to_string()
+            "No running jcode server found; nothing to reload.".to_string()
         };
         return emit(ServerReloadReport {
             socket: socket.display().to_string(),
@@ -2330,7 +2254,7 @@ async fn run_server_reload_command_to(
             reloaded: false,
             already_current: true,
             handoff_ready: true,
-            detail: "kcode server is already running the newest binary; no reload needed."
+            detail: "jcode server is already running the newest binary; no reload needed."
                 .to_string(),
         });
     }
@@ -2343,9 +2267,9 @@ async fn run_server_reload_command_to(
     );
 
     let detail = if handoff_ready {
-        "kcode server reloaded onto the newest binary.".to_string()
+        "jcode server reloaded onto the newest binary.".to_string()
     } else {
-        "kcode server reload requested; the new server is still coming up.".to_string()
+        "jcode server reload requested; the new server is still coming up.".to_string()
     };
 
     emit(ServerReloadReport {
@@ -2374,8 +2298,8 @@ pub async fn run_server_stop_command(force: bool, emit_json: bool) -> Result<()>
     use std::time::{Duration, Instant};
 
     if !force {
-        let msg = "`kcode server stop` terminates the daemon and drops any live headless/swarm sessions. \
-Prefer `kcode server reload` to pick up an upgrade gracefully. \
+        let msg = "`jcode server stop` terminates the daemon and drops any live headless/swarm sessions. \
+Prefer `jcode server reload` to pick up an upgrade gracefully. \
 Re-run with `--force` if you really want to stop the server.";
         if emit_json {
             println!(
@@ -2420,10 +2344,10 @@ Re-run with `--force` if you really want to stop the server.";
                 match crate::platform::signal_detached_process_group(pid, libc::SIGTERM) {
                     Ok(()) => {
                         signaled_pid = Some(pid);
-                        detail = format!("Sent SIGTERM to kcode server (pid {pid}).");
+                        detail = format!("Sent SIGTERM to jcode server (pid {pid}).");
                     }
                     Err(e) => {
-                        detail = format!("Failed to signal kcode server (pid {pid}): {e}");
+                        detail = format!("Failed to signal jcode server (pid {pid}): {e}");
                     }
                 }
             }
@@ -2432,15 +2356,15 @@ Re-run with `--force` if you really want to stop the server.";
                 match crate::platform::signal_detached_process_group(pid, 0) {
                     Ok(()) => {
                         signaled_pid = Some(pid);
-                        detail = format!("Terminated kcode server (pid {pid}).");
+                        detail = format!("Terminated jcode server (pid {pid}).");
                     }
                     Err(e) => {
-                        detail = format!("Failed to terminate kcode server (pid {pid}): {e}");
+                        detail = format!("Failed to terminate jcode server (pid {pid}): {e}");
                     }
                 }
             }
         } else {
-            detail = format!("Registered kcode server (pid {pid}) is not running.");
+            detail = format!("Registered jcode server (pid {pid}) is not running.");
         }
     } else if had_listener {
         // A listener answers but no registry entry maps to it. We deliberately
@@ -2449,7 +2373,7 @@ Re-run with `--force` if you really want to stop the server.";
         // registry entry.)
         detail = "Found a live server socket with no registry entry.".to_string();
     } else {
-        detail = "No running kcode server found.".to_string();
+        detail = "No running jcode server found.".to_string();
     }
 
     // Wait for the listener to disappear after signalling. Escalate to SIGKILL
@@ -2504,16 +2428,16 @@ Re-run with `--force` if you really want to stop the server.";
             println!("{detail}");
         }
         if stopped && signaled_pid.is_some() {
-            println!("kcode server stopped.");
+            println!("jcode server stopped.");
         } else if stopped && !had_listener && signaled_pid.is_none() {
             // Nothing was running; this is still a success for an installer.
         } else if !stopped {
             println!(
-                "kcode server did not exit cleanly; it may still be shutting down. Re-run if needed."
+                "jcode server did not exit cleanly; it may still be shutting down. Re-run if needed."
             );
         }
         if reaped {
-            println!("Cleared a stale kcode socket.");
+            println!("Cleared a stale jcode socket.");
         }
     }
 
@@ -2534,7 +2458,7 @@ pub async fn run_single_message_command(
         super::provider_init::init_provider_for_validation(choice, model).await?
     };
     let registry = crate::tool::Registry::new(provider.clone()).await;
-    // Load MCP servers from ~/.kcode/mcp.json so headless `kcode run` has the
+    // Load MCP servers from ~/.jcode/mcp.json so headless `jcode run` has the
     // same `mcp__*` tools as interactive/server sessions. This is non-blocking:
     // `register_mcp_tools` advertises cached tool schemas synchronously (so the
     // first locked tool snapshot already contains MCP tools, for zero
@@ -2545,9 +2469,9 @@ pub async fn run_single_message_command(
         registry.register_mcp_tools(None, None, None).await;
         // Cold-cache gap: when a configured MCP server has no cached schema yet
         // (first ever use, or reconfigured), advertise-early registers nothing
-        // for it, and a single-turn `kcode run` locks its tool snapshot before
+        // for it, and a single-turn `jcode run` locks its tool snapshot before
         // the background connection finishes, so the model would never see those
-        // tools. Long-lived sessions recover on a later turn, but `kcode run`
+        // tools. Long-lived sessions recover on a later turn, but `jcode run`
         // has no later turn. So, only when the cache is cold for some configured
         // server, briefly wait for the first connection to register tools before
         // the agent runs. Warm runs skip this entirely and stay instant. (#390)
@@ -2590,7 +2514,7 @@ async fn run_single_message_with_agent(
     .await;
 
     // `Agent::new` and session restore both register this process as the active
-    // owner. Unlike the interactive lifecycle, `kcode run` has no later quit
+    // owner. Unlike the interactive lifecycle, `jcode run` has no later quit
     // path to close the session. Finalize after output has been emitted, while
     // returning the original command result unchanged. This prevents a normal
     // one-shot exit from looking like a stale-PID crash on the next startup
@@ -2600,7 +2524,7 @@ async fn run_single_message_with_agent(
 }
 
 fn run_command_auto_poke_enabled() -> bool {
-    std::env::var("KCODE_RUN_AUTO_POKE")
+    std::env::var("JCODE_RUN_AUTO_POKE")
         .ok()
         .map(|value| {
             let value = value.trim().to_ascii_lowercase();
@@ -2609,11 +2533,11 @@ fn run_command_auto_poke_enabled() -> bool {
         .unwrap_or_else(|| crate::config::config().features.auto_poke)
 }
 
-/// Whether headless `kcode run` should load MCP servers from `~/.kcode/mcp.json`.
-/// Enabled by default; set `KCODE_RUN_MCP=0` (or `false`/`off`/`no`) to skip MCP
+/// Whether headless `jcode run` should load MCP servers from `~/.jcode/mcp.json`.
+/// Enabled by default; set `JCODE_RUN_MCP=0` (or `false`/`off`/`no`) to skip MCP
 /// registration for latency-sensitive scripting. (#390)
 fn run_command_mcp_enabled() -> bool {
-    std::env::var("KCODE_RUN_MCP")
+    std::env::var("JCODE_RUN_MCP")
         .ok()
         .map(|value| {
             let value = value.trim().to_ascii_lowercase();
@@ -2622,11 +2546,11 @@ fn run_command_mcp_enabled() -> bool {
         .unwrap_or(true)
 }
 
-/// Max time `kcode run` waits for cold-cache MCP servers to register their
-/// tools before running the single turn. Override with `KCODE_RUN_MCP_WAIT_MS`
+/// Max time `jcode run` waits for cold-cache MCP servers to register their
+/// tools before running the single turn. Override with `JCODE_RUN_MCP_WAIT_MS`
 /// (0 disables the wait).
 fn run_command_mcp_cold_wait() -> std::time::Duration {
-    let ms = std::env::var("KCODE_RUN_MCP_WAIT_MS")
+    let ms = std::env::var("JCODE_RUN_MCP_WAIT_MS")
         .ok()
         .and_then(|value| value.trim().parse::<u64>().ok())
         .unwrap_or(5000);
@@ -2651,7 +2575,7 @@ fn cold_cache_mcp_servers() -> Vec<String> {
         .collect()
 }
 
-/// Bridge the cold-cache gap for `kcode run`: if any configured MCP server has
+/// Bridge the cold-cache gap for `jcode run`: if any configured MCP server has
 /// no cached schema, briefly poll the registry until its `mcp__*` tools appear
 /// (or the budget elapses) so the single turn's locked tool snapshot includes
 /// them. Warm caches return immediately because `cold_cache_mcp_servers` is
@@ -2666,7 +2590,7 @@ async fn wait_for_cold_cache_mcp_tools(registry: &crate::tool::Registry) {
         return;
     }
     crate::logging::info(&format!(
-        "kcode run: waiting up to {}ms for cold-cache MCP server(s) to register tools: {}",
+        "jcode run: waiting up to {}ms for cold-cache MCP server(s) to register tools: {}",
         budget.as_millis(),
         cold_servers.join(", ")
     ));
@@ -2679,13 +2603,13 @@ async fn wait_for_cold_cache_mcp_tools(registry: &crate::tool::Registry) {
         });
         if covered {
             crate::logging::info(
-                "kcode run: cold-cache MCP server(s) registered tools; proceeding",
+                "jcode run: cold-cache MCP server(s) registered tools; proceeding",
             );
             return;
         }
         if std::time::Instant::now() >= deadline {
             crate::logging::warn(
-                "kcode run: timed out waiting for cold-cache MCP server(s); \
+                "jcode run: timed out waiting for cold-cache MCP server(s); \
                  their tools may be missing from this run",
             );
             return;
@@ -2695,7 +2619,7 @@ async fn wait_for_cold_cache_mcp_tools(registry: &crate::tool::Registry) {
 }
 
 fn run_command_auto_poke_max_turns() -> Option<usize> {
-    std::env::var("KCODE_RUN_AUTO_POKE_MAX_TURNS")
+    std::env::var("JCODE_RUN_AUTO_POKE_MAX_TURNS")
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())
         .filter(|value| *value > 0)
@@ -2886,7 +2810,7 @@ async fn run_single_message_command_plain_with_auto_poke(
                 gate_digest_delivered = true;
                 next_message = message;
                 eprintln!(
-                    "We asked the agent to double-check this turn's weak points. Set KCODE_RUN_AUTO_POKE=0 to disable."
+                    "We asked the agent to double-check this turn's weak points. Set JCODE_RUN_AUTO_POKE=0 to disable."
                 );
                 continue;
             }
@@ -2906,7 +2830,7 @@ async fn run_single_message_command_plain_with_auto_poke(
                 confidence_spike_challenged |= confidence_spike_challenge;
                 next_message = message;
                 eprintln!(
-                    "Todos are done. Asking the agent for a final confidence check. Set KCODE_RUN_AUTO_POKE=0 to disable."
+                    "Todos are done. Asking the agent for a final confidence check. Set JCODE_RUN_AUTO_POKE=0 to disable."
                 );
                 continue;
             }
@@ -2922,7 +2846,7 @@ async fn run_single_message_command_plain_with_auto_poke(
                 }
                 next_message = message;
                 eprintln!(
-                    "{} incomplete todo(s). We poked the agent for you. Set KCODE_RUN_AUTO_POKE=0 to disable.",
+                    "{} incomplete todo(s). We poked the agent for you. Set JCODE_RUN_AUTO_POKE=0 to disable.",
                     count
                 );
             }
@@ -2968,7 +2892,7 @@ async fn run_single_message_command_capture_with_auto_poke(
                 gate_digest_delivered = true;
                 next_message = message;
                 eprintln!(
-                    "We asked the agent to double-check this turn's weak points. Set KCODE_RUN_AUTO_POKE=0 to disable."
+                    "We asked the agent to double-check this turn's weak points. Set JCODE_RUN_AUTO_POKE=0 to disable."
                 );
                 continue;
             }
@@ -3104,7 +3028,7 @@ async fn run_single_message_command_ndjson(
                 gate_digest_delivered = true;
                 next_message = message;
                 eprintln!(
-                    "We asked the agent to double-check this turn's weak points. Set KCODE_RUN_AUTO_POKE=0 to disable."
+                    "We asked the agent to double-check this turn's weak points. Set JCODE_RUN_AUTO_POKE=0 to disable."
                 );
                 continue;
             }
@@ -3232,7 +3156,7 @@ fn emit_ndjson_event(
             stdout,
             &serde_json::json!({ "type": "tool_start", "id": id, "name": name }),
         ),
-        ServerEvent::ToolInput { delta, .. } => write_json_line(
+        ServerEvent::ToolInput { delta } => write_json_line(
             stdout,
             &serde_json::json!({ "type": "tool_input", "delta": delta }),
         ),
@@ -3527,7 +3451,9 @@ fn filter_cli_model_routes_for_choice(
     use super::provider_init::ProviderChoice;
 
     let keep = |route: &&crate::provider::ModelRoute| match choice {
-        ProviderChoice::Claude => route.api_method_kind().is_anthropic_credential_route(),
+        ProviderChoice::Claude | ProviderChoice::ClaudeSubprocess => {
+            route.api_method_kind().is_anthropic_credential_route()
+        }
         ProviderChoice::Openai => {
             let method = route.api_method_kind();
             matches!(method, crate::provider::ModelRouteApiMethod::OpenAIOAuth)

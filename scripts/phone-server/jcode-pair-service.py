@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Token-protected HTTP service that generates kcode pairing codes.
+"""Token-protected HTTP service that generates jcode pairing codes.
 
-GET /pair-code?t=<token> -> {"code": "123456", "host": "100.109.78.41", "port": 7643, "uri": "kcode://pair?..."}
+GET /pair-code?t=<token> -> {"code": "123456", "host": "100.109.78.41", "port": 7643, "uri": "jcode://pair?..."}
 """
 import http.server, json, re, subprocess, os
 from urllib.parse import urlparse, parse_qs
 
-TOKEN = open('/etc/kcode-pair-token').read().strip()
+TOKEN = open('/etc/jcode-pair-token').read().strip()
 HOST = '100.109.78.41'
 PORT = 7643
 
@@ -32,10 +32,10 @@ class H(http.server.BaseHTTPRequestHandler):
             return self._send(404, {'error': 'not found'})
         env = dict(os.environ)
         env['PATH'] = '/home/ec2-user/.local/bin:' + env.get('PATH', '')
-        env['KCODE_GATEWAY_HOST'] = HOST
+        env['JCODE_GATEWAY_HOST'] = HOST
         try:
             out = subprocess.run(
-                ['sudo', '-u', 'ec2-user', '-i', 'kcode', 'pair'],
+                ['sudo', '-u', 'ec2-user', '-i', 'jcode', 'pair'],
                 capture_output=True, text=True, timeout=30, env=env,
             )
             text = re.sub(r'\x1b\[[0-9;]*m', '', out.stdout + out.stderr)
@@ -43,7 +43,7 @@ class H(http.server.BaseHTTPRequestHandler):
             if not m:
                 return self._send(500, {'error': 'no code in output'})
             code = m.group(1) + m.group(2)
-            uri = f'kcode://pair?host={HOST}&port={PORT}&code={code}'
+            uri = f'jcode://pair?host={HOST}&port={PORT}&code={code}'
             return self._send(200, {'code': code, 'host': HOST, 'port': PORT, 'uri': uri, 'expires_in': 300})
         except Exception as e:
             return self._send(500, {'error': str(e)})

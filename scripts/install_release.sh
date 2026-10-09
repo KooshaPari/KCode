@@ -3,18 +3,15 @@
 # update the stable + current channel symlinks, and point the launcher at current.
 #
 # Paths after install:
-# - ~/.kcode/builds/versions/<hash>/kcode (immutable)
-# - ~/.kcode/builds/stable/kcode -> .../versions/<hash>/kcode
-# - ~/.kcode/builds/current/kcode -> .../versions/<hash>/kcode
-# - ~/.local/bin/kcode -> ~/.kcode/builds/current/kcode (launcher)
-#
-# Backwards compat: launcher prefers ~/.kcode/ (new) and only falls back to
-# ~/.jcode/ (legacy) when ~/.kcode/ is missing — see ~/.local/bin/kcode.
+# - ~/.jcode/builds/versions/<hash>/jcode (immutable)
+# - ~/.jcode/builds/stable/jcode -> .../versions/<hash>/jcode
+# - ~/.jcode/builds/current/jcode -> .../versions/<hash>/jcode
+# - ~/.local/bin/jcode -> ~/.jcode/builds/current/jcode (launcher)
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-profile="${KCODE_RELEASE_PROFILE:-${JCODE_RELEASE_PROFILE:-release-lto}}"
+profile="${JCODE_RELEASE_PROFILE:-release-lto}"
 if [[ "${1:-}" == "--fast" ]]; then
   profile="release"
   shift
@@ -60,14 +57,14 @@ if [[ -z "$hash" ]]; then
 fi
 
 if [[ -n "$git_hash" ]]; then
-  KCODE_BUILD_GIT_HASH="$git_hash" \
-    KCODE_BUILD_GIT_DATE="$git_date" \
-    KCODE_BUILD_GIT_DIRTY="$git_dirty" \
+  JCODE_BUILD_GIT_HASH="$git_hash" \
+    JCODE_BUILD_GIT_DATE="$git_date" \
+    JCODE_BUILD_GIT_DIRTY="$git_dirty" \
     cargo build --profile "$profile" --manifest-path "$repo_root/Cargo.toml"
 else
   cargo build --profile "$profile" --manifest-path "$repo_root/Cargo.toml"
 fi
-bin="$repo_root/target/$profile/kcode"
+bin="$repo_root/target/$profile/jcode"
 
 if [[ ! -x "$bin" ]]; then
   echo "Release binary not found: $bin" >&2
@@ -85,16 +82,16 @@ if [[ -n "$git_hash" ]]; then
   fi
 fi
 
-# Install versioned binary into ~/.kcode/builds/versions/<hash>/
-builds_dir="$HOME/.kcode/builds"
+# Install versioned binary into ~/.jcode/builds/versions/<hash>/
+builds_dir="$HOME/.jcode/builds"
 version_dir="$builds_dir/versions/$hash"
 mkdir -p "$version_dir"
-install -m 755 "$bin" "$version_dir/kcode"
+install -m 755 "$bin" "$version_dir/jcode"
 
 # Update stable symlink
 stable_dir="$builds_dir/stable"
 mkdir -p "$stable_dir"
-ln -sfn "$version_dir/kcode" "$stable_dir/kcode"
+ln -sfn "$version_dir/jcode" "$stable_dir/jcode"
 
 # Update stable-version marker
 printf '%s\n' "$hash" > "$builds_dir/stable-version"
@@ -102,34 +99,34 @@ printf '%s\n' "$hash" > "$builds_dir/stable-version"
 # Update current symlink + marker
 current_dir="$builds_dir/current"
 mkdir -p "$current_dir"
-ln -sfn "$version_dir/kcode" "$current_dir/kcode"
+ln -sfn "$version_dir/jcode" "$current_dir/jcode"
 printf '%s\n' "$hash" > "$builds_dir/current-version"
 
 # Update launcher path to current channel
-install_dir="${KCODE_INSTALL_DIR:-${JCODE_INSTALL_DIR:-$HOME/.local/bin}}"
+install_dir="${JCODE_INSTALL_DIR:-$HOME/.local/bin}"
 mkdir -p "$install_dir"
-ln -sfn "$current_dir/kcode" "$install_dir/kcode"
+ln -sfn "$current_dir/jcode" "$install_dir/jcode"
 
-echo "Installed: $version_dir/kcode"
-echo "Updated stable symlink: $stable_dir/kcode -> $version_dir/kcode"
-echo "Updated current symlink: $current_dir/kcode -> $version_dir/kcode"
-echo "Updated launcher symlink: $install_dir/kcode -> $current_dir/kcode"
+echo "Installed: $version_dir/jcode"
+echo "Updated stable symlink: $stable_dir/jcode -> $version_dir/jcode"
+echo "Updated current symlink: $current_dir/jcode -> $version_dir/jcode"
+echo "Updated launcher symlink: $install_dir/jcode -> $current_dir/jcode"
 
 # Configure supported desktop launch hotkeys as part of installation. This is
 # idempotent and best-effort because headless installs may not expose a desktop
 # session; the first interactive launch retries automatically.
 case "$(uname -s)" in
   Darwin)
-    if "$install_dir/kcode" setup-launcher </dev/null >/dev/null 2>&1; then
+    if "$install_dir/jcode" setup-launcher </dev/null >/dev/null 2>&1; then
       echo "Installed macOS launcher and turn-notification broker."
     fi
-    if "$install_dir/kcode" setup-hotkey </dev/null >/dev/null 2>&1; then
-      echo "Configured system-wide kcode launch hotkeys (when supported)."
+    if "$install_dir/jcode" setup-hotkey </dev/null >/dev/null 2>&1; then
+      echo "Configured system-wide jcode launch hotkeys (when supported)."
     fi
     ;;
   Linux)
-    if "$install_dir/kcode" setup-hotkey </dev/null >/dev/null 2>&1; then
-      echo "Configured system-wide kcode launch hotkeys (when supported)."
+    if "$install_dir/jcode" setup-hotkey </dev/null >/dev/null 2>&1; then
+      echo "Configured system-wide jcode launch hotkeys (when supported)."
     fi
     ;;
 esac
@@ -138,9 +135,9 @@ esac
 # installed (issue #291). `server reload` only reloads when the running daemon
 # is genuinely older, hands live headless/swarm sessions to the new process, and
 # is a no-op when no server is running, so it is safe to call unconditionally.
-if [ "${KCODE_SKIP_SERVER_RELOAD:-${JCODE_SKIP_SERVER_RELOAD:-}}" != "1" ]; then
-  if "$install_dir/kcode" server reload </dev/null >/dev/null 2>&1; then
-    echo "Reloaded the running kcode server onto $hash (if one was active)."
+if [ "${JCODE_SKIP_SERVER_RELOAD:-}" != "1" ]; then
+  if "$install_dir/jcode" server reload </dev/null >/dev/null 2>&1; then
+    echo "Reloaded the running jcode server onto $hash (if one was active)."
   fi
 fi
 
@@ -152,4 +149,4 @@ fi
 # Ensure the launcher dir is on PATH for bash, zsh and fish in future shells.
 # shellcheck source=scripts/lib/configure_path.sh
 . "$(dirname "$0")/lib/configure_path.sh"
-kcode_configure_path "$install_dir"
+jcode_configure_path "$install_dir"

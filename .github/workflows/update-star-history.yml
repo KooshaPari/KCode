@@ -1,9 +1,6 @@
 name: Update weekly stars chart
 
 env:
-  KCODE_CI: "1"
-
-env:
   JCODE_CI: "1"
 
 on:
@@ -20,7 +17,7 @@ concurrency:
 
 jobs:
   update:
-    if: github.repository == '1jehuang/kcode'
+    if: github.repository == '1jehuang/jcode'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

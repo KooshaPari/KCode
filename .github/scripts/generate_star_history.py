@@ -21,7 +21,7 @@ def fetch_stars(repository: str, token: str) -> list[dt.date]:
             headers={
                 "Accept": "application/vnd.github.star+json",
                 "Authorization": f"Bearer {token}",
-                "User-Agent": "kcode-star-history",
+                "User-Agent": "jcode-star-history",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
         )
@@ -118,7 +118,7 @@ def render_svg(repository: str, dates: list[dt.date], today: dt.date | None = No
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repo", default="1jehuang/kcode")
+    parser.add_argument("--repo", default="1jehuang/jcode")
     parser.add_argument("--output", type=Path, default=Path("docs/images/star-history.svg"))
     args = parser.parse_args()
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")

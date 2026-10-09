@@ -1,6 +1,6 @@
 """user_model.py - assemble the weighted user-behavior ActionGraph.
 
-Combines the two grounded inputs into one model of how a real kcode-mobile user
+Combines the two grounded inputs into one model of how a real jcode-mobile user
 moves through the UI:
 
   - log_mining.mine_usage()  -> relative likelihoods of each high-level action
@@ -53,7 +53,7 @@ def _flatten_targets(ui_map: dict[str, list[UITarget]]) -> dict[str, UITarget]:
 def build_user_model(
     *,
     days: int = 7,
-    log_dir: str = "~/.kcode/logs",
+    log_dir: str = "~/.jcode/logs",
     source_root: str | None = None,
 ) -> tuple[ActionGraph, dict[str, UITarget], dict]:
     """Return (graph, flat_targets, meta).

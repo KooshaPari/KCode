@@ -7,7 +7,7 @@ always persist (never reject a write; gates only emit continuations). Difficulty
 and autonomy are NEVER gated. Completion gates evaluate confidence (evidence) and
 delivery_state, with difficulty only calibrating how strict the delivery bar is.
 
-## Enums (all: snake_case string serde, Ord by declaration order, in kcode-task-types)
+## Enums (all: snake_case string serde, Ord by declaration order, in jcode-task-types)
 
 ```rust
 pub enum IntentUnderstanding { Uncertain, Partial, Clear, Complete }
@@ -63,7 +63,7 @@ change `score: Option<u8>` to a semantic snapshot; simplest is
 tolerating old numeric via number-or-string deserializer. Workers may instead
 keep two optional fields; prefer minimal churn.
 
-## Gate semantics (kcode-base todo.rs, app-core, tui)
+## Gate semantics (jcode-base todo.rs, app-core, tui)
 
 Never reject a write. All existing "deferred observation + turn-end digest +
 continuation" plumbing stays, only comparisons change:
@@ -85,7 +85,7 @@ continuation" plumbing stays, only comparisons change:
 
 Delete or replace numeric constants (QUALITY_GATE_THRESHOLD, LOW_*,
 SEVERE_INTENT_MISUNDERSTANDING, TODO_CONFIDENCE_SPIKE) with enum-based
-predicates exported from kcode-base::todo, e.g.:
+predicates exported from jcode-base::todo, e.g.:
 `intent_understanding_passes`, `feedback_loop_passes`,
 `completion_confidence_passes`, `delivery_state_passes(goal)`,
 `required_delivery_state(difficulty)`.
@@ -112,7 +112,7 @@ TUI code referencing the old constants must use these predicates.
   - FeedbackLoopState: 10/35/65/88/98
   - ConfidenceState: 40/80/96/100
   - DeliveryState: 25/65/88/98
-  This keeps kcode-telemetry-core, usage-types, and the worker schema untouched.
+  This keeps jcode-telemetry-core, usage-types, and the worker schema untouched.
 
 ## Always-save requirement
 
@@ -129,9 +129,9 @@ block persisting.
 - app-core: schema test (no digits/0-100 in model-visible schema besides none),
   normalize coercion of numeric legacy input, merge histories, always-save.
 - tui: update todos_view/ui_messages/info_widget tests to render state words.
-- Commands: `cargo test -p kcode-task-types -p kcode-base`,
-  `cargo test -p kcode-app-core todo`, `cargo test -p kcode-tui todo`,
-  `cargo check -p kcode-tui -p kcode-telemetry-core`.
+- Commands: `cargo test -p jcode-task-types -p jcode-base`,
+  `cargo test -p jcode-app-core todo`, `cargo test -p jcode-tui todo`,
+  `cargo check -p jcode-tui -p jcode-telemetry-core`.
 
 Do NOT touch unrelated dirty files. Commit nothing;
 the coordinator commits.

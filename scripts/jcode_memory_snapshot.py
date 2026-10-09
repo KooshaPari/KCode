@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
-DEFAULT_SOCKET = f"/run/user/{os.getuid()}/kcode.sock"
+DEFAULT_SOCKET = f"/run/user/{os.getuid()}/jcode.sock"
 
 
 @dataclass
@@ -51,17 +51,17 @@ SMAPS_KEYS = {
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Summarize kcode server/client process memory using smaps_rollup")
+    p = argparse.ArgumentParser(description="Summarize jcode server/client process memory using smaps_rollup")
     p.add_argument("--json", action="store_true", help="Print JSON instead of a human summary")
     p.add_argument(
         "--include-aux",
         action="store_true",
-        help="Include non-default-socket helper/test kcode processes in the output",
+        help="Include non-default-socket helper/test jcode processes in the output",
     )
     p.add_argument(
         "--socket",
         default=DEFAULT_SOCKET,
-        help=f"Main kcode socket to treat as the primary instance (default: {DEFAULT_SOCKET})",
+        help=f"Main jcode socket to treat as the primary instance (default: {DEFAULT_SOCKET})",
     )
     return p.parse_args()
 
@@ -112,10 +112,10 @@ def first_non_option(argv: list[str]) -> str | None:
 
 def classify_process(argv: list[str], cmd: str, main_socket: str) -> tuple[str | None, bool]:
     argv0 = Path(argv[0]).name if argv else ""
-    if not argv0.startswith("kcode"):
+    if not argv0.startswith("jcode"):
         return None, False
 
-    if "kcode serve" in cmd:
+    if "jcode serve" in cmd:
         socket_path = parse_socket_path(cmd) or main_socket
         if socket_path == main_socket:
             return "server", True
@@ -124,7 +124,7 @@ def classify_process(argv: list[str], cmd: str, main_socket: str) -> tuple[str |
     socket_path = parse_socket_path(cmd) or main_socket
     is_main = socket_path == main_socket
 
-    if "cargo build" in cmd or "rustc --crate-name kcode" in cmd or "handle_resume_session" in cmd:
+    if "cargo build" in cmd or "rustc --crate-name jcode" in cmd or "handle_resume_session" in cmd:
         return None, False
 
     subcommand = first_non_option(argv)
@@ -155,7 +155,7 @@ def parse_smaps_rollup(pid: int) -> dict[str, float] | None:
     return out
 
 
-def iter_kcode_processes(main_socket: str, include_aux: bool) -> Iterable[ProcMem]:
+def iter_jcode_processes(main_socket: str, include_aux: bool) -> Iterable[ProcMem]:
     for pid_dir in Path("/proc").iterdir():
         if not pid_dir.name.isdigit():
             continue
@@ -164,7 +164,7 @@ def iter_kcode_processes(main_socket: str, include_aux: bool) -> Iterable[ProcMe
         if not argv:
             continue
         cmd = " ".join(argv)
-        if "kcode" not in cmd:
+        if "jcode" not in cmd:
             continue
         role, is_main = classify_process(argv, cmd, main_socket)
         if role is None:
@@ -232,7 +232,7 @@ def print_human(server: list[ProcMem], clients: list[ProcMem], aux: list[ProcMem
 
 def main() -> int:
     args = parse_args()
-    procs = list(iter_kcode_processes(args.socket, args.include_aux))
+    procs = list(iter_jcode_processes(args.socket, args.include_aux))
     server = [p for p in procs if p.role == "server"]
     clients = [p for p in procs if p.role.startswith("client_") and p.role != "client_aux"]
     aux = [p for p in procs if p.role.endswith("aux")]

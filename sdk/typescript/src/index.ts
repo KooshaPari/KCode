@@ -1,8 +1,8 @@
 /**
- * TypeScript SDK for the kcode harness API.
+ * TypeScript SDK for the jcode harness API.
  *
  * ```ts
- * import { JcodeClient } from "@1jehuang/kcode-sdk";
+ * import { JcodeClient } from "@1jehuang/jcode-sdk";
  * const client = await JcodeClient.connect({ clientName: "my-app/1.0" });
  * const session = await client.createSession(process.cwd());
  * const turn = await client.run(session.session_id, "hello");
@@ -24,11 +24,8 @@ export {
 export type { LaunchOptions, LaunchedInstance } from "./launch.js";
 export { bundledJcodeBinary, platformBinaryPackage } from "./binary.js";
 export { JcodeClient, unixSocketTransport } from "./client.js";
-export type { SdkTool, SessionToolsOptions, ToolExecutionContext, ToolResult } from "./tools.js";
 export type {
-  AssistantTextMessage,
   ConnectOptions,
-  CreateSessionOptions,
   FileContent,
   FileStatus,
   GlobalEventsOptions,

@@ -27,15 +27,15 @@ class ExecutableIdentityTests(unittest.TestCase):
 
     def test_records_exact_path_version_commit_and_checksum(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            executable = Path(temp_dir) / "fake-kcode"
-            content = "#!/bin/sh\nprintf 'kcode v9.9.9 (abcdef123)\\n'\n"
+            executable = Path(temp_dir) / "fake-jcode"
+            content = "#!/bin/sh\nprintf 'jcode v9.9.9 (abcdef123)\\n'\n"
             executable.write_text(content, encoding="utf-8")
             executable.chmod(0o755)
 
             identity = rate.executable_identity(str(executable))
 
             self.assertEqual(str(executable.resolve()), identity["path"])
-            self.assertEqual("kcode v9.9.9 (abcdef123)", identity["version"])
+            self.assertEqual("jcode v9.9.9 (abcdef123)", identity["version"])
             self.assertEqual("abcdef123", identity["commit"])
             self.assertEqual(
                 hashlib.sha256(content.encode()).hexdigest(), identity["sha256"]
@@ -44,9 +44,9 @@ class ExecutableIdentityTests(unittest.TestCase):
 
     def test_extracts_base_commit_from_dirty_build_version(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            executable = Path(temp_dir) / "dirty-kcode"
+            executable = Path(temp_dir) / "dirty-jcode"
             executable.write_text(
-                "#!/bin/sh\necho 'kcode v0.70.29-dev (bd64f8f82-dirty-d7c46d086c9f)'\n",
+                "#!/bin/sh\necho 'jcode v0.70.29-dev (bd64f8f82-dirty-d7c46d086c9f)'\n",
                 encoding="utf-8",
             )
             executable.chmod(0o755)
@@ -58,7 +58,7 @@ class ExecutableIdentityTests(unittest.TestCase):
 
     def test_rejects_missing_executable(self) -> None:
         with self.assertRaises(rate.BenchmarkError):
-            rate.executable_identity("/definitely/missing/kcode")
+            rate.executable_identity("/definitely/missing/jcode")
 
 
 class DetectBypassTests(unittest.TestCase):

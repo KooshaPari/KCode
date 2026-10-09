@@ -12,7 +12,6 @@ import fs from "node:fs";
 import { NdjsonDecoder } from "../dist/index.js";
 
 export interface MockOptions {
-  capabilities?: string[];
   /** Called for each client request; return frames to send back. */
   onRequest?: (request: any, send: (frame: any) => void) => void;
 }
@@ -27,7 +26,7 @@ export interface MockServer {
 }
 
 export async function startMockHarness(options: MockOptions = {}): Promise<MockServer> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-sdk-test-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-sdk-test-"));
   const socketPath = path.join(dir, "api.sock");
   const clients = new Set<net.Socket>();
 
@@ -47,7 +46,7 @@ export async function startMockHarness(options: MockOptions = {}): Promise<MockS
             ev: "hello_ok",
             version: 1,
             server: "mock/0.1",
-            capabilities: options.capabilities ?? ["sessions", "streaming"],
+            capabilities: ["sessions", "streaming"],
           });
           continue;
         }

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Full autonomous demo capture for kcode
+# Full autonomous demo capture for jcode
 # Captures screenshots of various UI states using niri + wtype
 #
 # Usage: ./capture_demo.sh [window_id]
@@ -50,7 +50,7 @@ clear_input() {
     sleep 0.2
 }
 
-echo "🎬 kcode Demo Capture"
+echo "🎬 jcode Demo Capture"
 echo "   Window ID: $WINDOW_ID"
 echo "   Output: $OUTPUT_DIR"
 echo ""

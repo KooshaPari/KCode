@@ -3,11 +3,11 @@
  *
  * `launch()` promises an instance that cannot see the user's work. That is a
  * property of the bridge's session-record lookups, not of the SDK, and it was
- * broken: `peek_session` read `~/.kcode/sessions` directly, so an "isolated"
- * instance returned the real transcripts of the kcode the user runs
+ * broken: `peek_session` read `~/.jcode/sessions` directly, so an "isolated"
+ * instance returned the real transcripts of the jcode the user runs
  * interactively.
  *
- * Usage: node test/live-isolation.mjs [path-to-kcode-binary]
+ * Usage: node test/live-isolation.mjs [path-to-jcode-binary]
  */
 
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { JcodeClient, userJcodeHome } from "../dist/index.js";
 
-const binary = process.argv[2] ?? "kcode";
+const binary = process.argv[2] ?? "jcode";
 const failures = [];
 async function step(name, fn) {
   try {
