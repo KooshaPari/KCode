@@ -8,7 +8,7 @@
       ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
 
   ┌────────────────────────────────────────────┐
-  │  jcode                                     │
+  │  kcode                                     │
   │  Blazing-fast TUI · Multi-model · 30+ tools│
-  │  https://github.com/KooshaPari/jcode       │
+  │  https://github.com/KooshaPari/KCode       │
   └────────────────────────────────────────────┘

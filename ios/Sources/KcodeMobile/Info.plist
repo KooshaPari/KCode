@@ -11,7 +11,7 @@
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleDisplayName</key>
-    <string>jcode</string>
+    <string>kcode</string>
     <key>CFBundleShortVersionString</key>
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
@@ -31,15 +31,15 @@
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.jcode.mobile.pair</string>
+            <string>com.kcode.mobile.pair</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>jcode</string>
+                <string>kcode</string>
             </array>
         </dict>
     </array>
     <key>NSCameraUsageDescription</key>
-    <string>Scan the QR code shown by `jcode pair` to connect to your server.</string>
+    <string>Scan the QR code shown by `kcode pair` to connect to your server.</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>
@@ -50,6 +50,6 @@
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Connects to jcode servers on your local network or tailnet.</string>
+    <string>Connects to kcode servers on your local network or tailnet.</string>
 </dict>
 </plist>

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct JCodeMobileApp: App {
+struct KcodeMobileApp: App {
     @State private var model = AppModel()
     @Environment(\.scenePhase) private var scenePhase
 

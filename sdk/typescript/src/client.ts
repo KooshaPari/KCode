@@ -197,7 +197,7 @@ interface Pending {
  * without one is a stream event and is emitted on `event` plus a per-kind
  * channel (`client.on("text_delta", ...)`).
  */
-export class JcodeClient extends EventEmitter {
+export class KcodeClient extends EventEmitter {
   private readonly transport: Transport;
   private readonly decoder = new NdjsonDecoder();
   private readonly pending = new Map<number, Pending>();
@@ -261,10 +261,10 @@ export class JcodeClient extends EventEmitter {
    * instance without credentials cannot reach a model at all. Pass
    * `inheritLogins: false` to start empty.
    */
-  static async launch(options: LaunchOptions & ConnectOptions = {}): Promise<JcodeClient> {
+  static async launch(options: LaunchOptions & ConnectOptions = {}): Promise<KcodeClient> {
     const instance = await launchInstance(options);
     try {
-      const client = await JcodeClient.connect({
+      const client = await KcodeClient.connect({
         ...options,
         socketPath: instance.socketPath,
       });
@@ -284,13 +284,13 @@ export class JcodeClient extends EventEmitter {
    * Use this to automate the user's own jcode: an editor plugin, a status
    * dashboard, a hotkey tool. It shares the user's live sessions, so anything
    * done here is visible in their terminal. To embed jcode as an engine
-   * instead, use {@link JcodeClient.launch}.
+   * instead, use {@link KcodeClient.launch}.
    */
-  static async connect(options: ConnectOptions = {}): Promise<JcodeClient> {
+  static async connect(options: ConnectOptions = {}): Promise<KcodeClient> {
     const socketPath = options.transport ? undefined : (options.socketPath ?? apiSocketPath());
     const transport = options.transport ?? (await unixSocketTransport(socketPath!));
     const clientName = options.clientName ?? "jcode-sdk-ts";
-    const client = new JcodeClient(
+    const client = new KcodeClient(
       transport,
       options.requestTimeoutMs ?? 30_000,
       socketPath,
@@ -877,7 +877,7 @@ export class JcodeClient extends EventEmitter {
       reject: (error: Error) => void;
     };
     type Child = {
-      client: JcodeClient;
+      client: KcodeClient;
       stream: AsyncIterableIterator<ApiEvent>;
       pump?: Promise<void>;
     };
@@ -952,9 +952,9 @@ export class JcodeClient extends EventEmitter {
     const startChild = async (sessionId: string): Promise<void> => {
       if (stopped || children.has(sessionId) || starting.has(sessionId)) return;
       starting.add(sessionId);
-      let child: JcodeClient | undefined;
+      let child: KcodeClient | undefined;
       try {
-        child = await JcodeClient.connect({
+        child = await KcodeClient.connect({
           socketPath: this.socketPath,
           clientName: `${this.clientName}/global-events`,
           requestTimeoutMs: this.requestTimeoutMs,

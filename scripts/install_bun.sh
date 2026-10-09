@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Bun-native installer for kcode.
 # Install via: bunx kcode-install
-#          or: bun run --bun https://jcode.sh/install_bun.sh
+#          or: bun run --bun https://kcode.sh/install_bun.sh
 # Falls back to curl/tar when Bun is not available.
 # Requires bash >= 3.2.  Do not add bashisms beyond what install.sh already uses.
 set -euo pipefail
 
 REPO="1jehuang/jcode"
-RELEASE_METADATA_BASE="${KCODE_RELEASE_METADATA_BASE:-https://jcode.sh/releases}"
+RELEASE_METADATA_BASE="${KCODE_RELEASE_METADATA_BASE:-https://kcode.sh/releases}"
 INSTALL_STAGE="startup"
 INSTALL_SUCCEEDED=0
 INSTALL_OS="unknown"
@@ -69,7 +69,7 @@ report_install_funnel() {
     "$(telemetry_value "$INSTALL_METHOD")" \
     "$(telemetry_value "$failure_stage")")
   curl -fsS --max-time 2 -H 'Content-Type: application/json' \
-    --data "$payload" https://telemetry.jcode.sh/v1/event >/dev/null 2>&1 || true
+    --data "$payload" https://telemetry.kcode.sh/v1/event >/dev/null 2>&1 || true
 }
 
 persist_install_conversion_id() {
@@ -223,7 +223,7 @@ if [ -z "$VERSION" ]; then
     VERSION="$GITHUB_VERSION"
   elif valid_release_tag "$METADATA_VERSION"; then
     VERSION="$METADATA_VERSION"
-    info "GitHub release lookup unavailable; using cached jcode.sh metadata ($VERSION)."
+    info "GitHub release lookup unavailable; using cached kcode.sh metadata ($VERSION)."
   fi
 fi
 valid_release_tag "$VERSION" || err "Failed to determine latest version"

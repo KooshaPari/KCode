@@ -1,4 +1,4 @@
-import JCodeKit
+import KcodeKit
 import SwiftUI
 
 /// Settings sheet: model picker, reasoning effort, sessions, servers, info.

@@ -399,8 +399,8 @@ def _pairing_targets(
 # ---------------------------------------------------------------------------
 
 def _default_source_root() -> str:
-    """<repo>/ios/Sources/JCodeMobile, resolved relative to this file."""
-    return str(Path(__file__).resolve().parents[3] / "Sources" / "JCodeMobile")
+    """<repo>/ios/Sources/KcodeMobile, resolved relative to this file."""
+    return str(Path(__file__).resolve().parents[3] / "Sources" / "KcodeMobile")
 
 
 def build_ui_map(

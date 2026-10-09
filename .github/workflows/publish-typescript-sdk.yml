@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   publish:
-    name: Publish @1jehuang/jcode-sdk
+    name: Publish @1jehuang/kcode-sdk
     runs-on: ubuntu-latest
     permissions:
       contents: read

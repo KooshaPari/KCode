@@ -86,9 +86,9 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$url" in
-  *telemetry.jcode.sh*) ;;
-  *jcode.sh/releases/latest/version) printf 'v%s\n' "${EVAL_VERSION:-1.2.3}" ;;
-  *jcode.sh/releases/v*/download-bases)
+  *telemetry.kcode.sh*) ;;
+  *kcode.sh/releases/latest/version) printf 'v%s\n' "${EVAL_VERSION:-1.2.3}" ;;
+  *kcode.sh/releases/v*/download-bases)
     printf 'https://github.com/1jehuang/jcode/releases/download/v%s\n' "${EVAL_VERSION:-1.2.3}"
     ;;
   *SHA256SUMS)

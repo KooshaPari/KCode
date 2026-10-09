@@ -43,7 +43,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 IOS = HERE.parent
 BUNDLE = "com.kcode.mobile"
-APP = IOS / ".build-ios/Build/Products/Debug-iphonesimulator/JCodeMobile.app"
+APP = IOS / ".build-ios/Build/Products/Debug-iphonesimulator/KcodeMobile.app"
 PORT = 7643
 TOKEN = "mocktoken0123456789abcdef"
 CRED = ('[{"host":"127.0.0.1","port":7643,"token":"%s","serverName":'
@@ -75,7 +75,7 @@ def sh(cmd, **kw):
 def build_app(device):
     sh("xcodegen generate", cwd=IOS)
     r = sh(
-        "xcodebuild build -project JCodeMobile.xcodeproj -scheme JCodeMobile "
+        "xcodebuild build -project KcodeMobile.xcodeproj -scheme KcodeMobile "
         f"-destination 'platform=iOS Simulator,name={device}' "
         "-derivedDataPath .build-ios",
         cwd=IOS,

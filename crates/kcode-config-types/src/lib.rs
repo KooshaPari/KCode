@@ -984,7 +984,7 @@ pub struct AutoReviewConfig {
 /// the agent via a `discover_tools` tool backed by a hosted directory. Some
 /// providers may share revenue with Kcode when a referred user becomes a
 /// customer, but partnership status never influences recommendations.
-/// See <https://jcode.sh/discovery-tools>.
+/// See <https://kcode.sh/discovery-tools>.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SponsorsConfig {
@@ -1001,7 +1001,7 @@ impl Default for SponsorsConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            endpoint: "https://api.jcode.sh/v1/discovery".to_string(),
+            endpoint: "https://api.kcode.sh/v1/discovery".to_string(),
         }
     }
 }

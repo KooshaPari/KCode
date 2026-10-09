@@ -20,7 +20,7 @@ from reward.aggregate import discover_scorers  # noqa: E402
 from reward.context import Context  # noqa: E402
 
 IOS = HERE.parent.parent
-SOURCE_ROOT = str(IOS / "Sources" / "JCodeMobile")
+SOURCE_ROOT = str(IOS / "Sources" / "KcodeMobile")
 
 
 def find_a_screenshot() -> str | None:

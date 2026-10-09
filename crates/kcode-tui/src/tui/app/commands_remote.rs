@@ -20,7 +20,7 @@ control plane is currently in early access.
 For self-hosting, run `/remote on`, restart the server, then `/remote pair`.
 ";
 
-const CLOUD_ACCOUNT_URL: &str = "https://jcode.sh/account";
+const CLOUD_ACCOUNT_URL: &str = "https://kcode.sh/account";
 
 pub(super) fn handle_remote_command(app: &mut App, trimmed: &str) -> bool {
     let Some(parsed) = parse_remote_command(trimmed) else {

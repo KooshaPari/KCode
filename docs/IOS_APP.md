@@ -32,7 +32,7 @@ work, and a parallel simulator to stay honest. Instead:
 ```
 ios/
   Package.swift              SPM package, builds on macOS + iOS
-  Sources/JCodeKit/          platform-free client core (no UIKit)
+  Sources/KcodeKit/          platform-free client core (no UIKit)
     Gateway.swift            endpoints: /health, /pair, /ws
     Pairing.swift            pairing code -> auth token
     Wire.swift               Request/ServerEvent codecs (NDJSON over WS)
@@ -40,19 +40,19 @@ ios/
     Connection.swift         actor: connect/auth/reconnect, AsyncStream<ServerEvent>
     SessionReducer.swift     pure state machine: events -> transcript/app state
     CredentialStore.swift    Keychain-backed server credentials (protocol + impl)
-  Sources/JCodeMobile/       SwiftUI app shell (iOS only)
-    JCodeMobileApp.swift     entry
+  Sources/KcodeMobile/       SwiftUI app shell (iOS only)
+    KcodeMobileApp.swift     entry
     AppModel.swift           @Observable glue: Connection + Reducer -> views
     Views/                   Pairing, Chat, Transcript, Sessions, Settings
     QRScannerView.swift      camera pairing
     Theme.swift              colors/typography tokens
-  Tests/JCodeKitTests/       swift test on macOS: codec fixtures, reducer, pairing
+  Tests/KcodeKitTests/       swift test on macOS: codec fixtures, reducer, pairing
   project.yml                XcodeGen spec for the app target
 ```
 
 Rules:
 
-- `JCodeKit` never imports UIKit/SwiftUI. It must compile for macOS so the
+- `KcodeKit` never imports UIKit/SwiftUI. It must compile for macOS so the
   whole behavior layer is testable headlessly by agents on this machine.
 - Views contain no protocol or state-transition logic. `AppModel` only
   forwards actions and publishes reducer output.
@@ -65,7 +65,7 @@ Rules:
 Server side (already shipped, unchanged):
 
 - `kcode pair` CLI generates a 6-digit code (5 min TTL) and QR with
-  `jcode://pair?host=H&port=P&code=C`.
+  `kcode://pair?host=H&port=P&code=C`.
 - `POST http://host:7643/pair` with `{code, device_id, device_name}` returns
   `{token, server_name, server_version}`. Token is stored hashed server-side.
 - `GET /health` for reachability checks.

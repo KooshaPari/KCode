@@ -227,7 +227,7 @@ fn record_discovery_telemetry(
 ///
 /// Disclosure contract: some integration providers may share revenue with Kcode, but
 /// commercial relationships never influence recommendations. The policy is
-/// disclosed in the tool schema and at <https://jcode.sh/discovery-tools>.
+/// disclosed in the tool schema and at <https://kcode.sh/discovery-tools>.
 /// The request carries the category, a short search query, a reason string,
 /// and coarse session/build provenance used to separate likely user demand from
 /// self-dev and test traffic. It never includes transcript content, file paths,
@@ -1858,7 +1858,7 @@ mod tests {
     fn discovery_requests_attach_only_the_ephemeral_session_correlation_id() {
         let correlation_id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
         let request = header_test_provenance(Some(correlation_id))
-            .apply(reqwest::Client::new().get("https://api.jcode.sh/v1/discovery"))
+            .apply(reqwest::Client::new().get("https://api.kcode.sh/v1/discovery"))
             .build()
             .unwrap();
         assert_eq!(
@@ -1873,7 +1873,7 @@ mod tests {
     #[test]
     fn discovery_requests_omit_correlation_header_when_telemetry_has_no_id() {
         let request = header_test_provenance(None)
-            .apply(reqwest::Client::new().get("https://api.jcode.sh/v1/discovery"))
+            .apply(reqwest::Client::new().get("https://api.kcode.sh/v1/discovery"))
             .build()
             .unwrap();
         assert!(
@@ -2105,7 +2105,7 @@ mod tests {
                 "url": "https://www.agentmail.to/?via=jcode-discovery",
                 "setup": concat!(
                     "POST https://api.agentmail.to/v0/agent/sign-up with JSON ",
-                    "{\"source\":\"kcode\",\"referrer\":\"https://jcode.sh/discovery-tools\"}. ",
+                    "{\"source\":\"kcode\",\"referrer\":\"https://kcode.sh/discovery-tools\"}. ",
                     "Then connect with npx -y agentmail-mcp@1.0.0."
                 ),
                 "mcp": {
@@ -2118,7 +2118,7 @@ mod tests {
         let rendered = render_selection("email-messaging", "agentmail", &listing).unwrap();
         assert!(rendered.contains("Selected 'agentmail'"));
         assert!(rendered.contains("\"source\":\"kcode\""));
-        assert!(rendered.contains("\"referrer\":\"https://jcode.sh/discovery-tools\""));
+        assert!(rendered.contains("\"referrer\":\"https://kcode.sh/discovery-tools\""));
         assert!(rendered.contains("agentmail-mcp@1.0.0"));
         assert!(rendered.contains("setup is provided through a Kcode integration"));
 
@@ -2287,13 +2287,13 @@ mod tests {
             "sources": [{
                 "title": "Usage billing",
                 "provider_url": "https://docs.example.com/billing",
-                "cached_url": "https://jcode.sh/docs/example/billing"
+                "cached_url": "https://kcode.sh/docs/example/billing"
             }],
             "next_action": "select"
         })).unwrap();
         assert!(rendered.contains("Fit: partial"));
         assert!(rendered.contains("https://docs.example.com/billing"));
-        assert!(rendered.contains("Kcode snapshot: https://jcode.sh/docs/example/billing"));
+        assert!(rendered.contains("Kcode snapshot: https://kcode.sh/docs/example/billing"));
         assert!(rendered.contains("Details do not select or connect"));
     }
 
@@ -2610,7 +2610,7 @@ mod tests {
             "sources": [{
                 "title": "Metered billing",
                 "provider_url": "https://docs.stripe.com/billing/subscriptions/usage-based",
-                "cached_url": "https://jcode.sh/docs/stripe/usage-based"
+                "cached_url": "https://kcode.sh/docs/stripe/usage-based"
             }],
             "next_action": "select"
         });
@@ -2650,7 +2650,7 @@ mod tests {
         assert!(rendered.contains("Fit: strong"));
         assert!(rendered.contains("Usage meters"));
         assert!(rendered.contains("https://docs.stripe.com/billing/subscriptions/usage-based"));
-        assert!(rendered.contains("Kcode snapshot: https://jcode.sh/docs/stripe/usage-based"));
+        assert!(rendered.contains("Kcode snapshot: https://kcode.sh/docs/stripe/usage-based"));
         assert!(rendered.contains("Suggested next action: `select`"));
     }
 
@@ -2849,7 +2849,7 @@ mod tests {
             "sources": [{
                 "title": "Usage billing",
                 "provider_url": "https://docs.stripe.com/billing/subscriptions/usage-based",
-                "cached_url": "https://jcode.sh/docs/stripe/usage-based"
+                "cached_url": "https://kcode.sh/docs/stripe/usage-based"
             }],
             "next_action": "select"
         })
@@ -2885,7 +2885,7 @@ mod tests {
         assert!(
             output
                 .output
-                .contains("Kcode snapshot: https://jcode.sh/docs/stripe/usage-based")
+                .contains("Kcode snapshot: https://kcode.sh/docs/stripe/usage-based")
         );
         let metadata = output.metadata.unwrap();
         assert_eq!(metadata["integration_details"], true);

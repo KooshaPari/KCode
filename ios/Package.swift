@@ -2,22 +2,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "JCodeKit",
+    name: "KcodeKit",
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
     ],
     products: [
-        .library(name: "JCodeKit", targets: ["JCodeKit"])
+        .library(name: "KcodeKit", targets: ["KcodeKit"])
     ],
     targets: [
         .target(
-            name: "JCodeKit",
+            name: "KcodeKit",
             swiftSettings: [.enableUpcomingFeature("StrictConcurrency")]
         ),
         .testTarget(
-            name: "JCodeKitTests",
-            dependencies: ["JCodeKit"]
+            name: "KcodeKitTests",
+            dependencies: ["KcodeKit"]
         ),
     ]
 )

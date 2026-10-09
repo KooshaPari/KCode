@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="1jehuang/jcode"
-RELEASE_METADATA_BASE="${KCODE_RELEASE_METADATA_BASE:-https://jcode.sh/releases}"
+RELEASE_METADATA_BASE="${KCODE_RELEASE_METADATA_BASE:-https://kcode.sh/releases}"
 IS_WINDOWS=false
 IS_TERMUX=false
 INSTALL_STAGE="startup"
@@ -59,7 +59,7 @@ report_install_funnel() {
     "$(telemetry_value "$outcome")" \
     "$(telemetry_value "$failure_stage")")
   curl -fsS --max-time 2 -H 'Content-Type: application/json' \
-    --data "$payload" https://telemetry.jcode.sh/v1/event >/dev/null 2>&1 || true
+    --data "$payload" https://telemetry.kcode.sh/v1/event >/dev/null 2>&1 || true
 }
 
 persist_install_conversion_id() {
@@ -149,7 +149,7 @@ else
 fi
 
 # Prefer GitHub's stable redirect when it is reachable so publication changes
-# are visible immediately. jcode.sh keeps a static copy of the latest published
+# are visible immediately. kcode.sh keeps a static copy of the latest published
 # tag as an independent fallback for GitHub outages, blocks, and shared-network
 # throttling. Neither path uses the rate-limited unauthenticated GitHub API.
 INSTALL_STAGE="release_lookup"
@@ -167,7 +167,7 @@ if [ -z "$VERSION" ]; then
     VERSION="$GITHUB_VERSION"
   elif valid_release_tag "$METADATA_VERSION"; then
     VERSION="$METADATA_VERSION"
-    info "GitHub release lookup unavailable; using cached jcode.sh metadata ($VERSION)."
+    info "GitHub release lookup unavailable; using cached kcode.sh metadata ($VERSION)."
   fi
 fi
 valid_release_tag "$VERSION" || err "Failed to determine latest version"

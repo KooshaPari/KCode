@@ -165,7 +165,7 @@ esac
 
 info "kcode uninstalled."
 if [ "$PURGE" = false ]; then
-  info "Reinstall with: curl -fsSL https://jcode.sh/install | bash"
+  info "Reinstall with: curl -fsSL https://kcode.sh/install | bash"
 else
-  info "All kcode data wiped. Reinstall with: curl -fsSL https://jcode.sh/install | bash"
+  info "All kcode data wiped. Reinstall with: curl -fsSL https://kcode.sh/install | bash"
 fi

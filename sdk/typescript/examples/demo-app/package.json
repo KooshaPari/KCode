@@ -7,7 +7,7 @@
     "start": "node index.mjs"
   },
   "dependencies": {
-    "@1jehuang/jcode-sdk": "^1.0.0"
+    "@1jehuang/kcode-sdk": "^1.0.0"
   },
   "engines": {
     "node": ">=20"

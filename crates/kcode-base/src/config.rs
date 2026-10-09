@@ -840,6 +840,6 @@ fn sponsors_is_default(sponsors: &SponsorsConfig) -> bool {
 fn is_default_discovery_endpoint(endpoint: &str) -> bool {
     matches!(
         endpoint.trim_end_matches('/'),
-        "https://api.jcode.sh/v1/discovery" | "https://api.solosystems.dev/v1/discovery"
+        "https://api.kcode.sh/v1/discovery" | "https://api.solosystems.dev/v1/discovery"
     )
 }

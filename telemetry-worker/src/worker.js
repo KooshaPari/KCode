@@ -59,8 +59,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 // allowlisted origins are echoed back explicitly so the policy keeps working
 // if ALLOWED_ORIGIN is ever narrowed.
 const WEB_ALLOWED_ORIGINS = new Set([
-  "https://jcode.sh",
-  "https://www.jcode.sh",
+  "https://kcode.sh",
+  "https://www.kcode.sh",
   "https://solosystems.dev",
   "https://www.solosystems.dev",
   "https://solosystems.pages.dev",

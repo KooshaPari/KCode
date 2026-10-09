@@ -4,12 +4,12 @@ import path from "node:path";
 const require = createRequire(import.meta.url);
 
 const PLATFORM_PACKAGES: Record<string, string> = {
-  "linux-x64": "@1jehuang/jcode-linux-x64",
-  "linux-arm64": "@1jehuang/jcode-linux-arm64",
-  "darwin-x64": "@1jehuang/jcode-darwin-x64",
-  "darwin-arm64": "@1jehuang/jcode-darwin-arm64",
-  "win32-x64": "@1jehuang/jcode-win32-x64",
-  "win32-arm64": "@1jehuang/jcode-win32-arm64",
+  "linux-x64": "@1jehuang/kcode-linux-x64",
+  "linux-arm64": "@1jehuang/kcode-linux-arm64",
+  "darwin-x64": "@1jehuang/kcode-darwin-x64",
+  "darwin-arm64": "@1jehuang/kcode-darwin-arm64",
+  "win32-x64": "@1jehuang/kcode-win32-x64",
+  "win32-arm64": "@1jehuang/kcode-win32-arm64",
 };
 
 /** The optional npm package containing the runtime for this machine. */

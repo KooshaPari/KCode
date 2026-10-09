@@ -1,7 +1,7 @@
 # iOS E2E Test Harness
 
 A deterministic, no-LLM harness for developing and validating the kcode iOS
-client (`JCodeMobile`) end-to-end. It replaces the role of the old Rust
+client (`KcodeMobile`) end-to-end. It replaces the role of the old Rust
 simulator: one source of honest, repeatable server behavior the client can be
 built against on this machine, without a device, network, or provider cost.
 
@@ -50,7 +50,7 @@ SpringBoard "Open in app?" deep-link confirmation that can't be scripted.
 
 ## Why this exists
 
-`JCodeKit` (the platform-free client core) is fully unit-tested with `swift
+`KcodeKit` (the platform-free client core) is fully unit-tested with `swift
 test`. This harness adds the layer above that: it proves the real SwiftUI app,
 running in a simulator, connects over a real WebSocket and renders a real
 transcript. Together they make client behavior hill-climbable without a device.

@@ -1,4 +1,4 @@
-import JCodeKit
+import KcodeKit
 import SwiftUI
 
 /// Top-level router: pairing when no server, chat otherwise.

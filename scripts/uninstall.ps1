@@ -404,7 +404,7 @@ if ($pathUpdate.Changed) {
 }
 
 Write-Info "jcode uninstalled."
-Write-Info "Reinstall with: irm https://jcode.sh/install.ps1 | iex"
+Write-Info "Reinstall with: irm https://kcode.sh/install.ps1 | iex"
 
 
     return 0

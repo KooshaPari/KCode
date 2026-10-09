@@ -1,4 +1,4 @@
-# @1jehuang/jcode-sdk
+# @1jehuang/kcode-sdk
 
 TypeScript SDK for the **kcode harness API** (protocol v1) — the stable,
 versioned boundary between the kcode agent runtime and any client.
@@ -8,12 +8,12 @@ Unix socket. Schema drift is guarded from both sides: a Rust test fails if a
 variant is added without mirroring it here, and a Node test fails if the tag
 sets diverge.
 
-Full documentation: **[jcode.sh/sdk](https://jcode.sh/sdk)**
+Full documentation: **[kcode.sh/sdk](https://kcode.sh/sdk)**
 
 ## Install
 
 ```bash
-npm install @1jehuang/jcode-sdk
+npm install @1jehuang/kcode-sdk
 ```
 
 From a source checkout:
@@ -95,7 +95,7 @@ A complete runnable application is available in
 [`examples/demo-app`](https://github.com/1jehuang/jcode/tree/master/sdk/typescript/examples/demo-app).
 
 ```ts
-import { KcodeClient } from "@1jehuang/jcode-sdk";
+import { KcodeClient } from "@1jehuang/kcode-sdk";
 
 const client = await KcodeClient.launch({ workingDir: process.cwd() });
 
@@ -345,7 +345,7 @@ JavaScript errors (for example, an OS filesystem error) can still surface from
 the platform.
 
 ```ts
-import { HarnessError, StructuredOutputError } from "@1jehuang/jcode-sdk";
+import { HarnessError, StructuredOutputError } from "@1jehuang/kcode-sdk";
 
 try {
   await client.run(sessionId, prompt);

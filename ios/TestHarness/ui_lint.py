@@ -16,7 +16,7 @@ Checks (each contributes to the score):
   long_view     view files / body blocks past a size budget (split them).
 
 Usage:
-  python3 ui_lint.py [--root Sources/JCodeMobile] [--json] [--max-issues N]
+  python3 ui_lint.py [--root Sources/KcodeMobile] [--json] [--max-issues N]
 Exit code is non-zero when the overall score drops below --min (default 0,
 i.e. report-only); raise --min in CI once the baseline is cleaned up.
 """
@@ -152,7 +152,7 @@ def lint_root(root: Path):
 
 def main():
     ap = argparse.ArgumentParser()
-    default_root = Path(__file__).resolve().parent.parent / "Sources" / "JCodeMobile"
+    default_root = Path(__file__).resolve().parent.parent / "Sources" / "KcodeMobile"
     ap.add_argument("--root", default=str(default_root))
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--max-issues", type=int, default=40)

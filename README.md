@@ -22,7 +22,7 @@ The most intelligent harness
 
 <br>
 
-[Website](https://jcode.sh) · [Docs](https://jcode.sh/docs) · [SDK](https://jcode.sh/sdk) · [Benchmarks](https://jcode.sh/bench) · [Features](#features) · [Install](#installation) · [Quick Start](#quick-start) · [Further Reading](#further-reading) · [Contributing](CONTRIBUTING.md)
+[Website](https://kcode.sh) · [Docs](https://kcode.sh/docs) · [SDK](https://kcode.sh/sdk) · [Benchmarks](https://kcode.sh/bench) · [Features](#features) · [Install](#installation) · [Quick Start](#quick-start) · [Further Reading](#further-reading) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -36,27 +36,27 @@ The most intelligent harness
 
 ```bash
 # macOS & Linux
-curl -fsSL https://jcode.sh/install | bash
+curl -fsSL https://kcode.sh/install | bash
 ```
 
 ```powershell
 # Windows 11 (PowerShell 5.1+)
-irm https://jcode.sh/install.ps1 | iex
+irm https://kcode.sh/install.ps1 | iex
 ```
 
 ```bash
 # Bun (requires Bun installed)
 bunx kcode-install
 # or
-bun run --bun https://jcode.sh/install_bun.sh
+bun run --bun https://kcode.sh/install_bun.sh
 ```
 
 ```bash
 # GitHub Packages (replace <version> with desired release, e.g. 0.85.0-k1.0.0)
-docker pull ghcr.io/KooshaPari/jcode/kcode-linux-x86_64:<version>
+docker pull ghcr.io/KooshaPari/kcode/kcode-linux-x86_64:<version>
 ```
 
-**Manual download:** Grab a prebuilt binary from [GitHub Releases](https://github.com/KooshaPari/jcode/releases) and add it to your `PATH`.
+**Manual download:** Grab a prebuilt binary from [GitHub Releases](https://github.com/KooshaPari/KCode/releases) and add it to your `PATH`.
 
 Need Homebrew, source builds, provider setup, or want an agent to set it up for you?
 [Jump to detailed installation](#detailed-installation).
@@ -795,10 +795,10 @@ Notes:
 
 ## Further Reading
 
-- [jcode.sh/docs](https://jcode.sh/docs) — install, providers, configuration, keybindings
-- [jcode.sh/swarm](https://jcode.sh/swarm) — many coding agents in one repository
-- [jcode.sh/sdk](https://jcode.sh/sdk) — TypeScript SDK: drive kcode sessions from your own program
-- [jcode.sh/bench](https://jcode.sh/bench) — benchmark methodology and results
+- [kcode.sh/docs](https://kcode.sh/docs) — install, providers, configuration, keybindings
+- [kcode.sh/swarm](https://kcode.sh/swarm) — many coding agents in one repository
+- [kcode.sh/sdk](https://kcode.sh/sdk) — TypeScript SDK: drive kcode sessions from your own program
+- [kcode.sh/bench](https://kcode.sh/bench) — benchmark methodology and results
 - [Ambient Mode / OpenClaw](docs/AMBIENT_MODE.md)
 - [Browser Provider Protocol](docs/BROWSER_PROVIDER_PROTOCOL.md)
 - [Memory Architecture](docs/MEMORY_ARCHITECTURE.md)
@@ -828,10 +828,10 @@ Set up kcode on this machine for me.
      brew install kcode
 
    - macOS or Linux via install script:
-     curl -fsSL https://jcode.sh/install | bash
+     curl -fsSL https://kcode.sh/install | bash
 
    - Windows PowerShell:
-     irm https://jcode.sh/install.ps1 | iex
+     irm https://kcode.sh/install.ps1 | iex
 
    - From source if the above paths are not appropriate:
      git clone https://github.com/1jehuang/jcode.git
@@ -882,7 +882,7 @@ This is intended to be a copy-paste bootstrap prompt for kcode itself or any oth
 
 ```bash
 # macOS & Linux
-curl -fsSL https://jcode.sh/install | bash
+curl -fsSL https://kcode.sh/install | bash
 ```
 
 On Termux, install the glibc runtime and `patchelf` first so the installer can
@@ -891,28 +891,28 @@ launcher that avoids Termux's `LD_PRELOAD` shim:
 
 ```bash
 pkg install glibc patchelf
-curl -fsSL https://jcode.sh/install | bash
+curl -fsSL https://kcode.sh/install | bash
 ```
 
 ```powershell
 # Windows 11 x64 or ARM64 (PowerShell 5.1+)
-irm https://jcode.sh/install.ps1 | iex
+irm https://kcode.sh/install.ps1 | iex
 ```
 
 ```bash
 # Bun (requires Bun installed)
 bunx kcode-install
 # or
-bun run --bun https://jcode.sh/install_bun.sh
+bun run --bun https://kcode.sh/install_bun.sh
 ```
 
 ```bash
 # GitHub Packages (replace <version> with desired release)
-docker pull ghcr.io/KooshaPari/jcode/kcode-linux-x86_64:<version>
+docker pull ghcr.io/KooshaPari/kcode/kcode-linux-x86_64:<version>
 ```
 
 **Manual download:** Prebuilt binaries are available on the
-[GitHub Releases](https://github.com/KooshaPari/jcode/releases) page.
+[GitHub Releases](https://github.com/KooshaPari/KCode/releases) page.
 Download the archive for your platform, extract, and place the `kcode` binary
 on your `PATH` (e.g. `~/.local/bin/` or `/usr/local/bin/`).
 

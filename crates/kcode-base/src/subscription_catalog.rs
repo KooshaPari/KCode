@@ -8,9 +8,9 @@ pub const KCODE_TIER_ENV: &str = "KCODE_TIER";
 pub const KCODE_ENV_FILE: &str = "kcode-subscription.env";
 pub const KCODE_CACHE_NAMESPACE: &str = "kcode-subscription";
 pub const KCODE_SUBSCRIPTION_ACTIVE_ENV: &str = "KCODE_SUBSCRIPTION_ACTIVE";
-pub const DEFAULT_KCODE_API_BASE: &str = "https://api.jcode.sh/v1";
-pub const KCODE_PRICING_URL: &str = "https://jcode.sh/pricing";
-pub const KCODE_ACCOUNT_URL: &str = "https://jcode.sh/account";
+pub const DEFAULT_KCODE_API_BASE: &str = "https://api.kcode.sh/v1";
+pub const KCODE_PRICING_URL: &str = "https://kcode.sh/pricing";
+pub const KCODE_ACCOUNT_URL: &str = "https://kcode.sh/account";
 /// User-facing runtime identity. Keep "Subscription" in the name so picker,
 /// header, status, and diagnostics never resemble a generic model host.
 pub const KCODE_PROVIDER_DISPLAY_NAME: &str = "Kcode Subscription";

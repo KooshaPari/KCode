@@ -212,7 +212,7 @@ npx wrangler d1 execute kcode-telemetry --remote --command="PRAGMA table_info(co
 npm run deploy
 npm run concurrency
 npm run health
-curl -s https://telemetry.jcode.sh/v1/health
+curl -s https://telemetry.kcode.sh/v1/health
 ```
 
 Migration 0026 is additive and repeatable. It creates `concurrency_details`,
@@ -447,7 +447,7 @@ CLI events (sent by kcode itself): `install`, `upgrade`, `auth_success`,
 
 ### Website analytics and quality events (migrations 0016 and 0018)
 
-Sent by the beacon on `https://jcode.sh` (and the
+Sent by the beacon on `https://kcode.sh` (and the
 `https://solosystems.pages.dev` preview). The browser mints an anonymous
 `visitor_id` UUID in localStorage; the worker uses it as the telemetry id and
 fills in `version`/`os`/`arch` defaults, so the beacon payload can stay tiny.
