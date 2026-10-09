@@ -108,3 +108,24 @@ are pre-baked.
   `9677bf743` + `3a228eeed` + `d0d29439a`. Public mutation, blocked by
   the pre_tool hook until operator approves.
 - **K1 — Ghostty reload** so `super+enter=unbind` takes effect.
+
+## Updates 2026-10-09 (round 4 — C1 Phase 4 dry-run)
+
+C1 Phase 4 SIGKILL test was attempted on HelioLite (w8:pS, PID 87093). **Partial result**: pre-SIGKILL snapshot worked, SIGKILL of the jcode process did kill it, but herdr's behavior is to **drop the pane to a bare zsh and clear agent_resume** on a single-pane agent SIGKILL. Auto-relaunch only happens on a full server restore.
+
+Attempted to re-launch the kcode via `pane run`, `pane send-text`, and `agent start` — all failed (the env doesn't include `HERDR_PANE_ID` for `pane run`, `send-text` doesn't add Enter, and `kcode` is not in herdr's supported agent kinds for `agent start`). The pane is now at a clean zsh prompt awaiting manual resume.
+
+Revised the runbook's Phase 4 to use the C4 cutover path (herdr server stop + restart) as the verification mechanism. The C1 fix's `herdr:{agent_label}` namespace can only be confirmed by observing the new agent_resume after a server restore. This combines C1 and C4 into a single test (the operator already gates C4 separately).
+
+| Commit | Subject |
+|---|---|
+| `525a04f70` | docs(herdr-session): add Phase 4 revision 1 (lessons from C1 dry-run) |
+
+**Damaged state:** HelioLite (w8:pS) is at a clean zsh prompt with `agent_resume = null`. The user can manually run `kcode --resume <sid>` to restore it (any of the available sessions in `~/.kcode/sessions/` works; the original `session_panda_1789273883949_ace2cf2f18024501` is orphaned).
+
+**Operator-gated items still pending:**
+- C8: 6 upstream issues, all blocked by pre_tool hook (1 attempted, 5 queued).
+- C1: **revised** to combine with C4 (server restart) for the verification.
+- C4: not yet attempted. 13 live panes still need to be evaluated.
+- Upstream PR: not attempted.
+- K1 (Ghostty reload): operator-local.
