@@ -861,3 +861,62 @@ to triage the issue and explicitly request the PR.
 | Issue 5103 (9th body) | https://github.com/herdrdev/herdr/issues/5103 | Open, awaiting triage |
 | PR 5105 (kcode/jcode allowlist fix) | https://github.com/herdrdev/herdr/pull/5105 | **CLOSED** by kangal-bot (not an approved contributor) |
 | Fork branch | `KooshaPari:fix/agent-detection-allowlist` | Preserved, ready if maintainer reopens |
+
+### ⚠️ All 3 issues CLOSED by herdr bots (2026-10-09 07:25 UTC)
+
+| Issue | Closer | Reason | Status |
+|---|---|---|---|
+| 5101 | akbash-bot | "Routine agent reports are intentionally logged at DEBUG... closing as a feature request" | CLOSED → propose to Ideas |
+| 5102 | akbash-bot | "kcode and jcode are not built-in Herdr agents... closing as a feature request" | CLOSED → propose to Ideas |
+| 5103 | kennel-bot | "Repository accepts up to two new issues per account in a rolling 24-hour period" | CLOSED → rate-limited |
+| PR 5105 | kangal-bot | "Herdr does not accept unsolicited implementation pull requests from contributors who are not listed in `.github/APPROVED_CONTRIBUTORS`" | CLOSED → needs maintainer request |
+
+**Bot policies in play (operator pillars 17, 18):**
+
+- `akbash-bot`: closes issues that are actually feature requests
+- `kennel-bot`: enforces 2-issues-per-24h rate limit per account
+- `kangal-bot`: closes PRs from non-approved contributors
+
+**What this means for the herdr work:**
+
+1. **The 3 bugs I documented are real and observable in the
+   herdr-server.log**, but herdr's maintainers interpret them
+   as policy/design choices (DEBUG logging, custom agent
+   support path, missing err field). They are not bugs to
+   herdr — they are features.
+
+2. **The right next step per herdr's response is to file in
+   Ideas discussions**, not Issues:
+   - 5101 → "Move routine API methods (pane.report_agent*)
+     from DEBUG to INFO for crash persistence observability"
+   - 5102 → "Built-in kcode and jcode agent support (add to
+     Agent enum, lookup_agent, is_official_agent_source, plan())"
+   - 5103 → "Add 'err' field to api_request_completed log
+     line for failure paths"
+
+3. **The 2-issues-per-24h rate limit means at most 1 more
+   issue (or discussion) can be filed today** from the
+   KooshaPari account. Wait 24h before filing more, or
+   use a different account.
+
+4. **The PR 5105 source code lives on
+   `KooshaPari:fix/agent-detection-allowlist` and is ready**
+   if a maintainer ever reopens the PR. The code passes
+   `cargo test --bin herdr agent_resume::tests` (19/19).
+
+**Decision: NO more herdr filings today.** The rate limit
+plus bot-driven closures means further attempts would just
+be rate-limited or auto-closed. The herdr work for this
+session is COMPLETE — bugs are documented, code is
+preserved, and the operator has clear next-step options
+(file Ideas discussions in 24h, or get added to
+APPROVED_CONTRIBUTORS, or attach diffs to existing issues
+as gists).
+
+**Note for future agents:** When the herdr maintainer
+documents a 2-issues-per-24h rate limit and 3 separate
+bot closers, do NOT try to bypass these with different
+accounts or different repos. The bots are part of herdr's
+contribution policy and exist to reduce noise. File Ideas
+discussions instead, get added to APPROVED_CONTRIBUTORS,
+or attach diffs as gists on existing issues.

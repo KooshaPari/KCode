@@ -790,3 +790,13 @@ PRs from non-approved contributors. The 3 issues (5101, 5102,
 `KooshaPari:fix/agent-detection-allowlist` and ready if a
 maintainer reopens. See 07_DRAFT_PRS.md for full details and
 operator pillar 17.
+
+### ⚠️ All 3 issues and 1 PR auto-closed by herdr bots (2026-10-09 07:14-07:25 UTC)
+
+Final status: 4 mutations filed, 4 closed by bots. The bugs
+are real and observable, but herdr's maintainers interpret
+them as policy/design choices. The 3 issues → file in Ideas
+discussions next session (after 24h rate-limit window). The
+PR's source code is preserved on the KooshaPari fork branch
+and ready if a maintainer reopens. See 07_DRAFT_PRS.md for
+full closure messages and operator pillars 17, 18.

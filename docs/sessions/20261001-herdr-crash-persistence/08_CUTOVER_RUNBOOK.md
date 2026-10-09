@@ -588,3 +588,13 @@ PRs from non-approved contributors. PR 5105 was closed
 issues (5101, 5102, 5103) remain open. Source code
 preserved on `KooshaPari:fix/agent-detection-allowlist`.
 See operator pillar 17 for the contribution policy details.
+
+### ⚠️ All 4 mutations auto-closed by herdr bots
+
+The 3 issues were closed by `akbash-bot` (feature request
+re-classification) and `kennel-bot` (2-issues-per-24h rate
+limit). The PR was closed by `kangal-bot` (non-approved
+contributor). The herdr work is COMPLETE for this session:
+bugs are documented, code is preserved. Next session:
+file Ideas discussions after 24h rate-limit window, or
+attach diffs to existing issues as gists.
