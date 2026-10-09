@@ -515,9 +515,14 @@ change that's likely to merge quickly.
 
 **Title:** herdr server-side allowlist `is_official_agent_source` silently drops `pane.report_agent_session` events for kcode and jcode (regression: kcode/jcode not in list)
 
-**Body file:** `/tmp/herdr-upstream-issue-5.md` (231 lines, ~12 KB; includes
-file path, function name, code snippet, call chain, suggested 4-line fix,
-workarounds, and a recommended `warn!` log line for the silent-drop case)
+**Body file:** `/tmp/herdr-upstream-issue-5.md` (265 lines, ~13 KB; includes
+file path, function name, code snippet, call chain, suggested ~10-line
+fix (allowlist + plan arms + test cases), adjacent-work note about
+`is_reserved_native_state_source`, workarounds, and a recommended `warn!`
+log line for the silent-drop case). Re-verified against the live herdr
+source on 2026-10-09 round 7 follow-up: the 18-pair allowlist, the
+`plan()` arm structure, and the `--resume` flag (claude pattern, not
+codex positional pattern) all match the live herdr code.
 
 **Filing command (for operator paste once approved):**
 
