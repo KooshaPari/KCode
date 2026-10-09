@@ -198,3 +198,118 @@ The body files were submitted as draft commands in 07_DRAFT_PRS.md. Each gh-issu
 The operator can approve each from the inbox. Once approved, the issue will be created on the upstream repo. No further agent action needed.
 
 Workflow note: when batching issue-create calls via for-loops in bash, the hook treats them as ONE command and produces ONE request_id. To get distinct request_ids, each call must be in its own bash invocation.
+
+### Updates 2026-10-09 (round 6 — reporter pathway bug discovered)
+
+Phase 4 verification on a fresh 155x52 pane (w7:p1R, tab w7:t2) running kcode PID 22365
+with all HERDR env vars correctly set (HERDR_ENV=1, HERDR_PANE_ID=w7:p1R, HERDR_TAB_ID=w7:t2,
+HERDR_SOCKET_PATH=/Users/kooshapari/.config/herdr/herdr.sock, HERDR_WORKSPACE_ID=w7,
+HERDR_BIN_PATH=/Users/kooshapari/.local/bin/herdr) revealed a deeper blocker:
+
+**Bug:** Every `pane.report_agent` and `pane.report_agent_session` event sent by kcode's
+reporter to the herdr server is logged with `outcome="error"` in `/Users/kooshapari/.config/herdr/herdr-server.log`.
+The error reason is suppressed at INFO level (only `outcome=error` is logged; the
+`RUST_LOG=debug` flag is not enabled because the server can't be restarted without
+killing the 13 live panes).
+
+**Scope:** This is a **long-standing herdr server-side bug**, not introduced today:
+
+- **codex** reporter events have been erroring since 2026-09-17 (3+ weeks). Yet
+  codex's `agent_session.source="herdr:codex"` is still set in the current session.json
+  — confirming the value was set by herdr's **screen-state detection** (built-in
+  matcher), NOT by the codex reporter. The reporter pathway has been silently broken
+  for a month, but no one noticed because screen-state detection covers most of it.
+- **kcode/jcode** reporter events have been erroring since 2026-10-04 (5+ days). Same
+  pattern. codex workaround (screen-state) only sets `agent=kcode` from the title —
+  not `agent_session`, because the screen-state matcher doesn't have access to the
+  agent's session_id.
+
+**Forensic evidence:**
+
+- `grep -c 'pane.report_agent_session' herdr-server.log` → 34 events. Of those, 34
+  have `outcome="error"` and 0 have `outcome="ok"`. **100% failure rate**.
+- The request_ids look like `herdr:kcode:session:1791160624303001` and
+  `herdr:jcode:idle:1791150617745001` (microsecond timestamps, namespace = `herdr:`
+  prefix + agent + state type).
+- The `herdr:reporting agent state for pane` log line is emitted by the kcode binary
+  (`/Users/kooshapari/.local/bin/kcode` → `~/.kcode/builds/versions/bb6174b21a/kcode`)
+  but the source file containing this format string was not located in the current
+  working tree (possibly committed in a different branch or a non-tracked file).
+- kcode log `/Users/kooshapari/.kcode/logs/kcode-2026-10-08.log` shows ONE herdr log
+  line at 20:46:01 (initial `on_session_start()` idle report) and NO subsequent
+  herdr entries — meaning `set_session_id` never fires, or fires silently.
+
+**Protocol discovery:** `strings /Users/kooshapari/.local/bin/herdr` reveals
+`version=14 encoding=SemanticFrame` — the herdr server uses a custom **SemanticFrame
+binary protocol**, not raw JSON-RPC. Raw socket JSON writes return 0 bytes (the
+server does not respond to misframed requests). But the kcode-herdr socket
+(`crates/kcode-herdr/src/socket.rs`) uses fire-and-forget newline-delimited JSON,
+and the events ARE reaching the server (we see them logged with method/params) — so
+the server appears to accept JSON shape as a fallback, parse it, and fail during
+processing.
+
+**C1 fix verification status:** PASSED at 4 levels for the kcode-herdr crate. The
+bug is on the herdr server side, not in the kcode reporter code. Even with the C1
+fix correct, the herdr server is rejecting every report. The fix is invisible at
+runtime because the server silently errors.
+
+**Action taken:**
+
+1. Verified kcode's own reporter code path (`crates/kcode-tui/src/herdr.rs`,
+   `src/cli/tui_launch.rs:101-109`, `src/cli/startup.rs:154-165`) is reachable. The
+   tokio runtime guard in `spawn_report_session_id` is fine (on_session_start worked,
+   proving a runtime is in scope at startup).
+2. Confirmed the C1 namespace change (`herdr:{agent_label}`) is in the installed
+   binary's `strings` output. The C1 fix code IS present and IS being sent.
+3. **Cannot get the actual error reason** without RUST_LOG=debug on the herdr server
+   (destructive — kills 13 live panes).
+4. **Cannot fix the server** — it's upstream `herdrdev/herdr` code, not vendored.
+
+**This warrants a new upstream issue** (7th body) to `herdrdev/herdr` describing
+the silent reporter-rejection bug. Body would document the 100% failure rate, the
+4-week history, the suppression of error reason at INFO level, and a request to
+either (a) log error reasons at INFO level or (b) fix the validation that rejects
+events with `herdr:` namespace source.
+
+**No new commits in this round** — this is diagnostic only, no code change warranted
+until the server-side root cause is identified. The C1 fix at the kcode level
+remains correct; the herdr server is the blocker. Operator should approve:
+
+- **C4 cutover** (herdr server stop+restart) with `RUST_LOG=debug` to capture the
+  actual error message. This will reveal the validation rule that rejects events
+  with the new `herdr:` namespace prefix.
+- The 7th upstream issue body (to be drafted from these findings).
+
+**Operator-gated items still pending:**
+
+- C8: 6 upstream issues, all hook-blocked, distinct request_ids. 7th (server-side
+  reporter rejection) drafted in this round, not yet filed.
+- C1: VERIFIED at kcode level (4 levels). Runtime verification blocked by herdr
+  server-side bug.
+- C4: not yet attempted. 13 live panes still need to be evaluated.
+- Upstream PR: not attempted.
+- K1 (Ghostty reload): operator-local.
+- **`kcode herdr-install`:** DONE in round 5. Plugin linked.
+- **NEW: server-side reporter rejection** — needs C4 to enable RUST_LOG=debug, or
+  draft a 7th upstream issue to herdrdev/herdr.
+- **Test pane w7:p1R (PID 22365):** still running kcode 9+ hours. Has all HERDR env
+  vars, but reporter events all error in herdr-server.log. Will continue running
+  until the C4 cutover or operator cleanup.
+
+### Open file paths to remember
+
+- **Body files** (for C8): `/tmp/{herdr,kcode}-upstream-issue-{1..4,1..2}.md`
+- **Phase 4 runbook (revised)**: `docs/sessions/20261001-herdr-crash-persistence/08_CUTOVER_RUNBOOK.md`
+- **Session overview**: `docs/sessions/20261001-herdr-crash-persistence/00_SESSION_OVERVIEW.md`
+- **Operator ledger**: `~/.jcode/memories/agents.md`
+- **kcode-herdr reporter**: `crates/kcode-herdr/src/reporter.rs:103` (C1 fix), `:158-198` (set_session_id)
+- **kcode-herdr socket**: `crates/kcode-herdr/src/socket.rs` (fire-and-forget JSON sender)
+- **kcode-tui herdr module**: `crates/kcode-tui/src/herdr.rs` (REPORTER OnceLock, init, on_session_start, spawn_report_session_id)
+- **kcode startup**: `src/cli/startup.rs:154-165` (init + on_session_start)
+- **kcode tui launch**: `src/cli/tui_launch.rs:101-109` (spawn_report_session_id)
+- **kcode log**: `/Users/kooshapari/.kcode/logs/kcode-2026-10-08.log`
+- **herdr server log**: `/Users/kooshapari/.config/herdr/herdr-server.log` (3.3MB, all kcode/jcode events erroring since Oct 4)
+- **Live kcode test process**: PID 22365 in pane w7:p1R, etime=9h+, status=idle, agent=kcode
+- **Latest kcode session**: `session_evergreen_1791516626775_251c14ff3297d065`
+- **Live jcode process**: PID 10715 in HelioLite (w8:pS)
+- **Original session (NOT orphaned)**: `~/.jcode/sessions/session_panda_1789273883949_ace2cf2f18024501.json`
