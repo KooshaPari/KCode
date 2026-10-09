@@ -534,15 +534,25 @@ canonical `plan()` path, dedupe_key, and agent_session display.
 ### Reference
 
 - **7th body:** `/tmp/herdr-upstream-issue-5.md` (268 lines, herdr logging bug, root cause FOUND in `src/logging.rs`)
-- **8th body:** `/tmp/herdr-upstream-issue-6.md` (278 lines, herdr allowlist, full pane inventory)
+- **8th body:** `/tmp/herdr-upstream-issue-6.md` (467 lines, herdr allowlist polish, 7-function fix scope)
+- **9th body:** `/tmp/herdr-upstream-issue-9.md` (220 lines, deeper logging observation — `api_request_completed` missing `err` field for failures)
+- **PR draft:** `/tmp/herdr-upstream-pr-draft.md` (257 lines, full Rust diff for the 7-function allowlist fix)
 - **Session doc:** `docs/sessions/20261001-herdr-crash-persistence/00_SESSION_OVERVIEW.md`
   round 8 REVERSED + round 8.1 follow-up sections
 - **Draft catalog:** `docs/sessions/20261001-herdr-crash-persistence/07_DRAFT_PRS.md`
-  Herdr upstream issues 5 (reframed) + 6 (new), with verified herdr label taxonomy
-- **Commits:**
+  Herdr upstream issues 5 (logging) + 6 (allowlist) + 9 (missing err field),
+  with verified herdr label taxonomy (53 labels, p0/p1/p2 only)
+- **Commits (round 8.1 + followup):**
   - `26c91080a` — round 8.1 REVERSAL (C1 fix proven working)
   - `8ebe298f5` — Phase 4 revision 4 (allowlist = polish, not blocker)
   - `13b1d2ab7` — 7th body root cause FOUND in `herdr/src/logging.rs`
   - `41f86383b` — update label taxonomy to herdr's actual flat schema
   - `de3a228c4` — session overview round 8.1 follow-up section
-- **Operator ledger:** `~/.jcode/memories/agents.md` (728 lines), 9 round 8.1 pillars
+  - `734f10fab` — Phase 4 reference section refresh
+  - `85f07bcfc` — 10_SIGKILL_NON_TTY central claim marked OBSOLETE
+  - `07eecd0cc` — 8th body fix scope revised to 7 functions
+  - `724bd7f38` — catalog references PR draft
+  - `3b8363c64` — 9th body filed + label taxonomy (sessions, agent-detection, rust)
+  - `ebbf5f311` — session overview updated with 9th body, PR draft, kcode C1 test
+- **Operator ledger:** `~/.jcode/memories/agents.md` (~775 lines), 13 round 8.1 pillars
+- **Filing command summary:** see `07_DRAFT_PRS.md` "Filing command summary" section — all 3 issues + 1 PR can be filed with the documented `gh issue create` / `gh pr create` commands
