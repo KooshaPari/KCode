@@ -275,3 +275,85 @@ the new HEAD, the new body should reflect the resolved items.
   parts of these issues that are in-scope.
 - `08_FINAL_EVIDENCE.md` §5 — the local-only test failures
   walkthrough.
+
+## 10. Re-verification of prior-session goals (2026-10-09)
+
+This section closes two feedback loops from prior sessions that
+were tagged "speculative" or "in_progress" in the todo tool
+because they had no concrete evidence of result, only inspection.
+
+### 10.1 `25f3e1f4f` re-verification (re-verification 25f3e1f4f)
+
+**Goal:** verify that the prior session's claims about commit
+`25f3e1f4f` matched what the commit actually did.
+
+**Method:** direct `git show` of `25f3e1f4f` and `git show
+--stat 41fae89f3` for the merge context.
+
+**Concrete evidence (all verified 2026-10-09):**
+
+- `25f3e1f4f` is a **fork** commit, not an upstream commit.
+  Author: KooshaPari, 2026-10-04 (post-merge). Title: `test(tui):
+  realign four merge-introduced test expectations with fork
+  layout`. `git log --oneline -1 25f3e1f4f` confirms.
+- The diff in
+  `crates/jcode-tui/src/tui/app/tests/remote_events_reload_05.rs`
+  removes **4** `assert!` / `assert_eq!` lines and adds **2**
+  (net -2). `git show 25f3e1f4f | grep '^[+-]\s*assert' | wc -l`
+  → 6; the `+` count is 2 and the `-` count is 4.
+- The `is_empty()` final-state check the prior session referenced
+  is at line **1153** (`app.queued_messages.is_empty()`), not at
+  line 964. The Kilo-flagged re-arm assertion is at line 964.
+- The merge stat for this file is **243** lines (per
+  `git show --stat 41fae89f3`); the file is currently **1215
+  lines** (`wc -l`).
+
+**Result:** the prior session's claims about `25f3e1f4f` were
+**partly wrong** ("upstream commit", "deleted 3 assertions", "1
+remaining assertion", "file landed at 964 lines"). All four
+fabrications are corrected in `02_SPECIFICATIONS.md` §2.1 and
+§7.2, and in `03_DAG_WBS.md` WBS-11 (commit `b3f4c01`-style
+follow-up).
+
+### 10.2 `e6135802a` doc-correction commit (doc correction commit e6135802a)
+
+**Goal:** verify that the prior session's `e6135802a` commit
+("docs(session): correct 25f3e1f4f stat numbers and §5
+env-pollution detail") actually corrected the right file with
+accurate numbers.
+
+**Method:** direct `git show e6135802a` and read of the commit
+message body.
+
+**Concrete evidence (all verified 2026-10-09):**
+
+- `e6135802a` modified **1 file**: `08_FINAL_EVIDENCE.md` (not
+  `00_SESSION_OVERVIEW.md` as the prior session's WBS-11 entry
+  claimed). `git show e6135802a --stat` confirms. The diff is
+  +18/-12.
+- The commit body reports a **local test re-run** at HEAD
+  `844016a50` (the previous session's HEAD before `e6135802a`):
+  `test result: FAILED. 2396 passed; 2 failed; 17 ignored;
+  0 measured; 0 filtered out; finished in 372.03s`. The output
+  was written to `.scratch-tui-final.txt` (a literal path, not
+  a `/tmp` redirection).
+- The 2 local failures are correctly attributed in the commit
+  body: (1) `detected_resume_terminal_recognizes_handterm_term_program`
+  due to `TERM_PROGRAM=herdr` leaking from the harness shell and
+  racing the `EnvVarGuard::set_value`; (2)
+  `test_real_draw_click_on_body_anchored_image_label_cycles_level`
+  due to `status_notice()` inheriting a stale `Image copied`
+  suffix from a prior test. Both are env-pollution, not
+  regressions, and CI's fresh-container ubuntu runner observes
+  2402/0.
+- The corrected stat numbers in `08_FINAL_EVIDENCE.md` line 36
+  match `git show --stat 41fae89f3` exactly: `remote_events_reload_05.rs` 243,
+  `ui_input.rs` 608, `swarm_buffer.rs` 85.
+
+**Result:** `e6135802a` is **correct and well-evidenced**. The
+prior session's WBS-11 description was wrong about which file
+the commit changed (it corrected `08_FINAL_EVIDENCE.md`, not
+`00_SESSION_OVERVIEW.md`); that fabrication is corrected in
+`03_DAG_WBS.md` WBS-11. The corrected stats and the local repro
+result in the commit body are backed by concrete data, not
+inspection.

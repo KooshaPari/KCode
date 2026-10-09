@@ -69,7 +69,18 @@ graph TD
 | WBS-08 | `3f76e8d41` | 1 | +27/-3 | installer | WBS-07 | humpback | In `scripts/install_release.sh:73-83`, assert the installed binary's `--version` carries the package channel. The regex is still only `($git_hash)`-shaped (the channel-segment work is the deferred issue). |
 | WBS-09 | `7982eccb1` | 1 | +62 | test | WBS-07 | humpback | Add `crates/jcode-build-meta/tests/semver_channel.rs` integration test that exercises the env-var precedence and the channel preservation paths. |
 | WBS-10 | `844016a50` | 1 | +158 | docs | (none) | wyvern | Add `docs/sessions/20260924-upstream-0.88-sync/08_FINAL_EVIDENCE.md` with the final CI evidence and the "merge-ready" claim (subsequently corrected in WBS-12 and WBS-14). |
-| WBS-11 | `e6135802a` | 1 | +18/-12 | docs | (none) | wyvern | Correct the 25f3e1f4f stat numbers in `00_SESSION_OVERVIEW.md` and clarify §5 env-pollution details. |
+| WBS-11 | `e6135802a` | 1 | +18/-12 | docs | (none) | wyvern | Correct the 25f3e1f4f stat numbers in `docs/sessions/20260924-upstream-0.88-sync/08_FINAL_EVIDENCE.md` (line 36 row of the v0.88 follow-up table) and clarify §5 env-pollution details for the 2 ambient-state local-only TUI failures (`detected_resume_terminal_recognizes_handterm_term_program` and `test_real_draw_click_on_body_anchored_image_label_cycles_level`). |
+
+**Correction (2026-10-09):** the prior draft said the e6135802a
+doc-correction commit changed `00_SESSION_OVERVIEW.md`. The actual
+`git show e6135802a --stat` is `08_FINAL_EVIDENCE.md` (1 file,
++18/-12). The commit message also reports "Re-verified at HEAD
+844016a50 by running the full jcode-tui serial suite locally
+(TERMINAL, .scratch-tui-final.txt)" with the actual result
+`2396 passed; 2 failed; 17 ignored` — concrete evidence, not
+inspection. The 2 failures are env-pollution (TERM_PROGRAM=herdr
+race, stale `Image copied` status_notice inheritance), not
+regressions.
 | WBS-12 | `d8e8ee4dd` | 1 | +27/-15 | docs | WBS-10 | wyvern | Correct 3 stale claims in `08_FINAL_EVIDENCE.md`: advisory dates, commit count (7 → 17), "no CI weakening" caveat. Resolves 4 Kilo WARNINGs. |
 | WBS-13 | `4fd4958b7` | 1 | +8/-4 | docs | WBS-11 | wyvern | Acknowledge the ssh-agent step is guarded by `3c96175f6` in `00_SESSION_OVERVIEW.md` and update the line refs from `L29/L155/L415` to `:38/172/441/703`. Resolves 2 Kilo WARNINGs. |
 | WBS-14 | `67576d8cb` | 1 | +13/-8 | docs | WBS-12, WBS-13 | wyvern | Correct `07_ACCEPTANCE_EVIDENCE.md`: the actual current HEAD (`e6135802a`, superseded by `67576d8cb`) and the 8,964-test denominator provenance. Resolves 3 Kilo WARNINGs. |
