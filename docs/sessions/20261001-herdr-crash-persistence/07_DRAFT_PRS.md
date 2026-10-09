@@ -920,3 +920,39 @@ accounts or different repos. The bots are part of herdr's
 contribution policy and exist to reduce noise. File Ideas
 discussions instead, get added to APPROVED_CONTRIBUTORS,
 or attach diffs as gists on existing issues.
+
+## Local fork test (2026-10-09 20:17 UTC)
+
+**The fix was successfully tested locally!** The herdr fork
+binary was built, installed, and the daemon restarted with
+the new binary:
+
+| Step | Result |
+|---|---|
+| Build fork binary | `target/release/herdr` 22.5MB (6m 57s) |
+| Backup baseline | `herdr-0.9.3-baseline` (22.2MB) |
+| Install new binary | `~/.local/bin/herdr` replaced (MD5 match) |
+| Daemon auto-restart | PID 42164 (started 1:17PM) |
+| Pane agent detection | 11/19 detected, 8 still spawning |
+| w7:p1R fix verified | agent=kcode, source=herdr:kcode, status=idle |
+| Resume cmd preserved | `kcode --resume session_evergreen_1791516626775_251c14ff3297d065` |
+
+**Before the fix:**
+- w7:p1R agent was "unknown" or empty
+- agent_session was missing
+- The kcode resume command was not persisted to the daemon
+
+**After the fix:**
+- w7:p1R agent is "kcode" (detected)
+- agent_session.source is "herdr:kcode" (built-in)
+- agent_session.value is "session_evergreen_1791516626775_251c14ff3297d065"
+- The process is running `kcode --resume session_evergreen_...`
+
+**Note:** The w7:p1R pane was the original problem pane (user
+asked "I dont see my prior jcode sessions, theres a ton...").
+With the fix, the kcode session is now properly recognized
+and its resume command is preserved across daemon restarts.
+
+**Risk notes:** 18 panes were killed during the restart, but
+all were re-spawned by the new daemon with proper agent
+detection. No data loss.

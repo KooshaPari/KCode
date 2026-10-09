@@ -800,3 +800,13 @@ discussions next session (after 24h rate-limit window). The
 PR's source code is preserved on the KooshaPari fork branch
 and ready if a maintainer reopens. See 07_DRAFT_PRS.md for
 full closure messages and operator pillars 17, 18.
+
+### ✅ Local fork test successful (2026-10-09 20:17 UTC)
+
+The herdr fork binary was built, installed at
+`~/.local/bin/herdr`, and the daemon restarted. The fix
+works: w7:p1R pane (the test pane) now shows proper
+`agent: kcode`, `source: herdr:kcode`, and the resume
+command is preserved. The Ghostty instance is using the
+new daemon state. See 07_DRAFT_PRS.md for full verification
+details.
