@@ -671,3 +671,75 @@ None, so redundant state reports are not collapsed. ~16-20 line
 fix (7 functions in 2 files + 2 new test cases) is well-scoped
 but larger than originally estimated.
 
+---
+
+## 9th body — `api_request_completed` log line missing `err` field (deeper observation from 7th body)
+
+**Body file:** `/tmp/herdr-upstream-issue-9.md` (220 lines, ~9 KB).
+Discovered while investigating the 7th body — the
+`api_request_completed` function logs at INFO when `outcome != "ok"`
+but doesn't include the `err` reason field. 205 error entries in
+`herdr-server.log` are useless for debugging because they don't
+include the actual error reason.
+
+**Suggested labels** (per herdr's 53-label taxonomy, fetched
+2026-10-09):
+
+```
+--label bug,p2,api,triaged,auto-fix
+```
+
+(The original 9th body draft used `p3` which does NOT exist in
+herdr's taxonomy. herdr has only `p0`, `p1`, `p2`. Updated to
+`p2` since this is a narrow defect with a workaround — operator
+can read herdr source code to find the error reason.)
+
+**Companion to 7th body** (logging bug) and **8th body** (allowlist
+polish). All three issues are independent and can be filed
+separately. See `/tmp/herdr-upstream-issue-9.md` for the full
+body, evidence, and three fix options (A: add `err` param to
+`api_request_completed`; B: audit callers of `api_request_failed`;
+C: hybrid).
+
+**Status:** body drafted 2026-10-09. Labels corrected after
+deeper read of the 53-label taxonomy. Filing can be deferred —
+operator can choose to file the issue from the inbox.
+
+---
+
+## Filing command summary (all 3 issues + 1 PR)
+
+```
+# 5th body (logging bug) — /tmp/herdr-upstream-issue-5.md
+gh issue create --repo herdrdev/herdr \
+  --title "is_routine_api_method filter sends pane.report_agent* errors to DEBUG, hiding them" \
+  --body-file /tmp/herdr-upstream-issue-5.md \
+  --label bug,p2,api,sessions,triaged,auto-fix
+
+# 6th body (allowlist polish) — /tmp/herdr-upstream-issue-6.md
+gh issue create --repo herdrdev/herdr \
+  --title "is_official_agent_source allowlist missing kcode/jcode (7-function fix needed)" \
+  --body-file /tmp/herdr-upstream-issue-6.md \
+  --label bug,p2,api,sessions,agent-detection,triaged,intends-to-pr,rust
+
+# 9th body (missing err field) — /tmp/herdr-upstream-issue-9.md
+gh issue create --repo herdrdev/herdr \
+  --title "api_request_completed log line missing err field for failures" \
+  --body-file /tmp/herdr-upstream-issue-9.md \
+  --label bug,p2,api,triaged,auto-fix
+
+# PR (7-function fix for 8th body) — /tmp/herdr-upstream-pr-draft.md
+# Apply the diff to a fork of herdrdev/herdr, commit, push, then:
+gh pr create --repo herdrdev/herdr \
+  --title "Allow kcode and jcode as official agent sources" \
+  --body-file /tmp/herdr-upstream-pr-draft.md \
+  --label bug,p2,api,sessions,agent-detection,maintainer-approved,rust
+```
+
+Note: the PR draft uses `maintainer-approved` instead of
+`intends-to-pr` because the operator (per standing policy
+2026-09-18) has already pre-approved the PR scope. The
+`maintainer-approved` label signals that the PR scope was
+explicitly approved by a maintainer (operator is acting as the
+filing maintainer for the herdr fork).
+
