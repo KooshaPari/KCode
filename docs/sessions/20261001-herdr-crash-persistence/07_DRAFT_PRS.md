@@ -675,12 +675,31 @@ but larger than originally estimated.
 
 ## 9th body — `api_request_completed` log line missing `err` field (deeper observation from 7th body)
 
-**Body file:** `/tmp/herdr-upstream-issue-9.md` (220 lines, ~9 KB).
+**Body file:** `/tmp/herdr-upstream-issue-9.md` (281 lines, ~13 KB).
 Discovered while investigating the 7th body — the
 `api_request_completed` function logs at INFO when `outcome != "ok"`
-but doesn't include the `err` reason field. 205 error entries in
-`herdr-server.log` are useless for debugging because they don't
-include the actual error reason.
+but doesn't include the `err` reason field. **Round 8.1 followup
+analysis (2026-10-09 05:36 UTC) found 534 total errors in the log,
+with 518 (97.1%) lacking the `err` field** — the original
+"205 errors" count was just the agent-detection subset.
+
+**Detailed breakdown (from herdr-server.log, 22,031 lines):**
+
+| Prefix | Errors | Note |
+|---|---|---|
+| `moshi-hook` | 209 | Third-party integration (NOT herdr internal; separate issue) |
+| `herdr:*` | 191 | herdr's own internal processes |
+| `cli:*` | 38 | Manual CLI commands or tests |
+| `jcode:*` | 26 | Our kcode/jcode binaries firing events |
+| `mach` | 9 | macOS integration |
+
+| Method | Errors | err= present |
+|---|---|---|
+| `pane.get` | 210 | 0 (100% missing) |
+| `pane.report_agent` | 174 | 0 (100% missing) |
+| `pane.report_agent_session` | 31 | 0 (100% missing) |
+| `pane.release_agent` | 26 | 0 (100% missing) |
+| `agent.list` | 9 | 0 (100% missing) |
 
 **Suggested labels** (per herdr's 53-label taxonomy, fetched
 2026-10-09):
@@ -697,11 +716,13 @@ can read herdr source code to find the error reason.)
 **Companion to 7th body** (logging bug) and **8th body** (allowlist
 polish). All three issues are independent and can be filed
 separately. See `/tmp/herdr-upstream-issue-9.md` for the full
-body, evidence, and three fix options (A: add `err` param to
+body, evidence, three fix options (A: add `err` param to
 `api_request_completed`; B: audit callers of `api_request_failed`;
-C: hybrid).
+C: hybrid), and the `moshi-hook` footnote explaining why those
+209 errors are a separate issue.
 
-**Status:** body drafted 2026-10-09. Labels corrected after
+**Status:** body drafted 2026-10-09, expanded 2026-10-09 with
+detailed breakdown (281 lines from 220). Labels corrected after
 deeper read of the 53-label taxonomy. Filing can be deferred —
 operator can choose to file the issue from the inbox.
 
