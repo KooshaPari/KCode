@@ -523,3 +523,35 @@ do not block the merge; they were deliberately **not** mass-formatted (operator
 directed against `cargo fmt --all`).
 
 **Acceptance evidence (2026-10-02):** CI step-level proof, built-binary provenance, and coverage denominators → [07_ACCEPTANCE_EVIDENCE.md](07_ACCEPTANCE_EVIDENCE.md).
+
+---
+
+## Post-merge activity: jcode launch path correction (2026-10-10)
+
+The operator flagged that the `jcode` binary was no longer pointing at
+upstream. Root cause:
+
+- `~/.jcode/builds/current/jcode` had been repointed from the `0.91.0`
+  upstream release to a `b87cd9955-dirty` build, compiled from a
+  personal fix branch (`remotes/origin/fix/herdr-reporter-source-namespace`).
+- That branch is **not** on upstream `master` and the build was
+  `dirty` (uncommitted local changes at build time), so the launch
+  path was no longer pure-upstream.
+- This was policy-forbidden by the decollision rule: jcode is the
+  upstream release, kcode is the KCode fork. Mixing the two paths
+  silently bypasses the rule.
+
+Correction:
+
+| File | Before | After |
+|---|---|---|
+| `~/.jcode/builds/current/jcode` | `versions/b87cd9955-dirty/jcode` | `versions/0.91.0/jcode` |
+| `~/.jcode/builds/current-version` | `b87cd9955-dirty` | `0.91.0` |
+| `~/.local/bin/jcode.real` | `builds/current/jcode` | `builds/versions/0.91.0/jcode` |
+
+The `b87cd9955-dirty` binary is preserved in `versions/` for archival
+and is no longer on the launch path. `kcode` is unchanged at
+`v0.0.0-dev (bb6174b21)`. Verification: `jcode --version` now reports
+`jcode v0.91.0 (439a243bb)`.
+
+See `05_KNOWN_ISSUES.md` §12 for the canonical record.

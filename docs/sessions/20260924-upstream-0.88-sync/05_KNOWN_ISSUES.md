@@ -403,3 +403,44 @@ and re-verified against live data before dispatch.
 **Cross-repo note:** this is a harness defect, so the fix belongs in
 `1jehuang/jcode` upstream, not in the KCode fork. The fork-side
 deliverable is the issue body, which is complete.
+
+## 12. jcode launch path drifted to a non-upstream dirty build — RESOLVED (2026-10-10)
+
+**Severity:** operator-flagged policy violation. The `jcode` binary
+must point only at upstream `1jehuang/jcode` release builds; the KCode
+fork has its own dedicated `kcode` launcher.
+
+**Symptom (2026-10-10 06:44 UTC):** `jcode --version` reported
+`jcode v0.0.0-dev (b87cd9955, dirty)` instead of
+`jcode v0.91.0 (439a243bb)`.
+
+**Root cause:** `~/.jcode/builds/current/jcode` was a symlink to
+`versions/b87cd9955-dirty/jcode`, and `~/.local/bin/jcode.real` was
+following `current/`. The `b87cd9955` SHA lives on
+`remotes/origin/fix/herdr-reporter-source-namespace` — a personal fix
+branch that forks off `85a6c1007` (pre-rename upstream `1jehuang/jcode`).
+The branch is **not** an ancestor of upstream `master` and the binary
+was compiled `dirty` (uncommitted local changes at build time), so the
+launch path was no longer pure-upstream.
+
+**Fix (2026-10-10 06:53 UTC):**
+
+1. Repointed `~/.jcode/builds/current/jcode` → `versions/0.91.0/jcode`
+2. Updated `~/.jcode/builds/current-version` to `0.91.0`
+3. Repointed `~/.local/bin/jcode.real` → `versions/0.91.0/jcode` (bypassing
+   `current/` so the indirection cannot drift again)
+4. `b87cd9955-dirty` binary preserved in `versions/` for archival
+5. `kcode` launcher unchanged: still resolves to `bb6174b21a` (KCode fork)
+
+**Verification:** `jcode --version` → `jcode v0.91.0 (439a243bb)`.
+`kcode --version` → `kcode v0.0.0-dev (bb6174b21)`.
+
+**Lesson (added to global memory):** the launcher indirection
+(`current/` → `versions/*`) is convenient for canary rollouts but is a
+silent drift vector. When enforcing "jcode only points at upstream,"
+either disable `current/` for the upstream install or anchor
+`jcode.real` directly at the release binary (option 3 above). The
+`manifest.json` files in both build dirs are stale test-fixture
+placeholders from a reload-path test; per session note, the real install
+truth is in the `current-version`/`stable-version` pointer files and
+the `current/`/`stable/` symlinks.
