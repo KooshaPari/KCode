@@ -304,7 +304,7 @@ fn remove_snapshot_files(swarm_id: &str) -> bool {
 
     let mut removed = true;
     for candidate in [backup, path] {
-        if let Err(err) = std::fs::remove_file(&candidate)
+        if let Err(err) = storage::remove_durable_state_file(&candidate)
             && err.kind() != std::io::ErrorKind::NotFound
         {
             removed = false;

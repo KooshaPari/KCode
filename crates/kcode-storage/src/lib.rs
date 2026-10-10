@@ -1,5 +1,5 @@
 mod remove;
-pub use remove::remove_state_file;
+pub use remove::{remove_durable_state_file, remove_state_file};
 
 use anyhow::Result;
 use serde::Serialize;
