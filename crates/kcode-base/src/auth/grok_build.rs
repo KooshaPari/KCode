@@ -166,12 +166,8 @@ fn save_tokens(tokens: TokenResponse) -> Result<()> {
         oidc_issuer: OAUTH_ISSUER,
         oidc_client_id: OAUTH_CLIENT_ID,
     };
-    let home = grok_home(
-        std::env::var_os("GROK_HOME"),
-        std::env::var_os("HOME"),
-        std::env::var_os("USERPROFILE"),
-    )
-    .context("No home directory available for Grok Build credentials")?;
+    let home =
+        credential_home().context("No home directory available for Grok Build credentials")?;
     std::fs::create_dir_all(&home)?;
     let path = home.join("auth.json");
     let mut credentials = std::fs::read(&path)
@@ -200,6 +196,22 @@ fn grok_home(
         home.or(user_profile)
             .map(|home| PathBuf::from(home).join(".grok"))
     })
+}
+
+fn credential_home() -> Option<PathBuf> {
+    if dev_namespace_enabled() {
+        std::env::var_os("GROK_HOME")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("KCODE_HOME").map(|home| PathBuf::from(home).join(".grok"))
+            })
+    } else {
+        grok_home(
+            std::env::var_os("GROK_HOME"),
+            std::env::var_os("HOME"),
+            std::env::var_os("USERPROFILE"),
+        )
+    }
 }
 
 fn managed_cli_path() -> Result<PathBuf> {
@@ -243,19 +255,19 @@ pub fn cli_available() -> bool {
 /// Backend presence alone is not authentication and must not make `/login` or
 /// `kcode auth status` claim that Grok Build is ready.
 pub fn has_cached_login() -> bool {
-    if dev_namespace_enabled() {
-        return false;
-    }
-    if std::env::var("GROK_DEPLOYMENT_KEY")
-        .ok()
-        .is_some_and(|value| !value.trim().is_empty())
+    let dev_namespace = dev_namespace_enabled();
+    if !dev_namespace
+        && std::env::var("GROK_DEPLOYMENT_KEY")
+            .ok()
+            .is_some_and(|value| !value.trim().is_empty())
     {
         return true;
     }
-    let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {
+    // credential_home avoids inheriting HOME/.grok when running in a dev namespace.
+    let Some(home) = credential_home() else {
         return false;
     };
-    let Ok(bytes) = std::fs::read(PathBuf::from(home).join(".grok").join("auth.json")) else {
+    let Ok(bytes) = std::fs::read(home.join("auth.json")) else {
         return false;
     };
     credentials_json_has_login(&bytes)
@@ -411,7 +423,7 @@ mod tests {
             }
         }
         let _restore = Restore(
-            ["HOME", "KCODE_DEV_NAMESPACE"]
+            ["HOME", "GROK_HOME", "KCODE_DEV_NAMESPACE"]
                 .map(|name| (name, std::env::var_os(name)))
                 .to_vec(),
         );
@@ -419,7 +431,10 @@ mod tests {
         let auth = home.path().join(".grok/auth.json");
         std::fs::create_dir_all(auth.parent().unwrap()).unwrap();
         std::fs::write(&auth, br#"{"account":{"key":"inherited-test-token"}}"#).unwrap();
+        let private = home.path().join(".kcode-dev/.grok");
+        std::fs::create_dir_all(&private).unwrap();
         crate::env::set_var("HOME", home.path());
+        crate::env::set_var("GROK_HOME", &private);
         crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
         assert!(!has_cached_login());
     }
@@ -501,13 +516,14 @@ mod tests {
     #[test]
     fn dev_namespace_saves_tokens_only_under_private_grok_home() {
         let _lock = crate::storage::lock_test_env();
-        let prior =
-            ["GROK_HOME", "HOME", "KCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
+        let prior = ["GROK_HOME", "HOME", "KCODE_HOME", "KCODE_DEV_NAMESPACE"]
+            .map(|name| (name, std::env::var_os(name)));
         let temp = tempfile::tempdir().unwrap();
         let stable = temp.path().join("stable/.grok");
         let private = temp.path().join(".kcode-dev/.grok");
         crate::env::set_var("HOME", temp.path().join("stable"));
-        crate::env::set_var("GROK_HOME", &private);
+        crate::env::remove_var("GROK_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path().join(".kcode-dev"));
         crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
 
         save_tokens(TokenResponse {
@@ -522,6 +538,7 @@ mod tests {
         assert!(!stable.join("auth.json").exists());
         let content = std::fs::read_to_string(private_auth).unwrap();
         assert!(content.contains("not-a-jwt"));
+        assert!(has_cached_login());
 
         for (name, value) in prior {
             if let Some(value) = value {
