@@ -244,7 +244,14 @@ pub fn cli_available() -> bool {
 /// `kcode auth status` claim that Grok Build is ready.
 pub fn has_cached_login() -> bool {
     if dev_namespace_enabled() {
-        return false;
+        let Ok(home) = crate::storage::kcode_dir() else {
+            return false;
+        };
+        let path = home.join(".grok/auth.json");
+        if crate::storage::reject_dev_home_symlink_path(&path).is_err() {
+            return false;
+        }
+        return std::fs::read(path).is_ok_and(|bytes| credentials_json_has_login(&bytes));
     }
     if std::env::var("GROK_DEPLOYMENT_KEY")
         .ok()
@@ -397,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn dev_namespace_does_not_discover_grok_auth_file() {
+    fn dev_namespace_reads_only_its_scoped_grok_auth_file() {
         let _lock = crate::storage::lock_test_env();
         struct Restore(Vec<(&'static str, Option<std::ffi::OsString>)>);
         impl Drop for Restore {
@@ -411,17 +418,29 @@ mod tests {
             }
         }
         let _restore = Restore(
-            ["HOME", "KCODE_DEV_NAMESPACE"]
+            ["HOME", "KCODE_HOME", "KCODE_DEV_NAMESPACE"]
                 .map(|name| (name, std::env::var_os(name)))
                 .to_vec(),
         );
         let home = tempfile::tempdir().unwrap();
-        let auth = home.path().join(".grok/auth.json");
-        std::fs::create_dir_all(auth.parent().unwrap()).unwrap();
-        std::fs::write(&auth, br#"{"account":{"key":"inherited-test-token"}}"#).unwrap();
+        let stable_auth = home.path().join(".grok/auth.json");
+        std::fs::create_dir_all(stable_auth.parent().unwrap()).unwrap();
+        std::fs::write(&stable_auth, br#"{"account":{"key":"stable-token"}}"#).unwrap();
         crate::env::set_var("HOME", home.path());
+        crate::env::set_var("KCODE_HOME", home.path().join(".kcode-dev"));
         crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
-        assert!(!has_cached_login());
+        assert!(
+            !has_cached_login(),
+            "stable HOME credentials must not leak in"
+        );
+
+        let private_auth = home.path().join(".kcode-dev/.grok/auth.json");
+        std::fs::create_dir_all(private_auth.parent().unwrap()).unwrap();
+        std::fs::write(&private_auth, br#"{"account":{"key":"private-token"}}"#).unwrap();
+        assert!(
+            has_cached_login(),
+            "private KCODE_HOME credentials should be found"
+        );
     }
 
     #[test]

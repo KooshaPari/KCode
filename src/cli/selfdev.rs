@@ -104,7 +104,7 @@ pub async fn run_self_dev(should_build: bool, resume_session: Option<String>) ->
     } else {
         if should_build {
             anyhow::bail!(
-                "Refusing to publish this self-dev build into the normal jcode installation. \
+                "Refusing to publish this self-dev build into the normal kcode installation. \
                  Use `kcode-dev self-dev --build` to build in ~/.kcode-dev."
             );
         }

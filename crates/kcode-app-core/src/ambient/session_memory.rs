@@ -118,6 +118,7 @@ mod isolation_tests {
         let _lock = crate::storage::lock_test_env();
         let _restore = RestoreEnv(
             [
+                "HOME",
                 "KCODE_HOME",
                 "KCODE_DEV_NAMESPACE",
                 "KCODE_SESSION_MEMORY_TEMPLATE",
@@ -135,10 +136,12 @@ mod isolation_tests {
         std::fs::create_dir_all(&template_dir).unwrap();
         std::fs::write(&target, "STABLE_TEMPLATE_SENTINEL").unwrap();
         std::os::unix::fs::symlink(&target, template_dir.join("template.md")).unwrap();
+        crate::env::set_var("HOME", temp.path());
         crate::env::set_var("KCODE_HOME", &home);
         crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
         crate::env::remove_var("KCODE_SESSION_MEMORY_TEMPLATE");
 
+        assert!(crate::storage::running_in_dev_namespace());
         let rendered = render_session_template("local content", &HashMap::new());
 
         assert_eq!(rendered, "local content");

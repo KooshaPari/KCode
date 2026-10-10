@@ -9,8 +9,7 @@ use std::sync::MutexGuard;
 mod store_roots;
 
 fn env_lock() -> MutexGuard<'static, ()> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    crate::storage::lock_test_env()
 }
 
 fn setup_env(home: &Path) -> Vec<(&'static str, Option<OsString>)> {

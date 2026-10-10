@@ -117,7 +117,7 @@ pub fn set_session_internal(session_id: &str, internal: bool) {
     if internal {
         let _ = write_marker(&dir, session_id, b"");
     } else {
-        let _ = std::fs::remove_file(path);
+        let _ = crate::remove_state_file(&path);
     }
 }
 
@@ -141,7 +141,7 @@ pub fn unregister_active_pid(session_id: &str) {
     if let Some(dir) = active_pids_dir() {
         let path = dir.join(session_id);
         if path_allowed(&path) {
-            let _ = std::fs::remove_file(path);
+            let _ = crate::remove_state_file(&path);
         }
     }
     // A closed session is never streaming, and its internal flag is moot.
@@ -161,7 +161,7 @@ pub fn unmark_streaming(session_id: &str) {
     if let Some(dir) = streaming_pids_dir() {
         let path = dir.join(session_id);
         if path_allowed(&path) {
-            let _ = std::fs::remove_file(path);
+            let _ = crate::remove_state_file(&path);
         }
     }
 }
