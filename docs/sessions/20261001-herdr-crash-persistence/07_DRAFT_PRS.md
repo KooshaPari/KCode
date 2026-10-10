@@ -997,3 +997,30 @@ succeeded (request replayed from answered state).
 use GraphQL `createDiscussion` with the node-id format
 (category `DIC_*`, repository `R_*`) for create operations.
 REST category `id` is the SQL row id, not the GraphQL node id.
+
+## Build artifact cleanup (2026-10-10 08:42 UTC)
+
+With operator approval ("proc"), cleaned up session-owned
+build artifacts to free disk space on the data volume
+(926Gi used, 239Mi free → 30Gi free after cleanup).
+
+| Path | Size | Action |
+|---|---|---|
+| `~/CodeProjects/herdr-pr/herdr/target` | 2.6G | Removed (build artifacts, binary already installed and verified) |
+| `~/CodeProjects/herdr-pr/backup-2026-10-09` | 42M | Removed (contained `herdr-0.9.3-baseline` and `herdr-0.9.3-baseline-just-in-case`; binary has 19h+ uptime now) |
+| **Total freed** | **~2.65G** | |
+
+**Preserved (not touched):**
+- `~/CodeProjects/herdr-pr/herdr/` (297M, source repo on `fix/agent-detection-allowlist` @ `d10bf15`)
+- `~/CodeProjects/herdr-pr/build.log` (338B, build evidence)
+- `~/CodeProjects/herdr-pr/pane-list-pre-restart.json` (8.5K, pre-restart snapshot)
+- `~/.local/bin/herdr` (active binary, MD5 `b7ee6eb0c4feb2fd64882173ce4b0e37`)
+
+**Post-cleanup verification:**
+- herdr daemon: running, no restart needed
+- w7:p1R fix: still working (`agent: kcode`, `source: herdr:kcode`)
+- Active binary MD5: unchanged
+
+**Note:** `cargo build --bin herdr --release` from the
+preserved source repo will reproduce the target/ directory
+if a rebuild is ever needed. Build takes ~7 minutes.
