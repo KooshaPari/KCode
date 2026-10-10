@@ -200,11 +200,7 @@ fn grok_home(
 
 fn credential_home() -> Option<PathBuf> {
     if dev_namespace_enabled() {
-        std::env::var_os("GROK_HOME")
-            .map(PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("KCODE_HOME").map(|home| PathBuf::from(home).join(".grok"))
-            })
+        std::env::var_os("KCODE_HOME").map(|home| PathBuf::from(home).join(".grok"))
     } else {
         grok_home(
             std::env::var_os("GROK_HOME"),
@@ -263,7 +259,7 @@ pub fn has_cached_login() -> bool {
     {
         return true;
     }
-    // credential_home avoids inheriting HOME/.grok when running in a dev namespace.
+    // credential_home avoids inheriting stable auth paths in a dev namespace.
     let Some(home) = credential_home() else {
         return false;
     };
@@ -423,7 +419,7 @@ mod tests {
             }
         }
         let _restore = Restore(
-            ["HOME", "GROK_HOME", "KCODE_DEV_NAMESPACE"]
+            ["HOME", "GROK_HOME", "KCODE_HOME", "KCODE_DEV_NAMESPACE"]
                 .map(|name| (name, std::env::var_os(name)))
                 .to_vec(),
         );
@@ -434,7 +430,8 @@ mod tests {
         let private = home.path().join(".kcode-dev/.grok");
         std::fs::create_dir_all(&private).unwrap();
         crate::env::set_var("HOME", home.path());
-        crate::env::set_var("GROK_HOME", &private);
+        crate::env::set_var("GROK_HOME", auth.parent().unwrap());
+        crate::env::set_var("KCODE_HOME", home.path().join(".kcode-dev"));
         crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
         assert!(!has_cached_login());
     }
@@ -522,9 +519,15 @@ mod tests {
         let stable = temp.path().join("stable/.grok");
         let private = temp.path().join(".kcode-dev/.grok");
         crate::env::set_var("HOME", temp.path().join("stable"));
-        crate::env::remove_var("GROK_HOME");
+        crate::env::set_var("GROK_HOME", &stable);
         crate::env::set_var("KCODE_HOME", temp.path().join(".kcode-dev"));
         crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        std::fs::create_dir_all(&stable).unwrap();
+        std::fs::write(
+            stable.join("auth.json"),
+            br#"{"account":{"key":"stable-test-token"}}"#,
+        )
+        .unwrap();
 
         save_tokens(TokenResponse {
             access_token: "not-a-jwt".to_string(),
@@ -535,7 +538,11 @@ mod tests {
 
         let private_auth = private.join("auth.json");
         assert!(private_auth.is_file());
-        assert!(!stable.join("auth.json").exists());
+        assert!(
+            std::fs::read_to_string(stable.join("auth.json"))
+                .unwrap()
+                .contains("stable-test-token")
+        );
         let content = std::fs::read_to_string(private_auth).unwrap();
         assert!(content.contains("not-a-jwt"));
         assert!(has_cached_login());
