@@ -823,3 +823,39 @@ Working branch `KooshaPari:fix/agent-detection-allowlist`
 evidence (binary test above) is included in the body. See
 07_DRAFT_PRS.md for the filing record, pillar 19, and the
 GraphQL `createDiscussion` flow that finally worked.
+
+**Discussion state verified 2026-10-10 01:46 UTC:**
+```json
+{"state": "open", "comments": 0, "category": "Ideas"}
+```
+Not yet responded to by maintainer.
+
+### ✅ End-to-end crash restore test (2026-10-10 01:46 UTC)
+
+**SIGKILL the daemon, verify session restore end-to-end.**
+This is the real acceptance test for the herdr crash
+persistence work — not just inspecting binary metadata,
+but exercising the actual crash → auto-restart → session
+restore path on a production daemon.
+
+| Step | Result |
+|---|---|
+| Pre-state captured | `~/CodeProjects/herdr-pr/sigkill-test/pre.txt` (daemon PID 42164, 12h 26m uptime, w7:p1R kcode detected) |
+| `kill -9 42164` | Daemon terminated |
+| launchd auto-restart | New PID 97624, started 01:46AM, using fork binary (MD5 `b7ee6eb0c4feb2fd64882173ce4b0e37` unchanged) |
+| w7:p1R state after crash | `agent: kcode`, `source: herdr:kcode`, `value: session_evergreen_1791516626775_251c14ff3297d065` — **PRESERVED** |
+| kcode --resume process | Re-spawned as new PID 98019, command exactly matches pre-crash |
+| session.json rewrite | New MD5 `3748d41fdeeb2da68cbb841863aacb31`, mtime 01:46 |
+| Total downtime | ~7 seconds |
+
+**Conclusion:** The C1 fix (`herdr:kcode` / `herdr:jcode`
+source namespace) and the fork binary survive a real
+SIGKILL crash. The session resume metadata is restored
+from `~/.config/herdr/session.json`. The kcode session
+continues with the same `--resume` command across the
+crash. Crash persistence is **proven end-to-end**, not
+just by inspection.
+
+Evidence files:
+- `~/CodeProjects/herdr-pr/sigkill-test/pre.txt`
+- `~/CodeProjects/herdr-pr/sigkill-test/post.txt`
