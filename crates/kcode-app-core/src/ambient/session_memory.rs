@@ -69,8 +69,30 @@ pub fn render_session_template(content: &str, variables: &HashMap<String, String
             for section in &template.sections {
                 if let Some(value) = variables.get(&section.name) {
                     let section_header = format!("## {}", section.name);
-                    rendered =
-                        rendered.replace(&format!("{section_header}\n{}", section.body), value);
+                    let header_line = format!("{section_header}\n");
+                    let Some(header_start) = rendered
+                        .match_indices(&header_line)
+                        .find(|(start, _)| *start == 0 || rendered.as_bytes()[start - 1] == b'\n')
+                        .map(|(start, _)| start)
+                    else {
+                        continue;
+                    };
+                    let body_start = rendered[header_start..]
+                        .find('\n')
+                        .map(|offset| header_start + offset + 1)
+                        .unwrap_or(rendered.len());
+                    let body_end = rendered[body_start..]
+                        .find("\n## ")
+                        .map(|offset| body_start + offset)
+                        .unwrap_or(rendered.len());
+                    let body = &rendered[body_start..body_end];
+                    let replacement_range = if body.trim().is_empty() {
+                        body_end..body_end
+                    } else {
+                        let trailing = body.len() - body.trim_end().len();
+                        body_start..body_end - trailing
+                    };
+                    rendered.replace_range(replacement_range, value);
                 }
             }
             substitutor.substitute(&rendered)
@@ -149,5 +171,44 @@ mod isolation_tests {
             std::fs::read_to_string(&target).unwrap(),
             "STABLE_TEMPLATE_SENTINEL"
         );
+    }
+
+    #[test]
+    fn session_template_replaces_section_with_parser_trimmed_body() {
+        let _lock = crate::storage::lock_test_env();
+        let _restore = RestoreEnv(
+            [
+                "HOME",
+                "KCODE_HOME",
+                "KCODE_DEV_NAMESPACE",
+                "KCODE_SESSION_MEMORY_TEMPLATE",
+            ]
+            .into_iter()
+            .map(|key| (key, std::env::var_os(key)))
+            .collect(),
+        );
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join(".kcode-dev");
+        let template_dir = home.join("session-memory/config");
+        std::fs::create_dir_all(&template_dir).unwrap();
+        std::fs::write(
+            template_dir.join("template.md"),
+            "## Summary\n\nOriginal summary\n\n## Details\nKeep details\n",
+        )
+        .unwrap();
+        crate::env::set_var("HOME", temp.path());
+        crate::env::set_var("KCODE_HOME", &home);
+        crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        crate::env::remove_var("KCODE_SESSION_MEMORY_TEMPLATE");
+        assert!(crate::storage::running_in_dev_namespace());
+        let variables = HashMap::from([("Summary".to_string(), "Replacement summary".to_string())]);
+
+        let rendered = render_session_template("unused fallback", &variables);
+
+        assert_eq!(
+            rendered,
+            "## Summary\nReplacement summary\n\n## Details\nKeep details\n"
+        );
+        assert!(!rendered.contains("Original summary"));
     }
 }
