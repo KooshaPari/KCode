@@ -1,0 +1,39 @@
+name: macOS Runtime Trust Guard
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "src/main.rs"
+      - ".github/workflows/macos-runtime-trust-guard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUSTUP_TOOLCHAIN: stable
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos-runtime-trust:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-runtime-trust
+      - name: Compile jcode binary
+        run: cargo check --bin jcode
+      - name: Guard against implicit runtime executable mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -nE 'self_heal_macos_code_signature|com\.apple\.(provenance|quarantine)|codesign.*--force.*--deep.*--sign' src/main.rs; then
+            echo "Runtime startup must not mutate executable trust/signature state" >&2
+            exit 1
+          fi
