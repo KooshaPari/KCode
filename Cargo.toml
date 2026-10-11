@@ -107,7 +107,7 @@ members = [
 name = "jcode"
 path = "src/lib.rs"
 
-[lints.clippy]
+[workspace.lints.clippy]
 # The #[async_trait] macro decorates every async fn with #[must_use];
 # the return type (Pin<Box<dyn Future>>) is itself already #[must_use].
 # The double_must_use lint (added in newer rust/clippy versions) fires
