@@ -27,9 +27,19 @@ fn remove_file_beneath(root: &Path, path: &Path) -> std::io::Result<()> {
         ));
     }
 
+    // Normal user-configured homes may intentionally be symlinks. Resolve
+    // that root before opening it with O_NOFOLLOW; dev homes are validated
+    // above and must retain their no-follow boundary.
+    let root =
+        if std::env::var_os("KCODE_DEV_NAMESPACE").as_deref() == Some(std::ffi::OsStr::new("1")) {
+            root.to_path_buf()
+        } else {
+            root.canonicalize()?
+        };
+
     #[cfg(unix)]
     {
-        remove_unix(root, relative)
+        remove_unix(&root, relative)
     }
 
     #[cfg(not(unix))]
@@ -124,6 +134,93 @@ mod tests {
         remove_state_file(&state_file).unwrap();
 
         assert!(!state_file.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removes_a_state_file_when_normal_home_is_a_symlink() {
+        let _lock = crate::lock_test_env();
+        struct Restore(Option<std::ffi::OsString>, Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                // SAFETY: The storage test environment lock serializes tests
+                // that read or modify process environment variables.
+                unsafe {
+                    match self.0.take() {
+                        Some(value) => std::env::set_var("KCODE_HOME", value),
+                        None => std::env::remove_var("KCODE_HOME"),
+                    }
+                    match self.1.take() {
+                        Some(value) => std::env::set_var("KCODE_DEV_NAMESPACE", value),
+                        None => std::env::remove_var("KCODE_DEV_NAMESPACE"),
+                    }
+                }
+            }
+        }
+        let target = tempfile::tempdir().unwrap();
+        let parent = target.path().join("active_pids");
+        std::fs::create_dir(&parent).unwrap();
+        let state_file = parent.join("session-1");
+        std::fs::write(&state_file, b"123").unwrap();
+        let link_parent = tempfile::tempdir().unwrap();
+        let home_link = link_parent.path().join("home");
+        std::os::unix::fs::symlink(target.path(), &home_link).unwrap();
+        let path_through_link = home_link.join("active_pids/session-1");
+
+        let _restore = Restore(
+            std::env::var_os("KCODE_HOME"),
+            std::env::var_os("KCODE_DEV_NAMESPACE"),
+        );
+        // SAFETY: Test environment access is serialized by `lock_test_env`.
+        unsafe {
+            std::env::set_var("KCODE_HOME", &home_link);
+            std::env::remove_var("KCODE_DEV_NAMESPACE");
+        }
+        remove_state_file(&path_through_link).unwrap();
+
+        assert!(!state_file.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_symlink_home_in_dev_namespace() {
+        let _lock = crate::lock_test_env();
+        struct Restore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                // SAFETY: The storage test environment lock serializes tests
+                // that read or modify process environment variables.
+                unsafe {
+                    for (name, value) in self.0.drain(..) {
+                        match value {
+                            Some(value) => std::env::set_var(name, value),
+                            None => std::env::remove_var(name),
+                        }
+                    }
+                }
+            }
+        }
+        let user_home = tempfile::tempdir().unwrap();
+        let dev_home = user_home.path().join(".kcode-dev");
+        std::fs::create_dir(&dev_home).unwrap();
+        let home_link = user_home.path().join("home-link");
+        std::os::unix::fs::symlink(&dev_home, &home_link).unwrap();
+        let _restore = Restore(
+            ["HOME", "KCODE_HOME", "KCODE_DEV_NAMESPACE"]
+                .map(|name| (name, std::env::var_os(name)))
+                .to_vec(),
+        );
+        // SAFETY: Test environment access is serialized by `lock_test_env`.
+        unsafe {
+            std::env::set_var("HOME", user_home.path());
+            std::env::set_var("KCODE_HOME", &home_link);
+            std::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        }
+
+        let error = remove_state_file(&home_link.join("session")).unwrap_err();
+
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert!(error.to_string().contains("symlink"));
     }
 
     #[test]
