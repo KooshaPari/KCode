@@ -1,7 +1,7 @@
 {
-  "total": 3560,
+  "total": 3561,
   "totals_by_pattern": {
-    "dot_ok": 1329,
+    "dot_ok": 1330,
     "let_underscore": 1349,
     "unwrap_or_default": 882
   },
@@ -622,7 +622,7 @@
       "unwrap_or_default": 0
     },
     "crates/jcode-auto-dream/src/session_gate.rs": {
-      "dot_ok": 1,
+      "dot_ok": 2,
       "let_underscore": 0,
       "unwrap_or_default": 0
     },
