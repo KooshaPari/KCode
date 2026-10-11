@@ -1,0 +1,9 @@
+[package]
+name = "kcode-batch-types"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+kcode-message-types = { path = "../kcode-message-types" }
+serde = { version = "1", features = ["derive"] }

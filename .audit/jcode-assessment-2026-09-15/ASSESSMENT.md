@@ -1,4 +1,4 @@
-# Jcode Fork Assessment
+# Kcode Fork Assessment
 
 Source-level assessment of KooshaPari/jcode (v0.85.0-k1.0.0) — a Rust TUI coding agent with MCP tools and swarm coordination.
 
@@ -44,11 +44,11 @@ Assessment covers the fork as of the stated commit. No deployed binary or runtim
 
 ## Intent, genesis, and alternatives
 
-Evaluate the jcode fork's architecture, implementation quality, testing coverage, and user interface against the Agent Lab bootstrap profile criteria.
+Evaluate the kcode fork's architecture, implementation quality, testing coverage, and user interface against the Agent Lab bootstrap profile criteria.
 
 **Authorship:** AGENT_ORIGINATED. **Intent status:** Accepted for a bounded fork assessment; not a portfolio-wide commitment..
 
-The fork extends upstream jcode with elicitation overlays, swarm coordination enhancements, and AGENTS.md governance. Assessment validates that extensions maintain baseline quality.
+The fork extends upstream kcode with elicitation overlays, swarm coordination enhancements, and AGENTS.md governance. Assessment validates that extensions maintain baseline quality.
 
 **Authority:** Owner-directed assessment. No external regulatory, financial, or deployment authority invoked.
 
@@ -184,9 +184,9 @@ Evidence: [`EV-I-07`](raw/EV-I-07.md) · `sha256:b1b7272d187470f5d2a9742a78adefd
 
 **Predicate:** Generated projections identify their source of truth.
 
-**Interpretation:** NOT_APPLICABLE: jcode is not an assessment tool.
+**Interpretation:** NOT_APPLICABLE: kcode is not an assessment tool.
 
-**Reducer:** NOT_APPLICABLE — jcode does not generate assessment projections; this applies to the assessment kit itself..
+**Reducer:** NOT_APPLICABLE — kcode does not generate assessment projections; this applies to the assessment kit itself..
 
 **Next action:** N/A.
 
@@ -244,9 +244,9 @@ Evidence: [`EV-I-12`](raw/EV-I-12.md) · `sha256:ac27bd2d334e8f047ae36c903cfc589
 
 **Predicate:** The grader accepts a valid solution that differs from its reference implementation.
 
-**Interpretation:** NOT_APPLICABLE: jcode is not a grader.
+**Interpretation:** NOT_APPLICABLE: kcode is not a grader.
 
-**Reducer:** NOT_APPLICABLE — jcode is a coding agent, not a grader. No evaluator tool present..
+**Reducer:** NOT_APPLICABLE — kcode is a coding agent, not a grader. No evaluator tool present..
 
 **Next action:** N/A.
 
@@ -428,7 +428,7 @@ Confidence basis: Source inspection confirms compilation; runtime behavior unver
 
 ## Delta and fresh-session handoff
 
-**Change class:** INITIAL_BASELINE. First operational assessment of the jcode fork.
+**Change class:** INITIAL_BASELINE. First operational assessment of the kcode fork.
 
 **Accepted baseline:** 22-criteria bootstrap assessment as of commit d0a32f240.
 

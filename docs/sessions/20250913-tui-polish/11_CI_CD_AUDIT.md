@@ -41,7 +41,7 @@ GitHub Actions is **enabled** on the fork (10 workflows, all `state: active`), b
 name: CI
 
 env:                    # <-- FIRST env block (line 3)
-  JCODE_CI: "1"
+  KCODE_CI: "1"
 
 on:
   push:
@@ -60,7 +60,7 @@ env:                    # <-- SECOND env block (line 16, overrides first)
 
 YAML duplicate keys cause the second value to override the first. GitHub Actions may silently merge or reject this depending on parser version. The upstream repo (1jehuang/jcode) has the same bug and also shows "workflow file issue" failures on its recent CI runs.
 
-**Impact:** CI run fails immediately with zero jobs started. The `JCODE_CI` environment variable is lost.
+**Impact:** CI run fails immediately with zero jobs started. The `KCODE_CI` environment variable is lost.
 
 **Fix:** Merge both `env:` blocks into one (not in scope for this audit per instructions).
 
@@ -77,7 +77,7 @@ YAML duplicate keys cause the second value to override the first. GitHub Actions
 | Secret | Used By | Purpose | Status |
 |--------|---------|---------|--------|
 | `DEPLOY_KEY` | ci.yml, release.yml | SSH key for checkout with submodules + cargo git deps | MISSING (CRITICAL) |
-| `HOMEBREW_DEPLOY_KEY` | release.yml | SSH key to push to homebrew-jcode tap | MISSING |
+| `HOMEBREW_DEPLOY_KEY` | release.yml | SSH key to push to homebrew-kcode tap | MISSING |
 | `AUR_SSH_KEY` | release.yml | SSH key for AUR package updates | MISSING |
 | `AZURE_CLIENT_ID` | release.yml | Azure OIDC for Windows code signing | MISSING |
 | `AZURE_TENANT_ID` | release.yml | Azure OIDC for Windows code signing | MISSING |
@@ -118,7 +118,7 @@ YAML duplicate keys cause the second value to override the first. GitHub Actions
 2. `secrets.HOMEBREW_DEPLOY_KEY` missing -- Homebrew formula update step will skip (has `if: env.HOMEBREW_DEPLOY_KEY != ''`)
 3. `secrets.AUR_SSH_KEY` missing -- AUR update step will skip (has `if: env.AUR_SSH_KEY != ''`)
 4. Azure signing secrets missing -- Windows signing step has `continue-on-error: true` so it won't block
-5. Release finalize job references `1jehuang/homebrew-jcode` -- would need updating for fork releases
+5. Release finalize job references `1jehuang/homebrew-kcode` -- would need updating for fork releases
 6. AUR package references `1jehuang/jcode` URLs -- would need updating for fork
 
 **Note:** The release workflow gracefully handles missing optional secrets (HOMEBREW_DEPLOY_KEY, AUR_SSH_KEY) with conditional checks. But `DEPLOY_KEY` is not optional.

@@ -36,14 +36,14 @@
 | Todo hollow | ○ | U+25CB | Yes |
 
 ### If Ever Needed: Safe Opt-In Pattern
-- Add JCODE_NERD_FONT=on env var (default off)
+- Add KCODE_NERD_FONT=on env var (default off)
 - Fallback table in code: Nerd Font glyph → plain Unicode glyph
 - Width validation at startup (render test characters, measure)
 - Only applied to status glyphs in swarm_gallery.rs
 - Never applied to content/body text
 
 ### Files Referenced
-- `crates/jcode-tui/src/video_export.rs:654-655` — SVG Nerd Font CSS
-- `crates/jcode-tui-render/src/swarm_gallery.rs` — status_glyph function
-- `crates/jcode-tui/src/tui/ui_messages.rs` — prefer_width_stable_system_glyphs()
-- `crates/jcode-core/src/output_style.rs` — emoji suppression system
+- `crates/kcode-tui/src/video_export.rs:654-655` — SVG Nerd Font CSS
+- `crates/kcode-tui-render/src/swarm_gallery.rs` — status_glyph function
+- `crates/kcode-tui/src/tui/ui_messages.rs` — prefer_width_stable_system_glyphs()
+- `crates/kcode-core/src/output_style.rs` — emoji suppression system

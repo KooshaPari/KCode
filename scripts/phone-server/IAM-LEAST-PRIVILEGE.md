@@ -12,8 +12,8 @@ This document began as a design review. The live hardening described in `README.
 
 Replace it with an assume-role-only principal and three distinct privilege planes:
 
-1. **`JcodePhoneOperator`** for normal deployments and maintenance of the existing stack.
-2. **`JcodePhoneProvisioner`** for infrequent rebuilds, MFA-gated, time-limited, restricted to `us-east-1`, `jcode-phone-*` resources, and bounded runtime roles.
+1. **`KcodePhoneOperator`** for normal deployments and maintenance of the existing stack.
+2. **`JcodePhoneProvisioner`** for infrequent rebuilds, MFA-gated, time-limited, restricted to `us-east-1`, `kcode-phone-*` resources, and bounded runtime roles.
 3. **A separate emergency administrator path** protected by MFA and never used by automation. This is required to avoid lockout while removing the existing administrator attachment.
 
 Also replace the instance's `AmazonBedrockFullAccess` with inference-only permissions. The code uses model catalog discovery and `ConverseStream`; it does not need Bedrock administration.
@@ -41,13 +41,13 @@ Stated named resources:
 | Lambda | `jcode-guard-breaker` |
 | API Gateway v2 | `8c3wp4cbag` |
 | SNS | `jcode-guard-stop` and `jcode-guard-warn` |
-| CloudWatch alarms | `jcode-bedrock-tokens-warn`, `jcode-bedrock-tokens-stop`; the ineffective billing alarms were replaced by the working Budget/SNS breaker path |
+| CloudWatch alarms | `kcode-bedrock-tokens-warn`, `kcode-bedrock-tokens-stop`; the ineffective billing alarms were replaced by the working Budget/SNS breaker path |
 | Budget | `jcode-dev-monthly-cost` |
 | Bedrock model route | `us.anthropic.claude-opus-4-6-v1` |
 
 ### Live-state verification
 
-The account was subsequently inventoried through the `jcode-bedrock` profile. Runtime role names, Lambda roles, the EC2 instance and security group, the Elastic IP, Budget subscribers, CloudWatch alarms, log retention, API Gateway stage, S3/DynamoDB resources, and access-key metadata were verified directly. The wake Lambda now uses SSM pairing, all public EC2 ingress is closed, the root EBS volume is encrypted, CloudTrail and Access Analyzer are enabled, and the old deployment key is inactive.
+The account was subsequently inventoried through the `kcode-bedrock` profile. Runtime role names, Lambda roles, the EC2 instance and security group, the Elastic IP, Budget subscribers, CloudWatch alarms, log retention, API Gateway stage, S3/DynamoDB resources, and access-key metadata were verified directly. The wake Lambda now uses SSM pairing, all public EC2 ingress is closed, the root EBS volume is encrypted, CloudTrail and Access Analyzer are enabled, and the old deployment key is inactive.
 
 ## Target identity design
 
@@ -77,8 +77,8 @@ Assume-only policy for `jade-deploy`:
       "Effect": "Allow",
       "Action": "sts:AssumeRole",
       "Resource": [
-        "arn:aws:iam::302154194530:role/jcode-phone/JcodePhoneOperator",
-        "arn:aws:iam::302154194530:role/jcode-phone/JcodePhoneProvisioner"
+        "arn:aws:iam::302154194530:role/kcode-phone/KcodePhoneOperator",
+        "arn:aws:iam::302154194530:role/kcode-phone/JcodePhoneProvisioner"
       ]
     }
   ]
@@ -348,7 +348,7 @@ Replace the `<...>` values after read-only inventory. The API Gateway resource f
       "Sid": "PassInstanceRoleToEc2Only",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::302154194530:role/jcode-phone/runtime/JcodePhoneInstance",
+      "Resource": "arn:aws:iam::302154194530:role/kcode-phone/runtime/KcodePhoneInstance",
       "Condition": {
         "StringEquals": {
           "iam:PassedToService": "ec2.amazonaws.com"
@@ -360,8 +360,8 @@ Replace the `<...>` values after read-only inventory. The API Gateway resource f
       "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
-        "arn:aws:iam::302154194530:role/jcode-phone/runtime/JcodePhoneWakeLambda",
-        "arn:aws:iam::302154194530:role/jcode-phone/runtime/JcodePhoneBreakerLambda"
+        "arn:aws:iam::302154194530:role/kcode-phone/runtime/KcodePhoneWakeLambda",
+        "arn:aws:iam::302154194530:role/kcode-phone/runtime/KcodePhoneBreakerLambda"
       ],
       "Condition": {
         "StringEquals": {
@@ -421,7 +421,7 @@ Recommended model:
 - Human `JcodePhoneProvisioner`: CloudFormation stack operations on `jcode-phone-server*`, read-only diagnostics, and `iam:PassRole` only for `JcodePhoneCloudFormationExecution` with `iam:PassedToService = cloudformation.amazonaws.com`.
 - `JcodePhoneCloudFormationExecution`: service permissions below, usable only by CloudFormation.
 - Every created resource is tagged `Project=jcode-phone-server` and `ManagedBy=cloudformation`.
-- Every created runtime role is under path `/jcode-phone/runtime/` and must carry the `JcodePhoneRuntimeBoundary` permissions boundary.
+- Every created runtime role is under path `/kcode-phone/runtime/` and must carry the `JcodePhoneRuntimeBoundary` permissions boundary.
 
 Human provisioner policy:
 
@@ -463,7 +463,7 @@ Human provisioner policy:
       "Sid": "PassPhoneCloudFormationExecutionRole",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::302154194530:role/jcode-phone/JcodePhoneCloudFormationExecution",
+      "Resource": "arn:aws:iam::302154194530:role/kcode-phone/JcodePhoneCloudFormationExecution",
       "Condition": {
         "StringEquals": {
           "iam:PassedToService": "cloudformation.amazonaws.com"
@@ -479,8 +479,8 @@ The CloudFormation execution role should permit only this service/action envelop
 | Service | Required rebuild operations | Scope/guardrail |
 |---|---|---|
 | EC2 | Run/terminate the one server; create/tag volume and ENI; create/manage one SG; allocate/associate/release one EIP; modify shutdown behavior; describe AMIs/subnets/VPCs | `us-east-1`; request/resource tag `Project=jcode-phone-server`; approved instance types only; IMDSv2 required; approved VPC/subnet |
-| IAM | Create/update/delete the three runtime roles and one instance profile; put/delete inline policies; pass roles | Path `/jcode-phone/runtime/` only; require boundary ARN on `CreateRole`; never allow changing deploy/provisioner/emergency roles |
-| Lambda | Create/update/delete the two named functions; versions/aliases; permissions | Function ARN prefix `jcode-phone-*` and `jcode-guard-breaker*`; project tag |
+| IAM | Create/update/delete the three runtime roles and one instance profile; put/delete inline policies; pass roles | Path `/kcode-phone/runtime/` only; require boundary ARN on `CreateRole`; never allow changing deploy/provisioner/emergency roles |
+| Lambda | Create/update/delete the two named functions; versions/aliases; permissions | Function ARN prefix `kcode-phone-*` and `jcode-guard-breaker*`; project tag |
 | API Gateway v2 | Create/update/delete one HTTP API, integration, route, and stage | Project tag and stack ownership |
 | SNS | Create/manage/delete `jcode-guard-stop` and `jcode-guard-warn`; subscriptions | Exact topic-name ARNs |
 | CloudWatch | Create/update/delete the four named alarms | Exact alarm-name ARNs |
@@ -516,7 +516,7 @@ aws lambda get-function --function-name jcode-phone-wake --region us-east-1
 aws lambda get-function --function-name jcode-guard-breaker --region us-east-1
 aws apigatewayv2 get-api --api-id 8c3wp4cbag --region us-east-1
 aws sns list-topics --region us-east-1
-aws cloudwatch describe-alarms --alarm-name-prefix jcode- --region us-east-1
+aws cloudwatch describe-alarms --alarm-name-prefix kcode- --region us-east-1
 aws budgets describe-budget --account-id 302154194530 --budget-name jcode-dev-monthly-cost
 aws bedrock list-inference-profiles --type-equals SYSTEM_DEFINED --region us-east-1
 ```
@@ -560,7 +560,7 @@ These are not required for the IAM replacement, but they materially affect the d
 The migration is complete when:
 
 - `jade-deploy` has no `AdministratorAccess` and no direct AWS service permissions beyond role assumption.
-- Daily deployment and maintenance succeed through `JcodePhoneOperator`.
+- Daily deployment and maintenance succeed through `KcodePhoneOperator`.
 - A full tagged rebuild can be performed through the MFA-gated provisioner/CloudFormation path.
 - Runtime roles contain only the API calls documented above.
 - An independent emergency administrator path is tested.

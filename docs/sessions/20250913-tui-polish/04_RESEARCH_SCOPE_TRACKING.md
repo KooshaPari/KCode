@@ -6,10 +6,10 @@ Data sources for the status bar: workspace name, active repos, dispatch stats.
 
 ## 1. Workspace / Project Name
 
-**Struct**: `Session` in `crates/jcode-base/src/session.rs:105`
+**Struct**: `Session` in `crates/kcode-base/src/session.rs:105`
 
 Key fields:
-- `working_dir: Option<String>` -- absolute path, e.g. `/Users/k/CodeProjects/jcode`
+- `working_dir: Option<String>` -- absolute path, e.g. `/Users/k/CodeProjects/kcode`
 - `short_name: Option<String>` -- memorable name like "fox"
 - `id: String` -- e.g. `session_fox_1234deadbeef`
 
@@ -33,7 +33,7 @@ let project = self.session.working_dir
 
 ### A. Workspace Map (Niri-style session grid)
 
-**Struct**: `WorkspaceClientState` in `crates/jcode-tui/src/tui/workspace_client.rs:19`
+**Struct**: `WorkspaceClientState` in `crates/kcode-tui/src/tui/workspace_client.rs:19`
 **App field**: `workspace_client: WorkspaceClientState` (app.rs:1669)
 
 Returns `Vec<VisibleWorkspaceRow>` where each row has:
@@ -48,7 +48,7 @@ self.workspace_client.visible_rows(5, session_id, self.is_processing)
 
 ### B. Session Counts (process-level)
 
-**Struct**: `SessionCounts` in `crates/jcode-storage/src/active_pids.rs:157`
+**Struct**: `SessionCounts` in `crates/kcode-storage/src/active_pids.rs:157`
 - `total: usize` -- live sessions (PID running)
 - `streaming: usize` -- actively streaming a response
 
@@ -67,7 +67,7 @@ Access: `session_presence()` (all) / `user_session_presence()` (no internals)
 
 ### A. Swarm Members (live status)
 
-**Struct**: `SwarmMemberStatus` in `crates/jcode-protocol/src/lib.rs:441`
+**Struct**: `SwarmMemberStatus` in `crates/kcode-protocol/src/lib.rs:441`
 **App field**: `remote_swarm_members: Vec<SwarmMemberStatus>` (app.rs:1251)
 
 Key fields:
@@ -83,7 +83,7 @@ Updated via `ServerEvent::SwarmStatus` (`remote/server_events.rs:2153`).
 
 ### B. Plan Graph Status (DAG progress)
 
-**Struct**: `PlanGraphStatus` in `crates/jcode-protocol/src/lib.rs:316`
+**Struct**: `PlanGraphStatus` in `crates/kcode-protocol/src/lib.rs:316`
 
 Key fields:
 - `item_count`, `active_ids`, `completed_ids`, `failed_ids`
@@ -92,7 +92,7 @@ Key fields:
 
 ### C. Lifecycle Enum (from swarm-core)
 
-**Enum**: `SwarmLifecycleStatus` in `crates/jcode-swarm-core/src/lib.rs:136`
+**Enum**: `SwarmLifecycleStatus` in `crates/kcode-swarm-core/src/lib.rs:136`
 Variants: Spawned, Ready, Running, RunningStale, Completed, Done, Failed,
 Stopped, Crashed, Queued, Blocked, Pending, Todo
 
@@ -105,12 +105,12 @@ from `SwarmMemberStatus` against these values.
 
 | Data | Struct | Crate/File | TUI Access |
 |------|--------|------------|------------|
-| Project name | `Session.working_dir` | jcode-base/session.rs:155 | `self.session.working_dir` |
-| Session grid | `WorkspaceMapModel` | jcode-tui-workspace/workspace_map.rs | `self.workspace_client.visible_rows(...)` |
-| Session counts | `SessionCounts` | jcode-storage/active_pids.rs:157 | `session_counts()` / `user_session_counts()` |
-| Swarm members | `SwarmMemberStatus` | jcode-protocol/lib.rs:441 | `self.remote_swarm_members` |
-| Plan progress | `PlanGraphStatus` | jcode-protocol/lib.rs:316 | via server events |
-| Lifecycle states | `SwarmLifecycleStatus` | jcode-swarm-core/lib.rs:136 | string-compared from status field |
+| Project name | `Session.working_dir` | kcode-base/session.rs:155 | `self.session.working_dir` |
+| Session grid | `WorkspaceMapModel` | kcode-tui-workspace/workspace_map.rs | `self.workspace_client.visible_rows(...)` |
+| Session counts | `SessionCounts` | kcode-storage/active_pids.rs:157 | `session_counts()` / `user_session_counts()` |
+| Swarm members | `SwarmMemberStatus` | kcode-protocol/lib.rs:441 | `self.remote_swarm_members` |
+| Plan progress | `PlanGraphStatus` | kcode-protocol/lib.rs:316 | via server events |
+| Lifecycle states | `SwarmLifecycleStatus` | kcode-swarm-core/lib.rs:136 | string-compared from status field |
 
 ## Combined Snippet for Status Bar
 
@@ -133,8 +133,8 @@ fn render_status_bar(&self) {
     let failed = m.iter().filter(|x| x.status == "failed").count();
 
     // 4. Global presence
-    let counts = jcode_storage::user_session_counts();
+    let counts = kcode_storage::user_session_counts();
 
-    // e.g. "jcode | 3 panes | 2 active 1 done | 4 total/1 streaming"
+    // e.g. "kcode | 3 panes | 2 active 1 done | 4 total/1 streaming"
 }
 ```

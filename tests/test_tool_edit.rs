@@ -1,7 +1,7 @@
 //! Tests for the `edit` tool (text replacement, diff output, schema validation).
 
-use jcode::tool::{Tool, ToolContext, ToolExecutionMode};
-use jcode::tool::edit::EditTool;
+use kcode::tool::{Tool, ToolContext, ToolExecutionMode};
+use kcode::tool::edit::EditTool;
 use serde_json::json;
 
 fn make_ctx(dir: &std::path::Path) -> ToolContext {

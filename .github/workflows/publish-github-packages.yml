@@ -1,12 +1,12 @@
 name: Publish GitHub Packages
 
 env:
-  JCODE_CI: "1"
+  KCODE_CI: "1"
 
 on:
   workflow_dispatch:
     inputs:
-      jcode_release_tag:
+      kcode_release_tag:
         description: "Release tag to publish (e.g. v0.84.0). Must already exist in GitHub Releases."
         required: true
 
@@ -25,16 +25,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - artifact: jcode-linux-x86_64
+          - artifact: kcode-linux-x86_64
             os_name: linux
             arch: x86_64
-          - artifact: jcode-linux-aarch64
+          - artifact: kcode-linux-aarch64
             os_name: linux
             arch: aarch64
-          - artifact: jcode-macos-aarch64
+          - artifact: kcode-macos-aarch64
             os_name: darwin
             arch: aarch64
-          - artifact: jcode-macos-x86_64
+          - artifact: kcode-macos-x86_64
             os_name: darwin
             arch: x86_64
 
@@ -47,7 +47,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="${{ inputs.jcode_release_tag }}"
+          TAG="${{ inputs.kcode_release_tag }}"
 
           echo "Checking for artifact ${{ matrix.artifact }}.tar.gz in release $TAG..."
           if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qF "${{ matrix.artifact }}.tar.gz"; then
@@ -64,8 +64,8 @@ jobs:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          VERSION="${{ inputs.jcode_release_tag }}"
-          PACKAGE_URL="https://api.github.com/orgs/${{ github.repository_owner }}/packages/container/jcode%2F${{ matrix.artifact }}/versions"
+          VERSION="${{ inputs.kcode_release_tag }}"
+          PACKAGE_URL="https://api.github.com/orgs/${{ github.repository_owner }}/packages/container/kcode%2F${{ matrix.artifact }}/versions"
           HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' \
             -H "Authorization: Bearer ${GHCR_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          gh release download "${{ inputs.jcode_release_tag }}" --dir dist \
+          gh release download "${{ inputs.kcode_release_tag }}" --dir dist \
             --pattern "${{ matrix.artifact }}.tar.gz"
 
           echo "Downloaded artifacts:"
@@ -107,7 +107,7 @@ jobs:
           cd dist
           tar xzf "${{ matrix.artifact }}.tar.gz"
 
-          # The tarball contains the raw binary (jcode-linux-x86_64, etc.)
+          # The tarball contains the raw binary (kcode-linux-x86_64, etc.)
           BINARY="${{ matrix.artifact }}"
           if [ ! -f "${BINARY}" ]; then
             echo "::error::Expected binary $BINARY not found after extraction"
@@ -118,7 +118,7 @@ jobs:
           echo "Binary ready: $(file "$BINARY")"
 
           # Write OCI image metadata
-          VERSION="${{ inputs.jcode_release_tag }}"
+          VERSION="${{ inputs.kcode_release_tag }}"
           VERSION_NUM="${VERSION#v}"
 
           cat > config.json << EOF
@@ -167,12 +167,12 @@ jobs:
                 "size": ${LAYER_SIZE},
                 "annotations": {
                   "org.opencontainers.image.title": "${BINARY}",
-                  "org.opencontainers.image.description": "jcode binary for ${{ matrix.os_name }}-${{ matrix.arch }}"
+                  "org.opencontainers.image.description": "kcode binary for ${{ matrix.os_name }}-${{ matrix.arch }}"
                 }
               }
             ],
             "annotations": {
-              "org.opencontainers.image.title": "jcode ${{ matrix.artifact }}",
+              "org.opencontainers.image.title": "kcode ${{ matrix.artifact }}",
               "org.opencontainers.image.version": "${VERSION_NUM}",
               "org.opencontainers.image.source": "https://github.com/${{ github.repository }}"
             }
@@ -218,9 +218,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          VERSION="${{ inputs.jcode_release_tag }}"
+          VERSION="${{ inputs.kcode_release_tag }}"
           VERSION_NUM="${VERSION#v}"
-          PACKAGE_NAME="ghcr.io/${{ github.repository_owner }}/jcode/${{ matrix.artifact }}"
+          PACKAGE_NAME="ghcr.io/${{ github.repository_owner }}/kcode/${{ matrix.artifact }}"
           FULL_TAG="${PACKAGE_NAME}:${VERSION_NUM}"
 
           echo "Pushing to ${FULL_TAG}..."
@@ -241,20 +241,20 @@ jobs:
           echo "$GHCR_TOKEN" | ./crane auth login ghcr.io -u ${{ github.actor }} --password-stdin
 
           # Create a minimal OCI image with the binary as the sole layer
-          VERSION="${{ inputs.jcode_release_tag }}"
+          VERSION="${{ inputs.kcode_release_tag }}"
           VERSION_NUM="${VERSION#v}"
 
           # Use crane to append the layer to an empty base image
-          # This creates a valid OCI artifact at ghcr.io/<owner>/jcode/<platform>:<version>
+          # This creates a valid OCI artifact at ghcr.io/<owner>/kcode/<platform>:<version>
           ./crane append \
             -f dist/layer.tar.gz \
             -t "${FULL_TAG}" \
             --new_tag "${PACKAGE_NAME}:latest" \
             --new_tag "${PACKAGE_NAME}:sha-${{ github.sha }}" \
-            --annotation "org.opencontainers.image.title=jcode ${{ matrix.artifact }}" \
+            --annotation "org.opencontainers.image.title=kcode ${{ matrix.artifact }}" \
             --annotation "org.opencontainers.image.version=${VERSION_NUM}" \
             --annotation "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
-            --annotation "org.opencontainers.image.description=jcode AI coding agent binary for ${{ matrix.os_name }}-${{ matrix.arch }}" \
+            --annotation "org.opencontainers.image.description=kcode AI coding agent binary for ${{ matrix.os_name }}-${{ matrix.arch }}" \
             --annotation "org.opencontainers.image.url=https://github.com/${{ github.repository }}/packages" \
             --annotation "org.opencontainers.image.licenses=MIT" \
             || {
@@ -264,7 +264,7 @@ jobs:
                 --oci-empty-base \
                 --tag "${FULL_TAG}" \
                 dist/layer.tar.gz \
-                --annotation "org.opencontainers.image.title=jcode ${{ matrix.artifact }}" \
+                --annotation "org.opencontainers.image.title=kcode ${{ matrix.artifact }}" \
                 --annotation "org.opencontainers.image.version=${VERSION_NUM}" \
                 || true
             }
@@ -281,9 +281,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          VERSION="${{ inputs.jcode_release_tag }}"
+          VERSION="${{ inputs.kcode_release_tag }}"
           VERSION_NUM="${VERSION#v}"
-          PACKAGE_NAME="ghcr.io/${{ github.repository_owner }}/jcode/${{ matrix.artifact }}"
+          PACKAGE_NAME="ghcr.io/${{ github.repository_owner }}/kcode/${{ matrix.artifact }}"
           FULL_TAG="${PACKAGE_NAME}:${VERSION_NUM}"
 
           echo "Verifying ${FULL_TAG}..."
@@ -316,8 +316,8 @@ jobs:
     steps:
       - name: Generate summary
         run: |
-          VERSION="${{ inputs.jcode_release_tag }}"
-          echo "## Published jcode to GitHub Packages" >> "$GITHUB_STEP_SUMMARY"
+          VERSION="${{ inputs.kcode_release_tag }}"
+          echo "## Published kcode to GitHub Packages" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Release: \`${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
@@ -325,12 +325,12 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Platform | Package |" >> "$GITHUB_STEP_SUMMARY"
           echo "|----------|---------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Linux x86_64 | \`ghcr.io/${{ github.repository_owner }}/jcode/jcode-linux-x86_64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Linux aarch64 | \`ghcr.io/${{ github.repository_owner }}/jcode/jcode-linux-aarch64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| macOS aarch64 | \`ghcr.io/${{ github.repository_owner }}/jcode/jcode-macos-aarch64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| macOS x86_64 | \`ghcr.io/${{ github.repository_owner }}/jcode/jcode-macos-x86_64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Linux x86_64 | \`ghcr.io/${{ github.repository_owner }}/kcode/kcode-linux-x86_64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Linux aarch64 | \`ghcr.io/${{ github.repository_owner }}/kcode/kcode-linux-aarch64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| macOS aarch64 | \`ghcr.io/${{ github.repository_owner }}/kcode/kcode-macos-aarch64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| macOS x86_64 | \`ghcr.io/${{ github.repository_owner }}/kcode/kcode-macos-x86_64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "To pull a binary:" >> "$GITHUB_STEP_SUMMARY"
           echo '```bash' >> "$GITHUB_STEP_SUMMARY"
-          echo "crane pull ghcr.io/${{ github.repository_owner }}/jcode/jcode-linux-x86_64:${VERSION#v} - | tar xz" >> "$GITHUB_STEP_SUMMARY"
+          echo "crane pull ghcr.io/${{ github.repository_owner }}/kcode/kcode-linux-x86_64:${VERSION#v} - | tar xz" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

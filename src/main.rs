@@ -27,17 +27,39 @@ pub static malloc_conf: Option<&'static [u8; 78]> =
 
 use anyhow::Result;
 
-/// macOS 26+ / 27 (Tahoe beta) `taskgated` rejects binaries that carry the
-/// `com.apple.provenance` xattr with an "Invalid Signature" SIGKILL on every
-/// exec attempt, even when the binary is locally built and ad-hoc signed. This
-/// function is invoked at the very top of `run_main` so every successful
-/// launch self-heals before any heavy work (Tokio runtime, provider init,
-/// telemetry disclosure) starts. It is best-effort: any failure is swallowed
-/// because the launch path has already survived taskgated and we're now in
-/// user space, so failure means xattr/codesign tooling is unavailable and the
-/// binary is still usable as-is.
+/// Decide whether startup-time macOS trust repair is explicitly authorized.
+///
+/// Release binaries must not silently mutate their own signature/provenance on
+/// every launch — `codesign --force --sign -` strips the linker-signed
+/// attribute that the linker-placed CS_LINKER_SIGNED flag carries, and that
+/// change is exactly what causes macOS Gatekeeper / amfid to reject the binary
+/// on the next non-TTY invocation (AppleMobileFileIntegrityError -423,
+/// SIGKILL). Repair remains available to local development by setting
+/// `KCODE_MACOS_STARTUP_REPAIR=1` (or `true`/`yes`/`on`); release installs
+/// leave it disabled and let the install pipeline own quarantine handling.
+#[cfg(any(test, target_os = "macos"))]
+fn macos_startup_repair_requested(value: Option<&str>) -> bool {
+    matches!(
+        value.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
+        Some("1" | "true" | "yes" | "on")
+    )
+}
+
+/// Historical recovery path: strip `com.apple.provenance` /
+/// `com.apple.quarantine` xattrs and re-adhoc-sign with `--force --deep`.
+///
+/// Now an explicit opt-in via `KCODE_MACOS_STARTUP_REPAIR` so production
+/// binaries don't tear their `CS_LINKER_SIGNED` attribute on every launch.
+/// See [`macos_startup_repair_requested`] and
+/// `docs/sessions/20261001-herdr-crash-persistence/10_SIGKILL_NON_TTY.md`.
 #[cfg(target_os = "macos")]
-fn self_heal_macos_code_signature() {
+fn maybe_repair_macos_code_signature() {
+    if !macos_startup_repair_requested(
+        std::env::var("KCODE_MACOS_STARTUP_REPAIR").ok().as_deref(),
+    ) {
+        return;
+    }
+
     use std::path::PathBuf;
     let exe: PathBuf = match std::env::current_exe() {
         Ok(p) => p,
@@ -70,7 +92,7 @@ fn self_heal_macos_code_signature() {
 
 #[cfg(not(target_os = "macos"))]
 #[inline]
-fn self_heal_macos_code_signature() {}
+fn maybe_repair_macos_code_signature() {}
 
 #[cfg(all(target_os = "linux", target_env = "gnu", not(feature = "jemalloc")))]
 fn configure_system_allocator() {
@@ -81,7 +103,7 @@ fn configure_system_allocator() {
     const M_ARENA_MAX: i32 = -8;
     const M_MMAP_THRESHOLD: i32 = -3;
 
-    let arena_max = parse_alloc_tuning_env("JCODE_GLIBC_ARENA_MAX", 4);
+    let arena_max = parse_alloc_tuning_env("KCODE_GLIBC_ARENA_MAX", 4);
     let _ = unsafe { mallopt(M_ARENA_MAX, arena_max) };
 
     // Pin the mmap threshold so large transient allocations (history JSON,
@@ -96,7 +118,7 @@ fn configure_system_allocator() {
     // alloc/free cycles (mmap/munmap syscalls + page faults each time) for
     // predictable, immediate memory return. For a long-running interactive
     // agent, lower steady-state RSS wins.
-    let mmap_threshold = parse_alloc_tuning_env("JCODE_GLIBC_MMAP_THRESHOLD", 256 * 1024);
+    let mmap_threshold = parse_alloc_tuning_env("KCODE_GLIBC_MMAP_THRESHOLD", 256 * 1024);
     let _ = unsafe { mallopt(M_MMAP_THRESHOLD, mmap_threshold) };
 }
 
@@ -128,11 +150,11 @@ fn main() -> Result<()> {
     // Unix environments where most development happens. The CLI/provider setup
     // path can exceed that reserve before Tokio takes over, producing an
     // unrecoverable STATUS_STACK_OVERFLOW. Keep the linker defaults unchanged
-    // for every auxiliary binary and run the Jcode entry point on a deliberately
+    // for every auxiliary binary and run the Kcode entry point on a deliberately
     // sized stack instead.
     const WINDOWS_MAIN_STACK_SIZE: usize = 8 * 1024 * 1024;
     match std::thread::Builder::new()
-        .name("jcode-main".to_string())
+        .name("kcode-main".to_string())
         .stack_size(WINDOWS_MAIN_STACK_SIZE)
         .spawn(run_main)?
         .join()
@@ -148,23 +170,35 @@ fn main() -> Result<()> {
 }
 
 fn run_main() -> Result<()> {
+    // Backwards-compat: copy legacy JCODE_* env vars to KCODE_* so that users
+    // upgrading from the old `jcode` install still get their config picked up.
+    // This must run before anything that reads KCODE_* (kcode_dir, env lookups,
+    // socket paths, etc.). Idempotent — only the first call has effect.
+    kcode_storage::migrate_legacy_jcode_env();
+
     // Self-heal macOS code-signature xattrs (com.apple.provenance + quarantine)
     // and re-adhoc-sign this binary on first launch. Must run before any heavy
     // work so a freshly-installed binary that taskgated already accepted still
     // repairs itself for the next launch — taskgated's re-validation can flip
     // on a subsequent reboot even when the binary passed on the first try.
-    self_heal_macos_code_signature();
+    // Historical macOS trust repair is now explicit-opt-in via
+    // KCODE_MACOS_STARTUP_REPAIR=1; release binaries do not silently tear
+    // their CS_LINKER_SIGNED attribute on every launch. See
+    // docs/sessions/20261001-herdr-crash-persistence/10_SIGKILL_NON_TTY.md
+    // and the corresponding upstream opt-in (commit 51f4e27e8) that was
+    // authored but never merged onto main.
+    maybe_repair_macos_code_signature();
 
     configure_system_allocator();
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
     // SessionStart hooks should be effectively invisible to Claude Code and
-    // Codex. Handle this tiny callback before the Tokio runtime and normal Jcode
+    // Codex. Handle this tiny callback before the Tokio runtime and normal Kcode
     // startup path so it does not initialize providers, start cleanup threads,
     // check for updates, or emit first-run telemetry disclosure text into the
     // parent CLI's hook output.
     if let Some(source) = cli_launch_hint_source_invocation() {
-        return jcode::setup_hints::run_setup_hotkey(false, false, false, Some(&source));
+        return kcode::setup_hints::run_setup_hotkey(false, false, false, Some(&source));
     }
 
     // The macOS global-hotkey listener must run on the real main thread with a
@@ -173,15 +207,15 @@ fn run_main() -> Result<()> {
     // otherwise move execution onto a worker thread with no run loop and leave
     // the Cmd+; hotkey silently dead.
     if is_macos_hotkey_listener_invocation() {
-        return jcode::setup_hints::run_macos_hotkey_listener_main_thread();
+        return kcode::setup_hints::run_macos_hotkey_listener_main_thread();
     }
 
     // The generated LSUIElement helper hard-links this universal binary under
     // a dedicated executable name. Intercept that multicall entry point before
     // Tokio/CLI startup so AppKit and Notification Center stay on the real main
     // thread and the helper never initializes an agent session.
-    if jcode::cli::macos_notification_broker::is_invocation() {
-        return jcode::cli::macos_notification_broker::run();
+    if kcode::cli::macos_notification_broker::is_invocation() {
+        return kcode::cli::macos_notification_broker::run();
     }
 
     let mut builder = tokio::runtime::Builder::new_multi_thread();
@@ -210,10 +244,10 @@ fn run_main() -> Result<()> {
     }
     let runtime = builder.build()?;
 
-    runtime.block_on(async { jcode::run().await })
+    runtime.block_on(async { kcode::run().await })
 }
 
-/// True when invoked as `jcode setup-hotkey --listen-macos-hotkey`.
+/// True when invoked as `kcode setup-hotkey --listen-macos-hotkey`.
 fn is_macos_hotkey_listener_invocation() -> bool {
     args_are_macos_hotkey_listener(std::env::args().skip(1))
 }
@@ -241,6 +275,7 @@ fn cli_launch_hint_source(args: impl IntoIterator<Item = String>) -> Option<Stri
 mod tests {
     use super::args_are_macos_hotkey_listener;
     use super::cli_launch_hint_source;
+    use super::macos_startup_repair_requested;
     use super::parse_alloc_tuning;
 
     #[test]
@@ -306,5 +341,39 @@ mod tests {
             cli_launch_hint_source(argv(&["setup-hotkey", "--notify-cli-launch"])),
             None
         );
+    }
+
+    // macos_startup_repair_requested: opt-in gate for the historical
+    // `self_heal_macos_code_signature` path. Tearing CS_LINKER_SIGNED on
+    // every launch is what produced the SIGKILL on `kcode --resume` from
+    // non-TTY (see 10_SIGKILL_NON_TTY.md). The default is OFF; the env var
+    // explicitly authorizes the recovery path for local dev.
+
+    #[test]
+    fn startup_repair_defaults_to_off() {
+        assert!(!macos_startup_repair_requested(None));
+        assert!(!macos_startup_repair_requested(Some("")));
+        assert!(!macos_startup_repair_requested(Some("  ")));
+    }
+
+    #[test]
+    fn startup_repair_accepts_canonical_truthy_values() {
+        for v in ["1", "true", "yes", "on", "TRUE", "Yes", "ON"] {
+            assert!(macos_startup_repair_requested(Some(v)), "value {v:?} should be truthy");
+        }
+    }
+
+    #[test]
+    fn startup_repair_rejects_anything_else() {
+        for v in ["0", "false", "no", "off", "nope", "1;rm -rf /", "2", "enable"] {
+            assert!(!macos_startup_repair_requested(Some(v)), "value {v:?} should be falsy");
+        }
+    }
+
+    #[test]
+    fn startup_repair_trims_whitespace_and_lowercases() {
+        assert!(macos_startup_repair_requested(Some("  yes  ")));
+        assert!(macos_startup_repair_requested(Some("\tTRUE\n")));
+        assert!(!macos_startup_repair_requested(Some("  false  ")));
     }
 }

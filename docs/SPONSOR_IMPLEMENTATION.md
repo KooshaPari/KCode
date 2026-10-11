@@ -1,15 +1,15 @@
 # Sponsor implementation
 
-This is the sponsor-facing entry point for implementing and validating Jcode
+This is the sponsor-facing entry point for implementing and validating Kcode
 Discovery attribution. Each sponsor gets a tailored page containing the exact
 contract its product must support, a coding-agent prompt, and live validation.
 
 ## Responsibility split
 
 - The sponsor owns signup behavior and durable storage of the attribution.
-- Jcode owns the select-phase `setup` text that agents follow.
+- Kcode owns the select-phase `setup` text that agents follow.
 - The sponsor's docs remain the authority for installing and using the product.
-- Jcode's setup must include the attribution-bearing signup command directly.
+- Kcode's setup must include the attribution-bearing signup command directly.
   Linking to sponsor docs alone is insufficient because docs can change and an
   agent may follow the CLI path without opening a referral URL.
 - A sponsor may also document the attributed command on its own site. That is
@@ -24,10 +24,10 @@ contract its product must support, a coding-agent prompt, and live validation.
 Before a campaign is considered attributable:
 
 1. The sponsor implements and tests its attribution contract.
-2. The live Jcode select response includes the exact configured marker.
+2. The live Kcode select response includes the exact configured marker.
 3. `python scripts/benchmark_attribution.py --live --live-web --sponsor TOOL`
    reports `CLI attribution: attributed` and a score of 100.
-4. A clean end-to-end signup through a release Jcode binary creates a sponsor
+4. A clean end-to-end signup through a release Kcode binary creates a sponsor
    record with the expected acquisition source.
 
 The internal catalog and rollout runbook remains
@@ -48,7 +48,7 @@ python scripts/test_mock_sponsor_service.py
 ```
 
 The suite invokes the public CLI in subprocesses and crosses the HTTP boundary.
-It verifies that `--via jcode-discovery` survives confirmation, the acquisition
+It verifies that `--via kcode-discovery` survives confirmation, the acquisition
 source is immutable, an omitted flag stays unattributed, tampered and expired
 state is rejected, and a magic link cannot be reused. This reference proves the
 proposed contract is implementable. Sponsor production acceptance still
@@ -58,8 +58,8 @@ It also exposes a discovery-compatible browse/select endpoint and runs the real
 URL resolution. The integrated reference must score 100 with CLI attribution
 reported as `attributed`.
 The end-to-end suite also fetches the select response, extracts the exact setup
-command Jcode would hand to an agent, executes that command through the public
+command Kcode would hand to an agent, executes that command through the public
 CLI, confirms its magic link, and observes `acquisition_source =
-jcode-discovery` through the public account API. This prevents the catalog and
+kcode-discovery` through the public account API. This prevents the catalog and
 sponsor-flow tests from passing independently while disagreeing at their shared
 command boundary.

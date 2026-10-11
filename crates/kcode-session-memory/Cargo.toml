@@ -1,0 +1,13 @@
+[package]
+name = "kcode-session-memory"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lib]
+name = "kcode_session_memory"
+path = "src/lib.rs"

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Bun-native installer for jcode.
-# Install via: bunx jcode-install
+# Bun-native installer for kcode.
+# Install via: bunx kcode-install
 #          or: bun run --bun https://jcode.sh/install_bun.sh
 # Falls back to curl/tar when Bun is not available.
 # Requires bash >= 3.2.  Do not add bashisms beyond what install.sh already uses.
 set -euo pipefail
 
 REPO="1jehuang/jcode"
-RELEASE_METADATA_BASE="${JCODE_RELEASE_METADATA_BASE:-https://jcode.sh/releases}"
+RELEASE_METADATA_BASE="${KCODE_RELEASE_METADATA_BASE:-https://jcode.sh/releases}"
 INSTALL_STAGE="startup"
 INSTALL_SUCCEEDED=0
 INSTALL_OS="unknown"
@@ -44,7 +44,7 @@ sha256_file() {
 }
 
 valid_conversion_id() {
-  printf '%s' "${JCODE_INSTALL_CONVERSION_ID:-}" |
+  printf '%s' "${KCODE_INSTALL_CONVERSION_ID:-}" |
     grep -Eiq '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
 }
 
@@ -54,16 +54,16 @@ telemetry_value() {
 
 report_install_funnel() {
   local stage="$1" outcome="$2" failure_stage="${3:-}"
-  [ "${JCODE_NO_TELEMETRY:-}" != "1" ] || return 0
+  [ "${KCODE_NO_TELEMETRY:-}" != "1" ] || return 0
   [ "${DO_NOT_TRACK:-}" != "1" ] || return 0
   valid_conversion_id || return 0
   local payload
   payload=$(printf '{"id":"%s","event":"install_funnel","version":"%s","os":"%s","arch":"%s","conversion_id":"%s","stage":"%s","outcome":"%s","source":"installer","install_method":"%s","failure_stage":"%s"}' \
-    "$JCODE_INSTALL_CONVERSION_ID" \
+    "$KCODE_INSTALL_CONVERSION_ID" \
     "$(telemetry_value "$INSTALL_VERSION")" \
     "$(telemetry_value "$INSTALL_OS")" \
     "$(telemetry_value "$INSTALL_ARCH")" \
-    "$JCODE_INSTALL_CONVERSION_ID" \
+    "$KCODE_INSTALL_CONVERSION_ID" \
     "$(telemetry_value "$stage")" \
     "$(telemetry_value "$outcome")" \
     "$(telemetry_value "$INSTALL_METHOD")" \
@@ -73,14 +73,14 @@ report_install_funnel() {
 }
 
 persist_install_conversion_id() {
-  [ "${JCODE_NO_TELEMETRY:-}" != "1" ] || return 0
+  [ "${KCODE_NO_TELEMETRY:-}" != "1" ] || return 0
   [ "${DO_NOT_TRACK:-}" != "1" ] || return 0
   valid_conversion_id || return 0
-  local jcode_home="${JCODE_HOME:-$HOME/.jcode}"
-  mkdir -p "$jcode_home" 2>/dev/null || return 0
-  (umask 077; printf '%s\n' "$JCODE_INSTALL_CONVERSION_ID" > "$jcode_home/install_conversion_id") \
+  local kcode_home="${KCODE_HOME:-$HOME/.kcode}"
+  mkdir -p "$kcode_home" 2>/dev/null || return 0
+  (umask 077; printf '%s\n' "$KCODE_INSTALL_CONVERSION_ID" > "$kcode_home/install_conversion_id") \
     2>/dev/null || return 0
-  chmod 600 "$jcode_home/install_conversion_id" 2>/dev/null || true
+  chmod 600 "$kcode_home/install_conversion_id" 2>/dev/null || true
 }
 
 install_exit() {
@@ -168,14 +168,14 @@ fi
 case "$OS" in
   Linux)
     case "$ARCH" in
-      x86_64)       ARTIFACT="jcode-linux-x86_64" ;;
-      aarch64|arm64) ARTIFACT="jcode-linux-aarch64" ;;
+      x86_64)       ARTIFACT="kcode-linux-x86_64" ;;
+      aarch64|arm64) ARTIFACT="kcode-linux-aarch64" ;;
       *)            err "Unsupported Linux architecture: $ARCH" ;;
     esac ;;
   Darwin)
     case "$ARCH" in
-      arm64)   ARTIFACT="jcode-macos-aarch64" ;;
-      x86_64)  ARTIFACT="jcode-macos-x86_64" ;;
+      arm64)   ARTIFACT="kcode-macos-aarch64" ;;
+      x86_64)  ARTIFACT="kcode-macos-x86_64" ;;
       *)       err "Unsupported macOS architecture: $ARCH" ;;
     esac ;;
   MINGW*|MSYS*|CYGWIN*)
@@ -190,8 +190,8 @@ case "$OS" in
       done
     fi
     case "$WINDOWS_ARCH" in
-      x86_64)  ARTIFACT="jcode-windows-x86_64" ;;
-      aarch64) ARTIFACT="jcode-windows-aarch64" ;;
+      x86_64)  ARTIFACT="kcode-windows-x86_64" ;;
+      aarch64) ARTIFACT="kcode-windows-aarch64" ;;
       *)       err "Unsupported Windows architecture: $ARCH" ;;
     esac ;;
   *)
@@ -204,16 +204,16 @@ report_install_funnel "installer_start" "success" ""
 # Install directory
 # ---------------------------------------------------------------------------
 if [ "$IS_WINDOWS" = true ]; then
-  INSTALL_DIR="${JCODE_INSTALL_DIR:-$LOCALAPPDATA/jcode/bin}"
+  INSTALL_DIR="${KCODE_INSTALL_DIR:-$LOCALAPPDATA/kcode/bin}"
 else
-  INSTALL_DIR="${JCODE_INSTALL_DIR:-$HOME/.local/bin}"
+  INSTALL_DIR="${KCODE_INSTALL_DIR:-$HOME/.local/bin}"
 fi
 
 # ---------------------------------------------------------------------------
 # Version resolution (same dual-source strategy as install.sh)
 # ---------------------------------------------------------------------------
 INSTALL_STAGE="release_lookup"
-VERSION="${JCODE_VERSION:-}"
+VERSION="${KCODE_VERSION:-}"
 if [ -z "$VERSION" ]; then
   METADATA_VERSION=$(bun_fetch "$RELEASE_METADATA_BASE/latest/version" 2>/dev/null | tr -d '\r\n' || true)
   LATEST_RELEASE_URL=$(curl -fsSIL --retry 2 --connect-timeout 10 \
@@ -232,13 +232,13 @@ INSTALL_VERSION="${VERSION#v}"
 GITHUB_RELEASE_BASE="https://github.com/$REPO/releases/download/$VERSION"
 
 if [ "$IS_WINDOWS" = true ]; then
-  EXE=".exe"; builds_dir="$LOCALAPPDATA/jcode/builds"
+  EXE=".exe"; builds_dir="$LOCALAPPDATA/kcode/builds"
 else
-  EXE=""; builds_dir="$HOME/.jcode/builds"
+  EXE=""; builds_dir="$HOME/.kcode/builds"
 fi
 stable_dir="$builds_dir/stable"
 version_dir="$builds_dir/versions"
-launcher_path="$INSTALL_DIR/jcode${EXE}"
+launcher_path="$INSTALL_DIR/kcode${EXE}"
 
 EXISTING=""
 if [ -x "$launcher_path" ]; then
@@ -246,12 +246,12 @@ if [ -x "$launcher_path" ]; then
 fi
 if [ -n "$EXISTING" ]; then
   if echo "$EXISTING" | grep -qF "${VERSION#v}"; then
-    info "jcode $VERSION is already installed — reinstalling"
+    info "kcode $VERSION is already installed — reinstalling"
   else
-    info "Updating jcode $EXISTING -> $VERSION"
+    info "Updating kcode $EXISTING -> $VERSION"
   fi
 else
-  info "Installing jcode $VERSION"
+  info "Installing kcode $VERSION"
 fi
 info "  launcher: $launcher_path"
 info "  method:   $INSTALL_METHOD"
@@ -271,7 +271,7 @@ DOWNLOAD_BASES=$(printf '%s\n%s\n' "$DOWNLOAD_BASES" "$GITHUB_RELEASE_BASE" |
 for candidate in "$ARTIFACT.tar.gz" "$ARTIFACT$EXE"; do
   while IFS= read -r base; do
     [ -n "$base" ] || continue
-    if bun_download_file "${base%/}/$candidate" "$tmpdir/jcode.download" 2>/dev/null; then
+    if bun_download_file "${base%/}/$candidate" "$tmpdir/kcode.download" 2>/dev/null; then
       downloaded_asset="$candidate"
       case "$candidate" in *.tar.gz) download_mode="tar" ;; *) download_mode="bin" ;; esac
       break 2
@@ -296,7 +296,7 @@ if [ -n "$download_mode" ]; then
   done
   printf '%s' "$EXPECTED_SHA256" | grep -Eq '^[0-9a-f]{64}$' \
     || err "Could not find a trusted SHA-256 checksum for $downloaded_asset in $VERSION"
-  ACTUAL_SHA256=$(sha256_file "$tmpdir/jcode.download") \
+  ACTUAL_SHA256=$(sha256_file "$tmpdir/kcode.download") \
     || err "sha256sum, shasum, openssl, or bun is required to verify the download"
   [ "$ACTUAL_SHA256" = "$EXPECTED_SHA256" ] \
     || err "SHA-256 verification failed for $downloaded_asset"
@@ -313,17 +313,17 @@ version="${VERSION#v}"
 dest_version_dir="$version_dir/$version"
 mkdir -p "$dest_version_dir"
 
-bin_name="jcode${EXE}"
+bin_name="kcode${EXE}"
 
 if [ "$download_mode" = "tar" ]; then
-  tar xzf "$tmpdir/jcode.download" -C "$tmpdir"
+  tar xzf "$tmpdir/kcode.download" -C "$tmpdir"
   src_bin="$tmpdir/${ARTIFACT}${EXE}"
   [ -f "$src_bin" ] || err "Downloaded archive did not contain expected binary: ${ARTIFACT}${EXE}"
   find "$tmpdir" -maxdepth 1 -type f \( -name "${ARTIFACT}${EXE}.bin" -o -name 'libssl.so*' -o -name 'libcrypto.so*' \) \
     -exec cp -f {} "$dest_version_dir/" \;
   mv "$src_bin" "$dest_version_dir/$bin_name"
 elif [ "$download_mode" = "bin" ]; then
-  mv "$tmpdir/jcode.download" "$dest_version_dir/$bin_name"
+  mv "$tmpdir/kcode.download" "$dest_version_dir/$bin_name"
 else
   err "No prebuilt asset found for $ARTIFACT in $VERSION"
 fi
@@ -395,8 +395,8 @@ if [ "$IS_WINDOWS" = true ]; then
       "[Environment]::GetEnvironmentVariable('Path','User')" 2>/dev/null | tr -d '\r' || true)
     if ! echo "$current_user_path" | grep -qF "$win_install_dir"; then
       new_user_path="$win_install_dir;$current_user_path"
-      JCODE_NEW_USER_PATH="$new_user_path" powershell.exe -NoProfile -NonInteractive -Command \
-        '[Environment]::SetEnvironmentVariable("Path", $env:JCODE_NEW_USER_PATH, "User")' >/dev/null 2>&1 || true
+      KCODE_NEW_USER_PATH="$new_user_path" powershell.exe -NoProfile -NonInteractive -Command \
+        '[Environment]::SetEnvironmentVariable("Path", $env:KCODE_NEW_USER_PATH, "User")' >/dev/null 2>&1 || true
     fi
   fi
   info "Added $win_install_dir to your user PATH."
@@ -407,7 +407,7 @@ else
     local rc="$1" create="$2"
     if [ ! -f "$rc" ]; then [ "$create" = "yes" ] || return 0; mkdir -p "$(dirname "$rc")"; fi
     if ! grep -qF "$INSTALL_DIR" "$rc" 2>/dev/null; then
-      printf '\n# Added by jcode installer\nexport PATH="%s:$PATH"\n' "$INSTALL_DIR" >> "$rc"
+      printf '\n# Added by kcode installer\nexport PATH="%s:$PATH"\n' "$INSTALL_DIR" >> "$rc"
       added_to="$added_to $rc"
     fi
   }
@@ -416,7 +416,7 @@ else
     local rc="${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"
     if [ ! -f "$rc" ]; then [ "$create" = "yes" ] || return 0; mkdir -p "$(dirname "$rc")"; fi
     if ! grep -qF "$INSTALL_DIR" "$rc" 2>/dev/null; then
-      { printf '\n# Added by jcode installer\nif not contains "%s" $PATH\n    set -gx PATH "%s" $PATH\nend\n' "$INSTALL_DIR" "$INSTALL_DIR"; } >> "$rc"
+      { printf '\n# Added by kcode installer\nif not contains "%s" $PATH\n    set -gx PATH "%s" $PATH\nend\n' "$INSTALL_DIR" "$INSTALL_DIR"; } >> "$rc"
       added_to="$added_to $rc"
     fi
   }
@@ -436,11 +436,11 @@ else
   if [ -n "$added_to" ]; then info "Added $INSTALL_DIR to PATH in:$added_to"; fi
 fi
 
-info "jcode $VERSION installed successfully!"
-if command -v jcode >/dev/null 2>&1; then
-  info "Run 'jcode' to get started."
+info "kcode $VERSION installed successfully!"
+if command -v kcode >/dev/null 2>&1; then
+  info "Run 'kcode' to get started."
 else
-  printf '  Run: \033[1;32mexport PATH="%s:$PATH" && jcode\033[0m\n' "$INSTALL_DIR"
+  printf '  Run: \033[1;32mexport PATH="%s:$PATH" && kcode\033[0m\n' "$INSTALL_DIR"
 fi
 
 persist_install_conversion_id
