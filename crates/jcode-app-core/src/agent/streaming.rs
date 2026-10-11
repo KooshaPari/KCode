@@ -23,5 +23,9 @@ pub(super) fn send_stream_keepalive_mpsc(event_tx: &mpsc::UnboundedSender<Server
     let _ = event_tx.send(ServerEvent::Pong {
         id: STREAM_KEEPALIVE_PONG_ID,
         native_ssh_protocol: None,
+        server_version: None,
+        server_git_hash: None,
+        server_pid: None,
+        server_binary_sha256: None,
     });
 }
