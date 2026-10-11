@@ -10,14 +10,16 @@
 //!
 //! The fix in upstream `ratatui-core` >= 0.1.2 removes that panic for the
 //! `Buffer::index` site, but the in-tree callers in kcode had no defense: any
-//! path that called `ratatui::init` on a too-small terminal would crash.
+//! path that called `ratatui::init` without guarding unavailable terminals could crash.
 //!
 //! This crate is the L3 defense-in-depth: a single gate that every TUI entry
 //! point (root binary, session picker, permissions viewer) consults before
 //! handing control to `ratatui::init`. If the terminal is missing
 //! (`(0, 0)`) or below [`MIN_WIDTH`] x [`MIN_HEIGHT`], the function returns
 //! an `anyhow::Error` that the caller propagates to the user, with a
-//! actionable message ("resize the window or use --no-tui").
+//! actionable message ("resize the window or use --no-tui"). Nonzero tiny
+//! panes are accepted: callers must use clipped or compact layouts rather
+//! than rejecting real terminals based on desktop-sized layout assumptions.
 //!
 //! The wrapper [`init_ratatui_with_size_check`] also turns the
 //! `catch_unwind` boundary that was previously duplicated at three call sites
@@ -30,13 +32,11 @@
 use anyhow::Result;
 use ratatui::DefaultTerminal;
 
-/// Minimum terminal width in columns. Below this, the TUI's modal layout
-/// (e.g. the session picker) cannot fit a usable table.
-pub const MIN_WIDTH: u16 = 60;
+/// Minimum nonzero terminal width; compact layouts support narrow panes.
+pub const MIN_WIDTH: u16 = 1;
 
-/// Minimum terminal height in rows. The single-row crash reported upstream
-/// shows that anything below this is unsafe even after the upstream fix.
-pub const MIN_HEIGHT: u16 = 20;
+/// Minimum nonzero terminal height; rendering must handle clipped layouts.
+pub const MIN_HEIGHT: u16 = 1;
 
 /// Pre-flight check parameterized on raw `(cols, rows)` values.
 ///
@@ -109,17 +109,15 @@ mod tests {
     }
 
     #[test]
-    fn gate_rejects_narrow_one_row() {
-        let err = check_minimum_terminal_size_at(57, 1).unwrap_err();
-        let msg = format!("{err}");
-        assert!(msg.contains("57x1"), "{msg}");
+    fn gate_accepts_narrow_one_row() {
+        assert!(check_minimum_terminal_size_at(57, 1).is_ok());
     }
 
     #[test]
-    fn gate_rejects_short_one_column() {
-        let err = check_minimum_terminal_size_at(80, 5).unwrap_err();
-        let msg = format!("{err}");
-        assert!(msg.contains("80x5"), "{msg}");
+    fn gate_accepts_small_panes() {
+        for size in [(38, 14), (20, 5), (1, 1)] {
+            assert!(check_minimum_terminal_size_at(size.0, size.1).is_ok());
+        }
     }
 
     #[test]

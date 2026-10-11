@@ -36,31 +36,26 @@ fn gate_rejects_zero_size() {
     let msg = format!("{err}");
     assert!(
         msg.contains(&format!("{MIN_WIDTH}x{MIN_HEIGHT}")),
-        "error must mention the required size (60x20), got: {msg}"
+        "error must mention the required nonzero size, got: {msg}"
     );
-    assert!(msg.contains("0x0"), "error must echo the actual size, got: {msg}");
-}
-
-/// 2. The cricket incident's exact geometry: 57x1. Below the 60-col minimum
-///    so it must be rejected, and the error must name the actual size so
-///    the user can see why kcode refused to start.
-#[test]
-fn gate_rejects_57x1() {
-    let err = check_minimum_terminal_size_at(57, 1)
-        .err()
-        .expect("57x1 must be rejected");
-    let msg = format!("{err}");
-    assert!(msg.contains("57x1"), "error must echo 57x1, got: {msg}");
     assert!(
-        msg.contains(&format!("{MIN_WIDTH}x{MIN_HEIGHT}")),
-        "error must mention the required size, got: {msg}"
+        msg.contains("0x0"),
+        "error must echo the actual size, got: {msg}"
     );
 }
 
-/// 3. The exact minimum (60x20) must be accepted. This is the boundary;
+/// Nonzero tiny panes must remain usable by the compact picker.
+#[test]
+fn gate_accepts_tiny_panes() {
+    for (cols, rows) in [(57, 1), (38, 14), (20, 5), (1, 1)] {
+        assert!(check_minimum_terminal_size_at(cols, rows).is_ok());
+    }
+}
+
+/// 3. The exact minimum (1x1) must be accepted. This is the boundary;
 ///    an off-by-one here would force users to resize unnecessarily.
 #[test]
-fn gate_accepts_60x20() {
+fn gate_accepts_exact_minimum() {
     assert!(
         check_minimum_terminal_size_at(MIN_WIDTH, MIN_HEIGHT).is_ok(),
         "exact minimums ({MIN_WIDTH}x{MIN_HEIGHT}) must be accepted"
