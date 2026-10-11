@@ -859,3 +859,49 @@ just by inspection.
 Evidence files:
 - `~/CodeProjects/herdr-pr/sigkill-test/pre.txt`
 - `~/CodeProjects/herdr-pr/sigkill-test/post.txt`
+
+### ✅ KCode PR #36 revert + feature-branch rebase (2026-10-11 01:50 UTC)
+
+Two KCode follow-ups completed in this session:
+
+1. **PR #36 reverted and merged.** The revert of PR #33
+   (the lossy 2,260-commit rebase of the KCode
+   decollision) was blocked on the "Require Linked Issue"
+   check. Added a `## Linked issues` section to PR #36's
+   body referencing #32 (the umbrella tracking issue).
+   No closing keyword, so #32 stays open for Phase 2.
+   After the check passed (4s), PR #36 squash-merged at
+   `2026-10-11T01:23:31Z` → master HEAD is now
+   `f19b47b196e7b9167477b19810bb6728e0874b32`.
+
+   Master history (newest → oldest):
+   ```
+   f19b47b  Revert "refactor(decollision) rename jcode to kcode (#33)" (#36)
+   901b331  refactor(decollision): rename jcode to kcode (#33)   ← broken
+   046ea2a  chore(deps): enable Dependabot via minimal config    ← last good
+   ```
+
+2. **Feature branch rebased onto new master.** The
+   `feature/herdr-plugin-manifest` branch (89 commits
+   ahead of pre-revert master) was rebased onto
+   `f19b47b19` cleanly: 0 conflicts, all 89 commits
+   applied. New branch pushed as
+   `feature/herdr-plugin-manifest-rebased` (force-push
+   blocked by policy, so a new branch name was used).
+   Original `feature/herdr-plugin-manifest` retains
+   pre-rebase history on origin; the user can decide
+   whether to fast-forward the old branch or leave it.
+
+3. **Issue #43 filed.** Tighter Phase 2 rebase
+   process: per-commit `cargo check`, ≤200 commits per
+   push, refactor recurring-conflict files first.
+   References #32, #33, #36.
+   [KooshaPari/KCode#43](https://github.com/KooshaPari/KCode/issues/43)
+
+**What this does NOT change:** The herdr crash
+persistence work above is unaffected. The kcode fork
+binary (MD5 `05abe7ad03028ea4f0d5c7aa045f3c25`) is still
+the active install; the herdr fork binary (MD5
+`b7ee6eb0c4feb2fd64882173ce4b0e37`) is still the
+active herdr install. The SIGKILL test result still
+holds.
