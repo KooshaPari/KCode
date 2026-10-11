@@ -32,3 +32,6 @@ uuid = { version = "1", features = ["v4"] }
 # The migrated antigravity tests use jcode-base's test-env sandbox.
 jcode-base = { path = "../jcode-base", default-features = false, features = ["test-support"] }
 tempfile = "3"
+
+[lints.clippy]
+double_must_use = "allow"

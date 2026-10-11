@@ -35,3 +35,6 @@ jcode-base = { path = "../jcode-base", default-features = false, features = ["te
 jcode-provider-metadata = { path = "../jcode-provider-metadata" }
 tempfile = "3"
 toml = "0.8"
+
+[lints.clippy]
+double_must_use = "allow"

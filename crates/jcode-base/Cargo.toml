@@ -166,3 +166,6 @@ tokio = { version = "1", features = ["test-util"] }
 [[example]]
 name = "voice_startup_profile"
 required-features = ["voice-capture"]
+
+[lints.clippy]
+double_must_use = "allow"
