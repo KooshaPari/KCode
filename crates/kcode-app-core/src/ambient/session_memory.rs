@@ -92,7 +92,15 @@ pub fn render_session_template(content: &str, variables: &HashMap<String, String
                         let trailing = body.len() - body.trim_end().len();
                         body_start..body_end - trailing
                     };
-                    rendered.replace_range(replacement_range, value);
+                    let replacement = if body.trim().is_empty()
+                        && body_end == body_start
+                        && body_end < rendered.len()
+                    {
+                        format!("{value}\n")
+                    } else {
+                        value.clone()
+                    };
+                    rendered.replace_range(replacement_range, &replacement);
                 }
             }
             substitutor.substitute(&rendered)
@@ -210,5 +218,42 @@ mod isolation_tests {
             "## Summary\nReplacement summary\n\n## Details\nKeep details\n"
         );
         assert!(!rendered.contains("Original summary"));
+    }
+
+    #[test]
+    fn session_template_replaces_empty_section_before_adjacent_heading() {
+        let _lock = crate::storage::lock_test_env();
+        let _restore = RestoreEnv(
+            [
+                "HOME",
+                "KCODE_HOME",
+                "KCODE_DEV_NAMESPACE",
+                "KCODE_SESSION_MEMORY_TEMPLATE",
+            ]
+            .into_iter()
+            .map(|key| (key, std::env::var_os(key)))
+            .collect(),
+        );
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join(".kcode-dev");
+        let template_dir = home.join("session-memory/config");
+        std::fs::create_dir_all(&template_dir).unwrap();
+        std::fs::write(
+            template_dir.join("template.md"),
+            "## Summary\n## Details\nKeep details\n",
+        )
+        .unwrap();
+        crate::env::set_var("HOME", temp.path());
+        crate::env::set_var("KCODE_HOME", &home);
+        crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        crate::env::remove_var("KCODE_SESSION_MEMORY_TEMPLATE");
+        let variables = HashMap::from([("Summary".to_string(), "Replacement".to_string())]);
+
+        let rendered = render_session_template("unused fallback", &variables);
+
+        assert_eq!(
+            rendered,
+            "## Summary\nReplacement\n## Details\nKeep details\n"
+        );
     }
 }
