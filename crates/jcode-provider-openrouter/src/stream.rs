@@ -1256,20 +1256,21 @@ mod tests {
             events
         });
 
-        let terminal_event: Option<StreamEvent> = events
-            .iter()
-            .find_map(|e| match e {
-                Ok(StreamEvent::MessageEnd { stop_reason }) => {
-                    Some(StreamEvent::MessageEnd { stop_reason: stop_reason.clone() })
-                }
-                _ => None,
-            });
+        let terminal_event: Option<StreamEvent> = events.iter().find_map(|e| match e {
+            Ok(StreamEvent::MessageEnd { stop_reason }) => Some(StreamEvent::MessageEnd {
+                stop_reason: stop_reason.clone(),
+            }),
+            _ => None,
+        });
         let terminal_count = events
             .iter()
             .filter(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })))
             .count();
 
-        assert_eq!(terminal_count, 1, "exactly one MessageEnd, events: {events:?}");
+        assert_eq!(
+            terminal_count, 1,
+            "exactly one MessageEnd, events: {events:?}"
+        );
         assert!(
             matches!(
                 terminal_event,
@@ -1333,10 +1334,16 @@ mod tests {
 
         // State assertion 2: nothing after the terminal (no second error,
         // no repeat MessageEnd).
-        let error_after_message_end = events
-            .iter()
-            .skip(first_message_end_idx.unwrap() + 1)
-            .any(|e| matches!(e, Ok(StreamEvent::Error { .. }) | Ok(StreamEvent::MessageEnd { .. })));
+        let error_after_message_end =
+            events
+                .iter()
+                .skip(first_message_end_idx.unwrap() + 1)
+                .any(|e| {
+                    matches!(
+                        e,
+                        Ok(StreamEvent::Error { .. }) | Ok(StreamEvent::MessageEnd { .. })
+                    )
+                });
         assert!(
             !error_after_message_end,
             "tail_after_message_end must equal []; events: {events:?}"
@@ -1345,7 +1352,10 @@ mod tests {
         // State assertion 3: the live stream is now exhausted — the bug
         // class pinned here would have re-polled the inner and panicked.
         let tail = futures::executor::block_on(stream.next());
-        assert!(tail.is_none(), "tail_after_message_end must equal [None], got {tail:?}");
+        assert!(
+            tail.is_none(),
+            "tail_after_message_end must equal [None], got {tail:?}"
+        );
     }
 
     /// FR-C/2: Same shape as FR-C/1 but with a 5xx code. Pinned because
@@ -1391,17 +1401,26 @@ mod tests {
             "events must equal [Error, MessageEnd] in that order; events: {events:?}"
         );
 
-        let error_after_message_end = events
-            .iter()
-            .skip(first_message_end_idx.unwrap() + 1)
-            .any(|e| matches!(e, Ok(StreamEvent::Error { .. }) | Ok(StreamEvent::MessageEnd { .. })));
+        let error_after_message_end =
+            events
+                .iter()
+                .skip(first_message_end_idx.unwrap() + 1)
+                .any(|e| {
+                    matches!(
+                        e,
+                        Ok(StreamEvent::Error { .. }) | Ok(StreamEvent::MessageEnd { .. })
+                    )
+                });
         assert!(
             !error_after_message_end,
             "tail_after_message_end must equal []; events: {events:?}"
         );
 
         let tail = futures::executor::block_on(stream.next());
-        assert!(tail.is_none(), "tail_after_message_end must equal [None], got {tail:?}");
+        assert!(
+            tail.is_none(),
+            "tail_after_message_end must equal [None], got {tail:?}"
+        );
     }
 
     /// FR-D/1: After the terminal `MessageEnd`, a second `poll_next` call
@@ -1447,7 +1466,10 @@ mod tests {
 
         // Belt-and-suspenders: a third poll stays None.
         let third = futures::executor::block_on(stream.next());
-        assert!(third.is_none(), "third_poll must also equal Poll::Ready(None), got {third:?}");
+        assert!(
+            third.is_none(),
+            "third_poll must also equal Poll::Ready(None), got {third:?}"
+        );
     }
 
     /// FR-B/1: N distinct tool-call ids must coalesce into N `ToolUseStart`
@@ -1494,9 +1516,8 @@ mod tests {
                 "finish_reason": "tool_calls"
             }]
         });
-        stream.buffer = format!(
-            "data: {chunk1}\n\ndata: {chunk2}\n\ndata: {chunk3}\n\ndata: [DONE]\n\n"
-        );
+        stream.buffer =
+            format!("data: {chunk1}\n\ndata: {chunk2}\n\ndata: {chunk3}\n\ndata: [DONE]\n\n");
 
         // Drain parse_next_event to completion. `parse_next_event` flushes
         // accumulators when it sees `finish_reason` and the trailing [DONE]
@@ -1532,8 +1553,10 @@ mod tests {
             })
             .collect();
 
-        let expected_ids: Vec<String> =
-            ["call_1", "call_2", "call_3"].iter().map(|s| s.to_string()).collect();
+        let expected_ids: Vec<String> = ["call_1", "call_2", "call_3"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
 
         assert_eq!(
             final_tool_use_starts, expected_ids,
@@ -1629,7 +1652,10 @@ mod tests {
             .filter(|e| matches!(e, Ok(StreamEvent::MessageEnd { .. })))
             .count();
         assert_eq!(terminal_kind, "MessageEnd");
-        assert_eq!(message_ends, 1, "exactly one MessageEnd expected, events: {events:?}");
+        assert_eq!(
+            message_ends, 1,
+            "exactly one MessageEnd expected, events: {events:?}"
+        );
 
         // tail_kinds == ["None"]: re-poll after termination must yield
         // `None` (no panic, no Terminated, no second `MessageEnd`).

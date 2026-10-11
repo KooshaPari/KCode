@@ -1353,11 +1353,7 @@ mod tests {
         let line = Line::from(vec![Span::styled(text, Style::default())]);
         let truncated = truncate_line_for_narrow(line, 15);
         // Should be truncated to fit within 15 display columns.
-        let rendered: String = truncated
-            .spans
-            .iter()
-            .map(|s| s.content.as_ref())
-            .collect();
+        let rendered: String = truncated.spans.iter().map(|s| s.content.as_ref()).collect();
         let rendered_width = unicode_width::UnicodeWidthStr::width(rendered.as_str());
         assert!(
             rendered_width <= 15,

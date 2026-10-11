@@ -655,11 +655,7 @@ mod request_tests {
         // Simulate the compaction slice: the assistant half is BEFORE
         // compacted_count and must not leak into the API payload; only the
         // orphan result and a later intact turn are active.
-        let sliced = vec![
-            orphan_result,
-            kept_turn[0].clone(),
-            kept_turn[1].clone(),
-        ];
+        let sliced = vec![orphan_result, kept_turn[0].clone(), kept_turn[1].clone()];
         let _ = assistant_half; // compacted prefix, excluded from the slice
 
         let api_messages = build_chat_messages(&sliced, "", false, false, false);

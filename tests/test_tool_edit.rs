@@ -1,7 +1,7 @@
 //! Tests for the `edit` tool (text replacement, diff output, schema validation).
 
-use jcode::tool::{Tool, ToolContext, ToolExecutionMode};
 use jcode::tool::edit::EditTool;
+use jcode::tool::{Tool, ToolContext, ToolExecutionMode};
 use serde_json::json;
 
 fn make_ctx(dir: &std::path::Path) -> ToolContext {
@@ -36,9 +36,19 @@ fn edit_schema_requires_file_path_and_supports_edits_and_shorthand() {
     let properties = &schema["properties"];
     let edits = &properties["edits"];
     assert_eq!(edits["type"], "array");
-    let edits_required = edits["items"]["required"].as_array().expect("edits required");
-    assert!(edits_required.iter().any(|v| v.as_str() == Some("old_string")));
-    assert!(edits_required.iter().any(|v| v.as_str() == Some("new_string")));
+    let edits_required = edits["items"]["required"]
+        .as_array()
+        .expect("edits required");
+    assert!(
+        edits_required
+            .iter()
+            .any(|v| v.as_str() == Some("old_string"))
+    );
+    assert!(
+        edits_required
+            .iter()
+            .any(|v| v.as_str() == Some("new_string"))
+    );
 
     for shorthand in ["old_string", "new_string", "replace_all"] {
         assert!(properties[shorthand].is_object(), "missing {shorthand}");

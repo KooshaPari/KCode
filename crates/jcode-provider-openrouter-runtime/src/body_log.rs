@@ -40,7 +40,10 @@ pub fn maybe_dump_request_body(model: &str, request: &Value) {
 /// Disabled by default: unset or empty `JCODE_PROVIDER_SSE_LOG` passes chunks
 /// through untouched. Failures never propagate: capture must not break the
 /// stream.
-pub fn capture_sse_stream<S>(stream: S, model: String) -> impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send
+pub fn capture_sse_stream<S>(
+    stream: S,
+    model: String,
+) -> impl futures::Stream<Item = Result<Bytes, reqwest::Error>> + Send
 where
     S: futures::Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
 {
@@ -68,11 +71,18 @@ where
         if let Some(parent) = p.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        std::fs::OpenOptions::new().create(true).append(true).open(p).ok()
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(p)
+            .ok()
     });
     if let Some(p) = capture_path.as_ref() {
         if file.is_some() {
-            jcode_base::logging::info(&format!("[openrouter] Capturing raw SSE to {}", p.display()));
+            jcode_base::logging::info(&format!(
+                "[openrouter] Capturing raw SSE to {}",
+                p.display()
+            ));
         } else {
             jcode_base::logging::info(&format!(
                 "[openrouter] Failed to open SSE capture file {}",
@@ -85,21 +95,18 @@ where
     // `.fuse()`: a raw `unfold` panics if polled after it returned
     // `Ready(None)`. Fusing makes the tee return `None` forever after EOF, so
     // it cannot take down a consumer that probes for termination.
-    futures::stream::unfold(
-        (stream, file),
-        |(mut stream, file)| async move {
-            match stream.as_mut().next().await {
-                Some(item) => {
-                    if let (Some(f), Ok(bytes)) = (file.as_ref(), item.as_ref()) {
-                        let mut f = f;
-                        let _ = std::io::Write::write_all(&mut f, bytes);
-                    }
-                    Some((item, (stream, file)))
+    futures::stream::unfold((stream, file), |(mut stream, file)| async move {
+        match stream.as_mut().next().await {
+            Some(item) => {
+                if let (Some(f), Ok(bytes)) = (file.as_ref(), item.as_ref()) {
+                    let mut f = f;
+                    let _ = std::io::Write::write_all(&mut f, bytes);
                 }
-                None => None,
+                Some((item, (stream, file)))
             }
-        },
-    )
+            None => None,
+        }
+    })
     .fuse()
 }
 
@@ -165,7 +172,10 @@ mod sse_log_tests {
             Ok(bytes::Bytes::from_static(b"data: world\n\n")),
         ];
         let mut out: Vec<u8> = Vec::new();
-        let mut s = Box::pin(capture_sse_stream(futures::stream::iter(chunks), "minimax-m3".to_string()));
+        let mut s = Box::pin(capture_sse_stream(
+            futures::stream::iter(chunks),
+            "minimax-m3".to_string(),
+        ));
         while let Some(c) = s.next().await {
             out.extend_from_slice(&c.expect("no error expected"));
         }
@@ -192,7 +202,10 @@ mod sse_log_tests {
             Ok(bytes::Bytes::from_static(b"data: hello\n\n")),
             Ok(bytes::Bytes::from_static(b"data: world\n\n")),
         ];
-        let mut s = Box::pin(capture_sse_stream(futures::stream::iter(chunks), "minimax-m3".to_string()));
+        let mut s = Box::pin(capture_sse_stream(
+            futures::stream::iter(chunks),
+            "minimax-m3".to_string(),
+        ));
         while let Some(_c) = s.next().await {}
         #[allow(unsafe_op_in_unsafe_fn)]
         unsafe {
@@ -258,7 +271,8 @@ mod body_log_tests {
         entries.sort_by_key(|e| e.file_name());
         let name = entries[0].file_name().to_string_lossy().to_string();
         assert!(
-            name.ends_with("minimax-m3.json") && name.chars().next().is_some_and(|c| c.is_ascii_digit()),
+            name.ends_with("minimax-m3.json")
+                && name.chars().next().is_some_and(|c| c.is_ascii_digit()),
             "timestamped model name expected, got: {name}"
         );
         let written = std::fs::read_to_string(entries[0].path()).unwrap();
@@ -284,7 +298,10 @@ mod body_log_tests {
             .collect();
         assert_eq!(entries.len(), 1);
         let name = entries[0].file_name().to_string_lossy().to_string();
-        assert!(name.ends_with("z-ai_glm_5.3.json"), "sanitized model expected, got: {name}");
+        assert!(
+            name.ends_with("z-ai_glm_5.3.json"),
+            "sanitized model expected, got: {name}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
