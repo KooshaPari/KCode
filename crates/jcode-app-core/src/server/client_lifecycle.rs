@@ -1526,11 +1526,35 @@ pub(super) async fn handle_client(
             }
 
             Request::Ping { id } => {
-                let json = encode_event(&ServerEvent::Pong { id, native_ssh_protocol: Some(1) });
-                let mut w = writer.lock().await;
-                if w.write_all(json.as_bytes()).await.is_err() {
-                    break;
-                }
+                // A Ping can arrive after Subscribe on a long-lived client.
+                // Route it through the same responder as pre-subscribe probes so
+                // runtime identity does not depend on connection phase.
+                handle_lightweight_control_request(
+                    Request::Ping { id },
+                    Arc::clone(&writer),
+                    LightweightControlContext {
+                        sessions: &sessions,
+                        global_session_id: &global_session_id,
+                        provider_template: &provider_template,
+                        swarm_members: &swarm_members,
+                        swarms_by_id: &swarms_by_id,
+                        shared_context: &shared_context,
+                        swarm_plans: &swarm_plans,
+                        swarm_coordinators: &swarm_coordinators,
+                        file_touch: &file_touch,
+                        channel_subscriptions: &channel_subscriptions,
+                        channel_subscriptions_by_session: &channel_subscriptions_by_session,
+                        client_connections: &client_connections,
+                        event_history: &event_history,
+                        event_counter: &event_counter,
+                        swarm_event_tx: &swarm_event_tx,
+                        mcp_pool: &mcp_pool,
+                        soft_interrupt_queues: &soft_interrupt_queues,
+                        await_members_runtime: &await_members_runtime,
+                        swarm_mutation_runtime: &swarm_mutation_runtime,
+                    },
+                )
+                .await?;
             }
 
             Request::PrepareDisconnect { id } => {

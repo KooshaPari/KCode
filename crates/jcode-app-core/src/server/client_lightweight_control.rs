@@ -27,9 +27,32 @@ use crate::config::SwarmSpawnMode;
 use crate::protocol::{Request, ServerEvent};
 use crate::provider::Provider;
 use anyhow::Result;
+use sha2::{Digest, Sha256};
+use std::io::Read;
+use std::sync::OnceLock;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
+
+fn current_exe_sha256() -> Option<&'static str> {
+    static DIGEST: OnceLock<Option<String>> = OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            let path = std::env::current_exe().ok()?;
+            let mut file = std::fs::File::open(path).ok()?;
+            let mut hasher = Sha256::new();
+            let mut buf = [0u8; 64 * 1024];
+            loop {
+                let read = file.read(&mut buf).ok()?;
+                if read == 0 {
+                    break;
+                }
+                hasher.update(&buf[..read]);
+            }
+            Some(format!("{:x}", hasher.finalize()))
+        })
+        .as_deref()
+}
 
 pub(super) fn parse_swarm_spawn_mode(
     id: u64,
@@ -108,6 +131,10 @@ pub(super) async fn handle_lightweight_control_request(
             &ServerEvent::Pong {
                 id,
                 native_ssh_protocol: Some(1),
+                server_version: Some(jcode_build_meta::version().to_string()),
+                server_git_hash: Some(jcode_build_meta::git_hash().to_string()),
+                server_pid: Some(std::process::id()),
+                server_binary_sha256: current_exe_sha256().map(str::to_string),
             },
         )
         .await?;

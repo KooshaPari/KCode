@@ -839,6 +839,7 @@ async fn test_context_guard_small_output_passes_through() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let output = ToolOutput::new("small output");
@@ -854,6 +855,7 @@ async fn test_context_guard_withholds_huge_single_output_by_default() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     // 30% of 1000 = 300 tokens = 1200 chars max for a single output
@@ -892,6 +894,7 @@ async fn test_context_guard_returns_truncated_output_when_caller_accepts() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let big_output = "x".repeat(8000);
@@ -928,6 +931,7 @@ async fn test_context_guard_reports_the_real_cost_and_affordable_size() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let output = ToolOutput::new("x".repeat(360_000)); // ~90k tokens
@@ -974,6 +978,7 @@ async fn test_context_guard_truncates_when_context_nearly_full() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     // Even a modest output should get truncated when context is 95% full
@@ -1000,6 +1005,7 @@ async fn test_context_guard_still_refuses_when_context_is_exhausted() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let payload = "x".repeat(400_000);
@@ -1026,6 +1032,7 @@ async fn test_context_guard_zero_budget_passes_through() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let output = ToolOutput::new("x".repeat(100_000));
@@ -1245,6 +1252,7 @@ async fn test_context_guard_never_spends_more_than_it_reports() {
                         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
                         compaction,
                         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
                     };
 
                     let payload = "x".repeat(payload_tokens * 4);
@@ -1294,6 +1302,7 @@ async fn test_context_guard_refusal_reads_clearly_for_todays_regression() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     let result = registry
@@ -1585,6 +1594,7 @@ async fn test_guard_withholds_large_output_on_a_million_token_window() {
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
         search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
     };
 
     // ~233k tokens: the real size of the agentgrep result that started this.
@@ -1617,6 +1627,7 @@ async fn test_single_output_ceiling_is_absolute_not_only_proportional() {
             skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
             compaction,
             search_index: tool_search::ToolSearchIndex::new(),
+            effect_recovery: None,
         };
 
         // Just over the absolute ceiling, but a trivial fraction of a huge window.
@@ -1787,5 +1798,184 @@ async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode()
         ineligible, expected,
         "the set of strict-ineligible built-in tools changed; a new name means an \
          eligibility rule is too aggressive, a missing name means this list is stale"
+    );
+}
+
+
+#[derive(Default)]
+struct RecordingEffectAdapter {
+    events: std::sync::Mutex<Vec<String>>,
+    fail_confirm: bool,
+}
+
+impl RecordingEffectAdapter {
+    fn events(&self) -> Vec<String> {
+        self.events.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl EffectRecoveryAdapter for RecordingEffectAdapter {
+    async fn begin(&self, intent: EffectIntent) -> Result<()> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("intent:{}", intent.effect_id));
+        Ok(())
+    }
+
+    async fn mark_dispatched(&self, effect_id: &str) -> Result<()> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("dispatched:{effect_id}"));
+        Ok(())
+    }
+
+    async fn confirm_success(&self, effect_id: &str) -> Result<()> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("confirm:{effect_id}"));
+        if self.fail_confirm {
+            anyhow::bail!("simulated durable receipt failure");
+        }
+        Ok(())
+    }
+
+    async fn mark_uncertain(&self, effect_id: &str, _reason: &str) -> Result<()> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("uncertain:{effect_id}"));
+        Ok(())
+    }
+}
+
+fn effect_test_context(dir: &std::path::Path) -> ToolContext {
+    ToolContext {
+        session_id: "effect-session".into(),
+        message_id: "effect-message".into(),
+        tool_call_id: "effect-call".into(),
+        working_dir: Some(dir.to_path_buf()),
+        stdin_request_tx: None,
+        graceful_shutdown_signal: None,
+        execution_mode: ToolExecutionMode::Direct,
+    }
+}
+
+#[tokio::test]
+async fn write_effect_hook_records_intent_dispatch_and_confirmation() {
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let adapter = Arc::new(RecordingEffectAdapter::default());
+    let registry = Registry::new(provider)
+        .await
+        .with_effect_recovery(EffectRecoveryContext {
+            durable_effort_ref: "effort-1".into(),
+            worker_attempt_id: "attempt-a".into(),
+            adapter: adapter.clone(),
+        });
+    let dir = tempfile::tempdir().unwrap();
+
+    registry
+        .execute(
+            "write",
+            serde_json::json!({
+                "file_path": "effect.txt",
+                "content": "one",
+                "intent": "effect recovery test"
+            }),
+            effect_test_context(dir.path()),
+        )
+        .await
+        .expect("write should succeed with durable effect hook");
+
+    assert_eq!(std::fs::read_to_string(dir.path().join("effect.txt")).unwrap(), "one");
+    assert_eq!(
+        adapter.events(),
+        vec![
+            "intent:effect-session:effect-message:effect-call:write",
+            "dispatched:effect-session:effect-message:effect-call:write",
+            "confirm:effect-session:effect-message:effect-call:write",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn write_effect_hook_marks_uncertain_when_confirmation_fails() {
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let adapter = Arc::new(RecordingEffectAdapter {
+        fail_confirm: true,
+        ..Default::default()
+    });
+    let registry = Registry::new(provider)
+        .await
+        .with_effect_recovery(EffectRecoveryContext {
+            durable_effort_ref: "effort-1".into(),
+            worker_attempt_id: "attempt-a".into(),
+            adapter: adapter.clone(),
+        });
+    let dir = tempfile::tempdir().unwrap();
+
+    let error = registry
+        .execute(
+            "write",
+            serde_json::json!({
+                "file_path": "effect.txt",
+                "content": "committed",
+                "intent": "effect recovery uncertainty test"
+            }),
+            effect_test_context(dir.path()),
+        )
+        .await
+        .expect_err("missing durable confirmation must not return normal success");
+
+    assert!(error.to_string().contains("durable confirmation failed"));
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("effect.txt")).unwrap(),
+        "committed",
+        "downstream effect really happened before confirmation failed"
+    );
+    assert_eq!(
+        adapter.events(),
+        vec![
+            "intent:effect-session:effect-message:effect-call:write",
+            "dispatched:effect-session:effect-message:effect-call:write",
+            "confirm:effect-session:effect-message:effect-call:write",
+            "uncertain:effect-session:effect-message:effect-call:write",
+        ]
+    );
+}
+
+
+#[test]
+fn write_reconciliation_confirms_matching_postcondition_without_redispatch() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("effect.txt");
+    std::fs::write(&path, "committed").unwrap();
+    assert_eq!(
+        reconcile_write_postcondition(&path, "committed"),
+        ReconcileDecision::ConfirmedSuccess
+    );
+}
+
+#[test]
+fn write_reconciliation_allows_retry_only_when_target_is_known_absent() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("missing.txt");
+    assert_eq!(
+        reconcile_write_postcondition(&path, "expected"),
+        ReconcileDecision::RetryAllowed
+    );
+}
+
+#[test]
+fn write_reconciliation_fails_closed_on_conflicting_postcondition() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("effect.txt");
+    std::fs::write(&path, "other actor changed it").unwrap();
+    assert_eq!(
+        reconcile_write_postcondition(&path, "expected"),
+        ReconcileDecision::StillUncertain
     );
 }

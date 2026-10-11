@@ -7,6 +7,7 @@ use crate::message::{Message, ToolDefinition};
 use crate::provider::{EventStream, Provider};
 use crate::transport::Listener;
 use anyhow::Result;
+use sha2::{Digest, Sha256};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
@@ -111,33 +112,48 @@ fn server_initializes_schedule_runner_even_when_ambient_disabled() {
 }
 
 #[tokio::test]
-async fn debug_accept_loop_responds_to_ping_without_affecting_client_count() {
+async fn main_accept_loop_reports_exact_runtime_identity() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
     let socket_path = temp.path().join("jcode.sock");
     let debug_socket_path = temp.path().join("jcode-debug.sock");
     let provider: Arc<dyn Provider> = Arc::new(TestProvider);
-    let server = Server::new_with_paths(provider, socket_path, debug_socket_path.clone());
+    let server = Server::new_with_paths(provider, socket_path.clone(), debug_socket_path);
     let runtime = ServerRuntime::from_server(&server);
-    let debug_listener = Listener::bind(&debug_socket_path).expect("bind debug socket");
-    let debug_handle = runtime.spawn_debug_accept_loop(debug_listener, std::time::Instant::now());
+    let listener = Listener::bind(&socket_path).expect("bind main socket");
+    let main_handle = runtime.spawn_main_accept_loop(listener);
 
     let mut client = tokio::time::timeout(
         Duration::from_secs(1),
-        Client::connect_debug_with_path(debug_socket_path),
+        Client::connect_with_path(socket_path),
     )
     .await
-    .expect("debug connect should complete")
-    .expect("debug client should connect");
+    .expect("main connect should complete")
+    .expect("main client should connect");
 
-    assert!(client.ping().await.expect("debug ping should succeed"));
-    assert_eq!(*server.client_count.read().await, 0);
+    let identity = client
+        .ping_identity()
+        .await
+        .expect("main ping should complete")
+        .expect("main ping should return daemon identity");
+    assert_eq!(identity.version.as_deref(), Some(jcode_build_meta::version()));
+    assert_eq!(identity.git_hash.as_deref(), Some(jcode_build_meta::git_hash()));
+    assert_eq!(identity.pid, Some(std::process::id()));
+    let digest = identity
+        .binary_sha256
+        .as_deref()
+        .expect("daemon should report its executable digest");
+    let executable = std::fs::read(std::env::current_exe().expect("current executable"))
+        .expect("read current executable");
+    let expected_digest = format!("{:x}", Sha256::digest(&executable));
+    assert_eq!(digest, expected_digest);
+    assert_eq!(identity.native_ssh_protocol, Some(1));
 
     tokio::time::timeout(Duration::from_secs(1), runtime.shutdown())
         .await
-        .expect("runtime shutdown should join debug connection tasks");
-    tokio::time::timeout(Duration::from_secs(1), debug_handle)
+        .expect("runtime shutdown should join main connection tasks");
+    tokio::time::timeout(Duration::from_secs(1), main_handle)
         .await
-        .expect("debug accept loop should observe runtime cancellation")
-        .expect("debug accept loop should exit cleanly");
+        .expect("main accept loop should observe runtime cancellation")
+        .expect("main accept loop should exit cleanly");
 }
