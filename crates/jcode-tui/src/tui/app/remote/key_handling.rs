@@ -2271,6 +2271,23 @@ async fn handle_remote_key_internal(
                     return Ok(());
                 }
 
+                if let Some(command) = app_mod::commands::parse_poke_context_command(trimmed) {
+                    match command {
+                        Err(error) => app.push_display_message(DisplayMessage::error(error)),
+                        Ok(scope) => {
+                            let prompt = app_mod::commands::build_poke_context_prompt(&scope);
+                            let prepared = input::PreparedInput {
+                                raw_input: trimmed.to_string(),
+                                expanded: prompt,
+                                images: Vec::new(),
+                            };
+                            route_prepared_input_to_new_remote_session(app, remote, prepared)
+                                .await?;
+                        }
+                    }
+                    return Ok(());
+                }
+
                 if let Some(command) = app_mod::commands::parse_poke_command(trimmed) {
                     match command {
                         Err(error) => app.push_display_message(DisplayMessage::error(error)),
@@ -2286,8 +2303,7 @@ async fn handle_remote_key_internal(
                                 app_mod::commands::poke_disabled_message(cleared),
                             ));
                         }
-                        Ok(app_mod::commands::PokeCommand::Trigger)
-                        | Ok(app_mod::commands::PokeCommand::On) => {
+                        Ok(app_mod::commands::PokeCommand::On) => {
                             match app_mod::commands::activate_auto_poke(app) {
                                 app_mod::commands::PokeActivation::EnabledNoIncomplete => {
                                     app.push_display_message(DisplayMessage::system(

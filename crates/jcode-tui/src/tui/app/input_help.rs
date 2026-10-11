@@ -121,13 +121,13 @@ impl App {
                 "/dictate\nRun the configured external speech-to-text command and inject the transcript into jcode.\n\nConfigure [dictation] in ~/.jcode/config.toml:\n  command       shell command that prints transcript to stdout,\n                for example ~/.local/bin/my-whisper-script --grammar-target code\n  mode          insert|append|replace|send\n  key           optional hotkey (for example alt+;)\n  timeout_secs  max wait time"
             }
             "poke" => {
-                "/poke [on|off|status]\nPoke the model to resume when it has stopped with incomplete todos.\n\n\
+                "/poke [repo-name]\nStart a fresh Jcode session with recovered global/project memories and recent session history, then report active repository state and next actions. Omit repo-name to cover all active repos; use `all` for the same scope. The new session may continue non-harmful, trivially reversible work and must ask before consequential actions.\n\n\
+                /poke on\nArm auto-poke and immediately continue if incomplete todos remain.\n\n\
+                /poke off\nDisarm auto-poke and clear queued continuations.\n\n\
+                /poke status\nShow whether auto-poke is armed.\n\n\
                 Auto-poke now starts enabled by default, and Ctrl+P toggles it on/off.\n\
                 Set auto_poke = false under [features] in ~/.jcode/config.toml to start with it disabled.\n\
-                /poke or /poke on arms auto-poke and immediately pokes if work remains.\n\
-                /poke off disarms auto-poke and clears any queued poke follow-ups.\n\
-                /poke status shows whether auto-poke is currently armed.\n\
-                If a turn is currently running, the poke is queued and sent right after that turn finishes.\n\
+                If an auto-poke turn is currently running, /poke on is queued and sent right after that turn finishes.\n\
                 Injects a reminder with the number of incomplete todos and prompts the model to either\n\
                 finish the work, update the todo list to reflect what is done, or ask for user input if genuinely blocked."
             }

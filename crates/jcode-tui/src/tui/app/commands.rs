@@ -30,6 +30,10 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
 
+#[path = "commands_poke_context.rs"]
+mod poke_context;
+pub(super) use poke_context::{build_poke_context_prompt, parse_poke_context_command};
+
 pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
 const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
 
@@ -48,7 +52,6 @@ pub(super) struct TodoConfidenceSummary {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PokeCommand {
-    Trigger,
     On,
     Off,
     Status,
@@ -65,11 +68,12 @@ pub(super) enum PokeActivation {
 
 pub(super) fn parse_poke_command(trimmed: &str) -> Option<Result<PokeCommand, String>> {
     match trimmed {
-        "/poke" => Some(Ok(PokeCommand::Trigger)),
         "/poke on" => Some(Ok(PokeCommand::On)),
         "/poke off" => Some(Ok(PokeCommand::Off)),
         "/poke status" => Some(Ok(PokeCommand::Status)),
-        _ if trimmed.starts_with("/poke ") => Some(Err("Usage: /poke [on|off|status]".to_string())),
+        _ if trimmed.starts_with("/poke ") => {
+            Some(Err("Usage: /poke [repo-name|on|off|status]".to_string()))
+        }
         _ => None,
     }
 }
@@ -2114,6 +2118,10 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
+    if poke_context::handle_poke_context_command(app, trimmed) {
+        return true;
+    }
+
     if let Some(command) = parse_poke_command(trimmed) {
         match command {
             Err(error) => app.push_display_message(DisplayMessage::error(error)),
@@ -2125,7 +2133,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
                 app.set_status_notice("Poke: OFF");
                 app.push_display_message(DisplayMessage::system(poke_disabled_message(cleared)));
             }
-            Ok(PokeCommand::Trigger | PokeCommand::On) => {
+            Ok(PokeCommand::On) => {
                 activate_auto_poke_local(app);
             }
         }

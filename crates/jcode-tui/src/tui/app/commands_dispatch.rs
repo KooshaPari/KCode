@@ -21,6 +21,9 @@ pub(super) fn ssh_unsupported_command(input: &str) -> bool {
     if command == "/fast" && words.next() == Some("default") {
         return true;
     }
+    if command == "/poke" && !matches!(words.next(), Some("on" | "off" | "status")) {
+        return true;
+    }
     matches!(
         command,
         "/logout"
@@ -306,6 +309,8 @@ mod tests {
             "/split",
             "/btw question",
             "/transfer",
+            "/poke",
+            "/poke jcode",
             "/workspace",
             "/workspace split",
             "/todos",
@@ -328,6 +333,7 @@ mod tests {
             "/rename title",
             "/fast on",
             "/help",
+            "/poke on",
             "/diff",
             "/login-custom-skill",
             "/configurable-skill",
