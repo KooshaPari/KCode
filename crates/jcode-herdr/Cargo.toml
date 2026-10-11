@@ -10,10 +10,15 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["sync", "time", "rt", "net", "io-util"] }
 tracing = "0.1"
+
+# cargo-machete flags serde as unused because we use serde_json transitively
+# (serde_json re-exports serde's traits). Keep serde for future derive
+# macros in this crate.
+[package.metadata.cargo-machete]
+ignored = ["serde"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
