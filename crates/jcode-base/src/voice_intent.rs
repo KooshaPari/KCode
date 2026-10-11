@@ -28,6 +28,7 @@ pub struct SessionCandidate {
 
 /// Bounded immediate UI actions. Callers decide availability and perform actions.
 /// Relative session ordering is owned by the caller, not the candidate list.
+#[allow(clippy::enum_variant_names)] // The `Session` postfix is intentional; callers use full paths.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuickAction {
     NewSession,

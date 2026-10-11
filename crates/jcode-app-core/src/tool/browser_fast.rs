@@ -104,36 +104,46 @@ fn redact_credentials(value: &mut Value) -> bool {
                 false
             }
         }
-        Value::Array(items) => items
-            .iter_mut()
-            .fold(false, |found, item| redact_credentials(item) || found),
-        Value::Object(items) => items.iter_mut().fold(false, |found, (key, item)| {
-            let key = key.to_ascii_lowercase().replace('-', "_");
-            if matches!(
-                key.as_str(),
-                "password"
-                    | "passwd"
-                    | "secret"
-                    | "access_token"
-                    | "refresh_token"
-                    | "id_token"
-                    | "api_key"
-                    | "apikey"
-                    | "authorization"
-                    | "cookie"
-                    | "set_cookie"
-                    | "otp"
-                    | "cvv"
-                    | "cvc"
-                    | "token"
-            ) && !item.is_null()
-            {
-                *item = json!("[REDACTED: credential material]");
-                true
-            } else {
-                redact_credentials(item) || found
+        Value::Array(items) => {
+            let mut found = false;
+            for item in items.iter_mut() {
+                if redact_credentials(item) {
+                    found = true;
+                }
             }
-        }),
+            found
+        }
+        Value::Object(items) => {
+            let mut found = false;
+            for (key, item) in items.iter_mut() {
+                let key = key.to_ascii_lowercase().replace('-', "_");
+                if matches!(
+                    key.as_str(),
+                    "password"
+                        | "passwd"
+                        | "secret"
+                        | "access_token"
+                        | "refresh_token"
+                        | "id_token"
+                        | "api_key"
+                        | "apikey"
+                        | "authorization"
+                        | "cookie"
+                        | "set_cookie"
+                        | "otp"
+                        | "cvv"
+                        | "cvc"
+                        | "token"
+                ) && !item.is_null()
+                {
+                    *item = json!("[REDACTED: credential material]");
+                    found = true;
+                } else if redact_credentials(item) {
+                    found = true;
+                }
+            }
+            found
+        }
         _ => false,
     }
 }
