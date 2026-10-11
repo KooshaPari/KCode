@@ -1,0 +1,41 @@
+name: macOS Trust Policy
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "src/main.rs"
+      - ".github/workflows/macos-trust-policy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-trust-policy:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-trust-policy
+      - name: Check KCode entrypoint
+        run: cargo check --bin jcode
+      - name: Run policy parsing test
+        run: cargo test --bin jcode startup_repair_is_opt_in -- --exact --nocapture
+      - name: Assert default source path is non-mutating
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("src/main.rs").read_text()
+          assert "maybe_repair_macos_code_signature();" in source
+          assert 'std::env::var("JCODE_MACOS_STARTUP_REPAIR")' in source
+          assert "self_heal_macos_code_signature();" not in source
+          print("default startup repair is explicitly gated")
+          PY
