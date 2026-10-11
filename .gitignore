@@ -24,3 +24,10 @@ captures/
 /*.avif
 /*.mp4
 /*.png
+
+# Local scratch files created by agents and CI verifications
+.scratch-*.txt
+.scratch-*.md
+.scratch-*.sh
+.scratch-*.json
+.scratch-issues/

@@ -36,7 +36,11 @@ fn derive_subagent_description(prompt: &str) -> String {
 fn build_input_shell_command(command: &str) -> Command {
     #[cfg(windows)]
     {
-        use crate::shell::detect::Shell;
+        // `jcode-shell-integration` re-exports `detect::Shell` and is already a
+        // dependency of this crate; `crate::shell` never existed here, so this
+        // only failed once a Windows target was actually compiled (fork commit
+        // 08c7a31f5, latent until the CI ssh-agent step stopped killing jobs).
+        use jcode_shell_integration::Shell;
         match Shell::detect() {
             Shell::PowerShell => {
                 let mut cmd = Command::new("pwsh.exe");
@@ -308,6 +312,7 @@ pub(super) fn handle_run_subagent(
             name: tool_name.clone(),
         });
         let _ = tx.send(ServerEvent::ToolInput {
+            id: Some(tool_call_id.clone()),
             delta: tool_input.to_string(),
         });
         let _ = tx.send(ServerEvent::ToolExec {
@@ -340,29 +345,30 @@ pub(super) fn handle_run_subagent(
         // Agent mode tool gating: block write/build tools in manager/researcher modes.
         let mode_str = std::env::var("JCODE_AGENT_MODE").unwrap_or_default();
         if let Some(mode) = crate::config::AgentMode::parse(&mode_str)
-            && mode.is_tool_blocked(&tool_name_for_exec) {
-                let msg = format!(
-                    "Tool '{}' is blocked in {} mode. {}",
-                    tool_name_for_exec,
-                    mode.as_str(),
-                    match mode {
-                        crate::config::AgentMode::Manager => {
-                            "Use 'swarm' to delegate implementation to a worker agent."
-                        }
-                        crate::config::AgentMode::Researcher => {
-                            "Researcher mode is read-only. Suggest changes without applying them."
-                        }
-                        _ => "",
+            && mode.is_tool_blocked(&tool_name_for_exec)
+        {
+            let msg = format!(
+                "Tool '{}' is blocked in {} mode. {}",
+                tool_name_for_exec,
+                mode.as_str(),
+                match mode {
+                    crate::config::AgentMode::Manager => {
+                        "Use 'swarm' to delegate implementation to a worker agent."
                     }
-                );
-                let _ = tx.send(ServerEvent::ToolDone {
-                    id: tool_call_id.clone(),
-                    name: tool_name,
-                    output: msg.clone(),
-                    error: Some(msg),
-                });
-                return;
-            }
+                    crate::config::AgentMode::Researcher => {
+                        "Researcher mode is read-only. Suggest changes without applying them."
+                    }
+                    _ => "",
+                }
+            );
+            let _ = tx.send(ServerEvent::ToolDone {
+                id: tool_call_id.clone(),
+                name: tool_name,
+                output: msg.clone(),
+                error: Some(msg),
+            });
+            return;
+        }
 
         let result = match tokio::spawn(async move {
             registry.execute(&tool_name_for_exec, tool_input, ctx).await
@@ -714,6 +720,7 @@ fn clone_split_session(
     let mut child = Session::create(Some(parent_session_id.to_string()), None);
     child.replace_messages(parent.messages.clone());
     child.compaction = parent.compaction.clone();
+    child.system_prompt = parent.system_prompt.clone();
     child.working_dir = parent.working_dir.clone();
     child.model = parent.model.clone();
     child.status = crate::session::SessionStatus::Closed;
@@ -748,6 +755,7 @@ fn create_transfer_child_session(
     let mut child = Session::create(Some(parent_session_id.to_string()), None);
     child.messages.clear();
     child.compaction = compaction;
+    child.system_prompt = parent.system_prompt.clone();
     child.working_dir = parent.working_dir.clone();
     child.model = parent.model.clone();
     child.provider_key = parent.provider_key.clone();

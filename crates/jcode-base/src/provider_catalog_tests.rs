@@ -1,14 +1,80 @@
 use super::*;
 
 #[test]
-fn conifer_static_fallback_contains_the_issue_catalog() {
+fn conifer_static_fallback_preserves_catalog_except_unverified_together_alias() {
     let profile = openai_compatible_profile_by_id("conifer").expect("Conifer profile");
     let models = openai_compatible_profile_static_models(profile);
 
-    assert_eq!(models.len(), 96);
+    assert_eq!(models.len(), 95);
     assert_eq!(models.first().map(String::as_str), Some("claude-fable-5"));
     assert_eq!(models.last().map(String::as_str), Some("gemma-3-27b"));
     assert!(models.iter().any(|model| model == "gpt-5.6-sol"));
+    assert!(models.iter().any(|model| model == "nemotron-3-ultra"));
+    assert!(
+        !models
+            .iter()
+            .any(|model| model == "nemotron-3-ultra-together")
+    );
+    assert_eq!(
+        openai_compatible_profile_context_limit("conifer", "nemotron-3-ultra-together"),
+        None,
+        "an undocumented Together route must not inherit DeepInfra's window"
+    );
+}
+
+#[test]
+fn conifer_context_limits_match_public_catalog_snapshot() {
+    // Exact observations from /v1/catalog, 2026-09-16. Source/hash and refresh
+    // policy are documented in docs/CONIFER_PROVIDER.md (issue #1274).
+    let expected = [
+        ("grok-4.6", 500_000),
+        ("grok-4.5", 500_000),
+        ("grok-4.3", 1_000_000),
+        ("seed-2.0-pro", 256_000),
+        ("seed-2.0-code", 256_000),
+        ("seed-2.0-mini", 256_000),
+        ("step-3.7-flash", 262_144),
+        ("step-3.7-flash-novita", 262_144),
+        ("hy3", 262_144),
+        ("hy3-tencent", 262_144),
+        ("hy3-novita", 262_144),
+        ("ling-3.0-flash", 131_072),
+        ("inkling", 524_288),
+        ("inkling-small", 524_288),
+        ("nemotron-3-ultra", 262_144),
+        ("nemotron-3-super-120b", 262_144),
+        ("nemotron-3.5-lightning", 262_144),
+        ("mistral-large-latest", 256_000),
+        ("mistral-medium-latest", 256_000),
+        ("mistral-small-latest", 256_000),
+        ("command-a-cohere", 256_000),
+        ("llama-4-maverick", 1_048_576),
+        ("llama-4-scout", 327_680),
+        ("gemma-4-31b", 128_000),
+    ];
+    let limits = openai_compatible_profile_static_context_limits(CONIFER_PROFILE);
+    for (model, limit) in expected {
+        assert_eq!(limits.get(model), Some(&limit), "{model}");
+        assert_eq!(
+            openai_compatible_profile_context_limit(" CONIFER ", &model.to_uppercase()),
+            Some(limit),
+            "{model}"
+        );
+        assert_eq!(
+            openai_compatible_profile_context_limit("openrouter", model),
+            jcode_provider_core::models::open_weight_family_context_limit(model),
+            "Conifer metadata must not leak into other profiles: {model}"
+        );
+    }
+    assert_eq!(
+        openai_compatible_profile_context_limit("conifer", "grok-4.6-unknown"),
+        None
+    );
+    assert_eq!(
+        openai_compatible_profile_context_limit("conifer", "kimi-k3"),
+        jcode_provider_core::models::open_weight_family_context_limit("kimi-k3"),
+        "existing shared family fallback must remain intact"
+    );
 }
 
 struct EnvGuard {
@@ -151,7 +217,17 @@ fn matrix_login_provider_aliases_resolve_to_canonical_ids() {
 #[test]
 fn auth_issue_profile_metadata_matches_direct_provider_endpoints() {
     assert_eq!(ZAI_PROFILE.api_base, "https://api.z.ai/api/coding/paas/v4");
-    assert_eq!(ZAI_PROFILE.default_model, Some("glm-4.5"));
+    // The fork deliberately bumped the Z.AI default to glm-5.3 (dbc9fb118,
+    // "provider defaults") without updating this assertion, so it has been
+    // red since before the v0.88.0 merge. The empty-DEPLOY_KEY ssh-agent
+    // step is now guarded by `if: env.DEPLOY_KEY_PRESENT == 'true'`
+    // (commit 3c96175f6, .github/workflows/ci.yml:38/172/441/703), so the
+    // Build & Test / Quality Guardrails / Windows Cross-Target Check jobs
+    // no longer die before compiling on this PR branch — they reach the
+    // cargo invocation and would surface this assertion failure if it
+    // were still red on the PR's current head. It is, so the failure
+    // path is the assertion itself, not the ssh baseline.
+    assert_eq!(ZAI_PROFILE.default_model, Some("glm-5.3"));
     assert_eq!(DEEPSEEK_PROFILE.api_base, "https://api.deepseek.com");
     assert_eq!(DEEPSEEK_PROFILE.default_model, Some("deepseek-v4-flash"));
     assert_eq!(DEEPSEEK_PROFILE.setup_url, "https://api-docs.deepseek.com/");
@@ -1178,7 +1254,7 @@ fn every_static_profile_model_has_a_known_context_limit() {
     assert!(
         missing.is_empty(),
         "static profile models without a known context limit (would fall back to the \
-         generic default); add them to open_weight_family_context_limit: {missing:?}"
+         generic default); add verified provider-specific or shared family metadata: {missing:?}"
     );
 }
 

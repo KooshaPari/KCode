@@ -1,3 +1,4 @@
+use super::macos_terminal::paused_jcode_shell_command;
 use super::*;
 
 #[test]

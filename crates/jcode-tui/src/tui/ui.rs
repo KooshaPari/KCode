@@ -145,6 +145,7 @@ pub(crate) use messages::{
     render_swarm_message, render_system_message, render_tool_message, render_usage_message,
 };
 pub(crate) use output_style::adapt_buffer_for_emoji_preference;
+use pinned_ui::draw_side_panel_markdown;
 pub use pinned_ui::{
     SidePanelDebugStats, SidePanelMermaidProbe, SidePanelMermaidProbeRect,
     debug_probe_side_panel_mermaid,
@@ -152,9 +153,6 @@ pub use pinned_ui::{
 pub(crate) use pinned_ui::{
     clear_side_panel_debug_snapshot, clear_side_panel_render_caches, prewarm_focused_side_panel,
     reset_side_panel_debug_stats, side_panel_debug_json, side_panel_debug_stats,
-};
-use pinned_ui::{
-    collect_pinned_diffs_cached, draw_pinned_content_cached, draw_side_panel_markdown,
 };
 #[cfg(test)]
 use transitions::extract_line_text;
@@ -2667,12 +2665,11 @@ pub fn draw(frame: &mut Frame, app: &dyn TuiState) {
         Ok(()) => {}
         Err(payload) => render_recovered_panic_frame(frame, &payload),
     }
-    // Adapt the finished frame for light backgrounds, then apply the user's
-    // configured colors, which must not be luminance-flipped. Working at the
-    // buffer level covers every widget and overlay without touching individual
-    // color call sites. See `palette::adapt_buffer_for_palette` for the ordering.
-    jcode_tui_style::adapt_buffer_for_theme(frame.buffer_mut());
-    jcode_tui_style::palette::adapt_buffer_for_palette(frame.buffer_mut());
+    // Adapt the finished frame at buffer level so every widget and overlay
+    // follows the same policy. User-configured colors remain exact.
+    // Attribute explicit palette overrides before light-theme contrast repair
+    // can make distinct muted source grays converge to the same rendered ink.
+    jcode_tui_style::adapt_buffer_for_display(frame.buffer_mut());
     adapt_buffer_for_emoji_preference(frame.buffer_mut());
     // Cache eviction/clearing can outlive the last visible image. Carry Kitty
     // deletion commands on any completed frame so terminal-side pixel storage
@@ -2821,24 +2818,11 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let pane_position = app.diagram_pane_position();
     let has_side_panel_content = !swarm_page_active && app.side_panel().focused_page().is_some();
     let diff_mode = app.diff_mode();
-    let collect_diffs = diff_mode.is_pinned();
-    // Images now render inline in the transcript, so the side panel only handles
-    // pinned file diffs. `pin_images` no longer feeds the side-panel surface.
-    let has_pinned_content = if collect_diffs && !swarm_page_active {
-        collect_pinned_diffs_cached(app.display_messages(), app.display_messages_version())
-    } else {
-        false
-    };
     let has_file_diff_edits =
         !swarm_page_active && diff_mode.is_file() && app.has_display_edit_tool_messages();
-    let has_right_side_pane_content =
-        has_side_panel_content || has_pinned_content || has_file_diff_edits;
-    // The side panel is itself a single right-hand auxiliary surface and can render
-    // visual content such as Mermaid diagrams inline. Pinned image/file-diff content
-    // also uses that same right-hand surface. Do not also open the global pinned
-    // diagram pane while any right-hand side pane is visible, otherwise combinations
-    // like pinned images + Mermaid can produce chat + side pane + diagram triple-split
-    // layouts.
+    let has_right_side_pane_content = has_side_panel_content || has_file_diff_edits;
+    // Regular side-panel pages and full-file diffs share the right-hand surface.
+    // Suppress a separate diagram pane to avoid a triple-split layout.
     let suppress_side_diagram = has_right_side_pane_content;
     let pinned_diagram = if !swarm_page_active
         && diagram_mode == crate::config::DiagramDisplayMode::Pinned
@@ -2947,20 +2931,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let (chat_area, diff_pane_area) = if needs_side_pane {
         const MIN_DIFF_WIDTH: u16 = 30;
         const MIN_CHAT_WIDTH: u16 = 20;
-        // Pinned images live in a tall narrow column, so a wide image fits to
-        // the pane width and ends up small with empty space below it. When the
-        // pane is showing image content (and the user has not manually resized
-        // it), widen the default split so images use more of the available
-        // horizontal space. Diffs/markdown keep the standard ratio.
-        let image_dominant_pane =
-            has_pinned_content && !has_file_diff_edits && !has_side_panel_content;
-        const ADAPTIVE_IMAGE_RATIO: u32 = 55;
-        let base_ratio = app.diagram_pane_ratio().clamp(25, 100) as u32;
-        let effective_ratio = if image_dominant_pane && !app.diagram_pane_ratio_user_adjusted() {
-            base_ratio.max(ADAPTIVE_IMAGE_RATIO)
-        } else {
-            base_ratio
-        };
+        let effective_ratio = app.diagram_pane_ratio().clamp(25, 100) as u32;
         let max_diff = chat_area.width.saturating_sub(MIN_CHAT_WIDTH);
         if max_diff >= MIN_DIFF_WIDTH {
             let diff_width = (((chat_area.width as u32 * effective_ratio) / 100) as u16)
@@ -3029,10 +3000,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             );
             if app.swarm_filter_active() {
                 let filter_line = Line::from(vec![
-                    Span::styled(
-                        "/",
-                        Style::default().fg(Color::Rgb(100, 180, 255)),
-                    ),
+                    Span::styled("/", Style::default().fg(Color::Rgb(100, 180, 255))),
                     Span::styled(
                         app.swarm_filter_query().to_string(),
                         Style::default().fg(Color::Rgb(100, 180, 255)),
@@ -3069,10 +3037,9 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     // near-zero rows.  Clamp to at most available_height / 3 (min 1) so the
     // messages area always keeps at least 2/3 of the pane.
     let max_input_lines = (chat_area.height / 3).max(1);
-    let base_input_height =
-        input_ui::wrapped_input_line_count(app, chat_area.width, next_prompt)
-            .min(10)
-            .min(max_input_lines as usize) as u16;
+    let base_input_height = input_ui::wrapped_input_line_count(app, chat_area.width, next_prompt)
+        .min(10)
+        .min(max_input_lines as usize) as u16;
     // Add 1 line for command suggestions, shell mode hints, or the Ctrl+Enter hint.
     let hint_line_height = input_ui::input_hint_line_height(app);
     let inline_block_height: u16 = inline_ui_height(app);
@@ -3137,7 +3104,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
 
     let show_donut = !onboarding_welcome && super::idle_donut_active(app);
     let donut_height: u16 = idle_donut_reserved_height(show_donut, input_height, chat_area.height);
-    let notification_height: u16 = if app.has_notification() { 1 } else { 0 };
+    let notification_height =
+        input_ui::notification_height(app, chat_area.width).min(chat_area.height.saturating_sub(4));
     // Elastic overscroll status line revealed when the user scrolls past the
     // bottom of the transcript. Rendered directly below the input line.
     let overscroll_height: u16 = if app.chat_overscroll_active() { 1 } else { 0 };
@@ -3381,7 +3349,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         chat_scrollbar_visible,
         use_packed_layout: use_packed,
         has_side_panel_content,
-        has_pinned_content,
         has_file_diff_edits,
     });
 
@@ -3413,10 +3380,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         );
         if app.swarm_filter_active() {
             let filter_line = Line::from(vec![
-                Span::styled(
-                    "/",
-                    Style::default().fg(Color::Rgb(100, 180, 255)),
-                ),
+                Span::styled("/", Style::default().fg(Color::Rgb(100, 180, 255))),
                 Span::styled(
                     app.swarm_filter_query().to_string(),
                     Style::default().fg(Color::Rgb(100, 180, 255)),
@@ -3508,18 +3472,6 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 app,
                 prepared.as_ref(),
                 app.diff_pane_scroll(),
-                app.diff_pane_focus(),
-            );
-        } else if has_pinned_content {
-            if let Some(ref mut capture) = debug_capture {
-                capture.render_order.push("draw_pinned_content".to_string());
-            }
-            draw_pinned_content_cached(
-                frame,
-                diff_area,
-                app,
-                app.diff_pane_scroll(),
-                app.diff_line_wrap(),
                 app.diff_pane_focus(),
             );
         }

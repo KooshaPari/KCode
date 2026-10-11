@@ -37,3 +37,6 @@ serde = { version = "1", features = ["derive"] }
 # The migrated gemini tests use jcode-base's test-env sandbox (lock_test_env).
 jcode-base = { path = "../jcode-base", default-features = false, features = ["test-support"] }
 tempfile = "3"
+
+[lints.clippy]
+double_must_use = "allow"

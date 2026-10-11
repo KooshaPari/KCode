@@ -17,15 +17,31 @@ fn main() {
     let repo_root = repo_root();
 
     let pkg_version = root_package_version(&repo_root).unwrap_or_else(|| "0.0.0".to_string());
+    // The fork versions its package as `BASE-k<major>.<minor>.<patch>` (e.g.
+    // `0.88.0-k1.2.0`). `parse_semver` must ignore that prerelease channel,
+    // otherwise it returned None and every identity below silently collapsed to
+    // `0.0.0` -- which is exactly what `--version` reported to the installer
+    // verifier. Upstream's plain `0.88.0` is unaffected either way.
+    let pkg_suffix = prerelease_suffix(&pkg_version);
     let base_version = parse_semver(&pkg_version).unwrap_or((0, 0, 0));
     let build_semver = resolve_build_semver(base_version).unwrap_or_else(|err| {
         eprintln!("cargo:warning=failed to resolve auto build semver: {err}");
         pkg_version.clone()
     });
     let (major, minor, patch) = parse_semver(&build_semver).unwrap_or(base_version);
-    let base_semver = format!("{}.{}.{}", base_version.0, base_version.1, base_version.2);
+    // Both base and update semvers must carry the fork's prerelease channel
+    // (`0.88.0-k1.2.0`, not `0.88.0`). Update comparisons and the installer
+    // verifier rely on the channel to distinguish a fork build from a plain
+    // upstream version; dropping it (Kilo-review CRITICAL #4) let a channel-less
+    // binary pass identity checks. `explicit_build_semver_override` still decides
+    // whether a release override's numeric core wins, but the channel suffix from
+    // the root package version is always re-applied.
+    let base_semver = format!(
+        "{}.{}.{}{}",
+        base_version.0, base_version.1, base_version.2, pkg_suffix
+    );
     let update_semver = if explicit_build_semver_override().is_some() {
-        build_semver.clone()
+        format!("{}.{}.{}{}", major, minor, patch, pkg_suffix)
     } else {
         base_semver.clone()
     };
@@ -116,11 +132,20 @@ fn main() {
     //   Dirty:   v0.2.17-dev (abc1234, dirty)
     let is_release = std::env::var("JCODE_RELEASE_BUILD").is_ok();
     let version = if is_release {
-        format!("v{}.{}.{} ({})", major, minor, patch, git_hash)
+        format!(
+            "v{}.{}.{}{} ({})",
+            major, minor, patch, pkg_suffix, git_hash
+        )
     } else if dirty {
-        format!("v{}.{}.{}-dev ({}, dirty)", major, minor, patch, git_hash)
+        format!(
+            "v{}.{}.{}{}-dev ({}, dirty)",
+            major, minor, patch, pkg_suffix, git_hash
+        )
     } else {
-        format!("v{}.{}.{}-dev ({})", major, minor, patch, git_hash)
+        format!(
+            "v{}.{}.{}{}-dev ({})",
+            major, minor, patch, pkg_suffix, git_hash
+        )
     };
 
     // Set environment variables for compilation
@@ -215,11 +240,21 @@ fn root_package_version(repo_root: &Path) -> Option<String> {
 
 fn parse_semver(value: &str) -> Option<(u32, u32, u32)> {
     let trimmed = value.trim().trim_start_matches('v');
-    let mut parts = trimmed.split('.');
+    // Compare on the numeric core only: `0.88.0-k1.2.0` -> `0.88.0`.
+    let core = trimmed.split(['-', '+']).next().unwrap_or("");
+    let mut parts = core.split('.');
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;
     let patch = parts.next()?.parse().ok()?;
     Some((major, minor, patch))
+}
+
+/// Prerelease channel of a package version, including its leading `-`
+/// (`0.88.0-k1.2.0` -> `-k1.2.0`, `0.88.0` -> `""`).
+fn prerelease_suffix(value: &str) -> String {
+    let trimmed = value.trim().trim_start_matches('v');
+    let core_len = trimmed.find('-').unwrap_or(trimmed.len());
+    trimmed[core_len..].to_string()
 }
 
 fn explicit_build_semver_override() -> Option<String> {
@@ -316,4 +351,37 @@ fn metadata_value(key: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_semver, prerelease_suffix};
+
+    #[test]
+    fn parse_semver_returns_numeric_core_only() {
+        // The fork package version carries a `-k<major>.<minor>.<patch>` channel;
+        // the numeric core must be extracted and the channel ignored.
+        assert_eq!(parse_semver("0.88.0-k1.2.0"), Some((0, 88, 0)));
+        assert_eq!(parse_semver("v0.88.0"), Some((0, 88, 0)));
+        assert_eq!(parse_semver("1.2.3+build.4"), Some((1, 2, 3)));
+        assert_eq!(parse_semver("not-semver"), None);
+    }
+
+    #[test]
+    fn prerelease_suffix_includes_leading_dash() {
+        assert_eq!(prerelease_suffix("0.88.0-k1.2.0"), "-k1.2.0");
+        assert_eq!(prerelease_suffix("v0.88.0-k1.2.0"), "-k1.2.0");
+        // Upstream versions have no channel.
+        assert_eq!(prerelease_suffix("0.88.0"), "");
+    }
+
+    #[test]
+    fn base_semver_round_trips_channel() {
+        let (major, minor, patch) = parse_semver("0.88.0-k1.2.0").unwrap();
+        let suffix = prerelease_suffix("0.88.0-k1.2.0");
+        assert_eq!(
+            format!("{}.{}.{}{}", major, minor, patch, suffix),
+            "0.88.0-k1.2.0"
+        );
+    }
 }

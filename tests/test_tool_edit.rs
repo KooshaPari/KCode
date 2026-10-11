@@ -1,7 +1,7 @@
 //! Tests for the `edit` tool (text replacement, diff output, schema validation).
 
-use jcode::tool::{Tool, ToolContext, ToolExecutionMode};
 use jcode::tool::edit::EditTool;
+use jcode::tool::{Tool, ToolContext, ToolExecutionMode};
 use serde_json::json;
 
 fn make_ctx(dir: &std::path::Path) -> ToolContext {
@@ -24,12 +24,35 @@ fn edit_tool_name_and_description() {
 }
 
 #[test]
-fn edit_schema_requires_file_path_old_string_new_string() {
+fn edit_schema_requires_file_path_and_supports_edits_and_shorthand() {
     let schema = EditTool::new().parameters_schema();
     let required = schema["required"].as_array().expect("required array");
+    // Upstream 42285059b merged `multiedit` into `edit`, making the `edits` array the
+    // primary form. Only `file_path` is required at the top level; `old_string` and
+    // `new_string` are now optional single-edit shorthand.
     assert!(required.iter().any(|v| v.as_str() == Some("file_path")));
-    assert!(required.iter().any(|v| v.as_str() == Some("old_string")));
-    assert!(required.iter().any(|v| v.as_str() == Some("new_string")));
+    assert!(!required.iter().any(|v| v.as_str() == Some("old_string")));
+
+    let properties = &schema["properties"];
+    let edits = &properties["edits"];
+    assert_eq!(edits["type"], "array");
+    let edits_required = edits["items"]["required"]
+        .as_array()
+        .expect("edits required");
+    assert!(
+        edits_required
+            .iter()
+            .any(|v| v.as_str() == Some("old_string"))
+    );
+    assert!(
+        edits_required
+            .iter()
+            .any(|v| v.as_str() == Some("new_string"))
+    );
+
+    for shorthand in ["old_string", "new_string", "replace_all"] {
+        assert!(properties[shorthand].is_object(), "missing {shorthand}");
+    }
 }
 
 #[tokio::test]

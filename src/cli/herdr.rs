@@ -49,14 +49,30 @@ pub(crate) fn run_herdr_status() -> Result<()> {
 
     if !env.is_valid() {
         println!();
-        println!("Not running inside a HERDR pane. Launch jcode from a HERDR session to enable integration.");
+        println!(
+            "Not running inside a HERDR pane. Launch jcode from a HERDR session to enable integration."
+        );
     }
 
     Ok(())
 }
 
-/// Write screen detection manifests for jcode and ForgeCode.
+/// Write screen detection manifests for jcode and ForgeCode, plus the
+/// HERDR `herdr-plugin.toml` plugin manifests that register these
+/// agents with the HERDR loader.
+///
+/// On Windows this is a no-op file write (we still emit the plugin
+/// manifest so users on mixed OS setups can see what *would* be
+/// installed), but we print a one-line hint that Herdr is Unix-only
+/// and direct the user to WSL2.
 pub(crate) fn run_herdr_install() -> Result<()> {
+    if std::env::consts::OS == "windows" {
+        println!(
+            "Note: HERDR is Unix-only. On Windows, run this command from inside WSL2 \
+             (Ubuntu) after installing the Herdr WSL build there."
+        );
+    }
+
     let dir = herdr_agent_detection_dir()?;
     std::fs::create_dir_all(&dir)?;
 
@@ -74,15 +90,57 @@ pub(crate) fn run_herdr_install() -> Result<()> {
 
     println!();
     println!("Screen manifests written to {}", dir.display());
-    println!("HERDR will use these rules to detect jcode and ForgeCode agent state from terminal output.");
+    println!(
+        "HERDR will use these rules to detect jcode and ForgeCode agent state from terminal output."
+    );
+
+    // Also write the local HERDR plugin manifests under
+    // ~/.config/herdr/plugins/local/. These register jcode (and
+    // ForgeCode) as a HERDR plugin that points back at the in-process
+    // HerdrReporter this binary already provides — avoiding the need
+    // to clone leonardoacosta/herdr-jcode or
+    // capt-marbles/jcode-integration.
+    let plugins_dir = herdr_local_plugins_dir()?;
+    std::fs::create_dir_all(&plugins_dir)?;
+
+    let jcode_plugin_path = plugins_dir.join("jcode.toml");
+    let jcode_plugin_manifest = jcode_herdr::plugin::jcode_plugin();
+    jcode_herdr::plugin::write_plugin(&jcode_plugin_manifest, &jcode_plugin_path)?;
+    println!("Installed {}", jcode_plugin_path.display());
+
+    let forgecode_plugin_path = plugins_dir.join("forgecode.toml");
+    let forgecode_plugin_manifest = jcode_herdr::plugin::forgecode_plugin();
+    jcode_herdr::plugin::write_plugin(&forgecode_plugin_manifest, &forgecode_plugin_path)?;
+    println!("Installed {}", forgecode_plugin_path.display());
+
+    println!();
+    println!(
+        "HERDR plugin manifests written to {}",
+        plugins_dir.display()
+    );
+    println!(
+        "These register jcode and ForgeCode as local HERDR plugins — no separate plugin clone required."
+    );
 
     Ok(())
 }
 
+/// Return the HERDR local plugins directory
+/// (`~/.config/herdr/plugins/local/`).
+fn herdr_local_plugins_dir() -> Result<PathBuf> {
+    let home =
+        std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
+    Ok(PathBuf::from(home)
+        .join(".config")
+        .join("herdr")
+        .join("plugins")
+        .join("local"))
+}
+
 /// Return the HERDR agent detection directory (~/.config/herdr/agent-detection/).
 fn herdr_agent_detection_dir() -> Result<PathBuf> {
-    let home = std::env::var("HOME")
-        .map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
+    let home =
+        std::env::var("HOME").map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
     Ok(PathBuf::from(home)
         .join(".config")
         .join("herdr")

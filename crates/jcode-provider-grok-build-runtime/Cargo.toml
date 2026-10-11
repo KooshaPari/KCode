@@ -28,3 +28,6 @@ tokio-util = { version = "0.7", features = ["compat"] }
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints.clippy]
+double_must_use = "allow"

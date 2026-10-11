@@ -520,10 +520,29 @@ fn copy_to_clipboard_osc52(text: &str) -> bool {
     out.write_all(seq.as_bytes()).is_ok() && out.flush().is_ok()
 }
 
-pub(super) fn effort_display_label(effort: &str) -> &str {
+pub(crate) fn effort_display_label(effort: &str) -> &str {
+    effort_display_label_with_root(effort, crate::prompt::swarm_root_reasoning_effort(effort))
+}
+
+// Keep finite, validated effort labels static so autocomplete can share them
+// without allocations or leaking dynamically formatted strings.
+fn effort_display_label_with_root<'a>(effort: &'a str, root: Option<&str>) -> &'a str {
+    macro_rules! swarm_label {
+        ($mode:literal, $detail:literal) => {
+            match root.unwrap_or("max") {
+                "none" => concat!($mode, " (None + ", $detail, ") [Beta]"),
+                "minimal" => concat!($mode, " (Minimal + ", $detail, ") [Beta]"),
+                "low" => concat!($mode, " (Low + ", $detail, ") [Beta]"),
+                "medium" => concat!($mode, " (Medium + ", $detail, ") [Beta]"),
+                "high" => concat!($mode, " (High + ", $detail, ") [Beta]"),
+                "xhigh" => concat!($mode, " (xHigh + ", $detail, ") [Beta]"),
+                _ => concat!($mode, " (Max + ", $detail, ") [Beta]"),
+            }
+        };
+    }
     match effort {
-        "swarm" => "Swarm (light fan-out) [Beta]",
-        "swarm-deep" => "Swarm Deep (Max + task graph) [Beta]",
+        "swarm" => swarm_label!("Swarm", "light fan-out"),
+        "swarm-deep" => swarm_label!("Swarm Deep", "task graph"),
         "max" => "Max",
         "xhigh" => "xHigh",
         "high" => "High",
@@ -913,13 +932,14 @@ pub(super) fn clipboard_image() -> Option<(String, String)> {
         {
             let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if result == "ok"
-                && let Ok(data) = std::fs::read(&temp_path) {
-                    let _ = std::fs::remove_file(&temp_path);
-                    if !data.is_empty() {
-                        let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
-                        return Some(("image/png".to_string(), b64));
-                    }
+                && let Ok(data) = std::fs::read(&temp_path)
+            {
+                let _ = std::fs::remove_file(&temp_path);
+                if !data.is_empty() {
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+                    return Some(("image/png".to_string(), b64));
                 }
+            }
         }
     }
 

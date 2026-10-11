@@ -1,6 +1,6 @@
 # Dependency Security Triage
 
-Last reviewed: 2026-05-14
+Last reviewed: 2026-10-08
 
 This file tracks the current `cargo audit` findings for jcode and the intended remediation path.
 It is not an allowlist. It is a triage record so advisories are visible and actionable.
@@ -19,6 +19,8 @@ It is not an allowlist. It is a triage record so advisories are visible and acti
 | `RUSTSEC-2026-0104` | `rustls-webpki` | `rustls` dependency stack | TLS certificate revocation list parsing | Reachable panic in CRL parsing. Transitive via TLS libraries. | Upgrade rustls/webpki stack when compatible releases are available. |
 | `RUSTSEC-2026-0049` | `rustls-webpki` | `rustls` dependency stack (`aws-smithy` rustls 0.21, `imap`/`rustls-connector` rustls 0.22) | TLS certificate revocation list handling | CRLs not considered authoritative by Distribution Point due to faulty matching logic. Transitive via the older rustls stacks; fix needs rustls-webpki >=0.103.10, which requires major bumps of the `aws-sdk`/`imap` stacks. | Upgrade rustls/webpki stack when compatible releases are available. |
 | `RUSTSEC-2026-0187` | `lopdf` | `jcode-pdf -> pdf-extract 0.8.2 -> lopdf 0.34` | PDF text extraction (`/pdf`, image/PDF reads) | Stack overflow parsing deeply nested PDF objects. Only reached when extracting text from a (potentially malicious) PDF the user opens; not in the auth/provider/network path. `pdf-extract 0.8.2` pins `lopdf 0.34`, so it cannot be bumped to the fixed `>=0.42` without an upstream `pdf-extract` release. | Upgrade once `pdf-extract` ships a release depending on `lopdf >=0.42`; remove the ignore then. |
+| `RUSTSEC-2026-0258` | `h2` | `reqwest` / `aws-smithy-http-client` HTTP/2 client stack | HTTP/2 client connections (telemetry, provider HTTP, aws-sdk) | Unbounded empty DATA frames (resource exhaustion). Advisory published 2026-08-17, after the pinned `h2 0.4.13`. Bumped on 2026-10-08 to `h2 0.4.20` (lockfile version below); the fixed `>=0.4.16` patch line is now in the lockfile. | Resolved 2026-10-08: bumped to `h2 0.4.20` (patch-level within 0.4.x); `--ignore RUSTSEC-2026-0258` removed from `scripts/security_preflight.sh`. |
+| `RUSTSEC-2026-0285` | `rustls` | rustls 0.23 stack (`tungstenite`/`tokio-tungstenite`, `hyper-rustls`) | TLS 1.3 handshakes in websocket + TLS consumers | TLS 1.3 handshake messages incorrectly accepted across encryption level boundaries (severity 5.3). Published 2026-09-14, after the pinned `rustls 0.23.37`. Bumped on 2026-10-08 to `rustls 0.23.45` (lockfile version below); the fixed `>=0.23.45` patch line is now in the lockfile. | Resolved 2026-10-08: bumped to `rustls 0.23.45` (patch-level within 0.23.x); `--ignore RUSTSEC-2026-0285` removed from `scripts/security_preflight.sh`. |
 | `RUSTSEC-2023-0086` | `lexical-core` | `imap -> imap-proto -> lexical-core` | Gmail/IMAP support path | Old unsound transitive dependency in the mail stack. Higher priority than the UI-only findings because it touches network-parsed data. | Investigate upgrading or replacing `imap` / `imap-proto`. If no maintained path exists, isolate or remove the IMAP dependency. |
 
 ## Priority order
@@ -42,7 +44,8 @@ It is not an allowlist. It is a triage record so advisories are visible and acti
   so an ignore would not have been clearly safe. See #657.
 - `RUSTSEC-2024-0320` (`yaml-rust`) was removed from the dependency graph on 2026-03-05 by trimming `syntect` features to built-in syntax/theme dumps instead of YAML loading.
 - `RUSTSEC-2026-0194` / `RUSTSEC-2026-0195` (`quick-xml` 0.39.2): reached only through `wayland-scanner`, a build-time proc-macro in the desktop crate's winit stack. It parses trusted, vendored Wayland protocol XML during compilation and never touches untrusted input at runtime. Remediation is upstream: `wayland-scanner` needs to move to `quick-xml >= 0.41`. Triaged and ignored in `scripts/security_preflight.sh` on 2026-07-04.
-- `scripts/security_preflight.sh` ignores the vulnerability advisories that are explicitly triaged above (`lettre` and `rustls-webpki`) so CI can remain actionable. New vulnerabilities still fail CI by default.
+- `RUSTSEC-2026-0258` (`h2`) and `RUSTSEC-2026-0285` (`rustls`): both advisories were published after the versions pinned by upstream v0.88.0 (2026-08-17 and 2026-09-14 respectively, versus the release commit `ee4cd3db3`), so both were upstream-inherited rather than merge-introduced. Both were resolved on 2026-10-08 by a patch-level `cargo update -p h2 -p rustls`: `h2 0.4.13 -> 0.4.20` (>=0.4.16) and `rustls 0.23.37 -> 0.23.45` (>=0.23.45), with `rustls-webpki 0.103.13 -> 0.103.15` pulled along as a transitive companion. The two `--ignore` entries were removed from `scripts/security_preflight.sh` on 2026-10-08. Triaged and ignored on 2026-10-04.
+- `scripts/security_preflight.sh` ignores the vulnerability advisories that are explicitly triaged above (currently `lettre` and the `rustls-webpki` stack) so CI can remain actionable. New vulnerabilities still fail CI by default.
 - Before changing dependency versions, run:
   - `cargo check`
   - `cargo test -j 1`

@@ -120,7 +120,7 @@ pub enum ProviderChoice {
     #[value(alias = "belvedir.ai", alias = "belvedir-ai")]
     Belvedir,
     #[value(alias = "orca-router")]
-    OrcaRouter,
+    Orcarouter,
     #[value(
         alias = "bailian",
         alias = "aliyun-bailian",
@@ -195,7 +195,7 @@ impl ProviderChoice {
             Self::Chutes => "chutes",
             Self::Cerebras => "cerebras",
             Self::Belvedir => "belvedir",
-            Self::OrcaRouter => "orcarouter",
+            Self::Orcarouter => "orcarouter",
             Self::AlibabaCodingPlan => "alibaba-coding-plan",
             Self::OpenaiCompatible => "openai-compatible",
             Self::Cursor => "cursor",
@@ -393,7 +393,7 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
         crate::provider_catalog::BELVEDIR_LOGIN_PROVIDER,
     ),
     (
-        ProviderChoice::OrcaRouter,
+        ProviderChoice::Orcarouter,
         crate::provider_catalog::ORCAROUTER_LOGIN_PROVIDER,
     ),
     (
@@ -1416,21 +1416,30 @@ pub async fn init_provider(
     choice: &ProviderChoice,
     model: Option<&str>,
 ) -> Result<Arc<dyn provider::Provider>> {
-    init_provider_with_options(choice, model, true, true).await
+    init_provider_with_options(choice, model, true, true, false).await
+}
+
+/// A daemon must expose account and sign-in APIs before credentials exist.
+/// Only auto-detection defers authentication; explicit provider errors remain fatal.
+pub async fn init_provider_for_serve(
+    choice: &ProviderChoice,
+    model: Option<&str>,
+) -> Result<Arc<dyn provider::Provider>> {
+    init_provider_with_options(choice, model, true, false, true).await
 }
 
 pub async fn init_provider_quiet(
     choice: &ProviderChoice,
     model: Option<&str>,
 ) -> Result<Arc<dyn provider::Provider>> {
-    init_provider_with_options(choice, model, false, true).await
+    init_provider_with_options(choice, model, false, true, false).await
 }
 
 pub async fn init_provider_for_validation(
     choice: &ProviderChoice,
     model: Option<&str>,
 ) -> Result<Arc<dyn provider::Provider>> {
-    init_provider_with_options(choice, model, false, false).await
+    init_provider_with_options(choice, model, false, false, false).await
 }
 
 #[allow(deprecated)]
@@ -1439,6 +1448,7 @@ async fn init_provider_with_options(
     model: Option<&str>,
     show_init_messages: bool,
     allow_login_bootstrap: bool,
+    allow_deferred_auth: bool,
 ) -> Result<Arc<dyn provider::Provider>> {
     // Provider construction resolves concrete runtimes through the base
     // crate's external-runtime registry (composition-root pattern). The
@@ -1615,7 +1625,7 @@ async fn init_provider_with_options(
         | ProviderChoice::Chutes
         | ProviderChoice::Cerebras
         | ProviderChoice::Belvedir
-        | ProviderChoice::OrcaRouter
+        | ProviderChoice::Orcarouter
         | ProviderChoice::AlibabaCodingPlan
         | ProviderChoice::GeminiApi
         | ProviderChoice::OpenaiCompatible => {
@@ -1642,9 +1652,10 @@ async fn init_provider_with_options(
                         &resolved.api_key_env,
                     )?;
                 }
-                runtime_model_hint = resolved.default_model.clone().or_else(|| {
-                    crate::config::config().provider.default_model.clone()
-                });
+                runtime_model_hint = resolved
+                    .default_model
+                    .clone()
+                    .or_else(|| crate::config::config().provider.default_model.clone());
                 resolved.display_name
             };
             init_notice(&format!(
@@ -1689,19 +1700,13 @@ async fn init_provider_with_options(
         }
         ProviderChoice::ForgeCode => {
             disable_subscription_runtime_mode();
-            init_notice(
-                "Using ForgeCode as the initial provider (use /model to switch)",
-            );
+            init_notice("Using ForgeCode as the initial provider (use /model to switch)");
             clear_initial_model_provider();
             crate::env::set_var("JCODE_ACTIVE_PROVIDER", "forgecode");
             crate::provider::external::instantiate_external_provider(
                 crate::provider::external::FORGECODE_RUNTIME,
             )
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "ForgeCode runtime is not registered"
-                )
-            })?
+            .ok_or_else(|| anyhow::anyhow!("ForgeCode runtime is not registered"))?
         }
         ProviderChoice::Auto => {
             disable_subscription_runtime_mode_preserving_active_provider_profile();
@@ -1841,18 +1846,15 @@ async fn init_provider_with_options(
                 Arc::new(multi)
             } else {
                 let non_interactive = std::env::var("JCODE_NON_INTERACTIVE").is_ok();
-                // Deferred-auth bootstrap: the interactive TUI server is spawned
-                // headless (JCODE_NON_INTERACTIVE) but the user logs in *inside*
-                // the TUI on a fresh install. Rather than bail, boot an empty
-                // MultiProvider with no configured credentials yet. The TUI's
-                // `/login` flow then activates a provider via the normal
-                // auth-changed path (MultiProvider::on_auth_changed hot-inits the
-                // newly logged-in provider). Only the actual TUI server opts in
-                // via JCODE_DEFERRED_AUTH_BOOTSTRAP, so `jcode run` and other
-                // genuinely headless callers still fail loudly.
-                if std::env::var_os("JCODE_DEFERRED_AUTH_BOOTSTRAP").is_some() {
+                // Both Desktop and TUI clients authenticate through the running
+                // daemon. Keep request-time auth checks, but let the control plane
+                // start with an empty provider. Other CLI entry points retain their
+                // guard unless the interactive TUI explicitly opts in.
+                if allow_deferred_auth
+                    || std::env::var_os("JCODE_DEFERRED_AUTH_BOOTSTRAP").is_some()
+                {
                     crate::logging::info(
-                        "No credentials configured; booting deferred-auth MultiProvider for in-TUI onboarding login",
+                        "No credentials configured; booting deferred-auth MultiProvider for client onboarding",
                     );
                     let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
                     crate::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
@@ -1894,13 +1896,14 @@ async fn init_provider_with_options(
             .or_else(|| crate::config::config().provider.default_model.clone());
         if let Some(default_model) = effective_default
             && provider.set_model(&default_model).is_ok()
-            && let Some(profile) = profile_for_choice(choice) {
-                let resolved = resolve_openai_compatible_profile(profile);
-                init_notice(&format!(
-                    "Using default model for {}: {}",
-                    resolved.display_name, default_model
-                ));
-            }
+            && let Some(profile) = profile_for_choice(choice)
+        {
+            let resolved = resolve_openai_compatible_profile(profile);
+            init_notice(&format!(
+                "Using default model for {}: {}",
+                resolved.display_name, default_model
+            ));
+        }
     }
 
     if let Some(model_name) = model {

@@ -150,7 +150,9 @@ pub mod elicit_channel {
     }
 
     /// Try to send without blocking (returns Err if channel closed or not initialized).
-    pub fn try_send(msg: ElicitMessage) -> Result<(), tokio::sync::mpsc::error::SendError<Box<ElicitMessage>>> {
+    pub fn try_send(
+        msg: ElicitMessage,
+    ) -> Result<(), tokio::sync::mpsc::error::SendError<Box<ElicitMessage>>> {
         let Some(tx) = ELICIT_TX.get() else {
             return Err(tokio::sync::mpsc::error::SendError(Box::new(msg)));
         };
@@ -180,7 +182,16 @@ impl ToolContext {
         Self {
             session_id: self.session_id.clone(),
             message_id: self.message_id.clone(),
-            tool_call_id,
+            // Child labels such as `batch-1-compile_remote` repeat across
+            // batches. Preserve the parent invocation identity so idempotent
+            // services distinguish new jobs while retries keep the same key.
+            // Length-prefix the parent to make the composition unambiguous.
+            tool_call_id: format!(
+                "{}:{}:{}",
+                self.tool_call_id.len(),
+                self.tool_call_id,
+                tool_call_id
+            ),
             working_dir: self.working_dir.clone(),
             stdin_request_tx: self.stdin_request_tx.clone(),
             graceful_shutdown_signal: self.graceful_shutdown_signal.clone(),
@@ -205,6 +216,11 @@ pub trait Tool: Send + Sync {
     /// Tool name (must match what's sent to the API).
     fn name(&self) -> &str;
 
+    /// Original MCP identity, independent of the provider-facing registry alias.
+    fn mcp_identity(&self) -> Option<(&str, &str)> {
+        None
+    }
+
     /// Human-readable description.
     fn description(&self) -> &str;
 
@@ -227,6 +243,36 @@ pub trait Tool: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subcall_ids_are_parent_scoped_and_retry_stable() {
+        let mut context = ToolContext {
+            session_id: "same-session".into(),
+            message_id: "same-message".into(),
+            tool_call_id: "first-batch".into(),
+            working_dir: None,
+            stdin_request_tx: None,
+            graceful_shutdown_signal: None,
+            execution_mode: ToolExecutionMode::AgentTurn,
+        };
+        let label = "batch-1-compile_remote".to_string();
+        let first = context.for_subcall(label.clone());
+        assert_eq!(
+            first.tool_call_id,
+            context.for_subcall(label.clone()).tool_call_id
+        );
+        assert_ne!(
+            first.tool_call_id,
+            context
+                .for_subcall("batch-2-compile_remote".into())
+                .tool_call_id
+        );
+        context.tool_call_id = "second-batch".into();
+        let second = context.for_subcall(label);
+        assert_ne!(first.tool_call_id, second.tool_call_id);
+        assert_eq!(first.session_id, second.session_id);
+        assert_eq!(first.message_id, second.message_id);
+    }
 
     #[test]
     fn ensure_intent_adds_property_and_required() {

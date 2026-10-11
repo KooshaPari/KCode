@@ -366,11 +366,12 @@ if [ "$(uname -s)" = "Darwin" ]; then
   else
     info "Cleared macOS xattrs; ad-hoc resign skipped (codesign unavailable)."
   fi
-  # Generate the architecture-matched LSUIElement notification broker (and the
-  # normal Spotlight launcher) from the verified binary. Best-effort here: the
+  # Generate the architecture-matched, faceless notification broker from the
+  # verified binary and remove legacy CLI launcher bundles from ~/Applications.
+  # Jcode Desktop is the only Spotlight/Launchpad entry. Best-effort here: the
   # first interactive jcode launch performs the same version-gated repair.
   if "$launcher_path" setup-launcher </dev/null >/dev/null 2>&1; then
-    info "Installed macOS launcher and turn-notification broker."
+    info "Installed macOS turn-notification helper."
   fi
 fi
 
