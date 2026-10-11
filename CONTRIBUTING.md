@@ -1,4 +1,4 @@
-# Contributing to kcode
+# Contributing to jcode
 
 Thanks for contributing.
 

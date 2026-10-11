@@ -45,7 +45,7 @@ def snapshot(cmd_path: Path, resp_path: Path) -> tuple[dict, dict, dict, list]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--window-s", type=float, default=3.0)
     ap.add_argument("--type-slash", action="store_true",
                     help="open the slash palette before measuring")
@@ -54,38 +54,38 @@ def main() -> int:
     args = ap.parse_args()
 
     binary = str(Path(args.binary).resolve())
-    scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-drawcount-", dir=str(scratch)))
+    scratch = Path(os.environ.get("JCODE_SCRATCH_DIR") or tempfile.gettempdir())
+    root = Path(tempfile.mkdtemp(prefix="jcode-drawcount-", dir=str(scratch)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)
 
     env = os.environ.copy()
     env.update({
-        "KCODE_HOME": str(home), "KCODE_RUNTIME_DIR": str(run),
-        "KCODE_SOCKET": str(run / "kcode.sock"), "KCODE_NO_TELEMETRY": "1",
-        "KCODE_DEBUG_CONTROL": "1", "KCODE_TEMP_SERVER": "1",
-        "KCODE_SERVER_OWNER_PID": str(os.getpid()), "KCODE_PERF_TIER": "full",
+        "JCODE_HOME": str(home), "JCODE_RUNTIME_DIR": str(run),
+        "JCODE_SOCKET": str(run / "jcode.sock"), "JCODE_NO_TELEMETRY": "1",
+        "JCODE_DEBUG_CONTROL": "1", "JCODE_TEMP_SERVER": "1",
+        "JCODE_SERVER_OWNER_PID": str(os.getpid()), "JCODE_PERF_TIER": "full",
         # See the note in the other harness scripts: never let the harness race
         # the client for the OSC 11 reply.
-        "KCODE_THEME": "dark",
+        "JCODE_THEME": "dark",
     })
     env.setdefault("ANTHROPIC_API_KEY", "sk-ant-drawcount")
     if args.no_idle_animation:
-        env["KCODE_IDLE_ANIMATION"] = "false"
-    debug_sock = run / "kcode-debug.sock"
+        env["JCODE_IDLE_ANIMATION"] = "false"
+    debug_sock = run / "jcode-debug.sock"
     cmd_path, resp_path = run / "client_cmd", run / "client_resp"
 
     log_fh = (root / "server.log").open("wb")
     server = subprocess.Popen(
-        [binary, "serve", "--socket", env["KCODE_SOCKET"], "--debug-socket",
+        [binary, "serve", "--socket", env["JCODE_SOCKET"], "--debug-socket",
          "--no-update", "--no-selfdev"],
         env=env, stdout=log_fh, stderr=subprocess.STDOUT, preexec_fn=os.setsid)
 
     client: Client | None = None
     out: dict = {"binary": binary}
     try:
-        wait_for_socket(Path(env["KCODE_SOCKET"]))
+        wait_for_socket(Path(env["JCODE_SOCKET"]))
         wait_for_socket(debug_sock)
         sid = dbg(debug_sock, f"create_session:{REPO_ROOT}").strip()
         if sid.startswith("{"):

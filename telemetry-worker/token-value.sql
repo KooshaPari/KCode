@@ -1,4 +1,4 @@
--- Token value dashboard: list-price dollar value of the token flow through kcode.
+-- Token value dashboard: list-price dollar value of the token flow through jcode.
 --
 -- Usage:
 --   npm run token-value             (wrangler d1 execute ... --file=token-value.sql)
@@ -18,7 +18,7 @@
 --    them as a disjoint bucket. Without this correction, OpenAI traffic gets
 --    billed for its cached context twice, at ~10x the correct rate.
 --
--- 3. These are list/rack rates. Most kcode users are on subscriptions
+-- 3. These are list/rack rates. Most jcode users are on subscriptions
 --    (Claude Max, ChatGPT Pro, Copilot) or free routes, so read the result as
 --    "list-price equivalent value of tokens served", not revenue or COGS.
 --

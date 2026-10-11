@@ -4,7 +4,7 @@
 // Why this exists: the telemetry DB records per-session token counts and the
 // model/provider labels, but no prices, so the dashboards could only show raw
 // token volume. This script pulls the free models.dev catalog (no auth, same
-// source the CLI uses in crates/kcode-base/src/model_pricing.rs) and writes one
+// source the CLI uses in crates/jcode-base/src/model_pricing.rs) and writes one
 // row per model label actually observed in telemetry, so the token-value
 // dashboard can price each model at its own rate instead of applying one
 // blended guess to everything.
@@ -25,7 +25,7 @@ import { join } from "node:path";
 import { buildModelPriceReport } from "./model-price-report.mjs";
 
 const CATALOG_URL = "https://models.dev/api.json";
-const DB = "kcode-telemetry";
+const DB = "jcode-telemetry";
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
@@ -47,7 +47,7 @@ if (!Number.isFinite(days) || days <= 0) {
 // subset of `prompt_tokens`, so pricing input and cache-read separately would
 // bill the cached portion twice. Anthropic's Messages API reports
 // `input_tokens` and `cache_read_input_tokens` as disjoint buckets.
-// Keep in sync with kcode-compaction-core's estimate_compaction_tokens note.
+// Keep in sync with jcode-compaction-core's estimate_compaction_tokens note.
 const CACHE_INCLUSIVE_PROVIDERS = new Set([
   "openai",
   "openrouter",
@@ -66,7 +66,7 @@ const CACHE_INCLUSIVE_PROVIDERS = new Set([
   "openai-compatible",
 ]);
 
-// kcode's own internal route labels, which are real priced traffic but are not
+// jcode's own internal route labels, which are real priced traffic but are not
 // models.dev ids. Mapped explicitly so they do not land in the unpriced bucket.
 const LABEL_ALIASES = new Map([
   // The auto code-review pass runs on the Codex model family.
@@ -129,7 +129,7 @@ function normalizeLabel(label) {
   let s = label.trim();
   const alias = LABEL_ALIASES.get(s.toLowerCase());
   if (alias) return [alias];
-  // Strip kcode's own suffixes/markers.
+  // Strip jcode's own suffixes/markers.
   s = s.replace(/\[1m\]$/i, "").replace(/\[web\]$/i, "");
   // Strip a trailing `@Provider` disambiguator (`...-4-8@Anthropic`) and
   // reasoning-effort suffixes (`-xhigh`, `-high`), which never change price.

@@ -2,7 +2,7 @@
 
 ## Context
 
-kcode has rich infrastructure for scheduled tasks (`ScheduledQueue`, `ScheduleTarget`, ambient runner) and durable goals (`Goal`, `GoalStatus`, persistence) but the user-facing CLI commands are either missing or disabled:
+jcode has rich infrastructure for scheduled tasks (`ScheduledQueue`, `ScheduleTarget`, ambient runner) and durable goals (`Goal`, `GoalStatus`, persistence) but the user-facing CLI commands are either missing or disabled:
 
 - `/goal` → disabled stub ("disabled in this build")
 - `/loop` → doesn't exist at all
@@ -26,9 +26,9 @@ Re-enable the disabled `/goal` command and wire up full lifecycle management:
 /goal <id>                     Open goal detail in side panel
 ```
 
-**Data model:** Already exists in `kcode-task-types` (`Goal`, `GoalStatus`, `GoalMilestone`, `GoalStep`).
-**Persistence:** Already exists in `kcode-base/src/goal.rs` (JSON files in `.kcode/goals/`).
-**Side panel:** Already exists in `kcode-base/src/goal.rs` (`open_goals_overview_for_session`, `open_goal_for_session`).
+**Data model:** Already exists in `jcode-task-types` (`Goal`, `GoalStatus`, `GoalMilestone`, `GoalStep`).
+**Persistence:** Already exists in `jcode-base/src/goal.rs` (JSON files in `.jcode/goals/`).
+**Side panel:** Already exists in `jcode-base/src/goal.rs` (`open_goals_overview_for_session`, `open_goal_for_session`).
 
 ### /loop Command (new)
 
@@ -75,7 +75,7 @@ Visibility into the hook system:
 3. After a loop item fires, re-schedule it with `scheduled_for += interval`
 4. Create `commands_loop.rs` with `/loop` subcommand parsing
 5. Wire into `dispatch_local_command`
-6. Add loop persistence in `.kcode/loops/`
+6. Add loop persistence in `.jcode/loops/`
 
 ### Phase 3: Implement /hooks visibility (files: new `commands_hooks.rs`)
 
@@ -87,19 +87,19 @@ Visibility into the hook system:
 
 1. When a loop fires, inject task as user message via `inject_message`
 2. Add `loop_id` field to injected message metadata
-3. Track loop execution history in `.kcode/loops/history/`
+3. Track loop execution history in `.jcode/loops/history/`
 
 ## Files to Modify
 
 | File | Change |
 |------|--------|
-| `crates/kcode-tui/src/tui/app/commands.rs` | Remove disabled stub, add goal handler |
-| `crates/kcode-tui/src/tui/app/commands_dispatch.rs` | Wire /goal, /loop, /hooks |
-| `crates/kcode-app-core/src/ambient.rs` | Add Recurrence to ScheduledItem |
-| `crates/kcode-app-core/src/ambient/persistence.rs` | Recurrence-aware scheduling |
-| `crates/kcode-app-core/src/ambient/runner.rs` | Re-schedule loops after firing |
-| `crates/kcode-tui/src/tui/app/commands_loop.rs` | NEW: /loop command handler |
-| `crates/kcode-tui/src/tui/app/commands_hooks.rs` | NEW: /hooks command handler |
+| `crates/jcode-tui/src/tui/app/commands.rs` | Remove disabled stub, add goal handler |
+| `crates/jcode-tui/src/tui/app/commands_dispatch.rs` | Wire /goal, /loop, /hooks |
+| `crates/jcode-app-core/src/ambient.rs` | Add Recurrence to ScheduledItem |
+| `crates/jcode-app-core/src/ambient/persistence.rs` | Recurrence-aware scheduling |
+| `crates/jcode-app-core/src/ambient/runner.rs` | Re-schedule loops after firing |
+| `crates/jcode-tui/src/tui/app/commands_loop.rs` | NEW: /loop command handler |
+| `crates/jcode-tui/src/tui/app/commands_hooks.rs` | NEW: /hooks command handler |
 
 ## Success Criteria
 

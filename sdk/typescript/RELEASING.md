@@ -1,4 +1,4 @@
-# Releasing `@1jehuang/kcode-sdk`
+# Releasing `@1jehuang/jcode-sdk`
 
 Everything except the two decisions only you can make is automated and checked
 in CI. This document exists so the release is a short command list rather than
@@ -6,9 +6,9 @@ a research exercise.
 
 ## Package ownership
 
-The package is published as `@1jehuang/kcode-sdk`. The `1jehuang` user scope is owned
+The package is published as `@1jehuang/jcode-sdk`. The `1jehuang` user scope is owned
 by the maintainer account and does not require an npm organization. The shorter
-`@kcode` scope belongs to someone else and must not be used in package metadata
+`@jcode` scope belongs to someone else and must not be used in package metadata
 or documentation.
 
 If the package name changes in the future, update `name` in
@@ -25,7 +25,7 @@ bash ../../scripts/test_sdk_package.sh   # the tarball as a consumer sees it
 npm publish                     # publishConfig already sets public access
 ```
 
-Use the **Publish TypeScript SDK** workflow and provide an existing kcode release
+Use the **Publish TypeScript SDK** workflow and provide an existing jcode release
 tag. It downloads that release's six runtime artifacts, publishes the matching
 platform packages first, and then publishes the SDK. All seven package manifests
 must have the same version. The main package uses exact optional dependency
@@ -40,9 +40,9 @@ confirm with `npm pack --dry-run`.
 ```bash
 cd "$(mktemp -d)"
 npm init -y >/dev/null
-npm install @1jehuang/kcode-sdk
+npm install @1jehuang/jcode-sdk
 node --input-type=module -e '
-  import { JcodeClient } from "@1jehuang/kcode-sdk";
+  import { JcodeClient } from "@1jehuang/jcode-sdk";
   const client = await JcodeClient.launch({ workingDir: process.cwd() });
   const session = await client.createSession();
   console.log((await client.run(session.session_id, "say hello")).text);

@@ -5,16 +5,16 @@
 # day, so build-pipeline changes are hill-climbable:
 #
 #   1. warm no-op        - rebuild with zero changes on the same commit
-#   2. leaf touch        - 1-line change in the root `kcode` bin crate
-#   3. tui touch         - 1-line change in kcode-tui (largest UI crate)
-#   4. core touch        - 1-line change in kcode-app-core (mid-stack crate)
-#   5. commit blast      - simulate HEAD moving (KCODE_BUILD_GIT_HASH change),
-#                          which reruns kcode-build-meta's build script and
+#   2. leaf touch        - 1-line change in the root `jcode` bin crate
+#   3. tui touch         - 1-line change in jcode-tui (largest UI crate)
+#   4. core touch        - 1-line change in jcode-app-core (mid-stack crate)
+#   5. commit blast      - simulate HEAD moving (JCODE_BUILD_GIT_HASH change),
+#                          which reruns jcode-build-meta's build script and
 #                          recompiles every crate that depends on it
 #                          (base, app-core, tui, setup-hints, telemetry-core, root)
 #
 # Touches are reverted after each run. Requires a clean-enough tree that
-# `scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode` succeeds.
+# `scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode` succeeds.
 #
 # Usage: scripts/bench_selfdev_build.sh [--skip-warmup]
 
@@ -23,7 +23,7 @@ set -euo pipefail
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-build_cmd=(scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode)
+build_cmd=(scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode)
 
 run_build() {
     # Per-phase logs survive later phases, so a mid-benchmark failure (often a
@@ -83,22 +83,22 @@ touch_file "$leaf_file"
 run_build "leaf" || true
 revert_file "$leaf_file"
 
-tui_file="crates/kcode-tui/src/lib.rs"
+tui_file="crates/jcode-tui/src/lib.rs"
 echo "3. tui touch (${tui_file}):"
 touch_file "$tui_file"
 run_build "tui" || true
 revert_file "$tui_file"
 
-core_file="crates/kcode-app-core/src/lib.rs"
+core_file="crates/jcode-app-core/src/lib.rs"
 echo "4. core touch (${core_file}):"
 touch_file "$core_file"
 run_build "core" || true
 revert_file "$core_file"
 
-echo "5. commit blast radius (simulated HEAD move via KCODE_BUILD_GIT_HASH):"
+echo "5. commit blast radius (simulated HEAD move via JCODE_BUILD_GIT_HASH):"
 fake_hash="bench$(date +%s | tail -c 4)"
 start=$(date +%s.%N)
-if KCODE_BUILD_GIT_HASH="$fake_hash" "${build_cmd[@]}" >/tmp/bench_selfdev_build_commit-blast.log 2>&1; then
+if JCODE_BUILD_GIT_HASH="$fake_hash" "${build_cmd[@]}" >/tmp/bench_selfdev_build_commit-blast.log 2>&1; then
     end=$(date +%s.%N)
     echo "$end $start" | awk '{printf "  commit-blast: %.1fs\n", $1 - $2}'
 else
@@ -112,5 +112,5 @@ echo "done. Interpretation:"
 echo "  - no-op should be a few seconds (cargo fingerprinting + link check)."
 echo "  - leaf/tui/core touches show per-crate recompile + link cost."
 echo "  - commit-blast shows the cost every commit pays because"
-echo "    kcode-build-meta embeds GIT_HASH via env! and kcode-base/app-core/"
+echo "    jcode-build-meta embeds GIT_HASH via env! and jcode-base/app-core/"
 echo "    tui/setup-hints/telemetry-core all depend on it."

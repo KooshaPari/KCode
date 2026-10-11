@@ -1,4 +1,4 @@
--- Schema for kcode telemetry D1 database
+-- Schema for jcode telemetry D1 database
 
 CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

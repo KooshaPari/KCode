@@ -1,6 +1,6 @@
 #![cfg(unix)]
 //! Native CLI boundary, using a fake daemon and fully isolated state/config.
-use kcode_harness_api::{API_VERSION_MAJOR, ApiEvent, ApiRequest, ClientFrame, ServerFrame};
+use jcode_harness_api::{API_VERSION_MAJOR, ApiEvent, ApiRequest, ClientFrame, ServerFrame};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
 use std::process::{Child, Command, Stdio};
@@ -25,16 +25,16 @@ fn exercise_stdio(close_daemon_first: bool) {
     let listener = UnixListener::bind(&socket).unwrap();
     listener.set_nonblocking(true).unwrap();
     let mut child = ChildGuard(
-        Command::new(env!("CARGO_BIN_EXE_kcode"))
+        Command::new(env!("CARGO_BIN_EXE_jcode"))
             .current_dir(root.path())
             .env_clear()
             .env("HOME", root.path())
-            .env("KCODE_HOME", &home)
-            .env("KCODE_RUNTIME_DIR", &runtime)
+            .env("JCODE_HOME", &home)
+            .env("JCODE_RUNTIME_DIR", &runtime)
             .env("XDG_RUNTIME_DIR", &runtime)
-            .env("KCODE_NO_TELEMETRY", "1")
-            .env("KCODE_SOCKET", &socket)
-            .env("KCODE_API_SOCKET", runtime.join("unused-api.sock"))
+            .env("JCODE_NO_TELEMETRY", "1")
+            .env("JCODE_SOCKET", &socket)
+            .env("JCODE_API_SOCKET", runtime.join("unused-api.sock"))
             .env("XDG_CONFIG_HOME", root.path().join("config"))
             .env("XDG_CACHE_HOME", root.path().join("cache"))
             .env("PATH", "/usr/bin:/bin")

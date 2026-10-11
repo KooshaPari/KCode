@@ -4,7 +4,7 @@ Test whether early-session input lag ends when the model catalog resolves.
 
 The hypothesis
 --------------
-A freshly spawned kcode feels laggy for the first few seconds and then becomes
+A freshly spawned jcode feels laggy for the first few seconds and then becomes
 responsive. The reported cause is the model catalog: while it is still being
 fetched the client is in its remote-startup phase, and that phase pins the redraw
 loop to a 1000ms cadence (`REDRAW_REMOTE_STARTUP`). If that is the mechanism then
@@ -87,17 +87,17 @@ def main() -> int:
         print(f"binary not found: {binary}")
         return 3
 
-    root = Path(tempfile.mkdtemp(prefix="kcode-startup-lag-"))
+    root = Path(tempfile.mkdtemp(prefix="jcode-startup-lag-"))
     run = root / "run"
     run.mkdir(parents=True)
 
     env = os.environ.copy()
     # Live server and real home: catalog resolution is the thing under test, so a
     # throwaway home with no providers would skip it entirely.
-    runtime = Path(env.get("KCODE_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
-    env["KCODE_SOCKET"] = env.get("KCODE_SOCKET") or str(runtime / "kcode.sock")
-    env["KCODE_DEBUG_CONTROL"] = "1"
-    debug_sock = runtime / "kcode-debug.sock"
+    runtime = Path(env.get("JCODE_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+    env["JCODE_SOCKET"] = env.get("JCODE_SOCKET") or str(runtime / "jcode.sock")
+    env["JCODE_DEBUG_CONTROL"] = "1"
+    debug_sock = runtime / "jcode-debug.sock"
     cmd_path, resp_path = run / "cmd", run / "resp"
 
     if not args.json:

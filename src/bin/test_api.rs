@@ -1,15 +1,15 @@
 use futures::StreamExt;
-use kcode::message::{ContentBlock, Message, ToolDefinition};
-use kcode::provider::Provider;
-use kcode_provider_anthropic_runtime::AnthropicProvider;
+use jcode::message::{ContentBlock, Message, ToolDefinition};
+use jcode::provider::Provider;
+use jcode_provider_claude_cli_runtime::ClaudeProvider;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    println!("Testing direct Anthropic provider (Claude OAuth or ANTHROPIC_API_KEY)...");
-    let provider = AnthropicProvider::new();
+    println!("Testing deprecated legacy Claude CLI provider...");
+    let provider = ClaudeProvider::new();
 
     let messages = vec![Message {
-        role: kcode::message::Role::User,
+        role: jcode::message::Role::User,
         content: vec![ContentBlock::Text {
             text: "Say hello in exactly 5 words.".to_string(),
             cache_control: None,

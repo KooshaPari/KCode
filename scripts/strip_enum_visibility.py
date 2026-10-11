@@ -8,7 +8,7 @@ only inside enum bodies, leaving struct fields and the declarations intact.
 import re
 import sys
 
-PATH = "crates/kcode-provider-forgecode-runtime/src/parser.rs"
+PATH = "crates/jcode-provider-forgecode-runtime/src/parser.rs"
 
 
 def find_enum_bodies(source: str):

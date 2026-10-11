@@ -1,5 +1,8 @@
 # Repository Instructions
 
-Follow `AGENTS.md` for the development workflow and `CONTRIBUTING.md` for the contribution policy. PRs from everyone are welcome.
+@AGENTS.md
 
-Preserve unrelated work and obtain user authorization before merging. Decollision PRs (kcode → kcode) should be reviewed carefully for backwards-compat impact (KCode is BACKWARDS compat to kcode per fork policy).
+Follow `AGENTS.md` for the development workflow and `CONTRIBUTING.md` for the
+contribution policy. Pull requests from everyone are welcome for direct review
+and merging, regardless of contributor or maintainer status. Preserve unrelated
+work and obtain user authorization before merging.

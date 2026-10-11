@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import benchmark_attribution as ba  # noqa: E402
 
-MARKER = "via=kcode-discovery"
+MARKER = "via=jcode-discovery"
 
 
 def sponsor(**overrides):
@@ -104,11 +104,11 @@ class CheckSponsorTests(unittest.TestCase):
     def test_cli_flow_with_non_cookie_mechanism_passes_when_setup_contains_marker(self):
         entry = {
             "url": f"https://example.com/?{MARKER}",
-            "setup": "Run `example signup --via kcode-discovery`, then install the CLI.",
+            "setup": "Run `example signup --via jcode-discovery`, then install the CLI.",
         }
         report = self.run_checks(
             entry,
-            sponsor(mechanism="cli-flag", marker="--via kcode-discovery", listing_marker=MARKER),
+            sponsor(mechanism="cli-flag", marker="--via jcode-discovery", listing_marker=MARKER),
         )
         self.assertEqual(self.status(report, "cli_flow_attributable"), "pass")
 
@@ -119,7 +119,7 @@ class CheckSponsorTests(unittest.TestCase):
         }
         report = self.run_checks(
             entry,
-            sponsor(mechanism="cli-flag", marker="--via kcode-discovery", listing_marker=MARKER),
+            sponsor(mechanism="cli-flag", marker="--via jcode-discovery", listing_marker=MARKER),
         )
         self.assertEqual(self.status(report, "cli_flow_attributable"), "fail")
 
