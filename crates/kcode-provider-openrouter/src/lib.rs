@@ -371,21 +371,96 @@ fn disk_cache_modified_at(path: &Path) -> Option<SystemTime> {
 
 fn read_cache_content(path: &Path) -> Option<String> {
     kcode_storage::reject_dev_home_symlink_path(path).ok()?;
-    std::fs::read_to_string(path).ok()
-}
-
-fn write_cache_content(path: &Path, content: &str) -> std::io::Result<()> {
-    kcode_storage::reject_dev_home_symlink_path(path)
-        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.read(true);
     #[cfg(unix)]
     if kcode_storage::running_in_dev_namespace() {
         use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(libc::O_NOFOLLOW);
     }
+    #[cfg(windows)]
+    if kcode_storage::running_in_dev_namespace() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let mut file = options.open(path).ok()?;
+    #[cfg(windows)]
+    if kcode_storage::running_in_dev_namespace() && file.metadata().ok()?.file_type().is_symlink() {
+        return None;
+    }
+    use std::io::Read;
+    let mut content = String::new();
+    file.read_to_string(&mut content).ok()?;
+    Some(content)
+}
+
+fn write_cache_content(path: &Path, content: &str) -> std::io::Result<()> {
+    write_cache_content_with_resolution_hook(path, content, |_| Ok(()))
+}
+
+fn write_cache_content_with_resolution_hook(
+    path: &Path,
+    content: &str,
+    after_resolve: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    kcode_storage::reject_dev_home_symlink_path(path)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    let resolved = resolve_cache_write_target(path)?;
+    after_resolve(&resolved)?;
+    write_cache_content_to_resolved_target(&resolved, content)
+}
+
+fn resolve_cache_write_target(path: &Path) -> std::io::Result<PathBuf> {
+    match std::fs::canonicalize(path) {
+        Ok(target) => Ok(target),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let parent = path.parent().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "cache path has no parent")
+            })?;
+            let name = path.file_name().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "cache path has no name")
+            })?;
+            Ok(std::fs::canonicalize(parent)?.join(name))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn write_cache_content_to_resolved_target(target: &Path, content: &str) -> std::io::Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW).truncate(true);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
     use std::io::Write;
-    options.open(path)?.write_all(content.as_bytes())
+    let mut file = options.open(target)?;
+    #[cfg(windows)]
+    {
+        if file.metadata()?.file_type().is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "cache target became a reparse point",
+            ));
+        }
+        file.set_len(0)?;
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "safe cache replacement is unavailable on this platform",
+        ));
+    }
+    file.write_all(content.as_bytes())
 }
 
 fn fresh_disk_cache(cache: Option<DiskCache>) -> Option<DiskCache> {

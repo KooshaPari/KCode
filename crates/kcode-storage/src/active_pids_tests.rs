@@ -190,6 +190,21 @@ fn pid_state_symlinks_never_read_or_write_targets() {
     assert_eq!(std::fs::read_to_string(&target).unwrap(), pid.to_string());
 }
 
+#[cfg(windows)]
+#[test]
+fn pid_marker_writer_does_not_follow_windows_symlinks() {
+    use std::os::windows::fs::symlink_file;
+
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("sentinel");
+    let link = temp.path().join("session-link");
+    std::fs::write(&target, b"stable sentinel").unwrap();
+    symlink_file(&target, &link).unwrap();
+
+    assert!(super::write_marker_without_following_links(&link, b"changed").is_err());
+    assert_eq!(std::fs::read(target).unwrap(), b"stable sentinel");
+}
+
 #[cfg(unix)]
 #[test]
 fn active_pid_open_directory_handle_survives_namespace_replacement_race() {

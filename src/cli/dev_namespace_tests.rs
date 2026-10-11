@@ -148,6 +148,26 @@ fn rejects_dev_subdirectory_symlink_into_production_build_channels() {
     assert!(resolve_for_home(temp.path()).is_err());
 }
 
+#[cfg(unix)]
+#[test]
+fn rejects_nested_symlink_under_builds_tree() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().unwrap();
+    let paths = resolve_for_home(temp.path()).unwrap();
+    std::fs::create_dir_all(paths.home.join("builds/versions/current")).unwrap();
+    std::fs::set_permissions(&paths.home, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let production = temp.path().join(".kcode/builds/shared-server");
+    std::fs::create_dir_all(&production).unwrap();
+    symlink(
+        &production,
+        paths.home.join("builds/versions/current/target"),
+    )
+    .unwrap();
+
+    assert!(resolve_for_home(temp.path()).is_err());
+}
+
 #[test]
 fn rejects_xdg_path_symlink_outside_the_dev_root() {
     let temp = tempfile::tempdir().unwrap();

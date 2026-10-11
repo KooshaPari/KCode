@@ -42,14 +42,38 @@ fn write_marker(dir: &Path, session_id: &str, contents: &[u8]) -> std::io::Resul
 
     #[cfg(not(unix))]
     {
-        use std::io::Write;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(path)?;
-        file.write_all(contents)
+        write_marker_without_following_links(&path, contents)
     }
+}
+
+#[cfg(windows)]
+fn write_marker_without_following_links(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)?;
+    let metadata = file.metadata()?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "unsafe session marker file",
+        ));
+    }
+    file.set_len(0)?;
+    file.write_all(contents)
+}
+
+#[cfg(all(not(unix), not(windows)))]
+fn write_marker_without_following_links(_: &Path, _: &[u8]) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "safe session marker creation is unavailable on this platform",
+    ))
 }
 
 #[cfg(unix)]

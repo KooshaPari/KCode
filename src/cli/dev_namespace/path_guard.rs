@@ -81,6 +81,7 @@ pub(super) fn reject_dynamic_symlinks(home: &Path) -> Result<()> {
         "notifications",
         "Applications/KcodeNotificationBroker.app",
         "telemetry_active_sessions",
+        "builds",
         "active_pids",
         "streaming_pids",
         "internal_pids",

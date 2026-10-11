@@ -246,9 +246,6 @@ impl CopilotApiProvider {
     }
 
     fn get_or_create_dev_machine_id(path: &std::path::Path) -> String {
-        let _lock = DEV_MACHINE_ID_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let id = Uuid::new_v4().to_string().replace('-', "");
         let Some(parent) = path.parent() else {
             return id;
@@ -262,6 +259,12 @@ impl CopilotApiProvider {
         let Some(_file_lock) = acquire_dev_machine_id_lock(path) else {
             return id;
         };
+        // The cross-process lock may block. Acquire it before taking the
+        // process-wide mutex so other provider initialization does not stall
+        // behind a process waiting on another KCode instance.
+        let _lock = DEV_MACHINE_ID_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(existing) = read_dev_machine_id(path) {
             return existing;
         }
