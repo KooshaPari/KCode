@@ -869,7 +869,9 @@ Two KCode follow-ups completed in this session:
    decollision) was blocked on the "Require Linked Issue"
    check. Added a `## Linked issues` section to PR #36's
    body referencing #32 (the umbrella tracking issue).
-   No closing keyword, so #32 stays open for Phase 2.
+   Used a plain `#32` mention (no closing keyword, no
+   `Closes #32`) so the revert wouldn't auto-close #32
+   while Phase 2 work was still pending.
    After the check passed (4s), PR #36 squash-merged at
    `2026-10-11T01:23:31Z` → master HEAD is now
    `f19b47b196e7b9167477b19810bb6728e0874b32`.
@@ -897,6 +899,46 @@ Two KCode follow-ups completed in this session:
    push, refactor recurring-conflict files first.
    References #32, #33, #36.
    [KooshaPari/KCode#43](https://github.com/KooshaPari/KCode/issues/43)
+
+### ✅ Validation (2026-10-11 01:56 UTC, automated)
+
+A follow-up validation pass (triggered by the auto-checker)
+confirmed the rebase is real, not just a local illusion:
+
+- `cargo check --workspace` on `feature/herdr-plugin-manifest-rebased`:
+  **exit 0, finished in 3m 24s**. Only 1 deprecation warning
+  (`ui_input.rs:2771` `.skip` is deprecated). No errors. This
+  is the gold standard — the rebased code compiles.
+- `git diff 6a1c0b26b 13143990a`: only 1 file differs, and
+  it's `.github/dependabot.yml` (10 lines, +). Reason: the
+  pre-rebase feature branch was based on `85a6c10` (no
+  dependabot.yml), while the new master is `f19b47b19`
+  (which includes the file from `046ea2a chore(deps):
+  enable Dependabot via minimal config`). The rebase
+  correctly brought the file in. **No silent data loss.**
+- `.git/rebase-merge` and `.git/rebase-apply` are absent
+  (rebase is fully complete, not paused).
+- No `*.orig` or `*.rej` files anywhere in the tree.
+- `git show 6a1c0b26b:...` and `git show 13143990a:...` for
+  the session doc file are byte-identical — the rebase
+  preserved all doc content.
+- `origin/feature/herdr-plugin-manifest-rebased` SHA
+  (`2e9aca3a4`) matches local — push was non-lossy.
+- The 6 `conflict-*.txt` / `fork-changed.txt` files at the
+  jcode root are from another agent's rebase work and are
+  NOT touched by the herdr rebase; left as untracked.
+
+**One correction to the doc above:** Issue #32 is now
+**CLOSED** (closed by `KooshaPari` at `2026-10-11T01:23:32Z`,
+1 second after the revert merged). The closure was manual
+(no commit_id attached, no `Closes #32` keyword in the
+revert commit message), so this was a deliberate operator
+decision, not an auto-close side effect of the revert.
+The new issue #43 (which tracks the tighter Phase 2 rebase
+**process**) is the working item now, and #32 was the
+umbrella that this round closed. Phase 2 content is
+expected to be re-scoped as child issues of #32 (or as
+fresh top-level issues) when work resumes.
 
 **What this does NOT change:** The herdr crash
 persistence work above is unaffected. The kcode fork
