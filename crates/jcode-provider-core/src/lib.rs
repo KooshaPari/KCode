@@ -1,3 +1,4 @@
+#![allow(clippy::double_must_use)]
 pub mod anthropic;
 pub mod attempt_tracker;
 pub mod auth_mode;
