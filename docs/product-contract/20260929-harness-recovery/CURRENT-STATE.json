@@ -1,0 +1,102 @@
+{
+  "program": "HARNESS-MATURE-20260929",
+  "product": "KooshaPari/KCode",
+  "source_snapshot": "046ea2af5e01e84449f65d086510b51152360215",
+  "status": "BLOCKED_INCOMPLETE",
+  "specification_design_percent": null,
+  "mature_product_percent": null,
+  "requirement_count_target": null,
+  "source_denominator_closed": false,
+  "native_product_tests": "TARGETED_CANDIDATE_PASS",
+  "implementation_candidate": "effe7dcb1491e7a9933475c1c57a81e2c40e08d2",
+  "acceptance_exclusions": [
+    "Historical handoff percentages",
+    "Unqualified README performance claims",
+    "Transcript/todo scores",
+    "Synthetic identity-model passes",
+    "Generated catalogs",
+    "Workflow success with zero effective targeted tests",
+    "Captured test failure whose output was suppressed",
+    "ForgeCode provider presence until machine-contract compatibility is natively qualified"
+  ],
+  "blocking_design_unknowns": [
+    "K-F001",
+    "K-F002",
+    "K-F003",
+    "K-F007",
+    "#15_FORGECODE_PROVIDER_MACHINE_CONTRACT",
+    "K-F008",
+    "K-F009"
+  ],
+  "gates": {
+    "source_ledger_fully_resolved": "OPEN",
+    "alias_history_falsification": "OPEN",
+    "sota_research": "PARTIAL",
+    "realistic_alternative_stack": "DEFINED_CURRENT_UPSTREAM_PLUS_THIN_OVERLAY",
+    "bootstrap_decisions": "PARTIAL",
+    "differentiation_survived_attack": "MOST_HISTORICAL_CLAIMS_FALSIFIED_REMAINDER_OPEN",
+    "ontology_reviewed": "DRAFT",
+    "accepted_obligations_complete": "OPEN",
+    "quality_properties": "PARTIAL",
+    "journeys": "DRAFT_RECOVERY_EFFECT_SLICE_OPEN",
+    "stage_projections": "DRAFT",
+    "oracle_design_complete": "PARTIAL",
+    "high_risk_experiments_closed": "PARTIAL_DAEMON_IDENTITY_MACOS_POLICY_EFFECT_PRIMITIVES_QUALIFIED_REACHABILITY_OPEN",
+    "implementation_mapping_complete": "OPEN",
+    "traceability_structurally_valid": "NOT_RUN",
+    "registry_repo_agreement": "PENDING_READBACK",
+    "invalid_catalogs_excluded": "PROGRAM_POLICY_ONLY_NOT_ENFORCED_IN_EXISTING_CI",
+    "orphan_analysis": "NOT_RUN",
+    "contradictions_resolved": "OPEN",
+    "no_blocking_findings": "FAIL",
+    "independent_fresh_review": "NOT_RUN"
+  },
+  "next_bound": "Take ForgeCode provider contract candidate to verdict; validate signed macOS release identity separately; continue retained-patch/external-effect/Pine/journey/traceability gates. External-effect crash-boundary receipt/reconciliation experiment remains required. Re-run retained-patch and thin-upstream existence comparisons against jcode@2df1f77e; prior September upstream comparisons are historical evidence only.",
+  "candidate_evidence": {
+    "daemon_identity_run": 36686592906,
+    "compile": "cargo check -p jcode-protocol -p jcode-app-core passed",
+    "targeted_test": "server::startup_tests::main_accept_loop_reports_exact_runtime_identity",
+    "result": "1 passed; 0 failed; 1256 filtered out",
+    "duration": "8.07s",
+    "identity_subjects": [
+      "server_version",
+      "server_git_hash",
+      "server_pid",
+      "server_binary_sha256"
+    ],
+    "macos_trust": {
+      "candidate": "f18881a1ed18ff5d42590ac97982a10160ad63f6",
+      "run": 36701138044,
+      "job": 109840593524,
+      "result": "macos cargo check --bin jcode + runtime-mutation source guard passed"
+    },
+    "macos_trust_policy": {
+      "candidate": "a9daae12bb102047b3bbb708e516a841af686036",
+      "run": 36712215260,
+      "result": "success",
+      "scope": "compile + opt-in policy/default non-mutating source-path; signed-release mutation experiment still open"
+    },
+    "effect_recovery_primitive": {
+      "candidate": "bac23f8885bb4a5f17bad926ca1451581b1a8b51",
+      "hook_run": 36738409142,
+      "daemon_regression_run": 36738409456,
+      "result": "success",
+      "scope": "optional Write hook + committed-effect uncertainty + pure attempt-B write reconciliation; production durable-adapter reachability still open"
+    },
+    "attempt_replacement_oracle": {
+      "run": 36717831831,
+      "result": "success",
+      "scope": "separate-process contract oracle, not product runtime"
+    }
+  },
+  "qualified_findings": {
+    "K-F002": "SOURCE_RUNTIME_MUTATION_REMOVED_IN_CANDIDATE_f18881a"
+  },
+  "external_baselines": {
+    "jcode_current": {
+      "repository": "1jehuang/jcode",
+      "snapshot": "2df1f77e920c01b4eb7830cc3c9f74d735e98087",
+      "frozen_at": "2026-10-02T03:35:36Z"
+    }
+  }
+}
