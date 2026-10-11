@@ -989,19 +989,46 @@ position.
   kooshapari:2, KooshaPari:80)
 - All 89 commit subjects: identical (diff is empty)
 
-**Local vs origin doc-commit state (current):**
+**Local vs origin doc-commit state (current, post-update):**
 
 | Branch | Tip SHA | Doc commits |
 |---|---|---|
 | `origin/feature/herdr-plugin-manifest` (pre-rebase, on origin) | `6a1c0b26b` | 1 (original SIGKILL doc) |
-| `feature/herdr-plugin-manifest` (pre-rebase, local-only cherry-picks) | `9960ab52d` | 2 (cherry-picks of the 2 validation records) |
-| `origin/feature/herdr-plugin-manifest-rebased` (rebased, on origin) | `f1a439e95` | 2 (cherry-picks: `2e9aca3a4` revert+rebase, `f1a439e95` validation) |
-| `feature/herdr-plugin-manifest-rebased` (rebased, local) | `f1a439e95` | (same as origin, in sync) |
+| `feature/herdr-plugin-manifest` (pre-rebase, local-only cherry-picks + this update) | `99ce5c413` | 3 (cherry-picks: `56847c162`, `9960ab52d`, `99ce5c413`) |
+| `origin/feature/herdr-plugin-manifest-rebased` (rebased, on origin) | `5d76e93b9` | 3 (cherry-picks: `2e9aca3a4`, `f1a439e95`, `5d76e93b9`) |
+| `feature/herdr-plugin-manifest-rebased` (rebased, local) | `5d76e93b9` | (same as origin, in sync) |
 
-Total doc commits on origin across both branches: 3
-(1 + 2). Total doc commits on local only: 2
-(cherry-pick SHAs differ from the rebased-branch
-cherry-picks, but file content is byte-identical).
+Total doc commits on origin across both branches: 4
+(1 + 3). Total doc commits on local only: 2 (the 2
+earlier cherry-picks on the local pre-rebase branch,
+`56847c162` and `9960ab52d`; the third one
+`99ce5c413` is the new doc commit from this update,
+which was also pushed via cherry-pick to the local
+pre-rebase branch). Cherry-pick SHAs differ from the
+rebased-branch cherry-picks, but file content is
+byte-identical (verified with `git diff` showing
+empty output between `5d76e93b9` and `99ce5c413`).
+
+**Why the local and rebased branches share herdr SHAs:**
+The local `feature/herdr-plugin-manifest` and
+`feature/herdr-plugin-manifest-rebased` share the same
+herdr commit SHAs (`83942682`, `13143990a`, etc.) because
+the local branch was itself rebased at some point (before
+this session's work) and the cherry-picks are on top of
+the rebased history. The `origin/feature/herdr-plugin-manifest`
+branch, by contrast, retains the original pre-rebase
+SHAs (`40ebcc3e1`, `6a1c0b26b`, etc.) because it was
+pushed to origin BEFORE the rebase and has not been
+force-pushed since (force-push is blocked by policy).
+
+**Upstream tracking fix:** The local
+`feature/herdr-plugin-manifest-rebased` branch was
+incorrectly tracking `origin/feature/herdr-plugin-manifest`
+(pre-rebase) instead of
+`origin/feature/herdr-plugin-manifest-rebased` (rebased).
+This was fixed in this update via
+`git branch --set-upstream-to=origin/feature/herdr-plugin-manifest-rebased
+feature/herdr-plugin-manifest-rebased`.
 
 **What this does NOT change:** The herdr crash
 persistence work above is unaffected. The kcode fork
