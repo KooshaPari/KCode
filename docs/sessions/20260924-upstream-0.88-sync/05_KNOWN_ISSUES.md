@@ -444,3 +444,26 @@ either disable `current/` for the upstream install or anchor
 placeholders from a reload-path test; per session note, the real install
 truth is in the `current-version`/`stable-version` pointer files and
 the `current/`/`stable/` symlinks.
+
+### Update (2026-10-10 18:00 PDT)
+
+The auto-update installed upstream v0.93.0 (tagged `9948f0e8c`) at
+2026-10-10 00:40 PDT. It **replaced** the zsh wrapper at
+`~/.local/bin/jcode` with a direct symlink to
+`~/.jcode/builds/current/jcode`, which now resolves to
+`versions/0.93.0/jcode`. The wrapper that read `jcode.real` is gone;
+the `jcode.real` symlink (set by the §12 fix to point at 0.91.0) is
+now an orphan, but harmless.
+
+Current state: `jcode --version` → `jcode v0.93.0 (9948f0e8c)`. The
+`versions/0.91.0/jcode` and `versions/b87cd9955-dirty/jcode` binaries
+remain in `versions/` for archival.
+
+**Lesson reinforcement:** the launcher indirection was a defensible
+pin when the wrapper existed, but the auto-update replaced the wrapper
+entirely. The `current/` symlink is now the only indirection, and it
+is owned by the upstream install process. To prevent silent drift
+on future upgrades, either (a) trust the auto-update and let
+`current/` be the source of truth, or (b) install the upstream
+release to a different name (e.g. `jcode-upstream`) and never
+override the `jcode` symlink.
