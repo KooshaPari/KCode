@@ -129,7 +129,7 @@ impl fmt::Display for AccountApiError {
             Self::Forbidden => write!(f, "the Kcode account request was denied"),
             Self::LegacyBackend => write!(
                 f,
-                "the configured Kcode API uses the legacy email-based login contract; update the backend or use the current https://api.jcode.sh/v1 endpoint"
+                "the configured Kcode API uses the legacy email-based login contract; update the backend or use the current https://api.kcode.sh/v1 endpoint"
             ),
             Self::Http { status, code } => match code {
                 Some(code) => write!(f, "Kcode account API returned HTTP {status} ({code})"),
@@ -551,12 +551,12 @@ mod tests {
             "account_id": "acct_123", "email": "dev@example.com",
             "tier": "flagship", "status": "active",
             "usage": {"used_usd": 12.5, "budget_usd": 3000.0},
-            "manage_url": "https://jcode.sh/account"
+            "manage_url": "https://kcode.sh/account"
         }"#;
         let me: SubscriptionMe = serde_json::from_str(json).expect("parse");
         assert_eq!(me.parsed_tier(), Some(KcodeTier::Flagship));
         assert!(me.has_active_paid_plan());
-        assert_eq!(me.manage_url.as_deref(), Some("https://jcode.sh/account"));
+        assert_eq!(me.manage_url.as_deref(), Some("https://kcode.sh/account"));
     }
 
     #[test]
@@ -600,7 +600,7 @@ mod tests {
         let base = spawn_server(vec![(
             200,
             vec![],
-            r#"{"device_code":"secret","flow_id":"public-flow","verification_uri":"https://jcode.sh/account","verification_uri_complete":"https://jcode.sh/account?flow=public-flow","verify_url":"https://jcode.sh/account?flow=public-flow","expires_in":600,"interval":3}"#.to_string(),
+            r#"{"device_code":"secret","flow_id":"public-flow","verification_uri":"https://kcode.sh/account","verification_uri_complete":"https://kcode.sh/account?flow=public-flow","verify_url":"https://kcode.sh/account?flow=public-flow","expires_in":600,"interval":3}"#.to_string(),
         )]);
         let result = request_device_authorization(&client(), &base, Some(KcodeTier::Pro))
             .await
@@ -622,7 +622,7 @@ mod tests {
             request_tx
                 .send(String::from_utf8_lossy(&request[..count]).into_owned())
                 .expect("capture request");
-            let body = r#"{"device_code":"secret","flow_id":"public-flow","verification_uri":"https://jcode.sh/account","verification_uri_complete":"https://jcode.sh/account?flow=public-flow","expires_in":600,"interval":3}"#;
+            let body = r#"{"device_code":"secret","flow_id":"public-flow","verification_uri":"https://kcode.sh/account","verification_uri_complete":"https://kcode.sh/account?flow=public-flow","expires_in":600,"interval":3}"#;
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()

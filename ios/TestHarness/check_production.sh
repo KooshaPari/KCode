@@ -17,7 +17,7 @@ check() { # check <name> <cmd...>
 }
 
 plist_has() { # plist_has <key>
-    /usr/libexec/PlistBuddy -c "Print :$1" Sources/JCodeMobile/Info.plist
+    /usr/libexec/PlistBuddy -c "Print :$1" Sources/KcodeMobile/Info.plist
 }
 
 echo "== code and behavior =="
@@ -28,17 +28,17 @@ check "engine determinism" python3 -m reward.interaction.test_engine
 popd >/dev/null
 
 echo "== app store requirements =="
-check "privacy manifest present" test -f Sources/JCodeMobile/PrivacyInfo.xcprivacy
-check "privacy manifest valid plist" plutil -lint Sources/JCodeMobile/PrivacyInfo.xcprivacy
+check "privacy manifest present" test -f Sources/KcodeMobile/PrivacyInfo.xcprivacy
+check "privacy manifest valid plist" plutil -lint Sources/KcodeMobile/PrivacyInfo.xcprivacy
 check "camera usage string" plist_has NSCameraUsageDescription
 check "local network usage string" plist_has NSLocalNetworkUsageDescription
 check "export compliance key" plist_has ITSAppUsesNonExemptEncryption
 check "launch screen" plist_has UILaunchScreen
 check "url scheme" plist_has CFBundleURLTypes:0:CFBundleURLSchemes:0
-check "app icon set" test -d Sources/JCodeMobile/Assets.xcassets/AppIcon.appiconset
-check "foreground reconnect handler" grep -q "scenePhase" Sources/JCodeMobile/JCodeMobileApp.swift
+check "app icon set" test -d Sources/KcodeMobile/Assets.xcassets/AppIcon.appiconset
+check "foreground reconnect handler" grep -q "scenePhase" Sources/KcodeMobile/KcodeMobileApp.swift
 check "privacy manifest in app sources dir (auto-included by xcodegen)" \
-    test -f Sources/JCodeMobile/PrivacyInfo.xcprivacy
+    test -f Sources/KcodeMobile/PrivacyInfo.xcprivacy
 
 echo
 echo "passed: $pass  failed: $fail"

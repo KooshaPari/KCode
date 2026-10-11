@@ -1,3 +1,3 @@
-# @1jehuang/jcode-darwin-arm64
+# @1jehuang/kcode-darwin-arm64
 
-Platform runtime used by `@1jehuang/jcode-sdk`. Install the SDK rather than this package directly.
+Platform runtime used by `@1jehuang/kcode-sdk`. Install the SDK rather than this package directly.

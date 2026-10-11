@@ -1,6 +1,6 @@
 import Foundation
 
-/// Describes a jcode server gateway endpoint.
+/// Describes a kcode server gateway endpoint.
 ///
 /// The server exposes:
 /// - `GET  http://host:port/health`  reachability + version probe
@@ -44,7 +44,7 @@ public struct Gateway: Hashable, Sendable {
     }
 }
 
-/// Parses `jcode://pair?host=H&port=P&code=C` URIs from QR codes.
+/// Parses `kcode://pair?host=H&port=P&code=C` URIs from QR codes.
 public enum PairURI {
     public struct Payload: Equatable, Sendable {
         public var gateway: Gateway
@@ -58,7 +58,7 @@ public enum PairURI {
 
     public static func parse(_ string: String) -> Payload? {
         guard let components = URLComponents(string: string),
-            components.scheme == "jcode",
+            components.scheme == "kcode",
             components.host == "pair" || components.path == "pair"
                 || components.host == nil && components.path == "/pair"
         else { return nil }

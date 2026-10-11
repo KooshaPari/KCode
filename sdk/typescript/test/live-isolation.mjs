@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { JcodeClient, userJcodeHome } from "../dist/index.js";
+import { KcodeClient, userJcodeHome } from "../dist/index.js";
 
 const binary = process.argv[2] ?? "jcode";
 const failures = [];
@@ -28,7 +28,7 @@ async function step(name, fn) {
   }
 }
 
-const client = await JcodeClient.launch({
+const client = await KcodeClient.launch({
   binary,
   workingDir: process.cwd(),
   startupTimeoutMs: 60_000,

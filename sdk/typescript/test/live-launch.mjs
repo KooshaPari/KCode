@@ -1,5 +1,5 @@
 /**
- * End-to-end check for `JcodeClient.launch()`: a private instance.
+ * End-to-end check for `KcodeClient.launch()`: a private instance.
  *
  * The isolation claim is the whole point of `launch()`, and it is exactly the
  * kind of claim that is easy to assert and hard to actually hold. So this
@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { JcodeClient, userJcodeHome } from "../dist/index.js";
+import { KcodeClient, userJcodeHome } from "../dist/index.js";
 
 const binary = process.argv[2] ?? "jcode";
 const failures = [];
@@ -29,7 +29,7 @@ async function step(name, fn) {
 
 console.log(`launching a private instance with ${binary}`);
 const started = Date.now();
-const client = await JcodeClient.launch({
+const client = await KcodeClient.launch({
   binary,
   workingDir: process.cwd(),
   startupTimeoutMs: 60_000,
@@ -100,7 +100,7 @@ await step("close() stops the instance and removes its home", async () => {
 await step("the user's jcode never saw the instance", async () => {
   let shared;
   try {
-    shared = await JcodeClient.connect({ clientName: "launch-isolation-check/1.0" });
+    shared = await KcodeClient.connect({ clientName: "launch-isolation-check/1.0" });
   } catch {
     console.log("     (no user jcode running; skipping)");
     return;
@@ -125,8 +125,8 @@ await step("an exit without close() does not leak the daemon", async () => {
 
   const before = countDaemons();
   const script = `
-    import { JcodeClient } from ${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)};
-    const client = await JcodeClient.launch({
+    import { KcodeClient } from ${JSON.stringify(new URL("../dist/index.js", import.meta.url).href)};
+    const client = await KcodeClient.launch({
       binary: ${JSON.stringify(binary)},
       workingDir: process.cwd(),
       startupTimeoutMs: 60000,

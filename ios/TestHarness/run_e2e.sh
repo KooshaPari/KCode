@@ -45,11 +45,11 @@ swift test 2>&1 | tail -1
 log "xcodegen + xcodebuild ($DEVICE)"
 xcodegen generate >/dev/null
 xcodebuild build \
-  -project JCodeMobile.xcodeproj \
-  -scheme JCodeMobile \
+  -project KcodeMobile.xcodeproj \
+  -scheme KcodeMobile \
   -destination "platform=iOS Simulator,name=$DEVICE" \
   -derivedDataPath .build-ios >/dev/null
-APP=".build-ios/Build/Products/Debug-iphonesimulator/JCodeMobile.app"
+APP=".build-ios/Build/Products/Debug-iphonesimulator/KcodeMobile.app"
 
 # 3. Start the deterministic mock gateway.
 log "starting mock gateway on :$PORT $PUSH_DEMO"

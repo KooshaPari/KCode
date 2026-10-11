@@ -30,7 +30,7 @@ from dataclasses import dataclass, asdict
 import numpy as np
 from PIL import Image, ImageDraw
 
-# --- Design tokens (must mirror Sources/JCodeMobile/Theme.swift) -------------
+# --- Design tokens (must mirror Sources/KcodeMobile/Theme.swift) -------------
 TOKENS = {
     "background": 0x0F0F14,
     "surface": 0x1A1A1F,

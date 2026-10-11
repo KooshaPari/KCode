@@ -5,7 +5,7 @@ reply, reports tool calls, and cleans up the private instance on exit.
 
 ## Run it
 
-Install [kcode](https://jcode.sh), sign in to at least one model provider, then:
+Install [kcode](https://kcode.sh), sign in to at least one model provider, then:
 
 ```bash
 npm install

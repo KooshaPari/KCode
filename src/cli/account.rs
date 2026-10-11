@@ -106,7 +106,7 @@ fn public_manage_url(candidate: Option<&str>) -> &str {
                 reqwest::Url::parse(url),
                 Ok(parsed)
                     if parsed.scheme() == "https"
-                        && matches!(parsed.host_str(), Some("jcode.sh" | "www.jcode.sh" | "solosystems.dev"))
+                        && matches!(parsed.host_str(), Some("kcode.sh" | "www.kcode.sh" | "solosystems.dev"))
                         && parsed.username().is_empty()
                         && parsed.password().is_none()
             )
@@ -121,15 +121,15 @@ mod tests {
     #[test]
     fn manage_url_accepts_only_public_allowlisted_https_origins() {
         assert_eq!(
-            public_manage_url(Some("https://jcode.sh/account")),
-            "https://jcode.sh/account"
+            public_manage_url(Some("https://kcode.sh/account")),
+            "https://kcode.sh/account"
         );
         assert_eq!(
             public_manage_url(Some("https://evil.example/?key=jck_live_secret")),
             crate::subscription_catalog::KCODE_ACCOUNT_URL
         );
         assert_eq!(
-            public_manage_url(Some("https://user:pass@jcode.sh/account")),
+            public_manage_url(Some("https://user:pass@kcode.sh/account")),
             crate::subscription_catalog::KCODE_ACCOUNT_URL
         );
     }

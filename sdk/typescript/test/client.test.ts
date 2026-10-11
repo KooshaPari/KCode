@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  JcodeClient,
+  KcodeClient,
   HarnessError,
   NdjsonDecoder,
   unixSocketTransport,
@@ -30,7 +30,7 @@ test("ndjson decoder reassembles frames split across chunks", () => {
 
 test("handshake records server identity and capabilities", async () => {
   const server = await startMockHarness();
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   assert.equal(client.server, "mock/0.1");
   assert.deepEqual(client.capabilities, ["sessions", "streaming"]);
   client.close();
@@ -54,7 +54,7 @@ test("replies are correlated by id even when out of order", async () => {
       }
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const [, sessions] = await Promise.all([client.ping(), client.listSessions()]);
   assert.deepEqual(sessions, [{ session_id: "s1", status: "idle" }]);
   client.close();
@@ -73,7 +73,7 @@ test("error frames reject as HarnessError", async () => {
       });
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   await assert.rejects(() => client.attachSession("nope"), (error: unknown) => {
     assert.ok(error instanceof HarnessError);
     assert.equal((error as HarnessError).code, "unknown_session");
@@ -119,7 +119,7 @@ test("run() collects a full turn and auto-approves permissions", async () => {
       }
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const turn = await client.run("s1", "hi", { autoApprove: true });
   assert.equal(turn.text, "hello world");
   assert.equal(turn.reasoning, "think");
@@ -139,7 +139,7 @@ test("softInterrupt preserves images and the legacy text-only wire shape", async
       send({ v: 1, reply_to: request.id, ev: "ok" });
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   try {
     await client.softInterruptWithImages("s1", "look", [["image/png", "aW1hZ2U="]], true);
     await client.softInterrupt("s1", "text only");
@@ -166,7 +166,7 @@ test("sendMessage supports context-only options and waits for request completion
       }
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   await client.sendMessage("s1", "context", {
     noReply: true,
     images: [["image/png", "abc"]],
@@ -187,7 +187,7 @@ test("sendMessage retains the legacy images argument", async () => {
       }
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   await client.sendMessage("s1", "normal", [["image/jpeg", "xyz"]]);
   assert.deepEqual(received.images, [["image/jpeg", "xyz"]]);
   assert.equal(received.no_reply, undefined);
@@ -205,7 +205,7 @@ test("sendMessage noReply waits for request ok and does not wait for turn events
       }
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const seenTurn = new Promise<boolean>((resolve) => {
     const timer = setTimeout(() => resolve(false), 20);
     timer.unref?.();
@@ -228,7 +228,7 @@ test("sendMessage noReply waits for request ok and does not wait for turn events
 
 test("events() buffers while the consumer is busy and filters by session", async () => {
   const server = await startMockHarness();
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const stream = client.events("s1");
   const collected: string[] = [];
   const consumer = (async () => {
@@ -253,7 +253,7 @@ test("events() buffers while the consumer is busy and filters by session", async
 
 test("events() return settles a pending next call", async () => {
   const server = await startMockHarness();
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const stream = client.events("s1");
   const pending = stream.next();
   await stream.return();
@@ -264,7 +264,7 @@ test("events() return settles a pending next call", async () => {
 
 test("unknown event kinds still surface on the generic channel", async () => {
   const server = await startMockHarness();
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const seen = new Promise<any>((resolve) => client.once("event", resolve));
   server.broadcast({ v: 1, ev: "some_future_event", payload: 1 });
   const frame = await seen;
@@ -275,7 +275,7 @@ test("unknown event kinds still surface on the generic channel", async () => {
 
 test("pending requests reject when the connection drops", async () => {
   const server = await startMockHarness();
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const pending = client.ping();
   await server.close();
   await assert.rejects(() => pending);
@@ -284,7 +284,7 @@ test("pending requests reject when the connection drops", async () => {
 test("a missing bridge socket explains how to start it", async () => {
   const missing = path.join(os.tmpdir(), `jcode-sdk-absent-${process.pid}.sock`);
   await assert.rejects(
-    () => JcodeClient.connect({ socketPath: missing }),
+    () => KcodeClient.connect({ socketPath: missing }),
     (error: HarnessError) => {
       assert.equal(error.name, "HarnessError");
       assert.equal(error.code, "connect_failed");
@@ -303,7 +303,7 @@ test("a stale socket file reports a dead bridge, not a missing one", async () =>
   fs.writeFileSync(stale, "");
   try {
     await assert.rejects(
-      () => JcodeClient.connect({ socketPath: stale }),
+      () => KcodeClient.connect({ socketPath: stale }),
       (error: HarnessError) => {
         assert.equal(error.code, "connect_failed");
         assert.match(error.message, /stale socket file|not a socket|could not connect/);
@@ -403,7 +403,7 @@ test("GA methods send stable request shapes and map typed replies", async () => 
       }
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   try {
     assert.deepEqual(await client.listSessions({ includeArchived: true }), [
       { session_id: "s1", status: "idle", archived: true },
@@ -491,7 +491,7 @@ test("globalEvents discovers persisted and newly-created sessions and cleans up 
       }
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const stream = client.globalEvents({ discoveryIntervalMs: 10 });
   try {
     const first = await stream.next();
@@ -536,7 +536,7 @@ test("globalEvents aborts a pending consumer and closes every child", async () =
       }
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const abort = new AbortController();
   const stream = client.globalEvents({ signal: abort.signal, discoveryIntervalMs: 0 });
   try {
@@ -577,7 +577,7 @@ test("globalEvents fails loudly when its bounded event queue overflows", async (
       }
     },
   });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const stream = client.globalEvents({ discoveryIntervalMs: 0, maxBufferedEvents: 1 });
   try {
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -595,7 +595,7 @@ test("globalEvents fails loudly when its bounded event queue overflows", async (
 test("globalEvents explicitly rejects custom transports", async () => {
   const server = await startMockHarness();
   const transport = await unixSocketTransport(server.socketPath);
-  const client = await JcodeClient.connect({ transport });
+  const client = await KcodeClient.connect({ transport });
   try {
     assert.throws(
       () => client.globalEvents(),
@@ -609,7 +609,7 @@ test("globalEvents explicitly rejects custom transports", async () => {
 
 test("session recovery events are typed, buffered, and filtered by session", async () => {
   const server = await startMockHarness();
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   const stream = client.events("mine");
   const all = client.events();
   try {
@@ -640,7 +640,7 @@ test("session recovery events are typed, buffered, and filtered by session", asy
 test("sendSystemReminder writes hidden content without waiting for acceptance", async () => {
   const requests: any[] = [];
   const server = await startMockHarness({ onRequest(request) { requests.push(request); } });
-  const client = await JcodeClient.connect({ socketPath: server.socketPath });
+  const client = await KcodeClient.connect({ socketPath: server.socketPath });
   try {
     await client.sendSystemReminder("mine", "continue task");
     await waitFor(() => requests.length === 1);

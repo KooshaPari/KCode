@@ -20,7 +20,7 @@
     "migrate:daily-active-backfill": "npx wrangler d1 execute kcode-telemetry --remote --file=migrations/0011_backfill_daily_active_recent.sql",
     "migrate:daily-active-ci": "npx wrangler d1 execute kcode-telemetry --remote --file=migrations/0012_daily_active_ci_flag.sql",
     "health": "node scripts/run-dashboard.mjs health.sql",
-    "health:size": "curl -s https://telemetry.jcode.sh/v1/health",
+    "health:size": "curl -s https://telemetry.kcode.sh/v1/health",
     "dau": "node scripts/run-dashboard.mjs dau.sql",
     "users": "node scripts/run-dashboard.mjs users.sql",
     "prompt-users": "node scripts/run-dashboard.mjs prompt-users.sql",

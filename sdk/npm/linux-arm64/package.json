@@ -1,5 +1,5 @@
 {
-  "name": "@1jehuang/jcode-linux-arm64",
+  "name": "@1jehuang/kcode-linux-arm64",
   "version": "1.2.0",
   "description": "Kcode runtime binary for linux arm64",
   "license": "MIT",

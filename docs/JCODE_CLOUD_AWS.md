@@ -12,7 +12,7 @@ Cloud access is bundled into paid Kcode subscriptions rather than sold as a seco
 ### User journey
 
 1. Run `/remote` on desktop or select **Kcode Cloud** in a client.
-2. Browser opens `https://jcode.sh/account`. During early access, the account
+2. Browser opens `https://kcode.sh/account`. During early access, the account
    page handles sign-in and plan management but does not yet provision a host.
 3. Sign in with the existing Kcode device/account identity. If needed, subscribe or upgrade.
 4. Pick the nearest supported region. Defaults are automatic and reversible.
@@ -82,7 +82,7 @@ Exact included hours must be set from measured AWS cost plus support and model m
 
 ## API contract
 
-Authenticated endpoints under the existing `api.jcode.sh/v1` origin:
+Authenticated endpoints under the existing `api.kcode.sh/v1` origin:
 
 - `GET /cloud` returns entitlement, desired/actual host state, region, limits, client endpoint, and pending operation.
 - `POST /cloud/activate` creates the desired host idempotently.

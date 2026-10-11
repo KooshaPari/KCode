@@ -1,6 +1,6 @@
 .build/
 .build-ios/
-JCodeMobile.xcodeproj/
+KcodeMobile.xcodeproj/
 DerivedData/
 .DS_Store
 

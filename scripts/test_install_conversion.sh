@@ -30,17 +30,17 @@ while [ "$#" -gt 0 ]; do
 done
 [ -z "${DOWNLOAD_URL_LOG:-}" ] || printf '%s\n' "$url" >> "$DOWNLOAD_URL_LOG"
 case "$url" in
-  *telemetry.jcode.sh*) printf '%s\n' "$payload" >> "$INSTALL_TELEMETRY_LOG" ;;
-  *jcode.sh/releases/latest/version)
+  *telemetry.kcode.sh*) printf '%s\n' "$payload" >> "$INSTALL_TELEMETRY_LOG" ;;
+  *kcode.sh/releases/latest/version)
     [ "${FAIL_RELEASE:-0}" != "1" ] || exit 22
     [ "${FAIL_METADATA_RELEASE:-0}" != "1" ] || exit 22
     printf 'v1.2.3\n'
     ;;
-  *jcode.sh/releases/v1.2.3/download-bases)
+  *kcode.sh/releases/v1.2.3/download-bases)
     printf 'https://mirror.invalid/releases/v1.2.3\n'
     printf 'https://github.com/1jehuang/jcode/releases/download/v1.2.3\n'
     ;;
-  *jcode.sh/releases/v1.2.3/SHA256SUMS)
+  *kcode.sh/releases/v1.2.3/SHA256SUMS)
     if [ "${METADATA_CHECKSUM_HTML:-0}" = "1" ]; then
       printf '<!doctype html><title>fallback page</title>\n'
       exit 0
@@ -107,7 +107,7 @@ grep -q '"stage":"installer_start".*"outcome":"success"' "$telemetry_log"
 grep -q '"stage":"installer_finish".*"outcome":"success"' "$telemetry_log"
 test "$(cat "$hotkey_setup_log")" = "setup-hotkey"
 
-# If GitHub's release page is blocked, the static jcode.sh version endpoint
+# If GitHub's release page is blocked, the static kcode.sh version endpoint
 # must keep the complete install path working.
 PATH="$tmp/bin:$PATH" \
 HOME="$tmp/home-metadata-fallback" \

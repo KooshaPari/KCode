@@ -1,4 +1,4 @@
-name: JCodeMobile
+name: KcodeMobile
 options:
   bundleIdPrefix: com.kcode
   deploymentTarget:
@@ -11,20 +11,20 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
 packages:
-  JCodeKit:
+  KcodeKit:
     path: .
 
 targets:
-  JCodeMobile:
+  KcodeMobile:
     type: application
     platform: iOS
     sources:
-      - path: Sources/JCodeMobile
+      - path: Sources/KcodeMobile
         excludes:
           - "**/.DS_Store"
     settings:
       base:
-        INFOPLIST_FILE: Sources/JCodeMobile/Info.plist
+        INFOPLIST_FILE: Sources/KcodeMobile/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.kcode.mobile
         MARKETING_VERSION: "2.0.0"
         CURRENT_PROJECT_VERSION: 1
@@ -33,5 +33,5 @@ targets:
         DEVELOPMENT_TEAM: TAS6ARKDN7
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
-      - package: JCodeKit
-        product: JCodeKit
+      - package: KcodeKit
+        product: KcodeKit

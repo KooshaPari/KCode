@@ -132,7 +132,7 @@ enable provenance tagging or coarse usage metering.
 
 ## 4. Implement browse, select, and catalog suggestions
 
-The default client sends `GET https://api.jcode.sh/v1/discovery` with a
+The default client sends `GET https://api.kcode.sh/v1/discovery` with a
 three-second timeout and a 64 KiB maximum response. It sends a
 `User-Agent: kcode/<version>` header and a random
 `x-kcode-discovery-request-id` correlation header.

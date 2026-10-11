@@ -1365,7 +1365,7 @@ fn migrate_idle_animation_off_noops_without_enabled_value() {
 
 #[test]
 fn frozen_machine_written_sponsors_optout_is_repaired() {
-    let raw = "[sponsors]\nenabled = false\nendpoint = \"https://api.jcode.sh/v1/discovery\"\n";
+    let raw = "[sponsors]\nenabled = false\nendpoint = \"https://api.kcode.sh/v1/discovery\"\n";
     let mut config: Config = toml::from_str(raw).expect("parse");
     assert!(!config.sponsors.enabled);
     config.repair_frozen_sponsors_optout(raw);
@@ -1390,7 +1390,7 @@ fn frozen_sponsors_optout_recovers_through_a_real_config_file() {
     std::fs::create_dir_all(path.parent().expect("config parent")).expect("create config parent");
     std::fs::write(
         &path,
-        "[display]\ncentered = false\n\n[sponsors]\nenabled = false\nendpoint = \"https://api.jcode.sh/v1/discovery\"\n",
+        "[display]\ncentered = false\n\n[sponsors]\nenabled = false\nendpoint = \"https://api.kcode.sh/v1/discovery\"\n",
     )
     .expect("write frozen config");
 

@@ -7,11 +7,11 @@
  * Usage: node examples/stream-chat.mjs "your prompt"
  */
 
-import { JcodeClient } from "../dist/index.js";
+import { KcodeClient } from "../dist/index.js";
 
 const prompt = process.argv.slice(2).join(" ") || "Say hello in five words.";
 
-const client = await JcodeClient.connect({ clientName: "stream-chat-example/0.1" });
+const client = await KcodeClient.connect({ clientName: "stream-chat-example/0.1" });
 console.log(`connected to ${client.server} (${client.capabilities.join(", ")})`);
 
 client.on("harness_error", (frame) => console.error("harness error:", frame.message));

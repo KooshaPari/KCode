@@ -1,8 +1,8 @@
-import { JcodeClient } from "@1jehuang/jcode-sdk";
+import { KcodeClient } from "@1jehuang/kcode-sdk";
 
 const prompt = process.argv.slice(2).join(" ") || "Describe this directory in one sentence.";
 
-const client = await JcodeClient.launch({
+const client = await KcodeClient.launch({
   workingDir: process.cwd(),
   binary: process.env.JCODE_BINARY,
 });

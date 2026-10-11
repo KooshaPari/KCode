@@ -7,9 +7,9 @@ import { inheritCredentials, userJcodeHome } from "../dist/index.js";
 
 test("platform runtime packages map to npm platform conventions", async () => {
   const { platformBinaryPackage } = await import("../dist/index.js");
-  assert.equal(platformBinaryPackage("linux", "x64"), "@1jehuang/jcode-linux-x64");
-  assert.equal(platformBinaryPackage("darwin", "arm64"), "@1jehuang/jcode-darwin-arm64");
-  assert.equal(platformBinaryPackage("win32", "x64"), "@1jehuang/jcode-win32-x64");
+  assert.equal(platformBinaryPackage("linux", "x64"), "@1jehuang/kcode-linux-x64");
+  assert.equal(platformBinaryPackage("darwin", "arm64"), "@1jehuang/kcode-darwin-arm64");
+  assert.equal(platformBinaryPackage("win32", "x64"), "@1jehuang/kcode-win32-x64");
   assert.equal(platformBinaryPackage("freebsd", "x64"), undefined);
 });
 
@@ -191,7 +191,7 @@ test("the user's jcode home is resolved independently of an instance", () => {
  * created before the spawn, so an error path that returns early leaks it.
  */
 test("a missing jcode binary is catchable, and leaks nothing", async () => {
-  const { JcodeClient, HarnessError } = await import("../dist/index.js");
+  const { KcodeClient, HarnessError } = await import("../dist/index.js");
   const root = os.tmpdir();
   const before = fs
     .readdirSync(root)
@@ -199,7 +199,7 @@ test("a missing jcode binary is catchable, and leaks nothing", async () => {
 
   await assert.rejects(
     () =>
-      JcodeClient.launch({
+      KcodeClient.launch({
         binary: "jcode-definitely-not-installed",
         startupTimeoutMs: 5000,
       }),

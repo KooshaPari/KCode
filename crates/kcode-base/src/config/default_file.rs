@@ -701,9 +701,9 @@ desktop_notifications = true
 # have integrated with the agent to make setup and use seamless. Some providers
 # may share revenue with Kcode when a referred user becomes a customer, but
 # commercial relationships never influence recommendations.
-# See https://jcode.sh/discovery-tools
+# See https://kcode.sh/discovery-tools
 # enabled = true
-# endpoint = "https://api.jcode.sh/v1/discovery"
+# endpoint = "https://api.kcode.sh/v1/discovery"
 	"##;
 
         // Substitute platform-specific defaults from the keybinding registry.

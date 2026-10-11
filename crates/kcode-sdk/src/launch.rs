@@ -246,7 +246,7 @@ pub fn launch_instance(options: &LaunchOptions) -> Result<LaunchedInstance> {
             cleanup_on_error();
             let message = if cause.kind() == std::io::ErrorKind::NotFound {
                 format!(
-                    "could not run `{}`: kcode is not installed, or not on PATH. Install it from https://jcode.sh, or pass `binary` with its full path.",
+                    "could not run `{}`: kcode is not installed, or not on PATH. Install it from https://kcode.sh, or pass `binary` with its full path.",
                     binary.display()
                 )
             } else {
