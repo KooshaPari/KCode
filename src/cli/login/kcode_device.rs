@@ -222,4 +222,5 @@ fn print_recovery_actions() {
 }
 
 #[cfg(test)]
+#[path = "jcode_device/tests.rs"]
 mod tests;

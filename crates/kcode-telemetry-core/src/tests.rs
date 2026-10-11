@@ -1,7 +1,7 @@
 use super::*;
 use std::{
     ffi::OsString,
-    sync::{Mutex, MutexGuard, OnceLock},
+    sync::{Mutex, MutexGuard},
 };
 
 pub(super) static TEST_DELIVERY_MODES: Mutex<Vec<DeliveryMode>> = Mutex::new(Vec::new());
@@ -40,11 +40,7 @@ fn restore_env_var(key: &str, value: Option<OsString>) {
 }
 
 fn global_test_lock() -> TestEnvironment {
-    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    let lock = TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let lock = super::lock_test_env_global();
     let home = tempfile::tempdir().expect("create isolated telemetry test home");
     let previous_home = std::env::var_os("KCODE_HOME");
     let previous_no_telemetry = std::env::var_os("KCODE_NO_TELEMETRY");
@@ -152,6 +148,49 @@ fn lock_test_env() -> TestEnvironment {
 
 fn lock_telemetry_test_state() -> TestEnvironment {
     global_test_lock()
+}
+
+#[cfg(unix)]
+struct NamespaceRestore(Option<OsString>);
+
+#[cfg(unix)]
+impl Drop for NamespaceRestore {
+    fn drop(&mut self) {
+        restore_env_var("KCODE_DEV_NAMESPACE", self.0.take());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn active_days_ignores_generated_leaf_symlink_without_touching_target() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    let _guard = lock_test_env();
+    let previous_namespace = std::env::var_os("KCODE_DEV_NAMESPACE");
+    let _namespace_restore = NamespaceRestore(previous_namespace);
+    let temp = tempfile::tempdir().expect("temp dir");
+    kcode_core::env::set_var("KCODE_HOME", temp.path());
+    kcode_core::env::set_var("KCODE_DEV_NAMESPACE", "1");
+    let target = temp.path().join("stable-active-days.txt");
+    let path = active_days_path("negative-control").expect("active days path");
+    std::fs::write(&target, b"2099-01-01\n").expect("sentinel");
+    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640))
+        .expect("sentinel mode");
+    let before = std::fs::symlink_metadata(&target).expect("sentinel metadata");
+    let identity = (before.dev(), before.ino(), before.permissions().mode());
+    std::os::unix::fs::symlink(&target, &path).expect("active days symlink");
+
+    assert_eq!(update_active_days("negative-control"), (0, 0));
+    assert_eq!(
+        std::fs::read(&target).expect("sentinel bytes"),
+        b"2099-01-01\n"
+    );
+    let after = std::fs::symlink_metadata(&target).expect("sentinel metadata after");
+    assert_eq!(
+        (after.dev(), after.ino(), after.permissions().mode()),
+        identity
+    );
+    assert!(path.is_symlink());
 }
 
 #[test]

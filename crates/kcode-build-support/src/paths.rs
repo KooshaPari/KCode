@@ -131,7 +131,37 @@ fn wrapper_payload_sibling(path: &Path) -> Option<PathBuf> {
 }
 
 fn profile_binary_path(repo_dir: &Path, profile: &str) -> PathBuf {
-    repo_dir.join("target").join(profile).join(binary_name())
+    let Some(target_dir) = profile_target_dir(
+        repo_dir,
+        std::env::var_os("KCODE_DEV_NAMESPACE").as_deref() == Some(std::ffi::OsStr::new("1")),
+        std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from),
+    ) else {
+        // Empty means unavailable and makes every existence check fail closed.
+        return PathBuf::new();
+    };
+    target_dir.join(profile).join(binary_name())
+}
+
+fn profile_target_dir(
+    repo_dir: &Path,
+    dev_namespace: bool,
+    configured: Option<PathBuf>,
+) -> Option<PathBuf> {
+    if dev_namespace {
+        configured.filter(|path| path.is_absolute())
+    } else {
+        Some(
+            configured
+                .map(|path| {
+                    if path.is_absolute() {
+                        path
+                    } else {
+                        repo_dir.join(path)
+                    }
+                })
+                .unwrap_or_else(|| repo_dir.join("target")),
+        )
+    }
 }
 
 pub fn release_binary_path(repo_dir: &Path) -> PathBuf {
@@ -636,6 +666,34 @@ mod tests {
         )
         .expect("Cargo.toml");
         temp
+    }
+
+    #[test]
+    fn cargo_target_override_is_used_in_all_namespaces() {
+        let repo = repo_fixture(false);
+        let isolated = PathBuf::from("/tmp/jcode-dev/cargo-target");
+        assert_eq!(
+            profile_target_dir(repo.path(), true, Some(isolated.clone())),
+            Some(isolated.clone())
+        );
+        assert_eq!(
+            profile_target_dir(repo.path(), false, Some(isolated.clone())),
+            Some(isolated)
+        );
+        assert_eq!(
+            profile_target_dir(repo.path(), false, Some(PathBuf::from("build-target"))),
+            Some(repo.path().join("build-target"))
+        );
+    }
+
+    #[test]
+    fn missing_or_relative_dev_target_override_fails_closed() {
+        let repo = repo_fixture(false);
+        assert_eq!(profile_target_dir(repo.path(), true, None), None);
+        assert_eq!(
+            profile_target_dir(repo.path(), true, Some(PathBuf::from("relative/target"))),
+            None
+        );
     }
 
     #[test]

@@ -311,6 +311,12 @@ pub(crate) enum Command {
         build: bool,
     },
 
+    /// Copy one explicitly selected legacy session into the isolated kcode-dev store.
+    ImportLegacySession {
+        /// Session ID to copy from ~/.kcode/sessions into ~/.kcode-dev/sessions
+        session_id: String,
+    },
+
     /// Debug socket CLI - interact with running kcode server
     Debug {
         /// Debug command to run (list, start, sessions, create_session, message, tool, state, history, etc.)

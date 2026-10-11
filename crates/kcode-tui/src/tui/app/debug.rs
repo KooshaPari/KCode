@@ -566,6 +566,8 @@ mod debug_bench;
 mod debug_cmds;
 #[path = "debug_profile.rs"]
 mod debug_profile;
+#[path = "debug_recording.rs"]
+mod debug_recording;
 #[path = "debug_script.rs"]
 mod debug_script;
 
@@ -732,10 +734,9 @@ pub(super) fn handle_debug_command(app: &mut App, trimmed: &str) -> bool {
         let json = test_harness::get_recorded_events_json();
         let event_count = json.matches("\"type\"").count();
 
-        let recording_dir = dirs::config_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join("kcode")
-            .join("recordings");
+        let recording_dir = crate::storage::app_config_dir()
+            .map(|path| path.join("recordings"))
+            .unwrap_or_else(|_| std::path::PathBuf::from(".kcode/recordings"));
         let _ = std::fs::create_dir_all(&recording_dir);
 
         let timestamp = std::time::SystemTime::now()
@@ -744,10 +745,9 @@ pub(super) fn handle_debug_command(app: &mut App, trimmed: &str) -> bool {
             .unwrap_or(0);
         let filename = format!("recording_{}.json", timestamp);
         let filepath = recording_dir.join(&filename);
-
-        if let Ok(mut file) = std::fs::File::create(&filepath) {
-            use std::io::Write;
-            let _ = file.write_all(json.as_bytes());
+        if let Err(error) = debug_recording::save_recording_to_path(&filepath, &json) {
+            app.push_display_message(recording_save_error_message(error));
+            return true;
         }
 
         app.push_display_message(DisplayMessage {
@@ -795,3 +795,24 @@ pub(super) fn handle_debug_command(app: &mut App, trimmed: &str) -> bool {
 
     false
 }
+
+fn recording_save_error_message(error: impl std::fmt::Display) -> DisplayMessage {
+    DisplayMessage::error(format!("Failed to save recording: {error}"))
+}
+
+#[cfg(test)]
+mod recording_save_tests {
+    use super::recording_save_error_message;
+
+    #[test]
+    fn save_failure_is_reported_as_an_error() {
+        let message = recording_save_error_message("permission denied");
+        assert_eq!(message.role, "error");
+        assert!(message.content.contains("Failed to save recording"));
+        assert!(message.content.contains("permission denied"));
+    }
+}
+
+#[cfg(test)]
+#[path = "debug_recording_tests.rs"]
+mod debug_recording_tests;

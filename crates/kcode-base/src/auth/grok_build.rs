@@ -211,6 +211,16 @@ fn managed_cli_path() -> Result<PathBuf> {
 }
 
 pub fn cli_path() -> PathBuf {
+    if dev_namespace_enabled() {
+        let Some(home) = std::env::var_os("KCODE_HOME") else {
+            return PathBuf::new();
+        };
+        let name = if cfg!(windows) { "grok.exe" } else { "grok" };
+        return PathBuf::from(home)
+            .join("provider-backends")
+            .join("grok-build")
+            .join(name);
+    }
     if let Some(path) = std::env::var_os(CLI_PATH_ENV)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
@@ -233,6 +243,16 @@ pub fn cli_available() -> bool {
 /// Backend presence alone is not authentication and must not make `/login` or
 /// `kcode auth status` claim that Grok Build is ready.
 pub fn has_cached_login() -> bool {
+    if dev_namespace_enabled() {
+        let Ok(home) = crate::storage::kcode_dir() else {
+            return false;
+        };
+        let path = home.join(".grok/auth.json");
+        if crate::storage::reject_dev_home_symlink_path(&path).is_err() {
+            return false;
+        }
+        return std::fs::read(path).is_ok_and(|bytes| credentials_json_has_login(&bytes));
+    }
     if std::env::var("GROK_DEPLOYMENT_KEY")
         .ok()
         .is_some_and(|value| !value.trim().is_empty())
@@ -317,6 +337,9 @@ async fn download_from_base(client: &reqwest::Client, base: &str) -> Result<Vec<
 /// Return a usable Grok Build ACP backend, downloading the official binary
 /// into Kcode's private data directory when no explicit/system binary exists.
 pub async fn ensure_cli() -> Result<PathBuf> {
+    if dev_namespace_enabled() && std::env::var_os("KCODE_HOME").is_none() {
+        bail!("KCODE_DEV_NAMESPACE requires KCODE_HOME for Grok Build");
+    }
     let existing = cli_path();
     if super::command_exists(existing.to_string_lossy().as_ref()) {
         return Ok(existing);
@@ -353,10 +376,72 @@ pub async fn ensure_cli() -> Result<PathBuf> {
     Ok(destination)
 }
 
+fn dev_namespace_enabled() -> bool {
+    dev_namespace_enabled_value(std::env::var_os("KCODE_DEV_NAMESPACE").as_deref())
+}
+
+fn dev_namespace_enabled_value(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("1"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{credentials_json_has_login, ensure_cli, grok_home, valid_version};
+    use super::{
+        CLI_PATH_ENV, TokenResponse, cli_path, credentials_json_has_login, ensure_cli, grok_home,
+        has_cached_login, save_tokens, valid_version,
+    };
     use std::path::PathBuf;
+
+    #[test]
+    fn dev_namespace_marker_requires_exact_one() {
+        assert!(super::dev_namespace_enabled_value(Some(
+            std::ffi::OsStr::new("1")
+        )));
+        assert!(!super::dev_namespace_enabled_value(Some(
+            std::ffi::OsStr::new("0")
+        )));
+        assert!(!super::dev_namespace_enabled_value(None));
+    }
+
+    #[test]
+    fn dev_namespace_reads_only_its_scoped_grok_auth_file() {
+        let _lock = crate::storage::lock_test_env();
+        struct Restore(Vec<(&'static str, Option<std::ffi::OsString>)>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                for (name, value) in self.0.drain(..) {
+                    match value {
+                        Some(value) => crate::env::set_var(name, value),
+                        None => crate::env::remove_var(name),
+                    }
+                }
+            }
+        }
+        let _restore = Restore(
+            ["HOME", "KCODE_HOME", "KCODE_DEV_NAMESPACE"]
+                .map(|name| (name, std::env::var_os(name)))
+                .to_vec(),
+        );
+        let home = tempfile::tempdir().unwrap();
+        let stable_auth = home.path().join(".grok/auth.json");
+        std::fs::create_dir_all(stable_auth.parent().unwrap()).unwrap();
+        std::fs::write(&stable_auth, br#"{"account":{"key":"stable-token"}}"#).unwrap();
+        crate::env::set_var("HOME", home.path());
+        crate::env::set_var("KCODE_HOME", home.path().join(".kcode-dev"));
+        crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        assert!(
+            !has_cached_login(),
+            "stable HOME credentials must not leak in"
+        );
+
+        let private_auth = home.path().join(".kcode-dev/.grok/auth.json");
+        std::fs::create_dir_all(private_auth.parent().unwrap()).unwrap();
+        std::fs::write(&private_auth, br#"{"account":{"key":"private-token"}}"#).unwrap();
+        assert!(
+            has_cached_login(),
+            "private KCODE_HOME credentials should be found"
+        );
+    }
 
     #[test]
     fn accepts_only_safe_release_versions() {
@@ -384,6 +469,86 @@ mod tests {
             grok_home(None, None, Some("C:\\Users\\kcode".into())),
             Some(PathBuf::from("C:\\Users\\kcode").join(".grok"))
         );
+    }
+
+    #[test]
+    fn dev_namespace_ignores_external_grok_cli_override() {
+        let _lock = crate::storage::lock_test_env();
+        let prior = ["KCODE_DEV_NAMESPACE", "KCODE_HOME", CLI_PATH_ENV]
+            .map(|name| (name, std::env::var_os(name)));
+        let temp = tempfile::tempdir().unwrap();
+        let dev = temp.path().join(".kcode-dev");
+        crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        crate::env::set_var("KCODE_HOME", &dev);
+        crate::env::set_var(CLI_PATH_ENV, "/stable/bin/grok");
+
+        assert_eq!(
+            cli_path(),
+            dev.join("provider-backends/grok-build")
+                .join(if cfg!(windows) { "grok.exe" } else { "grok" })
+        );
+
+        for (name, value) in prior {
+            if let Some(value) = value {
+                crate::env::set_var(name, value);
+            } else {
+                crate::env::remove_var(name);
+            }
+        }
+    }
+
+    #[test]
+    fn dev_namespace_fails_closed_without_private_home() {
+        let _lock = crate::storage::lock_test_env();
+        let prior = ["KCODE_DEV_NAMESPACE", "KCODE_HOME", CLI_PATH_ENV]
+            .map(|name| (name, std::env::var_os(name)));
+        crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        crate::env::remove_var("KCODE_HOME");
+        crate::env::set_var(CLI_PATH_ENV, "/stable/bin/grok");
+
+        assert!(cli_path().as_os_str().is_empty());
+
+        for (name, value) in prior {
+            if let Some(value) = value {
+                crate::env::set_var(name, value);
+            } else {
+                crate::env::remove_var(name);
+            }
+        }
+    }
+
+    #[test]
+    fn dev_namespace_saves_tokens_only_under_private_grok_home() {
+        let _lock = crate::storage::lock_test_env();
+        let prior =
+            ["GROK_HOME", "HOME", "KCODE_DEV_NAMESPACE"].map(|name| (name, std::env::var_os(name)));
+        let temp = tempfile::tempdir().unwrap();
+        let stable = temp.path().join("stable/.grok");
+        let private = temp.path().join(".kcode-dev/.grok");
+        crate::env::set_var("HOME", temp.path().join("stable"));
+        crate::env::set_var("GROK_HOME", &private);
+        crate::env::set_var("KCODE_DEV_NAMESPACE", "1");
+
+        save_tokens(TokenResponse {
+            access_token: "not-a-jwt".to_string(),
+            refresh_token: None,
+            expires_in: None,
+        })
+        .unwrap();
+
+        let private_auth = private.join("auth.json");
+        assert!(private_auth.is_file());
+        assert!(!stable.join("auth.json").exists());
+        let content = std::fs::read_to_string(private_auth).unwrap();
+        assert!(content.contains("not-a-jwt"));
+
+        for (name, value) in prior {
+            if let Some(value) = value {
+                crate::env::set_var(name, value);
+            } else {
+                crate::env::remove_var(name);
+            }
+        }
     }
 
     #[tokio::test]

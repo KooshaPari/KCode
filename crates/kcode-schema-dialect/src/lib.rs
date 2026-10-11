@@ -201,6 +201,7 @@ mod learn_tests {
     /// user's next request omits it even though this path cannot retry.
     #[test]
     fn openai_rejections_that_name_a_construct_are_learned() {
+        let _lock = crate::quirks::lock_test_env();
         let _dir = isolated("learn-openai");
 
         let format_rejection = "invalid_request_error (invalid_function_parameters): Invalid schema for function 'mcp__firecrawl__firecrawl_map': In context=('properties', 'url'), 'uri' is not a valid format.";
@@ -224,6 +225,7 @@ mod learn_tests {
     /// through as an opaque 400.
     #[test]
     fn a_structural_openai_rejection_is_labelled_not_retried() {
+        let _lock = crate::quirks::lock_test_env();
         let _dir = isolated("learn-structural");
         let structural = "invalid_request_error (invalid_function_parameters): Invalid schema for function 'mcp__cua__set_config': In context=('properties','value'), schema must have a 'type' key.";
         let message = learn_from_error(structural, &registry::OPENAI).expect("recognized");
@@ -239,6 +241,7 @@ mod learn_tests {
 
     #[test]
     fn operational_failures_pass_straight_through() {
+        let _lock = crate::quirks::lock_test_env();
         let _dir = isolated("learn-operational");
         for message in [
             "HTTP 429 Too Many Requests",
@@ -430,6 +433,7 @@ mod tests {
 
     #[test]
     fn recovery_learns_then_refuses_to_loop() {
+        let _lock = crate::quirks::lock_test_env();
         let _dir = isolate_quirks("recover");
         let message = "invalid_request_error (invalid_function_parameters): Invalid schema for function 'mcp__x__y': In context=('properties', 'ids'), 'somethingNew' is not permitted.";
 
@@ -450,6 +454,7 @@ mod tests {
 
     #[test]
     fn a_learned_keyword_is_stripped_by_later_normalization() {
+        let _lock = crate::quirks::lock_test_env();
         let _dir = isolate_quirks("learned");
         let schema = json!({
             "type": "object",
@@ -481,6 +486,7 @@ mod tests {
 
     #[test]
     fn a_load_bearing_rejection_is_reported_not_absorbed() {
+        let _lock = crate::quirks::lock_test_env();
         let _dir = isolate_quirks("loadbearing");
         let action = recover_from_error(
             "GenerateContentRequest.tools[0].function_declarations[3].parameters: required fields ['label'] are not defined in the schema properties",

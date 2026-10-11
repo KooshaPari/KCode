@@ -333,25 +333,36 @@ pub fn record_frame(frame: FrameCapture) {
 
 /// Get the debug output path
 fn debug_path() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("kcode")
-        .join("visual-debug.txt")
+    kcode_storage::app_config_dir()
+        .map(|config| config.join("visual-debug.txt"))
+        .unwrap_or_else(|_| PathBuf::from(".kcode/visual-debug.txt"))
 }
 
 /// Dump recent frames to the debug file
 pub fn dump_to_file() -> std::io::Result<PathBuf> {
     let path = debug_path();
 
-    // Ensure parent directory exists
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "debug path has no parent")
+    })?;
+    kcode_storage::reject_dev_home_symlink_path(parent)
+        .and_then(|()| kcode_storage::reject_dev_home_symlink_path(&path))
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    fs::create_dir_all(parent)?;
+    kcode_storage::reject_dev_home_symlink_path(&path)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
 
     let buffer = get_frame_buffer()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut file = File::create(&path)?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut file = options.open(&path)?;
 
     writeln!(file, "=== KCODE VISUAL DEBUG DUMP ===")?;
     writeln!(file, "Generated: {:?}", std::time::SystemTime::now())?;
@@ -381,6 +392,10 @@ pub fn dump_to_file() -> std::io::Result<PathBuf> {
 
     Ok(path)
 }
+
+#[cfg(all(test, unix))]
+#[path = "dev_namespace_tests.rs"]
+mod dev_namespace_tests;
 
 /// Return the most recent frame capture.
 pub fn latest_frame() -> Option<FrameCapture> {
@@ -855,3 +870,6 @@ pub fn check_shift_enter_anomaly(
         ));
     }
 }
+
+#[cfg(test)]
+static TEST_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

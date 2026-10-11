@@ -421,6 +421,12 @@ fn macos_notification_broker_app_path() -> Option<std::path::PathBuf> {
     if let Some(path) = std::env::var_os("KCODE_MACOS_NOTIFICATION_BROKER_APP") {
         return Some(path.into());
     }
+    if crate::storage::running_with_sandboxed_home() {
+        return crate::storage::kcode_dir().ok().map(|root| {
+            root.join("Applications")
+                .join(MACOS_NOTIFICATION_BROKER_APP_NAME)
+        });
+    }
     dirs::home_dir().map(|home| {
         home.join("Applications")
             .join(MACOS_NOTIFICATION_BROKER_APP_NAME)
@@ -432,12 +438,9 @@ pub fn macos_notification_inbox_dir() -> Option<std::path::PathBuf> {
     if let Some(path) = std::env::var_os("KCODE_MACOS_NOTIFICATION_INBOX") {
         return Some(path.into());
     }
-    dirs::home_dir().map(|home| {
-        home.join(".kcode")
-            .join("notifications")
-            .join("macos")
-            .join("inbox")
-    })
+    crate::storage::kcode_dir()
+        .ok()
+        .map(|root| root.join("notifications").join("macos").join("inbox"))
 }
 
 /// Queue a turn notification for the bundled LSUIElement broker and wake it.
@@ -460,10 +463,16 @@ pub fn send_macos_turn_notification(
         let Some(app_path) = macos_notification_broker_app_path() else {
             return false;
         };
+        if crate::storage::reject_dev_home_symlink_path(&app_path).is_err() {
+            return false;
+        }
         let executable = app_path
             .join("Contents")
             .join("MacOS")
             .join(MACOS_NOTIFICATION_BROKER_EXECUTABLE);
+        if crate::storage::reject_dev_home_symlink_path(&executable).is_err() {
+            return false;
+        }
         if !app_path.is_dir() || !executable.is_file() {
             return false;
         }
@@ -505,13 +514,20 @@ pub fn send_macos_turn_notification(
             Err(error) => {
                 // The caller will send a fallback, so remove this payload rather
                 // than deliver a duplicate after a later successful launch.
-                let _ = std::fs::remove_file(queued_path);
+                remove_queued_notification(&queued_path);
                 logging::warn(&format!(
                     "failed to launch macOS notification broker: {error}"
                 ));
                 false
             }
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn remove_queued_notification(path: &std::path::Path) {
+    if crate::storage::reject_dev_home_symlink_path(path).is_ok() {
+        let _ = crate::storage::remove_state_file(path);
     }
 }
 
@@ -540,6 +556,7 @@ fn enqueue_macos_notification(
 
     let inbox = macos_notification_inbox_dir()
         .ok_or_else(|| anyhow::anyhow!("could not determine notification inbox"))?;
+    crate::storage::reject_dev_home_symlink_path(&inbox)?;
     std::fs::create_dir_all(&inbox)?;
     #[cfg(unix)]
     {
@@ -549,6 +566,8 @@ fn enqueue_macos_notification(
 
     let final_path = inbox.join(format!("{}.json", envelope.notification_id));
     let temporary_path = inbox.join(format!(".{}.tmp", envelope.notification_id));
+    crate::storage::reject_dev_home_symlink_path(&final_path)?;
+    crate::storage::reject_dev_home_symlink_path(&temporary_path)?;
     let bytes = serde_json::to_vec(envelope)?;
     let mut file = std::fs::OpenOptions::new()
         .write(true)
@@ -1150,3 +1169,7 @@ mod tests {
         assert_eq!(decoded, envelope);
     }
 }
+
+#[cfg(all(test, target_os = "macos"))]
+#[path = "notifications_isolation_tests.rs"]
+mod namespace_isolation_tests;

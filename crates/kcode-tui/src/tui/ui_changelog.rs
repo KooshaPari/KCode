@@ -164,36 +164,58 @@ pub(super) fn get_unseen_changelog_entries() -> &'static Vec<String> {
             return Vec::new();
         }
 
-        let state_file = dirs::home_dir()
-            .map(|h| h.join(".kcode").join("last_seen_changelog"))
-            .unwrap_or_else(|| std::path::PathBuf::from(".kcode/last_seen_changelog"));
-
-        let last_seen_hash = std::fs::read_to_string(&state_file)
-            .ok()
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
-
-        let new_entries: Vec<String> = if last_seen_hash.is_empty() {
-            all_entries
-                .iter()
-                .take(5)
-                .map(|e| e.subject.to_string())
-                .collect()
-        } else {
-            all_entries
-                .iter()
-                .take_while(|e| e.hash != last_seen_hash)
-                .map(|e| e.subject.to_string())
-                .collect()
-        };
-
-        if let Some(first) = all_entries.first() {
-            if let Some(parent) = state_file.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let _ = std::fs::write(&state_file, first.hash);
-        }
-
-        new_entries
+        let state_file = crate::storage::kcode_dir()
+            .map(|home| home.join("last_seen_changelog"))
+            .unwrap_or_else(|_| std::path::PathBuf::from(".kcode/last_seen_changelog"));
+        unseen_changelog_entries(&state_file, &all_entries)
     })
 }
+
+fn unseen_changelog_entries(
+    state_file: &std::path::Path,
+    all_entries: &[ChangelogEntry<'_>],
+) -> Vec<String> {
+    let state_path_valid = crate::storage::reject_dev_home_symlink_path(state_file).is_ok();
+    let last_seen_hash = state_path_valid
+        .then(|| std::fs::read_to_string(state_file).ok())
+        .flatten()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+
+    let new_entries = if last_seen_hash.is_empty() {
+        all_entries
+            .iter()
+            .take(5)
+            .map(|entry| entry.subject.to_string())
+            .collect()
+    } else {
+        all_entries
+            .iter()
+            .take_while(|entry| entry.hash != last_seen_hash)
+            .map(|entry| entry.subject.to_string())
+            .collect()
+    };
+
+    if state_path_valid && let Some(first) = all_entries.first() {
+        if let Some(parent) = state_file.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        use std::io::Write;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_NOFOLLOW).mode(0o600);
+        }
+        if let Ok(mut file) = options.open(&state_file) {
+            let _ = file.write_all(first.hash.as_bytes());
+        }
+    }
+    new_entries
+}
+
+#[cfg(test)]
+#[cfg(unix)]
+#[path = "ui_changelog_tests.rs"]
+mod namespace_isolation_tests;

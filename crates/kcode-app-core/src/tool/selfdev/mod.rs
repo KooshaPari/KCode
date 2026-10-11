@@ -22,6 +22,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 mod build_queue;
 mod launch;
+#[cfg(all(test, unix))]
+#[path = "namespace_isolation_tests.rs"]
+mod namespace_isolation_tests;
 mod reload;
 mod setup;
 mod status;

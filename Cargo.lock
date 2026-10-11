@@ -3964,12 +3964,14 @@ dependencies = [
  "kcode-provider-copilot",
  "kcode-provider-core",
  "kcode-provider-openai",
+ "libc",
  "reqwest 0.12.28",
  "serde_json",
  "tempfile",
  "tokio",
  "tokio-stream",
  "uuid",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4178,9 +4180,12 @@ dependencies = [
  "kcode-logging",
  "kcode-message-types",
  "kcode-schema-dialect",
+ "kcode-storage",
+ "libc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -4221,7 +4226,9 @@ name = "kcode-schema-dialect"
 version = "0.1.0"
 dependencies = [
  "dirs",
+ "kcode-core",
  "kcode-schema-dialect",
+ "kcode-storage",
  "serde",
  "serde_json",
  "tempfile",
@@ -4510,8 +4517,10 @@ dependencies = [
  "dirs",
  "image",
  "kcode-render-core",
+ "kcode-storage",
  "kcode-tui-mermaid",
  "kcode-tui-workspace",
+ "libc",
  "mdwright-latex",
  "pulldown-cmark",
  "ratatui",
@@ -4533,6 +4542,7 @@ dependencies = [
  "dirs",
  "image",
  "kcode-plan",
+ "kcode-storage",
  "kcode-tui-workspace",
  "mermaid-rs-renderer",
  "ratatui",
@@ -4540,6 +4550,7 @@ dependencies = [
  "resvg 0.46.0",
  "serde",
  "serde_json",
+ "tempfile",
  "usvg 0.46.0",
 ]
 
@@ -4624,10 +4635,13 @@ version = "0.1.0"
 dependencies = [
  "dirs",
  "kcode-logging",
+ "kcode-storage",
+ "libc",
  "ratatui",
  "regex",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

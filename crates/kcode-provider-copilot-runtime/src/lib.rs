@@ -23,7 +23,8 @@ use kcode_provider_copilot::{DEFAULT_MODEL, FALLBACK_MODELS};
 pub use kcode_provider_core::PremiumMode;
 use kcode_provider_core::{EventStream, Provider};
 use serde_json::{Value, json};
-use std::sync::{Arc, RwLock};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
@@ -226,10 +227,12 @@ impl CopilotApiProvider {
     }
 
     fn get_or_create_machine_id() -> String {
-        let machine_id_path = dirs::home_dir()
-            .unwrap_or_default()
-            .join(".kcode")
+        let machine_id_path = kcode_base::storage::kcode_dir()
+            .unwrap_or_else(|_| dirs::home_dir().unwrap_or_default().join(".kcode"))
             .join("machine_id");
+        if kcode_base::storage::running_in_dev_namespace() {
+            return Self::get_or_create_dev_machine_id(&machine_id_path);
+        }
         if let Ok(id) = std::fs::read_to_string(&machine_id_path) {
             let id = id.trim().to_string();
             if !id.is_empty() {
@@ -240,6 +243,84 @@ impl CopilotApiProvider {
         let _ = std::fs::create_dir_all(machine_id_path.parent().unwrap_or(&machine_id_path));
         let _ = std::fs::write(&machine_id_path, &id);
         id
+    }
+
+    fn get_or_create_dev_machine_id(path: &std::path::Path) -> String {
+        let id = Uuid::new_v4().to_string().replace('-', "");
+        let Some(parent) = path.parent() else {
+            return id;
+        };
+        if kcode_base::storage::reject_dev_home_symlink_path(parent).is_err()
+            || std::fs::create_dir_all(parent).is_err()
+            || kcode_base::storage::reject_dev_home_symlink_path(parent).is_err()
+        {
+            return id;
+        }
+        let Some(_file_lock) = acquire_dev_machine_id_lock(path) else {
+            return id;
+        };
+        // The cross-process lock may block. Acquire it before taking the
+        // process-wide mutex so other provider initialization does not stall
+        // behind a process waiting on another KCode instance.
+        let _lock = DEV_MACHINE_ID_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(existing) = read_dev_machine_id(path) {
+            return existing;
+        }
+        if !machine_id_target_is_replaceable(path) {
+            return id;
+        }
+        let temporary = parent.join(format!(
+            "machine_id.tmp-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        if kcode_base::storage::reject_dev_home_symlink_path(&temporary).is_err() {
+            return id;
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        prepare_dev_machine_id_create_options(&mut options);
+        let Ok(mut file) = options.open(&temporary) else {
+            return id;
+        };
+        if kcode_base::storage::reject_dev_home_symlink_path(&temporary).is_err()
+            || restrict_dev_machine_id_file(&file, &temporary).is_err()
+        {
+            drop(file);
+            remove_dev_machine_id_temp(&temporary);
+            return id;
+        }
+        use std::io::Write;
+        if file.write_all(id.as_bytes()).is_err() || file.sync_all().is_err() {
+            drop(file);
+            remove_dev_machine_id_temp(&temporary);
+            return id;
+        }
+        drop(file);
+        if kcode_base::storage::reject_dev_home_symlink_path(&temporary).is_err()
+            || !machine_id_target_is_replaceable(path)
+        {
+            remove_dev_machine_id_temp(&temporary);
+            return id;
+        }
+        if let Some(existing) = read_dev_machine_id(path) {
+            remove_dev_machine_id_temp(&temporary);
+            return existing;
+        }
+        if !machine_id_target_is_replaceable(path) {
+            remove_dev_machine_id_temp(&temporary);
+            return id;
+        }
+        if atomic_replace_dev_machine_id(&temporary, path).is_err() {
+            remove_dev_machine_id_temp(&temporary);
+            return id;
+        }
+        read_dev_machine_id(path).unwrap_or_else(|| {
+            kcode_base::logging::warn("Copilot dev machine_id replacement could not be read");
+            id
+        })
     }
 
     fn is_user_initiated_raw(messages: &[ChatMessage]) -> bool {
@@ -911,6 +992,189 @@ impl CopilotApiProvider {
         Ok(())
     }
 }
+
+fn dev_machine_id_read_options() -> std::fs::OpenOptions {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    add_dev_machine_id_no_follow(&mut options);
+    options
+}
+
+fn acquire_dev_machine_id_lock(path: &std::path::Path) -> Option<std::fs::File> {
+    let lock_path = path.parent()?.join("machine_id.lock");
+    kcode_base::storage::reject_dev_home_symlink_path(&lock_path).ok()?;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true).write(true).create(true);
+    prepare_dev_machine_id_create_options(&mut options);
+    let file = options.open(&lock_path).ok()?;
+    if !file.metadata().ok()?.is_file()
+        || kcode_base::storage::reject_dev_home_symlink_path(&lock_path).is_err()
+        || restrict_dev_machine_id_file(&file, &lock_path).is_err()
+        || lock_machine_id_file(&file).is_err()
+    {
+        return None;
+    }
+    Some(file)
+}
+
+fn machine_id_target_is_replaceable(path: &std::path::Path) -> bool {
+    if kcode_base::storage::reject_dev_home_symlink_path(path).is_err() {
+        return false;
+    }
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) => metadata.file_type().is_file(),
+        Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+    }
+}
+
+fn remove_dev_machine_id_temp(path: &std::path::Path) {
+    if kcode_base::storage::reject_dev_home_symlink_path(path).is_ok() {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+fn prepare_dev_machine_id_create_options(options: &mut std::fs::OpenOptions) {
+    add_dev_machine_id_no_follow(options);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+}
+
+fn restrict_dev_machine_id_file(
+    file: &std::fs::File,
+    path: &std::path::Path,
+) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        let _ = path;
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+    }
+    #[cfg(windows)]
+    {
+        kcode_base::storage::reject_dev_home_symlink_path(path)?;
+        kcode_base::platform::set_permissions_owner_only(path)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = (file, path);
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn lock_machine_id_file(file: &std::fs::File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+fn lock_machine_id_file(file: &std::fs::File) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{LOCKFILE_EXCLUSIVE_LOCK, LockFileEx};
+    use windows_sys::Win32::System::IO::OVERLAPPED;
+    let mut overlapped = unsafe { std::mem::zeroed::<OVERLAPPED>() };
+    let result = unsafe {
+        LockFileEx(
+            file.as_raw_handle(),
+            LOCKFILE_EXCLUSIVE_LOCK,
+            0,
+            1,
+            0,
+            &mut overlapped,
+        )
+    };
+    if result != 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn lock_machine_id_file(_: &std::fs::File) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "advisory file locking is unavailable on this platform",
+    ))
+}
+
+#[cfg(unix)]
+fn atomic_replace_dev_machine_id(
+    from: &std::path::Path,
+    to: &std::path::Path,
+) -> std::io::Result<()> {
+    std::fs::rename(from, to)
+}
+
+#[cfg(windows)]
+fn atomic_replace_dev_machine_id(
+    from: &std::path::Path,
+    to: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MoveFileExW};
+    let from = from
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let to = to
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect::<Vec<_>>();
+    let result = unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), MOVEFILE_REPLACE_EXISTING) };
+    if result != 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn atomic_replace_dev_machine_id(
+    from: &std::path::Path,
+    to: &std::path::Path,
+) -> std::io::Result<()> {
+    std::fs::rename(from, to)
+}
+
+fn read_dev_machine_id(path: &std::path::Path) -> Option<String> {
+    kcode_base::storage::reject_dev_home_symlink_path(path).ok()?;
+    let mut file = dev_machine_id_read_options().open(path).ok()?;
+    use std::io::Read;
+    let mut value = String::new();
+    file.read_to_string(&mut value).ok()?;
+    let value = value.trim();
+    (value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| value.to_string())
+}
+
+#[cfg(unix)]
+fn add_dev_machine_id_no_follow(options: &mut std::fs::OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+    options.custom_flags(libc::O_NOFOLLOW);
+}
+
+#[cfg(windows)]
+fn add_dev_machine_id_no_follow(options: &mut std::fs::OpenOptions) {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+    options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+}
+
+#[cfg(not(any(unix, windows)))]
+fn add_dev_machine_id_no_follow(_: &mut std::fs::OpenOptions) {}
+
+static DEV_MACHINE_ID_LOCK: Mutex<()> = Mutex::new(());
 
 fn is_retryable_error(error_str: &str) -> bool {
     kcode_provider_core::is_transient_transport_error(error_str)

@@ -24,6 +24,7 @@ const DPI_QUANTUM: u16 = 12;
 static LOG_HOOK: LazyLock<Mutex<fn(&str)>> = LazyLock::new(|| Mutex::new(|_| {}));
 static LAST_REPORTED_ERROR: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 const COPY_SOURCE_CACHE_LIMIT: usize = 4096;
+static CACHE_TEMP_NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct LatexCopySource {
@@ -445,8 +446,9 @@ pub(super) fn render_latex_image(
 fn cached_artifact(source: &str, display: bool, dpi: u16) -> Result<Artifact, String> {
     validate_source(source)?;
     let dir = cache_dir()?;
+    reject_cache_path(&dir)?;
     let cache_path = dir.join(format!("{:016x}.png", cache_key(source, display, dpi)));
-    load_artifact(&cache_path)
+    load_cached_artifact(&cache_path)
 }
 
 fn register_copy_source(hash: u64, source: &str, display: bool) {
@@ -531,9 +533,12 @@ fn render_artifact_in(
     cache_dir: &Path,
 ) -> Result<Artifact, String> {
     validate_source(source)?;
+    reject_cache_path(cache_dir)?;
     fs::create_dir_all(cache_dir).map_err(|e| format!("create LaTeX cache: {e}"))?;
+    reject_cache_path(cache_dir)?;
     let cache_path = cache_dir.join(format!("{:016x}.png", cache_key(source, display, dpi)));
-    if let Ok(artifact) = load_artifact(&cache_path) {
+    reject_cache_path(&cache_path)?;
+    if let Ok(artifact) = load_cached_artifact(&cache_path) {
         return Ok(artifact);
     }
 
@@ -584,16 +589,64 @@ fn render_artifact_in(
 
     let rendered = work.path().join("formula.png");
     load_artifact(&rendered)?;
-    let temporary_cache_path = cache_path.with_extension(format!("{}.tmp", std::process::id()));
-    fs::copy(&rendered, &temporary_cache_path).map_err(|e| format!("cache rendered LaTeX: {e}"))?;
+    let nonce = CACHE_TEMP_NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let time_nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let temporary_cache_path = cache_path.with_extension(format!(
+        "{}-{time_nonce:x}-{nonce:x}.tmp",
+        std::process::id()
+    ));
+    copy_to_cache_temp(&rendered, &temporary_cache_path)?;
+    reject_cache_path(&temporary_cache_path)?;
+    reject_cache_path(&cache_path)?;
     if let Err(error) = fs::rename(&temporary_cache_path, &cache_path) {
+        reject_cache_path(&cache_path)?;
         if !cache_path.exists() {
-            let _ = fs::remove_file(&temporary_cache_path);
+            remove_cache_temp(&temporary_cache_path);
             return Err(format!("publish rendered LaTeX: {error}"));
         }
-        let _ = fs::remove_file(&temporary_cache_path);
+        remove_cache_temp(&temporary_cache_path);
     }
-    load_artifact(&cache_path)
+    load_cached_artifact(&cache_path)
+}
+
+fn reject_cache_path(path: &Path) -> Result<(), String> {
+    kcode_storage::reject_dev_home_symlink_path(path)
+        .map_err(|error| format!("unsafe LaTeX cache path: {error}"))
+}
+
+fn load_cached_artifact(path: &Path) -> Result<Artifact, String> {
+    reject_cache_path(path)?;
+    load_artifact(path)
+}
+
+fn copy_to_cache_temp(source: &Path, destination: &Path) -> Result<(), String> {
+    reject_cache_path(destination)?;
+    let mut input = File::open(source).map_err(|error| format!("read rendered LaTeX: {error}"))?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let mut output = options
+        .open(destination)
+        .map_err(|error| format!("create LaTeX cache temporary: {error}"))?;
+    if let Err(error) = std::io::copy(&mut input, &mut output) {
+        drop(output);
+        remove_cache_temp(destination);
+        return Err(format!("cache rendered LaTeX: {error}"));
+    }
+    Ok(())
+}
+
+fn remove_cache_temp(path: &Path) {
+    if reject_cache_path(path).is_ok() {
+        let _ = fs::remove_file(path);
+    }
 }
 
 fn dvipng_rgb_arg((red, green, blue): (u8, u8, u8)) -> String {
@@ -683,10 +736,16 @@ fn recolor_and_crop(path: &Path, dpi: u16) -> Result<(), String> {
 }
 
 fn cache_dir() -> Result<PathBuf, String> {
-    dirs::cache_dir()
-        .map(|path| path.join("kcode").join("latex"))
+    kcode_storage::kcode_dir()
+        .ok()
+        .map(|home| home.join("cache").join("latex"))
+        .or_else(|| dirs::cache_dir().map(|path| path.join("kcode").join("latex")))
         .ok_or_else(|| "no user cache directory is available".to_string())
 }
+
+#[cfg(test)]
+#[path = "markdown_latex_image_tests.rs"]
+mod dev_namespace_tests;
 
 fn load_artifact(path: &Path) -> Result<Artifact, String> {
     let image = image::open(path).map_err(|e| format!("read rendered LaTeX PNG: {e}"))?;
@@ -1062,6 +1121,10 @@ mod tests {
     #[test]
     fn uncached_math_returns_immediately_instead_of_blocking_the_draw_path() {
         use std::time::Instant;
+
+        let _env_guard = crate::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
 
         let source = format!(
             "unique_deferred_probe_{}",

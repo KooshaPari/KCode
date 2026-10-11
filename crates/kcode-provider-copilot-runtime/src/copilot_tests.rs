@@ -1,5 +1,182 @@
 use super::*;
 
+#[cfg(unix)]
+static DEV_NAMESPACE_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[cfg(unix)]
+struct DevEnvGuard {
+    home: Option<std::ffi::OsString>,
+    jcode_home: Option<std::ffi::OsString>,
+    dev_namespace: Option<std::ffi::OsString>,
+}
+
+#[cfg(unix)]
+impl DevEnvGuard {
+    fn set(home: &std::path::Path) -> Self {
+        let guard = Self {
+            home: std::env::var_os("HOME"),
+            jcode_home: std::env::var_os("KCODE_HOME"),
+            dev_namespace: std::env::var_os("KCODE_DEV_NAMESPACE"),
+        };
+        kcode_base::env::set_var("HOME", home.parent().unwrap());
+        kcode_base::env::set_var("KCODE_HOME", home);
+        kcode_base::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        guard
+    }
+}
+
+#[cfg(unix)]
+impl Drop for DevEnvGuard {
+    fn drop(&mut self) {
+        match self.home.take() {
+            Some(value) => kcode_base::env::set_var("HOME", value),
+            None => kcode_base::env::remove_var("HOME"),
+        }
+        match self.jcode_home.take() {
+            Some(value) => kcode_base::env::set_var("KCODE_HOME", value),
+            None => kcode_base::env::remove_var("KCODE_HOME"),
+        }
+        match self.dev_namespace.take() {
+            Some(value) => kcode_base::env::set_var("KCODE_DEV_NAMESPACE", value),
+            None => kcode_base::env::remove_var("KCODE_DEV_NAMESPACE"),
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_machine_id_does_not_follow_symlink() {
+    let _lock = DEV_NAMESPACE_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let temp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(temp.path()).unwrap();
+    let dev = root.join(".kcode-dev");
+    let target = root.join("stable-machine-id");
+    std::fs::create_dir_all(&dev).unwrap();
+    std::fs::write(&target, "stable-machine-id").unwrap();
+    std::os::unix::fs::symlink(&target, dev.join("machine_id")).unwrap();
+    let _env = DevEnvGuard::set(&dev);
+    assert_eq!(
+        std::env::var_os("KCODE_HOME").as_deref(),
+        Some(dev.as_os_str())
+    );
+
+    let id = CopilotApiProvider::get_or_create_machine_id();
+
+    assert_ne!(id, "stable-machine-id");
+    assert!(dev.join("machine_id").is_symlink());
+    assert_eq!(
+        std::fs::read_to_string(target).unwrap(),
+        "stable-machine-id"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_machine_id_lock_symlink_is_rejected() {
+    let _lock = DEV_NAMESPACE_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let temp = tempfile::tempdir().unwrap();
+    let root = std::fs::canonicalize(temp.path()).unwrap();
+    let dev = root.join(".kcode-dev");
+    let sentinel = root.join("stable-lock");
+    std::fs::create_dir_all(&dev).unwrap();
+    std::fs::write(&sentinel, "stable-lock-content").unwrap();
+    std::os::unix::fs::symlink(&sentinel, dev.join("machine_id.lock")).unwrap();
+    let _env = DevEnvGuard::set(&dev);
+
+    let id = CopilotApiProvider::get_or_create_machine_id();
+
+    assert_eq!(id.len(), 32);
+    assert!(!dev.join("machine_id").exists());
+    assert!(dev.join("machine_id.lock").is_symlink());
+    assert_eq!(
+        std::fs::read_to_string(&sentinel).unwrap(),
+        "stable-lock-content"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn concurrent_dev_machine_id_repair_returns_one_winner() {
+    let _lock = DEV_NAMESPACE_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let temp = tempfile::tempdir().unwrap();
+    let dev = std::fs::canonicalize(temp.path())
+        .unwrap()
+        .join(".kcode-dev");
+    std::fs::create_dir_all(&dev).unwrap();
+    std::fs::write(dev.join("machine_id"), "invalid-machine-id").unwrap();
+    let _env = DevEnvGuard::set(&dev);
+    assert_eq!(
+        std::env::var_os("KCODE_HOME").as_deref(),
+        Some(dev.as_os_str())
+    );
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+    let threads = (0..8)
+        .map(|_| {
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                barrier.wait();
+                CopilotApiProvider::get_or_create_machine_id()
+            })
+        })
+        .collect::<Vec<_>>();
+    let ids = threads
+        .into_iter()
+        .map(|thread| thread.join().unwrap())
+        .collect::<Vec<_>>();
+
+    assert!(
+        ids.iter().all(|id| id == &ids[0]),
+        "KCODE_HOME={dev:?}, ids={ids:?}, persisted={:?}",
+        std::fs::read_to_string(dev.join("machine_id"))
+    );
+    assert_eq!(
+        std::fs::read_to_string(dev.join("machine_id")).unwrap(),
+        ids[0]
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(dev.join("machine_id.lock"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_env_guard_restores_values_on_unwind() {
+    let _lock = DEV_NAMESPACE_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let prior_home = std::env::var_os("KCODE_HOME");
+    let prior_namespace = std::env::var_os("KCODE_DEV_NAMESPACE");
+    let temp = tempfile::tempdir().unwrap();
+    let home = std::fs::canonicalize(temp.path()).unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = DevEnvGuard::set(&home);
+        assert_eq!(
+            std::env::var_os("KCODE_HOME").as_deref(),
+            Some(home.as_os_str())
+        );
+        assert_eq!(std::env::var("KCODE_DEV_NAMESPACE").as_deref(), Ok("1"));
+        panic!("exercise environment restoration");
+    }));
+    assert!(result.is_err());
+    assert_eq!(std::env::var_os("KCODE_HOME"), prior_home);
+    assert_eq!(std::env::var_os("KCODE_DEV_NAMESPACE"), prior_namespace);
+}
+
 fn make_test_provider(fetched: Vec<String>) -> CopilotApiProvider {
     CopilotApiProvider {
         client: kcode_base::provider::shared_http_client(),

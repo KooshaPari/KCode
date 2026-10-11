@@ -80,6 +80,9 @@ pub(super) fn active_session_file(session_id: &str) -> Option<PathBuf> {
 }
 
 pub(super) fn write_private_file(path: &PathBuf, value: &str) {
+    if storage::reject_dev_home_symlink_path(path).is_err() {
+        return;
+    }
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -100,6 +103,9 @@ pub(super) fn utc_weekday(timestamp: DateTime<Utc>) -> u32 {
 }
 
 pub(super) fn write_private_dir_file(path: &PathBuf, value: &str) {
+    if storage::reject_dev_home_symlink_path(path).is_err() {
+        return;
+    }
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -107,6 +113,9 @@ pub(super) fn write_private_dir_file(path: &PathBuf, value: &str) {
 }
 
 pub(super) fn read_epoch_lines(path: &PathBuf) -> Vec<i64> {
+    if storage::reject_dev_home_symlink_path(path).is_err() {
+        return Vec::new();
+    }
     std::fs::read_to_string(path)
         .ok()
         .into_iter()
@@ -163,6 +172,9 @@ pub(super) fn update_session_start_history(
 }
 
 pub(super) fn prune_active_session_files(dir: &PathBuf) -> u32 {
+    if storage::reject_dev_home_symlink_path(dir).is_err() {
+        return 0;
+    }
     let _ = std::fs::create_dir_all(dir);
     let now = SystemTime::now();
     let max_age = Duration::from_secs(24 * 60 * 60);
@@ -173,6 +185,9 @@ pub(super) fn prune_active_session_files(dir: &PathBuf) -> u32 {
     };
     for entry in entries.filter_map(Result::ok) {
         let path = entry.path();
+        if storage::reject_dev_home_symlink_path(&path).is_err() {
+            continue;
+        }
         let fresh = entry
             .metadata()
             .ok()
@@ -208,12 +223,16 @@ pub(super) fn observe_active_sessions() -> u32 {
 
 pub(super) fn unregister_active_session(session_id: &str) {
     if let Some(path) = active_session_file(session_id) {
+        if storage::reject_dev_home_symlink_path(&path).is_err() {
+            return;
+        }
         let _ = std::fs::remove_file(path);
     }
 }
 
 pub(super) fn get_or_create_id() -> Option<String> {
     let path = telemetry_id_path()?;
+    storage::reject_dev_home_symlink_path(&path).ok()?;
     if let Ok(id) = std::fs::read_to_string(&path) {
         let id = id.trim().to_string();
         if !id.is_empty() {
@@ -226,7 +245,10 @@ pub(super) fn get_or_create_id() -> Option<String> {
 }
 
 pub(super) fn is_first_run() -> bool {
-    telemetry_id_path().map(|p| !p.exists()).unwrap_or(false)
+    telemetry_id_path()
+        .filter(|path| storage::reject_dev_home_symlink_path(path).is_ok())
+        .map(|path| !path.exists())
+        .unwrap_or(false)
 }
 
 pub(super) fn version() -> String {
@@ -235,7 +257,10 @@ pub(super) fn version() -> String {
 
 pub(super) fn install_recorded_for_id(id: &str) -> bool {
     install_recorded_path()
-        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|path| {
+            storage::reject_dev_home_symlink_path(&path).ok()?;
+            std::fs::read_to_string(path).ok()
+        })
         .map(|stored| stored.trim() == id)
         .unwrap_or(false)
 }
@@ -248,7 +273,10 @@ pub(super) fn mark_install_recorded(id: &str) {
 
 pub(super) fn previously_recorded_version() -> Option<String> {
     version_recorded_path()
-        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|path| {
+            storage::reject_dev_home_symlink_path(&path).ok()?;
+            std::fs::read_to_string(path).ok()
+        })
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
 }
@@ -315,11 +343,13 @@ pub(super) fn ran_from_cargo() -> bool {
 
 pub(super) fn install_anchor_time(id: &str) -> Option<SystemTime> {
     install_recorded_path()
+        .filter(|path| storage::reject_dev_home_symlink_path(path).is_ok())
         .filter(|path| install_recorded_for_id(id) && path.exists())
         .and_then(|path| std::fs::metadata(path).ok())
         .and_then(|meta| meta.modified().ok())
         .or_else(|| {
             telemetry_id_path()
+                .filter(|path| storage::reject_dev_home_symlink_path(path).is_ok())
                 .and_then(|path| std::fs::metadata(path).ok())
                 .and_then(|meta| meta.modified().ok())
         })

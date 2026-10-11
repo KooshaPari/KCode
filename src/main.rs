@@ -198,6 +198,7 @@ fn run_main() -> Result<()> {
     // check for updates, or emit first-run telemetry disclosure text into the
     // parent CLI's hook output.
     if let Some(source) = cli_launch_hint_source_invocation() {
+        kcode::cli::dev_namespace::ensure_global_integrations_allowed("CLI launch hook")?;
         return kcode::setup_hints::run_setup_hotkey(false, false, false, Some(&source));
     }
 
@@ -207,6 +208,9 @@ fn run_main() -> Result<()> {
     // otherwise move execution onto a worker thread with no run loop and leave
     // the Cmd+; hotkey silently dead.
     if is_macos_hotkey_listener_invocation() {
+        kcode::cli::dev_namespace::ensure_global_integrations_allowed(
+            "setup-hotkey --listen-macos-hotkey",
+        )?;
         return kcode::setup_hints::run_macos_hotkey_listener_main_thread();
     }
 
@@ -215,6 +219,7 @@ fn run_main() -> Result<()> {
     // Tokio/CLI startup so AppKit and Notification Center stay on the real main
     // thread and the helper never initializes an agent session.
     if kcode::cli::macos_notification_broker::is_invocation() {
+        kcode::cli::dev_namespace::ensure_global_integrations_allowed("notification broker")?;
         return kcode::cli::macos_notification_broker::run();
     }
 
