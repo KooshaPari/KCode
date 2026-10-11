@@ -3357,7 +3357,6 @@ dependencies = [
  "jcode-command-risk",
  "jcode-core",
  "jcode-harness-api",
- "jcode-herdr",
  "jcode-import-core",
  "jcode-message-types",
  "jcode-micro-compact",
@@ -3646,7 +3645,6 @@ name = "jcode-herdr"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "serde",
  "serde_json",
  "tempfile",
  "tokio",
@@ -4150,7 +4148,6 @@ dependencies = [
  "jcode-message-types",
  "jcode-provider-core",
  "jcode-provider-metadata",
- "jcode-provider-openai",
  "jcode-provider-openrouter",
  "reqwest 0.12.28",
  "serde",
@@ -4216,7 +4213,6 @@ name = "jcode-session-memory"
 version = "0.1.0"
 dependencies = [
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -4349,7 +4345,6 @@ name = "jcode-tool-search"
 version = "0.1.0"
 dependencies = [
  "serde",
- "serde_json",
 ]
 
 [[package]]
