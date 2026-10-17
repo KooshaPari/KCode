@@ -3500,7 +3500,7 @@ fn session_tool_controls_require_attachment_and_negotiated_support() {
     ] {
         request["id"] = json!(9);
         request["session_id"] = json!("s1");
-        for (mut state, code) in [
+        for (mut state, _code) in [
             (BridgeState::default(), ErrorCode::UnknownSession),
             (
                 BridgeState {
@@ -3590,7 +3590,7 @@ fn tool_controls_validate_pending_attachment_and_required_session() {
             .as_slice(),
         [Outbound::Legacy(_)]
     ));
-    for (session_id, code) in [
+    for (session_id, _code) in [
         (json!("s2"), ErrorCode::UnknownSession),
         (json!(""), ErrorCode::InvalidRequest),
         (Value::Null, ErrorCode::InvalidRequest),
