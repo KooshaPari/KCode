@@ -471,7 +471,7 @@ mod tests {
         let snapshot = snapshot_with(vec![term_binding("super+enter", "toggle_fullscreen")]);
         let conflicts = detect_conflicts(&cfg, &snapshot);
         assert_eq!(conflicts.len(), 1, "conflicts: {conflicts:?}");
-        assert!(conflicts[0].kcode.field.contains("alternate_enter"));
+        assert!(conflicts[0].jcode.field.contains("alternate_enter"));
     }
 
     #[test]
