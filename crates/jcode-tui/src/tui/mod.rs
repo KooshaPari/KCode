@@ -51,6 +51,7 @@ mod info_widget_overview;
 mod info_widget_settle;
 pub mod info_widget_stability;
 pub mod keybind;
+mod keyboard_protocol;
 mod layout_utils;
 pub mod login_picker;
 pub mod markdown;
@@ -138,6 +139,9 @@ fn keyboard_enhancement_flags() -> crossterm::event::KeyboardEnhancementFlags {
 /// layout. Prefer the terminal-delivered character and only synthesize ASCII
 /// letter casing in the input fallback.
 ///
+/// On Windows, keep native console key records: Crossterm has no CSI-u decoder
+/// there. Focus/resume must follow the same policy even if the config enables it.
+///
 /// Returns whether the requests were written, not whether the terminal supports them.
 pub fn enable_keyboard_enhancement() -> bool {
     let result = enable_keyboard_enhancement_to(&mut std::io::stdout(), inside_tmux()).is_ok();
@@ -156,15 +160,15 @@ fn enable_keyboard_enhancement_to(
     writer: &mut impl std::io::Write,
     inside_tmux: bool,
 ) -> std::io::Result<()> {
-    use crossterm::event::PushKeyboardEnhancementFlags;
-    request_tmux_extended_keys_to(writer, inside_tmux)?;
-    crossterm::execute!(
+    keyboard_protocol::write_mode(
         writer,
-        PushKeyboardEnhancementFlags(keyboard_enhancement_flags())
+        keyboard_protocol::Action::Push,
+        inside_tmux,
+        keyboard_enhancement_flags().bits(),
     )
 }
 
-/// Reset tmux extended keys and pop Kitty keyboard reporting.
+/// Reset extended keyboard reporting only for a decoder that enabled it.
 pub fn disable_keyboard_enhancement() {
     let _ = disable_keyboard_enhancement_to(&mut std::io::stdout(), inside_tmux());
 }
@@ -173,29 +177,24 @@ fn disable_keyboard_enhancement_to(
     writer: &mut impl std::io::Write,
     inside_tmux: bool,
 ) -> std::io::Result<()> {
-    if inside_tmux {
-        writer.write_all(b"\x1b[>4;0m")?;
-    }
-    crossterm::execute!(writer, crossterm::event::PopKeyboardEnhancementFlags)
-}
-
-fn request_tmux_extended_keys_to(
-    writer: &mut impl std::io::Write,
-    inside_tmux: bool,
-) -> std::io::Result<()> {
-    if inside_tmux {
-        // `extended-keys on` needs modifyOtherKeys opt-in, not a Kitty push.
-        writer.write_all(b"\x1b[>4;2m")?;
-    }
-    Ok(())
+    keyboard_protocol::write_mode(
+        writer,
+        keyboard_protocol::Action::Pop,
+        inside_tmux,
+        keyboard_enhancement_flags().bits(),
+    )
 }
 
 fn reapply_keyboard_enhancement_to(
     writer: &mut impl std::io::Write,
     inside_tmux: bool,
 ) -> std::io::Result<()> {
-    request_tmux_extended_keys_to(writer, inside_tmux)?;
-    write!(writer, "\x1b[={}u", keyboard_enhancement_flags().bits())
+    keyboard_protocol::write_mode(
+        writer,
+        keyboard_protocol::Action::Set,
+        inside_tmux,
+        keyboard_enhancement_flags().bits(),
+    )
 }
 
 /// Reassert terminal modes that terminals may clear while the TUI remains alive.
@@ -258,13 +257,15 @@ fn reapply_terminal_modes_after_focus_to(
 
 #[cfg(test)]
 mod terminal_mode_tests {
+    #[cfg(not(windows))]
     use super::{
         disable_keyboard_enhancement_to, enable_keyboard_enhancement_to,
-        reapply_keyboard_enhancement_to, reapply_terminal_modes_after_focus_to,
-        reapply_terminal_modes_to,
+        reapply_keyboard_enhancement_to,
     };
+    use super::{reapply_terminal_modes_after_focus_to, reapply_terminal_modes_to};
 
     #[test]
+    #[cfg(not(windows))]
     fn tmux_keyboard_lifecycle_requests_and_resets_extended_keys() {
         let mut output = Vec::new();
         enable_keyboard_enhancement_to(&mut output, true).unwrap();
@@ -280,6 +281,7 @@ mod terminal_mode_tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn outside_tmux_keyboard_lifecycle_keeps_kitty_protocol_only() {
         let mut output = Vec::new();
         enable_keyboard_enhancement_to(&mut output, false).unwrap();
@@ -309,7 +311,7 @@ mod terminal_mode_tests {
         let output = String::from_utf8(output).unwrap();
         assert!(output.starts_with("\x1b[?2004h\x1b[?1004h"));
         assert!(!output.contains("\x1b[?1000h"));
-        assert!(output.contains("\x1b[="));
+        assert_eq!(output.contains("\x1b[="), !cfg!(windows));
     }
 
     #[test]
@@ -321,7 +323,7 @@ mod terminal_mode_tests {
         assert!(output.contains("\x1b[?2004h"));
         assert!(output.contains("\x1b[?1004h"));
         assert!(output.contains("\x1b[?1000h"));
-        assert!(output.contains("\x1b[="), "must set Kitty keyboard flags");
+        assert_eq!(output.contains("\x1b[="), !cfg!(windows));
         assert!(
             !output.contains("\x1b[>7u"),
             "must not push the Kitty keyboard stack"
@@ -351,7 +353,10 @@ mod terminal_mode_tests {
                     "must keep focus reporting enabled"
                 );
                 assert_eq!(output.contains("\x1b[?1000h"), mouse_capture);
-                assert_eq!(output.contains("\x1b[=7u"), keyboard_enhanced);
+                assert_eq!(
+                    output.contains("\x1b[=7u"),
+                    keyboard_enhanced && !cfg!(windows)
+                );
                 assert!(
                     !output.contains("\x1b[>7u"),
                     "must not push the Kitty keyboard stack (tmux modifyOtherKeys is allowed)"
