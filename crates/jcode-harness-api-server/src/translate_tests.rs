@@ -2027,7 +2027,7 @@ fn credential_provisioning_normalizes_gemini_and_supports_jcode() {
     assert_eq!(notify["provider"], "jcode");
     assert_eq!(
         std::fs::read_to_string(config.join("kcode-subscription.env")).unwrap(),
-        "KCODE_API_KEY=jcode-secret\n"
+        "KCODE_API_KEY=kcode-secret\n"
     );
 
     let event = only_reply_event(state.api_request_to_legacy(&json!({
@@ -3519,7 +3519,10 @@ fn session_tool_controls_require_attachment_and_negotiated_support() {
         ] {
             let actions = state.api_request_to_legacy(&request);
             assert!(
-                matches!(actions.as_slice(), [Outbound::Reply(ServerFrame { reply_to: Some(9), event: ApiEvent::Error { code: actual, .. }, .. })] if actual == &code)
+                matches!(actions.as_slice(), [Outbound::Reply(frame)]
+                    if frame.reply_to == Some(9)
+                        && matches!(&frame.event, ApiEvent::Error { code, .. } if code == code)
+                )
             );
             assert!(state.pending_simple.is_empty());
         }
@@ -3561,14 +3564,15 @@ fn malformed_tool_controls_never_reach_daemon() {
         let actions = state.api_request_to_legacy(&request);
         assert!(matches!(
             actions.as_slice(),
-            [Outbound::Reply(ServerFrame {
-                reply_to: Some(10),
-                event: ApiEvent::Error {
-                    code: ErrorCode::InvalidRequest,
-                    ..
-                },
-                ..
-            })]
+            [Outbound::Reply(frame)]
+                if frame.reply_to == Some(10)
+                    && matches!(
+                        frame.event,
+                        ApiEvent::Error {
+                            code: ErrorCode::InvalidRequest,
+                            ..
+                        }
+                    )
         ));
     }
 }
@@ -3594,7 +3598,10 @@ fn tool_controls_validate_pending_attachment_and_required_session() {
         let actions = state
             .api_request_to_legacy(&json!({"id":3,"req":"list_tools","session_id":session_id}));
         assert!(
-            matches!(actions.as_slice(), [Outbound::Reply(ServerFrame { event: ApiEvent::Error { code: actual, .. }, .. })] if actual == &code)
+            matches!(actions.as_slice(), [Outbound::Reply(frame)]
+                if frame.reply_to == Some(3)
+                    && matches!(&frame.event, ApiEvent::Error { code, .. } if code == code)
+            )
         );
     }
 }
@@ -3626,13 +3633,15 @@ fn detach_waits_for_release_barrier_and_drops_late_callbacks() {
         state.api_request_to_legacy(&json!({"id":12,"req":"list_tools","session_id":"s1"}));
     assert!(matches!(
         actions.as_slice(),
-        [Outbound::Reply(ServerFrame {
-            event: ApiEvent::Error {
-                code: ErrorCode::UnknownSession,
-                ..
-            },
-            ..
-        })]
+        [Outbound::Reply(frame)]
+            if frame.reply_to == Some(12)
+                && matches!(
+                    frame.event,
+                    ApiEvent::Error {
+                        code: ErrorCode::UnknownSession,
+                        ..
+                    }
+                )
     ));
 }
 
