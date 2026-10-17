@@ -66,6 +66,7 @@ fn scheduled_live_delivery_reaches_subscribed_client() {
                 },
                 created_by_session: session.id.clone(),
                 created_at: chrono::Utc::now(),
+                recurrence: Recurrence::Once,
                 working_dir: Some(temp.path().display().to_string()),
                 task_description: None,
                 relevant_files: vec![],
