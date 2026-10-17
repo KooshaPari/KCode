@@ -79,7 +79,7 @@ fn min_cacheable_input_tokens(provider: &str, upstream_provider: Option<&str>) -
     }
 }
 
-fn cache_expected_warm(cache_ttl: Option<&CacheTtlInfo>) -> bool {
+pub(crate) fn cache_expected_warm(cache_ttl: Option<&CacheTtlInfo>) -> bool {
     cache_ttl.map(|info| !info.is_cold).unwrap_or(false)
 }
 
