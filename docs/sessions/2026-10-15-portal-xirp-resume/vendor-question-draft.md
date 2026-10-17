@@ -1,9 +1,31 @@
 # Vendor question — Xirp custom harness registration contract
-**Date:** 2026-10-17
+**Date:** 2026-10-17 (revised 2026-10-17T22:35Z after §24 unblock)
 **For:** Spotify Xirp / @chirp/squab team
 **From:** Koosha Pari (Jcode maintainer)
 **Status:** DRAFT (operator must paste into the channel of their choice)
 **Full evidence:** `docs/XIRP_CUSTOM_HARNESS.md` in `KooshaPari/Jcode` master
+
+---
+
+## Status update (2026-10-17)
+
+Since this draft was first authored:
+
+- **§24 (XJ-03 portal MCP bridge) — UNBLOCKED.** The Spotify Portal admin
+  allow-list already contains the Jcode CIMD's `client_id`. The CIMD's
+  `redirect_uri` is loopback (`http://127.0.0.1:47290/oauth/callback`),
+  which is allowed by Spotify Portal's default ("HTTP loopback redirects
+  on localhost, 127.0.0.1, and [::1], using any port and path"). The
+  operator can deploy the bridge by editing one placeholder in
+  `scripts/portal-mcp-bridge.json` and merging into `~/.jcode/mcp.json`.
+  No vendor action needed for XJ-03.
+- **XJ-07 (verify failure and rollback) — IN FLIGHT** (subagent
+  dispatched 2026-10-17T22:32Z, 30m budget). Jcode-side only.
+- **XJ-02, XJ-04, XJ-05 — STILL BLOCKED on `@chirp/squab`.** These are
+  the items this message is asking about. The Jcode side has done all it
+  can. The squab side is the only remaining dependency.
+
+The questions below are unchanged from the original draft.
 
 ---
 
