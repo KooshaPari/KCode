@@ -13,6 +13,53 @@ EXITCODE: resume tests (25 matching) = 0  -> 24 passed, 0 failed, 1 ignored (bro
 
 The 7 previously-hanging resume tests now pass. That was the point of the re-land.
 
+### CORRECTION (2026-10-18T19:14Z, after CI ran)
+
+**PR #125 is NOT merge-ready as reported earlier.**
+
+`gh pr view 125` returns `mergeStateStatus: UNSTABLE` and `reviewDecision: CHANGES_REQUESTED`. Saying "it's ready" before CI ran was overstated.
+
+Those failures are **pre-existing on master, not introduced by this branch** — this branch's diff touches 8 test files + 4 docs files and **none** of the 3 files that produce the failing warnings. A pristine-master budget run was launched to prove it (see CI section). But the PR is still red, so it is not mergeable without either fixing the master-level breakage or the operator accepting a red gate.
+
+## CI on PR #125 (2026-10-18T19:19Z)
+
+| Check | Result |
+|---|---|
+| Format | **fail** |
+| Quality Guardrails | **fail** |
+| Require Linked Issue | **fail** |
+| Setup Friction Eval | **fail** |
+| Build & Test (macos/ubuntu/windows) | pending |
+| Release Automation, PowerShell, Windows Cross-Target | pass |
+| semgrep, Socket Security, CodeRabbit | pass |
+
+`reviewDecision: CHANGES_REQUESTED`.
+
+### Proven: the guardrail failure is a pre-existing master break
+
+`scripts/check_warning_budget.sh` was run on a **pristine master worktree** (`wt-master-check` @ `6ff8aa2d1`):
+
+```
+MASTER_BUDGET_EXITCODE=1
+Warning budget exceeded: current=8 baseline=0
+```
+
+Identical to this branch (`current=8 baseline=0`). The baseline file `scripts/warning_budget.txt` currently holds `0`, and its git history shows it was deliberately lowered repeatedly (`lower budget to 202`, `lower budget to 183`, then to `0`). **Master itself is red on this gate.**
+
+This branch modifies none of `update_product.rs`, `jcode-sdk/src/client.rs`, or `jcode-tui/src/tui/mod.rs` — the 3 files that produce all 8 warnings.
+
+### Require Linked Issue: my fault, but master is red on it too
+
+My PR body referenced `#116`, `#120`, `#121` — all **PRs, not issues**, so the gate found zero valid issue links. Fixing the body would link a real issue if one existed, but **no issue exists for this deadlock**, and master's own CI (run `39113416504`) is red on the same gate without needing my PR at all.
+
+### Format: pre-existing on master (corrected)
+
+The Format job lists 7 files with `cargo fmt --check` diffs. **Zero** of them are in this branch's 12-file diff (verified by set-intersection of the CI list against `git diff --name-only 6ff8aa2d1...HEAD`). They are `translate_tests.rs`, `round_trip_state.rs`, `jcode-tui/src/tui/mod.rs`, etc. — dirty on master.
+
+### I did NOT fix it (deliberately)
+
+The naive fix is `--update`, which is **explicitly forbidden** by operator standing instruction ("never raise the ratchet baseline or use `--update`"). The honest fix is deleting/gating the 8 dead items, which is a separate cleanup PR. Neither belongs inside a test-only resume-fix PR.
+
 ## Remaining full-suite state (important — not clean yet)
 
 Full suite on the landing commit: **298 passed, 0 failed, 4 deadlocked.**
