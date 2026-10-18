@@ -82,7 +82,9 @@ pub fn lock_test_env() -> MutexGuard<'static, ()> {
 }
 ```
 
-It is a **`std::sync::Mutex` guard held across `.await`** in ~284 call sites across 74 files. Example, `client_session_tests.rs:68`:
+It is a **`std::sync::Mutex` guard held across `.await`**. Measured on `b99b19bc8`: **63 call sites across 23 files** (57 fully-qualified + 6 via `use`), and **16 of those files contain a `.await` after the lock is acquired**. Example, `client_session_tests.rs:68`:
+
+**Correction (2026-10-18T19:28Z):** the previously-published figure was "~284 call sites across 74 files". That came from a loose `grep -rn "lock_test_env()"` which over-counted by matching three unrelated same-named helpers that are not the shared `jcode_base` guard: `jcode-telemetry-core/src/tests.rs`, `jcode-provider-bedrock/src/lib.rs`, `crates/jcode-herdr/src/env.rs`. A broad grep on an unqualified symbol name is not a call-site count. Do not cite the old number.
 
 ```rust
 let _env = crate::storage::lock_test_env();
@@ -92,7 +94,7 @@ tokio::time::timeout(secs(5), notification.notified()).await  // ... and again
 
 A blocking `MutexGuard` across `.await` on a current-thread tokio runtime can block the only worker thread while every other test queues on the same global lock, producing a 0%CPU hang with no panic. Under `--test-threads=4` the ordering varies, so which 4 stall is not fully deterministic across runs, but the family is stable: `concurrency`, `reload`, `idle_prewarm`.
 
-Fix would be `tokio::sync::Mutex` (or an async-aware lock) in `jcode-base/src/storage.rs`. That is a production-code change in a **shared crate used by 74 files** — needs operator direction before anyone touches it.
+Fix would be `tokio::sync::Mutex` (or an async-aware lock) in `jcode-base/src/storage.rs`. That is a production-code change in a **shared crate used by 23 files** (16 of which await while holding it) — needs operator direction before anyone touches it.
 
 ## Task D — startup spawn notice is dead code
 
@@ -142,6 +144,9 @@ Full detail: `docs/sessions/2026-10-18-resume-reland/C_findings.md`
 - Earlier I stated 27 TUI failures; actual is **29**.
 - Earlier I claimed to have verified Task B from a stale log; retracted then, now actually verified fresh at `b99b19bc8`.
 - PRs #116 and #120 are CLOSED; #120 was re-landed by the operator as #121. This re-land is separate from #121 — it lands the *addendum* `c89a0d6aa` that #121 does not carry.
+- I described #116 as a "closed issue" while diagnosing the linked-issue gate. It is a **PR**. `gh issue view 116` succeeded and I read that as confirmation; it works on both kinds.
+- **"~284 call sites across 74 files"** for `lock_test_env` was wrong; the measured figure is **63 call sites / 23 files / 16 awaiting**. See the correction note in the deadlock section above.
+- I reported Format and Setup Friction Eval as "pre-existing, same as master" from a stale run's job list before checking `statusCheckRollup`. The conclusion held, but the path to it was sloppy.
 
 ## Policy note
 
