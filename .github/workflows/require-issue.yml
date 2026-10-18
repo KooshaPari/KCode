@@ -27,7 +27,8 @@ concurrency:
 jobs:
   require-issue:
     name: Require Linked Issue
-    runs-on: ubuntu-latest
+    # Moved off hosted ubuntu-latest ($0 minutes cap) to the self-hosted desk runner.
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 5
     steps:
       - name: Check for a linked, existing issue

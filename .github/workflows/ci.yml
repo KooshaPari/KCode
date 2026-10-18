@@ -149,12 +149,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [desk-linux, macos-latest]
+        # macos-latest leg removed: hosted Actions minutes are capped at $0
+        # (never pay for GH CI). macOS builds run manually when needed.
+        os: [desk-linux]
         include:
           - os: desk-linux
             target: x86_64-unknown-linux-gnu
-          - os: macos-latest
-            target: aarch64-apple-darwin
 
     steps:
       - uses: actions/checkout@v4
