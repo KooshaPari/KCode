@@ -105,7 +105,7 @@ fn deferred_sender() -> &'static mpsc::Sender<DeferredLatexTask> {
         // A failure to spawn leaves the receiver dropped, so `send` fails and
         // callers fall back to reporting the error rather than blocking.
         let _ = std::thread::Builder::new()
-            .name("jcode-latex-deferred".to_string())
+            .name("kcode-latex-deferred".to_string())
             .spawn(move || deferred_worker(rx));
         tx
     })
@@ -419,16 +419,16 @@ pub(super) fn toolchain_missing() -> bool {
 impl Toolchain {
     fn from_environment() -> Self {
         Self {
-            latex: std::env::var_os("JCODE_LATEX_COMMAND")
+            latex: std::env::var_os("KCODE_LATEX_COMMAND")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("latex")),
-            dvipng: std::env::var_os("JCODE_DVIPNG_COMMAND")
+            dvipng: std::env::var_os("KCODE_DVIPNG_COMMAND")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("dvipng")),
-            pdflatex: std::env::var_os("JCODE_PDFLATEX_COMMAND")
+            pdflatex: std::env::var_os("KCODE_PDFLATEX_COMMAND")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("pdflatex")),
-            pdftocairo: std::env::var_os("JCODE_PDFTOCAIRO_COMMAND")
+            pdftocairo: std::env::var_os("KCODE_PDFTOCAIRO_COMMAND")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("pdftocairo")),
         }
@@ -593,7 +593,7 @@ fn render_artifact_in(
     }
 
     let work = tempfile::Builder::new()
-        .prefix("jcode-latex-")
+        .prefix("kcode-latex-")
         .tempdir()
         .map_err(|e| format!("create LaTeX workspace: {e}"))?;
     let tex_path = work.path().join("formula.tex");
@@ -739,7 +739,7 @@ fn recolor_and_crop(path: &Path, dpi: u16) -> Result<(), String> {
 
 fn cache_dir() -> Result<PathBuf, String> {
     dirs::cache_dir()
-        .map(|path| path.join("jcode").join("latex"))
+        .map(|path| path.join("kcode").join("latex"))
         .ok_or_else(|| "no user cache directory is available".to_string())
 }
 
@@ -761,7 +761,7 @@ fn run_command<const N: usize>(
     args: [&str; N],
     working_dir: &Path,
 ) -> Result<(), String> {
-    let output_path = working_dir.join(".jcode-command-output.log");
+    let output_path = working_dir.join(".kcode-command-output.log");
     let stdout = File::create(&output_path)
         .map_err(|e| format!("create {} diagnostics: {e}", executable.display()))?;
     let stderr = stdout

@@ -33,10 +33,17 @@
 //! not depend on parsing the command correctly.
 
 mod gate;
+mod heredoc;
 mod paths;
+pub mod pipeline;
+pub mod quote_parser;
+pub mod redirection;
+pub mod substitution;
 mod tokenize;
+pub mod zsh_dangerous;
 
 pub use gate::{GateOutcome, Justification, gate};
+pub use heredoc::{has_heredoc_substitution, is_safe_heredoc, strip_safe_heredoc_substitutions};
 pub use paths::{ProtectedPaths, is_catastrophic_target};
 pub use tokenize::{Token, tokenize};
 
@@ -120,7 +127,7 @@ impl RiskAssessment {
 
 /// Context needed to judge blast radius. Supplied by the caller because this
 /// crate deliberately does no I/O of its own beyond path inspection.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RiskContext {
     /// The tool call's working directory, if any.
     pub working_dir: Option<std::path::PathBuf>,
@@ -130,12 +137,18 @@ pub struct RiskContext {
     pub scratch_dir: Option<std::path::PathBuf>,
 }
 
+impl Default for RiskContext {
+    fn default() -> Self {
+        Self::from_env(None)
+    }
+}
+
 impl RiskContext {
     pub fn from_env(working_dir: Option<std::path::PathBuf>) -> Self {
         Self {
             working_dir,
             home_dir: dirs_home(),
-            scratch_dir: std::env::var_os("JCODE_SCRATCH_DIR")
+            scratch_dir: std::env::var_os("KCODE_SCRATCH_DIR")
                 .filter(|value| !value.is_empty())
                 .map(std::path::PathBuf::from),
         }
@@ -206,7 +219,7 @@ pub fn assess(command: &str, ctx: &RiskContext) -> RiskAssessment {
     let mut findings = Vec::new();
     // Keep the trusted context for literal protected paths, but never approve
     // commands whose own assignments can invalidate known-variable expansion.
-    if command.contains("HOME=") || command.contains("JCODE_SCRATCH_DIR=") {
+    if command.contains("HOME=") || command.contains("KCODE_SCRATCH_DIR=") {
         findings.push(RiskFinding {
             level: RiskLevel::Confirm,
             reason: "command reassigns a path variable used by risk assessment".into(),

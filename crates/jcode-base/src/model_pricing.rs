@@ -8,7 +8,7 @@
 //! providers, including every OpenAI-compatible profile jcode ships.
 //!
 //! This module mirrors the OpenRouter catalog pattern:
-//!   - a 24h disk cache under `~/.jcode/cache/models_dev_pricing.json`,
+//!   - a 24h disk cache under `~/.kcode/cache/models_dev_pricing.json`,
 //!   - synchronous lookups that never block on the network,
 //!   - a background refresh scheduled on cache miss/staleness.
 //!
@@ -52,7 +52,7 @@ struct PricingCache {
 }
 
 /// In-memory pricing cache keyed by the on-disk cache path it was loaded
-/// from, so changing `JCODE_HOME` (tests, multi-home setups) never serves
+/// from, so changing `KCODE_HOME` (tests, multi-home setups) never serves
 /// pricing that belongs to a different home directory.
 ///
 /// Held behind an `Arc` so per-route pricing lookups share one parsed catalog
@@ -63,7 +63,7 @@ static REFRESH_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 fn cache_path() -> PathBuf {
     crate::storage::jcode_dir()
-        .unwrap_or_else(|_| PathBuf::from(".").join(".jcode"))
+        .unwrap_or_else(|_| PathBuf::from(".").join(".kcode"))
         .join("cache")
         .join(CACHE_FILE)
 }
@@ -333,13 +333,13 @@ pub fn schedule_refresh() {
     // Keep tests hermetic: never hit the network from test builds (the
     // `test-support` feature also covers downstream crates' test targets via
     // feature unification), and let users opt out entirely.
-    // JCODE_FORCE_PRICING_REFRESH=1 re-enables the fetch for manual e2e checks
+    // KCODE_FORCE_PRICING_REFRESH=1 re-enables the fetch for manual e2e checks
     // (e.g. `cargo run --example pricing_e2e_check`, which builds with
     // test-support unified in).
-    let forced = std::env::var_os("JCODE_FORCE_PRICING_REFRESH").is_some();
+    let forced = std::env::var_os("KCODE_FORCE_PRICING_REFRESH").is_some();
     if !forced
         && (cfg!(any(test, feature = "test-support"))
-            || std::env::var_os("JCODE_DISABLE_PRICING_REFRESH").is_some())
+            || std::env::var_os("KCODE_DISABLE_PRICING_REFRESH").is_some())
     {
         return;
     }
@@ -464,8 +464,8 @@ mod tests {
     fn resellers_fall_back_to_vendor_pricing_seen_elsewhere() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        let prev_home = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        let prev_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
         clear_memory_cache_for_tests();
 
         save_test_cache(&[
@@ -595,9 +595,9 @@ mod tests {
 
         clear_memory_cache_for_tests();
         if let Some(prev) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev);
+            crate::env::set_var("KCODE_HOME", prev);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 
@@ -605,8 +605,8 @@ mod tests {
     fn local_profiles_do_not_borrow_hosted_pricing() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        let prev_home = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        let prev_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
         clear_memory_cache_for_tests();
 
         save_test_cache(&[(
@@ -631,9 +631,9 @@ mod tests {
 
         clear_memory_cache_for_tests();
         if let Some(prev) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev);
+            crate::env::set_var("KCODE_HOME", prev);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 
@@ -663,8 +663,8 @@ mod tests {
     fn mapped_compatible_profiles_do_not_borrow_foreign_pricing() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        let prev_home = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        let prev_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
         clear_memory_cache_for_tests();
 
         save_test_cache(&[
@@ -702,9 +702,9 @@ mod tests {
 
         clear_memory_cache_for_tests();
         if let Some(prev) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev);
+            crate::env::set_var("KCODE_HOME", prev);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 
@@ -712,8 +712,8 @@ mod tests {
     fn missing_cache_rates_do_not_merge_with_free_ones() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        let prev_home = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        let prev_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
         clear_memory_cache_for_tests();
 
         // Alphabetically-first listings have a missing cache_read and an
@@ -770,9 +770,9 @@ mod tests {
 
         clear_memory_cache_for_tests();
         if let Some(prev) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev);
+            crate::env::set_var("KCODE_HOME", prev);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 
@@ -841,8 +841,8 @@ mod tests {
     fn lookup_normalizes_model_ids() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        let prev_home = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        let prev_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
         clear_memory_cache_for_tests();
 
         save_test_cache(&[
@@ -882,9 +882,9 @@ mod tests {
 
         clear_memory_cache_for_tests();
         if let Some(prev) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev);
+            crate::env::set_var("KCODE_HOME", prev);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 }

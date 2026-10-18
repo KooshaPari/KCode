@@ -98,16 +98,16 @@ async fn mpsc_preserves_signatures_and_never_rebinds_to_provider_session_id() {
     impl Drop for RestoreHome {
         fn drop(&mut self) {
             if let Some(home) = &self.0 {
-                crate::env::set_var("JCODE_HOME", home);
+                crate::env::set_var("KCODE_HOME", home);
             } else {
-                crate::env::remove_var("JCODE_HOME");
+                crate::env::remove_var("KCODE_HOME");
             }
             crate::config::Config::invalidate_cache();
         }
     }
     let home = tempfile::tempdir().unwrap();
-    let _restore = RestoreHome(std::env::var_os("JCODE_HOME"));
-    crate::env::set_var("JCODE_HOME", home.path());
+    let _restore = RestoreHome(std::env::var_os("KCODE_HOME"));
+    crate::env::set_var("KCODE_HOME", home.path());
     crate::config::Config::invalidate_cache();
     let provider = Arc::new(SignatureSessionProvider::default());
     let mut agent = Agent::new(provider.clone(), Registry::empty());
@@ -1002,18 +1002,18 @@ async fn new_agent_registers_active_pid_and_clear_swaps_it() {
 #[tokio::test]
 async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_tools = std::env::var_os("JCODE_TOOLS");
-    let prev_disabled_tools = std::env::var_os("JCODE_DISABLED_TOOLS");
-    let prev_tool_profile = std::env::var_os("JCODE_TOOL_PROFILE");
-    let prev_disable_base_tools = std::env::var_os("JCODE_DISABLE_BASE_TOOLS");
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let prev_tools = std::env::var_os("KCODE_TOOLS");
+    let prev_disabled_tools = std::env::var_os("KCODE_DISABLED_TOOLS");
+    let prev_tool_profile = std::env::var_os("KCODE_TOOL_PROFILE");
+    let prev_disable_base_tools = std::env::var_os("KCODE_DISABLE_BASE_TOOLS");
     let temp_home = tempfile::TempDir::new().expect("temp home");
 
-    crate::env::set_var("JCODE_HOME", temp_home.path());
-    crate::env::remove_var("JCODE_TOOLS");
-    crate::env::remove_var("JCODE_DISABLED_TOOLS");
-    crate::env::remove_var("JCODE_TOOL_PROFILE");
-    crate::env::remove_var("JCODE_DISABLE_BASE_TOOLS");
+    crate::env::set_var("KCODE_HOME", temp_home.path());
+    crate::env::remove_var("KCODE_TOOLS");
+    crate::env::remove_var("KCODE_DISABLED_TOOLS");
+    crate::env::remove_var("KCODE_TOOL_PROFILE");
+    crate::env::remove_var("KCODE_DISABLE_BASE_TOOLS");
     crate::config::Config::invalidate_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1100,7 +1100,7 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
         .validate_tool_allowed("jcode_docs")
         .expect("jcode_docs must be executable again outside self-dev mode");
 
-    crate::env::set_var("JCODE_DISABLED_TOOLS", tool_name);
+    crate::env::set_var("KCODE_DISABLED_TOOLS", tool_name);
     crate::config::Config::invalidate_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1125,29 +1125,29 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     assert!(err.to_string().contains("disabled"));
 
     if let Some(previous) = prev_home {
-        crate::env::set_var("JCODE_HOME", previous);
+        crate::env::set_var("KCODE_HOME", previous);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
     if let Some(previous) = prev_tools {
-        crate::env::set_var("JCODE_TOOLS", previous);
+        crate::env::set_var("KCODE_TOOLS", previous);
     } else {
-        crate::env::remove_var("JCODE_TOOLS");
+        crate::env::remove_var("KCODE_TOOLS");
     }
     if let Some(previous) = prev_disabled_tools {
-        crate::env::set_var("JCODE_DISABLED_TOOLS", previous);
+        crate::env::set_var("KCODE_DISABLED_TOOLS", previous);
     } else {
-        crate::env::remove_var("JCODE_DISABLED_TOOLS");
+        crate::env::remove_var("KCODE_DISABLED_TOOLS");
     }
     if let Some(previous) = prev_tool_profile {
-        crate::env::set_var("JCODE_TOOL_PROFILE", previous);
+        crate::env::set_var("KCODE_TOOL_PROFILE", previous);
     } else {
-        crate::env::remove_var("JCODE_TOOL_PROFILE");
+        crate::env::remove_var("KCODE_TOOL_PROFILE");
     }
     if let Some(previous) = prev_disable_base_tools {
-        crate::env::set_var("JCODE_DISABLE_BASE_TOOLS", previous);
+        crate::env::set_var("KCODE_DISABLE_BASE_TOOLS", previous);
     } else {
-        crate::env::remove_var("JCODE_DISABLE_BASE_TOOLS");
+        crate::env::remove_var("KCODE_DISABLE_BASE_TOOLS");
     }
     crate::config::Config::invalidate_cache();
 }
@@ -1221,7 +1221,7 @@ async fn restore_session_resets_runtime_interrupt_and_queue_state() {
     let mut restored_session = crate::session::Session::create_with_id(
         "session_restore_resets_runtime_state".to_string(),
         None,
-        None,
+        Some("test".to_string()),
     );
     restored_session
         .save_prepared()
@@ -1253,6 +1253,76 @@ async fn restore_session_resets_runtime_interrupt_and_queue_state() {
     assert!(agent.locked_tools.is_none());
 }
 
+/// Regression for: a session saved with a model the active provider
+/// rejects on resume must be migrated to the provider's current
+/// default and re-persisted, not silently left with the rejected
+/// saved value.
+///
+/// Repro shape: operator's m3.1 sessions
+/// (e.g. `~/.jcode/sessions/session_deer_1791971005300_*.json` saved
+/// with `model = "MiniMax-M3.1-Flash-Preview"` on the openai
+/// provider) were silently resuming on the provider's current
+/// default while keeping the saved `MiniMax-M3.1-Flash-Preview` in
+/// `session.model`. The visible symptom was an Active session
+/// running on a model the user did not pick. The bug was in
+/// `restore_session_with_working_dir`
+/// (`crates/jcode-app-core/src/agent/turn_execution.rs:727-747`):
+/// `set_model_with_auth_refresh` errors were logged at `error` and
+/// the session was marked active without correcting
+/// `self.session.model` or re-persisting.
+#[tokio::test]
+async fn restore_session_falls_back_to_provider_default_when_saved_model_is_rejected() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let mut agent = Agent::new(provider, registry);
+
+    // Saved session: a model the active provider does not know
+    // about. The default `Provider::set_model` returns
+    // Err("This provider does not support model switching"), which
+    // is the same error class a real provider would surface if the
+    // saved id is no longer in its live catalog (e.g. an m3.1
+    // session resumed after the operator removed the m3.1 entry
+    // from `~/.jcode/config.toml`).
+    let mut saved_session = crate::session::Session::create_with_id(
+        "session_restore_falls_back_to_provider_default_when_saved_model_is_rejected".to_string(),
+        None,
+        Some("test".to_string()),
+    );
+    saved_session.model = Some("MiniMax-M3.1-Flash-Preview".to_string());
+    saved_session.provider_key = Some("openai".to_string());
+    saved_session.route_api_method = Some("openai".to_string());
+    saved_session
+        .save()
+        .expect("save session with rejected model");
+
+    let status = agent
+        .restore_session(&saved_session.id)
+        .expect("restore session should succeed");
+
+    assert_eq!(status, crate::session::SessionStatus::Active);
+    assert_eq!(agent.session_id(), saved_session.id);
+    // The provider's default `Provider::model` is "unknown"; the
+    // saved "MiniMax-M3.1-Flash-Preview" must be replaced, not
+    // left in place.
+    assert_eq!(
+        agent.session.model.as_deref(),
+        Some("unknown"),
+        "agent.session.model should be the provider's default after set_model failure, not the rejected saved value"
+    );
+    // And the migration must be re-persisted so the next resume
+    // (or a future `Session::load`) sees the corrected model, not
+    // the rejected one. This is the part that prevents the
+    // operator's next resume from re-triggering the same bug.
+    let reloaded =
+        crate::session::Session::load(&saved_session.id).expect("reload session from disk");
+    assert_eq!(
+        reloaded.model.as_deref(),
+        Some("unknown"),
+        "session must be re-persisted with the provider's default after set_model failure"
+    );
+}
+
 #[tokio::test]
 async fn explicit_provider_pin_is_persisted_and_reapplied_on_restore() {
     let _guard = crate::storage::lock_test_env();
@@ -1271,6 +1341,8 @@ async fn explicit_provider_pin_is_persisted_and_reapplied_on_restore() {
         .set_model("z-ai/glm-5.2@Novita")
         .expect("set explicitly pinned model");
     assert_eq!(agent.provider_model(), "z-ai/glm-5.2@Novita");
+    agent.session.title = Some("test".to_string());
+    agent.session.save().expect("save session with model");
     let persisted = crate::session::Session::load(agent.session_id()).expect("load saved session");
     assert_eq!(persisted.model.as_deref(), Some("z-ai/glm-5.2@Novita"));
 
@@ -1303,7 +1375,7 @@ async fn restore_session_rehydrates_injected_memory_ids() {
     let mut restored_session = crate::session::Session::create_with_id(
         "session_restore_memory_dedup".to_string(),
         None,
-        None,
+        Some("test".to_string()),
     );
     restored_session.record_memory_injection(
         "🧠 auto-recalled 1 memory".to_string(),
@@ -1342,15 +1414,15 @@ async fn build_memory_prompt_nonblocking_defers_pending_memory_during_tool_loop(
         fn drop(&mut self) {
             crate::memory::clear_all_pending_memory();
             match &self.0 {
-                Some(home) => crate::env::set_var("JCODE_HOME", home),
-                None => crate::env::remove_var("JCODE_HOME"),
+                Some(home) => crate::env::set_var("KCODE_HOME", home),
+                None => crate::env::remove_var("KCODE_HOME"),
             }
             crate::config::Config::invalidate_cache();
         }
     }
     let home = tempfile::tempdir().expect("isolated memory home");
-    let _restore = RestoreMemoryHome(std::env::var_os("JCODE_HOME"));
-    crate::env::set_var("JCODE_HOME", home.path());
+    let _restore = RestoreMemoryHome(std::env::var_os("KCODE_HOME"));
+    crate::env::set_var("KCODE_HOME", home.path());
     crate::config::Config::invalidate_cache();
     crate::memory::clear_all_pending_memory();
 
@@ -1420,8 +1492,8 @@ async fn build_memory_prompt_nonblocking_defers_pending_memory_during_tool_loop(
 #[tokio::test]
 async fn memory_injection_message_defaults_to_ephemeral_history() {
     let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_PERSIST_MEMORY_INJECTIONS");
-    crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", "false");
+    let previous = std::env::var_os("KCODE_PERSIST_MEMORY_INJECTIONS");
+    crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", "false");
     crate::config::invalidate_config_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1444,8 +1516,8 @@ async fn memory_injection_message_defaults_to_ephemeral_history() {
     assert!(message_text(&message).contains("Use ephemeral mode"));
 
     match previous {
-        Some(value) => crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", value),
-        None => crate::env::remove_var("JCODE_PERSIST_MEMORY_INJECTIONS"),
+        Some(value) => crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", value),
+        None => crate::env::remove_var("KCODE_PERSIST_MEMORY_INJECTIONS"),
     }
     crate::config::invalidate_config_cache();
 }
@@ -1453,8 +1525,8 @@ async fn memory_injection_message_defaults_to_ephemeral_history() {
 #[tokio::test]
 async fn memory_injection_message_can_persist_to_history() {
     let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_PERSIST_MEMORY_INJECTIONS");
-    crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", "true");
+    let previous = std::env::var_os("KCODE_PERSIST_MEMORY_INJECTIONS");
+    crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", "true");
     crate::config::invalidate_config_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1482,8 +1554,8 @@ async fn memory_injection_message_can_persist_to_history() {
     );
 
     match previous {
-        Some(value) => crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", value),
-        None => crate::env::remove_var("JCODE_PERSIST_MEMORY_INJECTIONS"),
+        Some(value) => crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", value),
+        None => crate::env::remove_var("KCODE_PERSIST_MEMORY_INJECTIONS"),
     }
     crate::config::invalidate_config_cache();
 }
@@ -1492,8 +1564,8 @@ async fn memory_injection_message_can_persist_to_history() {
 async fn mark_closed_persists_soft_interrupts_for_restore_after_reload() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("temp dir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
     let registry = Registry::new(provider.clone()).await;
@@ -1523,9 +1595,9 @@ async fn mark_closed_persists_soft_interrupts_for_restore_after_reload() {
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -2479,13 +2551,13 @@ fn system_prompt_override_restores_and_does_not_leak_across_sessions() {
     impl Drop for RestoreHome {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(home) => crate::env::set_var("JCODE_HOME", home),
-                None => crate::env::remove_var("JCODE_HOME"),
+                Some(home) => crate::env::set_var("KCODE_HOME", home),
+                None => crate::env::remove_var("KCODE_HOME"),
             }
         }
     }
-    let _restore = RestoreHome(std::env::var_os("JCODE_HOME"));
-    crate::env::set_var("JCODE_HOME", home.path());
+    let _restore = RestoreHome(std::env::var_os("KCODE_HOME"));
+    crate::env::set_var("KCODE_HOME", home.path());
     for prompt in ["custom system prompt", ""] {
         let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
         let mut agent = Agent::new(provider.clone(), Registry::empty());
@@ -2930,17 +3002,17 @@ fn skill_installed_mid_session_keeps_system_prompt_stable_and_is_announced_once(
     impl Drop for RestoreHome {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(home) => crate::env::set_var("JCODE_HOME", home),
-                None => crate::env::remove_var("JCODE_HOME"),
+                Some(home) => crate::env::set_var("KCODE_HOME", home),
+                None => crate::env::remove_var("KCODE_HOME"),
             }
         }
     }
-    let _restore = RestoreHome(std::env::var_os("JCODE_HOME"));
-    crate::env::set_var("JCODE_HOME", home.path());
+    let _restore = RestoreHome(std::env::var_os("KCODE_HOME"));
+    crate::env::set_var("KCODE_HOME", home.path());
 
     let project = tempfile::tempdir().unwrap();
     let write_skill = |name: &str, description: &str| {
-        let dir = project.path().join(".jcode/skills").join(name);
+        let dir = project.path().join(".kcode/skills").join(name);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("SKILL.md"),

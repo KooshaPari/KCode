@@ -1,6 +1,6 @@
-//! Background cleanup for `~/.jcode/scratch`.
+//! Background cleanup for `~/.kcode/scratch`.
 //!
-//! The bash tool points `TMPDIR` and `JCODE_SCRATCH_DIR` at this directory and
+//! The bash tool points `TMPDIR` and `KCODE_SCRATCH_DIR` at this directory and
 //! tells agents to put large temporary files there. Agents routinely clone
 //! repositories or set `CARGO_TARGET_DIR` under it for isolated builds, and a
 //! single cold Rust `target/` directory can be tens of gigabytes. Nothing ever
@@ -18,7 +18,7 @@ use std::time::{Duration, SystemTime};
 pub const DEFAULT_SCRATCH_RETENTION_DAYS: u64 = 7;
 
 /// Override the retention window. `0` disables scratch cleanup entirely.
-pub const SCRATCH_RETENTION_ENV: &str = "JCODE_SCRATCH_RETENTION_DAYS";
+pub const SCRATCH_RETENTION_ENV: &str = "KCODE_SCRATCH_RETENTION_DAYS";
 
 /// Minimum interval between prune passes across all jcode processes.
 const PRUNE_INTERVAL_SECS: u64 = 24 * 60 * 60;
@@ -40,11 +40,11 @@ fn retention_from_env() -> Option<Duration> {
     (days > 0).then(|| Duration::from_secs(days * 24 * 60 * 60))
 }
 
-/// Remove stale entries from `~/.jcode/scratch`.
+/// Remove stale entries from `~/.kcode/scratch`.
 ///
 /// Best-effort and rate limited to one pass per day per machine, so it is safe
 /// to call from a background thread on every startup. Only the default scratch
-/// directory is cleaned. A custom `JCODE_SCRATCH_DIR` is never touched.
+/// directory is cleaned. A custom `KCODE_SCRATCH_DIR` is never touched.
 pub fn prune_stale_scratch() {
     let Some(retention) = retention_from_env() else {
         return;

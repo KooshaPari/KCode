@@ -634,8 +634,8 @@ fn test_filter_matches_recent_message_content() {
 fn test_loading_preview_refreshes_search_index_for_picker_filtering() {
     let _env_lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("temp dir");
-    let previous_home = std::env::var("JCODE_HOME").ok();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let previous_home = std::env::var("KCODE_HOME").ok();
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let mut session = Session::create_with_id(
         "session_preview_search".to_string(),
@@ -671,9 +671,9 @@ fn test_loading_preview_refreshes_search_index_for_picker_filtering() {
     assert_eq!(picker.visible_sessions.len(), 1);
 
     if let Some(previous_home) = previous_home {
-        crate::env::set_var("JCODE_HOME", previous_home);
+        crate::env::set_var("KCODE_HOME", previous_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -2601,3 +2601,7 @@ fn preview_without_search_has_no_highlight_and_scrolls_to_bottom() {
         "no search means no highlight color in preview"
     );
 }
+
+#[cfg(test)]
+#[path = "session_picker/compact_render_tests.rs"]
+mod compact_render_tests;

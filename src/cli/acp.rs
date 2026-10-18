@@ -142,11 +142,11 @@ impl TurnUsage {
             "inputTokens": self.input_tokens,
             "outputTokens": self.output_tokens,
         });
-        let object = usage.as_object_mut().expect("usage is an object");
-        if let Some(tokens) = self.cached_read_tokens {
+        // `json!({...})` always produces an object; treat absence defensively.
+        if let (Some(object), Some(tokens)) = (usage.as_object_mut(), self.cached_read_tokens) {
             object.insert("cachedReadTokens".to_string(), json!(tokens));
         }
-        if let Some(tokens) = self.cached_write_tokens {
+        if let (Some(object), Some(tokens)) = (usage.as_object_mut(), self.cached_write_tokens) {
             object.insert("cachedWriteTokens".to_string(), json!(tokens));
         }
         Some(usage)
@@ -161,11 +161,10 @@ fn add_optional_tokens(total: &mut Option<u64>, tokens: Option<u64>) {
 
 fn prompt_response(stop_reason: &str, usage: &TurnUsage) -> Value {
     let mut response = json!({ "stopReason": stop_reason });
-    if let Some(usage) = usage.to_acp() {
-        response
-            .as_object_mut()
-            .expect("prompt response is an object")
-            .insert("usage".to_string(), usage);
+    if let Some(usage) = usage.to_acp()
+        && let Some(object) = response.as_object_mut()
+    {
+        object.insert("usage".to_string(), usage);
     }
     response
 }
@@ -1870,10 +1869,10 @@ pub(crate) async fn run_acp_command(
     provider_profile: Option<String>,
     explicit_tool_profile: bool,
 ) -> Result<()> {
-    crate::env::set_var("JCODE_NON_INTERACTIVE", "1");
+    crate::env::set_var("KCODE_NON_INTERACTIVE", "1");
     let acp_config = crate::config::config().acp.clone();
     if !explicit_tool_profile {
-        crate::env::set_var("JCODE_TOOL_PROFILE", acp_config.tool_profile.trim());
+        crate::env::set_var("KCODE_TOOL_PROFILE", acp_config.tool_profile.trim());
         crate::config::invalidate_config_cache();
     }
     let profile = AcpProfile::parse(&acp_config.profile);

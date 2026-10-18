@@ -7,6 +7,7 @@ pub mod cloud_move;
 pub mod commands;
 pub mod debug;
 pub mod dispatch;
+pub mod herdr;
 pub mod hot_exec;
 pub mod login;
 pub mod macos_notification_broker;

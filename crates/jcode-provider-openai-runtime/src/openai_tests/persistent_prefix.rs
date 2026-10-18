@@ -68,9 +68,9 @@ async fn persistent_prefix_changed_output_case(had_real_output: bool) {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let _base = EnvVarGuard::set("JCODE_OPENAI_API_BASE", &format!("http://{addr}/v1"));
-    let _transport = EnvVarGuard::set("JCODE_OPENAI_TRANSPORT", "websocket");
-    let _prewarm = EnvVarGuard::set("JCODE_OPENAI_PREWARM", "0");
+    let _base = EnvVarGuard::set("KCODE_OPENAI_API_BASE", &format!("http://{addr}/v1"));
+    let _transport = EnvVarGuard::set("KCODE_OPENAI_TRANSPORT", "websocket");
+    let _prewarm = EnvVarGuard::set("KCODE_OPENAI_PREWARM", "0");
 
     let mut original: Vec<_> = (0..58)
         .map(|i| ChatMessage::user(&format!("history {i}")))
@@ -186,9 +186,9 @@ async fn persistent_prefix_append_only_reuses_socket_and_refreshes_hashes_each_t
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let _base = EnvVarGuard::set("JCODE_OPENAI_API_BASE", &format!("http://{addr}/v1"));
-    let _transport = EnvVarGuard::set("JCODE_OPENAI_TRANSPORT", "websocket");
-    let _prewarm = EnvVarGuard::set("JCODE_OPENAI_PREWARM", "0");
+    let _base = EnvVarGuard::set("KCODE_OPENAI_API_BASE", &format!("http://{addr}/v1"));
+    let _transport = EnvVarGuard::set("KCODE_OPENAI_TRANSPORT", "websocket");
+    let _prewarm = EnvVarGuard::set("KCODE_OPENAI_PREWARM", "0");
     let mut messages = vec![ChatMessage::user("first")];
     let mut turns = vec![messages.clone()];
     for i in 1..4 {

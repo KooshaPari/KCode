@@ -13,13 +13,13 @@ fn with_ssh_remote_test_home(f: impl FnOnce()) {
             }
         }
         let _restore = RestoreEnv(
-            ["JCODE_SSH_REMOTE", "JCODE_SOCKET", "JCODE_SELFDEV"]
+            ["KCODE_SSH_REMOTE", "KCODE_SOCKET", "KCODE_SELFDEV"]
                 .into_iter()
                 .map(|key| (key, std::env::var_os(key)))
                 .collect(),
         );
-        crate::env::set_var("JCODE_SSH_REMOTE", "test-remote");
-        crate::env::remove_var("JCODE_SELFDEV");
+        crate::env::set_var("KCODE_SSH_REMOTE", "test-remote");
+        crate::env::remove_var("KCODE_SELFDEV");
         f();
     });
 }

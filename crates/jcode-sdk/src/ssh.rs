@@ -57,7 +57,7 @@ impl Default for SshConnectOptions {
             host: String::new(),
             port: None,
             user: None,
-            remote_binary: "jcode".into(),
+            remote_binary: "kcode".into(),
             connect_timeout: Duration::from_secs(30),
             client_name: defaults.client_name,
             request_timeout: defaults.request_timeout,
@@ -170,11 +170,11 @@ impl SshConnectOptions {
     /// host-key pinning and hardening as the API connection.
     ///
     /// The script travels on stdin (`sh -s`), never in argv, so it may carry
-    /// secrets. `$JCODE_BIN` names the configured remote binary. The process is
+    /// secrets. `$KCODE_BIN` names the configured remote binary. The process is
     /// killed when `timeout` elapses. Output is returned even on a non-zero exit.
     pub fn run_script(&self, script: &[u8], timeout: Duration) -> Result<std::process::Output> {
         let remote = format!(
-            "PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$PATH\"; export PATH; JCODE_BIN={}; export JCODE_BIN; exec sh -s",
+            "PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$PATH\"; export PATH; KCODE_BIN={}; export KCODE_BIN; exec sh -s",
             shell_quote(&self.remote_binary)
         );
         let mut command = self.command_for(None, &remote)?;
@@ -377,7 +377,7 @@ impl SharedSshTransport {
         use std::os::unix::fs::PermissionsExt;
         options.validate()?;
         let directory = tempfile::Builder::new()
-            .prefix("jcode-ssh-")
+            .prefix("kcode-ssh-")
             .tempdir()
             .map_err(|e| {
                 Error::new(
@@ -648,7 +648,10 @@ impl SshTransport {
             })?;
         let reader = child.stdout.take();
         let writer = child.stdin.take();
-        let mut stderr_pipe = child.stderr.take().expect("piped stderr");
+        let mut stderr_pipe = child
+            .stderr
+            .take()
+            .ok_or_else(|| Error::new(ErrorKind::ConnectFailed, "piped stderr"))?;
         let stderr = Arc::new(Mutex::new(Vec::new()));
         let buffer = Arc::clone(&stderr);
         let (done_tx, done_rx) = std::sync::mpsc::channel();
@@ -698,10 +701,15 @@ impl Transport for SshTransport {
     }
 
     fn split(mut self: Box<Self>) -> Result<(Box<dyn BufRead + Send>, Box<dyn Write + Send>)> {
-        Ok((
-            Box::new(BufReader::new(self.reader.take().expect("SSH stdout"))),
-            Box::new(self.writer.take().expect("SSH stdin")),
-        ))
+        let reader = self
+            .reader
+            .take()
+            .ok_or_else(|| Error::new(ErrorKind::ConnectFailed, "SSH stdout"))?;
+        let writer = self
+            .writer
+            .take()
+            .ok_or_else(|| Error::new(ErrorKind::ConnectFailed, "SSH stdin"))?;
+        Ok((Box::new(BufReader::new(reader)), Box::new(writer)))
     }
 }
 

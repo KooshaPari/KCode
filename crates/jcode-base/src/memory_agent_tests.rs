@@ -44,7 +44,7 @@ impl Drop for TestEnv {
 #[tokio::test]
 async fn missing_jev_access_clears_pending_without_fallback() {
     let _lock = crate::storage::lock_test_env();
-    let _env = TestEnv::set(&[("JCODE_MEMORY_JEV_PROVIDER", "disabled-for-test")]);
+    let _env = TestEnv::set(&[("KCODE_MEMORY_JEV_PROVIDER", "disabled-for-test")]);
     let sid = "jev-agent-no-fallback";
     memory::set_pending_memory(sid, "stale result".into(), 1);
     let (_, rx) = mpsc::channel(1);
@@ -74,10 +74,10 @@ async fn automatic_recall_uses_jev_http_without_embeddings_or_sidecar() {
     listener.set_nonblocking(true).unwrap();
     let base = format!("http://{}/v1", listener.local_addr().unwrap());
     let _env = TestEnv::set(&[
-        ("JCODE_HOME", dir.path().to_str().unwrap()),
-        ("JCODE_MEMORY_JEV_PROVIDER", "jcode"),
-        ("JCODE_API_KEY", "jcode_test_only_never_a_real_key"),
-        ("JCODE_API_BASE", &base),
+        ("KCODE_HOME", dir.path().to_str().unwrap()),
+        ("KCODE_MEMORY_JEV_PROVIDER", "jcode"),
+        ("KCODE_API_KEY", "jcode_test_only_never_a_real_key"),
+        ("KCODE_API_BASE", &base),
     ]);
     let server = std::thread::spawn(move || {
         let deadline = Instant::now() + Duration::from_secs(10);

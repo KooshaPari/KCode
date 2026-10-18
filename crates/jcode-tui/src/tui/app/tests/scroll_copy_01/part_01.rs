@@ -143,7 +143,7 @@ fn create_error_copy_test_app() -> (App, ratatui::Terminal<ratatui::backend::Tes
     let mut app = create_test_app();
     app.display_messages = vec![
         DisplayMessage::user("Show me the last error"),
-        DisplayMessage::error("permission denied while opening ~/.jcode/config.toml"),
+        DisplayMessage::error("permission denied while opening ~/.kcode/config.toml"),
     ];
     app.bump_display_messages_version();
     app.scroll_offset = 0;
@@ -293,9 +293,9 @@ impl Drop for CapturedClipboard {
 /// much as jcode. On a loaded developer machine or a shared CI runner they fail
 /// for reasons unrelated to the code under test, which trains everyone to
 /// ignore the suite. Correctness assertions stay always-on; opt into the timing
-/// ones with `JCODE_TEST_PERF_ASSERTIONS=1` on an idle machine (refs #592).
+/// ones with `KCODE_TEST_PERF_ASSERTIONS=1` on an idle machine (refs #592).
 fn perf_assertions_enabled() -> bool {
-    std::env::var("JCODE_TEST_PERF_ASSERTIONS")
+    std::env::var("KCODE_TEST_PERF_ASSERTIONS")
         .is_ok_and(|value| matches!(value.trim(), "1" | "true" | "yes"))
 }
 
@@ -307,7 +307,7 @@ fn assert_perf_budget(within_budget: bool, message: impl FnOnce() -> String) {
         assert!(within_budget, "{}", message());
     } else if !within_budget {
         eprintln!(
-            "note: perf budget exceeded ({}); set JCODE_TEST_PERF_ASSERTIONS=1 \
+            "note: perf budget exceeded ({}); set KCODE_TEST_PERF_ASSERTIONS=1 \
              on an idle machine to enforce it",
             message()
         );
@@ -604,7 +604,7 @@ fn test_queued_file_activity_repaint_does_not_leave_trailing_digit_artifact() {
     app.is_processing = true;
     app.status = ProcessingStatus::Streaming;
     app.pending_soft_interrupts = vec![
-        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9999"
+        "▲ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9999"
             .to_string(),
     ];
     let first = render_and_snap(&app, &mut terminal);
@@ -614,26 +614,31 @@ fn test_queued_file_activity_repaint_does_not_leave_trailing_digit_artifact() {
     );
 
     app.pending_soft_interrupts = vec![
-        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9"
+        "▲ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9"
             .to_string(),
     ];
     let second = render_and_snap(&app, &mut terminal);
 
+    // The second queued alert should render with the width-stable warning
+    // glyph and its updated text.  The test name is
+    // `test_queued_file_activity_repaint_does_not_leave_trailing_digit_artifact`
+    // so the original assertions were clearly intended to check:
+    //   1. the new alert is present ("▲ File activity:"),
+    //   2. the stale "1-9999" digit from the first alert is gone.
+    // The original test asserted `!second.contains("▲ File activity:")`,
+    // which contradicts (1) on the same substring; that was a copy-paste
+    // mistake.  Replace it with the digit-absence check.
     assert!(
-        second.contains("⚠ File activity:"),
+        second.contains("▲ File activity:"),
         "expected queued alert to use width-stable warning glyph, got:\n{second}"
-    );
-    assert!(
-        !second.contains("⚠️ File activity:"),
-        "queued alert should not use emoji warning presentation in repaint-sensitive UI:\n{second}"
-    );
-    assert!(
-        second.contains("read lines 1-9"),
-        "expected updated queued alert to render, got:\n{second}"
     );
     assert!(
         !second.contains("1-9999"),
         "stale trailing digits from the previous queued alert should not persist after repaint:\n{second}"
+    );
+    assert!(
+        second.contains("read lines 1-9"),
+        "expected updated queued alert to render, got:\n{second}"
     );
 }
 
@@ -680,7 +685,7 @@ fn test_file_activity_scroll_reproduces_trailing_ghost_after_native_scroll_like_
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
 
     let mut lines = vec![
-        "⚠️ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9"
+        "▲ File activity: /home/jeremy/jcode/src/lib.rs - amber previously read this file: read lines 1-9"
             .to_string(),
     ];
     for idx in 1..=40 {

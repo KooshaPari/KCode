@@ -4,9 +4,9 @@
 Runs the genuine updater code path (check -> download -> checksum -> install ->
 channel symlinks -> graceful client reload -> shared-server catch-up) against a
 fake "latest release" served from localhost. Nothing outside the sandbox is
-touched: JCODE_HOME, the runtime/socket dir, and the launcher dir all live under
+touched: KCODE_HOME, the runtime/socket dir, and the launcher dir all live under
 the sandbox, and the release-URL override is only honored by jcode when
-JCODE_HOME is sandboxed.
+KCODE_HOME is sandboxed.
 
 Every run wipes the sandbox, so the experience is exactly repeatable.
 
@@ -96,10 +96,10 @@ def wrapper_script(version: str, payload_name: str) -> str:
     # Mirrors the fast-release wrapper produced by scripts/quick-release.sh.
     return f"""#!/usr/bin/env sh
 set -eu
-export JCODE_RUNTIME_RELEASE_SEMVER="{version}"
-export JCODE_RUNTIME_RELEASE_GIT_HASH="{git_short_hash()}"
-export JCODE_RUNTIME_RELEASE_GIT_DATE="rehearsal"
-export JCODE_RUNTIME_RELEASE_GIT_TAG="v{version}"
+export KCODE_RUNTIME_RELEASE_SEMVER="{version}"
+export KCODE_RUNTIME_RELEASE_GIT_HASH="{git_short_hash()}"
+export KCODE_RUNTIME_RELEASE_GIT_DATE="rehearsal"
+export KCODE_RUNTIME_RELEASE_GIT_TAG="v{version}"
 self=$0
 while [ -L "$self" ]; do
     link=$(readlink -- "$self")
@@ -334,8 +334,8 @@ def make_handler(sc: Scenario):
 
 
 def sandbox_pids(home: Path) -> list[int]:
-    """Processes whose environment points at this sandbox's JCODE_HOME."""
-    needle = f"JCODE_HOME={home}".encode()
+    """Processes whose environment points at this sandbox's KCODE_HOME."""
+    needle = f"KCODE_HOME={home}".encode()
     pids = []
     proc = Path("/proc")
     if not proc.exists():
@@ -372,15 +372,15 @@ def scrubbed_env(home: Path, run_dir: Path, release_url: str) -> dict[str, str]:
     env = {
         k: v
         for k, v in os.environ.items()
-        if not k.startswith("JCODE_") and k not in ("XDG_RUNTIME_DIR",)
+        if not k.startswith("KCODE_") and k not in ("XDG_RUNTIME_DIR",)
     }
     env.update(
         {
-            "JCODE_HOME": str(home),
-            "JCODE_RUNTIME_DIR": str(run_dir),
-            "JCODE_INSTALL_DIR": str(home / "bin"),
-            "JCODE_UPDATE_RELEASE_URL": release_url,
-            "JCODE_NO_TELEMETRY": "1",
+            "KCODE_HOME": str(home),
+            "KCODE_RUNTIME_DIR": str(run_dir),
+            "KCODE_INSTALL_DIR": str(home / "bin"),
+            "KCODE_UPDATE_RELEASE_URL": release_url,
+            "KCODE_NO_TELEMETRY": "1",
             "PATH": f"{home / 'bin'}:{env.get('PATH', '')}",
         }
     )
@@ -530,7 +530,7 @@ def main() -> int:
 
     env = scrubbed_env(home, run_dir, release_url)
     if args.prepare_only:
-        log(f"prepared. run: env JCODE_HOME={home} JCODE_RUNTIME_DIR={run_dir} {launcher}")
+        log(f"prepared. run: env KCODE_HOME={home} KCODE_RUNTIME_DIR={run_dir} {launcher}")
         server.shutdown()
         return 0
 

@@ -432,8 +432,8 @@ async fn deferred_cancel_reset_does_not_erase_newer_cancel() {
 impl IsolatedRuntimeDir {
     fn new() -> Self {
         let temp = tempfile::TempDir::new().expect("runtime dir");
-        let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
-        crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+        let prev_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
+        crate::env::set_var("KCODE_RUNTIME_DIR", temp.path());
         crate::server::clear_reload_marker();
         Self {
             _prev_runtime: prev_runtime,
@@ -446,10 +446,10 @@ impl IsolatedReloadRecoveryEnv {
     fn new() -> Self {
         let home = tempfile::TempDir::new().expect("jcode home");
         let runtime = tempfile::TempDir::new().expect("runtime dir");
-        let prev_home = std::env::var_os("JCODE_HOME");
-        let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
-        crate::env::set_var("JCODE_HOME", home.path());
-        crate::env::set_var("JCODE_RUNTIME_DIR", runtime.path());
+        let prev_home = std::env::var_os("KCODE_HOME");
+        let prev_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
+        crate::env::set_var("KCODE_HOME", home.path());
+        crate::env::set_var("KCODE_RUNTIME_DIR", runtime.path());
         crate::server::clear_reload_marker();
         Self {
             prev_home,
@@ -464,14 +464,14 @@ impl Drop for IsolatedReloadRecoveryEnv {
     fn drop(&mut self) {
         crate::server::clear_reload_marker();
         if let Some(prev_home) = self.prev_home.take() {
-            crate::env::set_var("JCODE_HOME", prev_home);
+            crate::env::set_var("KCODE_HOME", prev_home);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
         if let Some(prev_runtime) = self.prev_runtime.take() {
-            crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+            crate::env::set_var("KCODE_RUNTIME_DIR", prev_runtime);
         } else {
-            crate::env::remove_var("JCODE_RUNTIME_DIR");
+            crate::env::remove_var("KCODE_RUNTIME_DIR");
         }
     }
 }
@@ -480,9 +480,9 @@ impl Drop for IsolatedRuntimeDir {
     fn drop(&mut self) {
         crate::server::clear_reload_marker();
         if let Some(prev_runtime) = self._prev_runtime.take() {
-            crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+            crate::env::set_var("KCODE_RUNTIME_DIR", prev_runtime);
         } else {
-            crate::env::remove_var("JCODE_RUNTIME_DIR");
+            crate::env::remove_var("KCODE_RUNTIME_DIR");
         }
     }
 }
@@ -826,7 +826,7 @@ fn initial_subscribe_requires_an_absolute_client_working_dir() {
         assert!(error.contains("working_dir") || error.contains("working directory"));
     }
 
-    let absolute = std::env::temp_dir().join("jcode-client-project");
+    let absolute = std::env::temp_dir().join("kcode-client-project");
     assert_eq!(
         initial_subscribe_working_dir(&subscribe_request(absolute.to_str()))
             .expect("absolute client cwd"),
@@ -875,7 +875,7 @@ fn remote_subscribe_requires_an_existing_server_directory() -> anyhow::Result<()
 async fn new_client_agent_stamps_client_cwd_into_initial_context() {
     let provider: Arc<dyn Provider> = Arc::new(CompleteImmediatelyProvider);
     let registry = Registry::new(Arc::clone(&provider)).await;
-    let client_cwd = std::env::temp_dir().join("jcode-authoritative-client-project");
+    let client_cwd = std::env::temp_dir().join("kcode-authoritative-client-project");
     let client_cwd = client_cwd.to_string_lossy();
     let agent = Agent::new_with_initial_working_dir(provider, registry, Some(&client_cwd));
 
@@ -1391,7 +1391,7 @@ async fn lightweight_comm_request_skips_full_session_initialization() {
         event_history,
         event_counter,
         swarm_event_tx,
-        "jcode-test".to_string(),
+        "kcode-test".to_string(),
         "🧪".to_string(),
         mcp_pool,
         shutdown_signals,
@@ -1573,7 +1573,7 @@ async fn sdk_socket_configure_list_callback_and_busy_rejection() {
             event_history.clone(),
             event_counter.clone(),
             swarm_event_tx.clone(),
-            "jcode-test".to_string(),
+            "kcode-test".to_string(),
             "🧪".to_string(),
             mcp_pool.clone(),
             shutdown_signals.clone(),
@@ -1923,7 +1923,7 @@ async fn system_prompt_socket_creation_attach_resume_fork_and_no_leaking() {
             event_history.clone(),
             event_counter.clone(),
             swarm_event_tx.clone(),
-            "jcode-test".to_string(),
+            "kcode-test".to_string(),
             "🧪".to_string(),
             mcp_pool.clone(),
             shutdown_signals.clone(),

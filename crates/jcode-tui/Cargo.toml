@@ -22,6 +22,7 @@ path = "src/lib.rs"
 # Re-exported via `pub use jcode_app_core::*` in lib.rs. default-features=false
 # so this crate (and ultimately the root crate) controls app-core's features.
 jcode-app-core = { path = "../jcode-app-core", default-features = false }
+jcode-herdr = { path = "../jcode-herdr" }
 
 # Pure math kernels for the idle animations (3D samplers, glyph chooser,
 # HSV->RGB). Pinned to opt-level = 3 in all profiles via workspace Cargo.toml so
@@ -69,6 +70,7 @@ jcode-core = { path = "../jcode-core" }
 jcode-fuzzy = { path = "../jcode-fuzzy" }
 jcode-config-types = { path = "../jcode-config-types" }
 jcode-selfdev-types = { path = "../jcode-selfdev-types" }
+jcode-tool-core = { path = "../jcode-tool-core" }
 jcode-session-types = { path = "../jcode-session-types" }
 jcode-provider-core = { path = "../jcode-provider-core" }
 jcode-tui-markdown = { path = "../jcode-tui-markdown" }
@@ -121,3 +123,14 @@ global-hotkey = "0.7"
 # need no ALSA development headers.
 [target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
 jcode-base = { path = "../jcode-base", default-features = false, features = ["voice-capture"] }
+
+# Win32 console API for the terminal-abandonment probe
+# (`tui::app::terminal_liveness`). Reuses the same windows-sys version and
+# feature set as jcode-core: `Win32_System_Console` for GetStdHandle /
+# GetConsoleMode / GetConsoleWindow, and `Win32_Foundation` for
+# INVALID_HANDLE_VALUE and HWND.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+] }

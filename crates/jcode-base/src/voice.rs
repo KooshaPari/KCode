@@ -697,7 +697,7 @@ mod tests {
         transcribe_with(
             &test_client(),
             base,
-            "jcode-secret-key",
+            "kcode-secret-key",
             wav(),
             language,
             timeout,
@@ -720,26 +720,26 @@ mod tests {
             }
         }
         let _restore = Restore(
-            ["JCODE_API_KEY", "JCODE_API_BASE"]
+            ["KCODE_API_KEY", "KCODE_API_BASE"]
                 .into_iter()
                 .map(|key| (key, std::env::var(key).ok()))
                 .collect(),
         );
-        crate::env::remove_var("JCODE_API_KEY");
-        crate::env::set_var("JCODE_API_BASE", "http://127.0.0.1:1");
+        crate::env::remove_var("KCODE_API_KEY");
+        crate::env::set_var("KCODE_API_BASE", "http://127.0.0.1:1");
         assert!(!subscription_voice_available().await);
         assert_eq!(
             transcribe_wav(wav(), None).await,
             Err(VoiceError::NotConfigured)
         );
-        crate::env::set_var("JCODE_API_KEY", "public-api-test-key");
+        crate::env::set_var("KCODE_API_KEY", "public-api-test-key");
         let (base, worker) = mock(
             200,
             "",
             br#"{"capabilities":{"voice_transcription":true}}"#.to_vec(),
             Duration::ZERO,
         );
-        crate::env::set_var("JCODE_API_BASE", &base);
+        crate::env::set_var("KCODE_API_BASE", &base);
         assert!(subscription_voice_available().await);
         assert!(
             String::from_utf8(worker.join().unwrap())
@@ -752,7 +752,7 @@ mod tests {
             br#"{"text":"configured upload"}"#.to_vec(),
             Duration::ZERO,
         );
-        crate::env::set_var("JCODE_API_BASE", &base);
+        crate::env::set_var("KCODE_API_BASE", &base);
         assert_eq!(
             transcribe_wav(wav(), None).await.unwrap(),
             "configured upload"
@@ -787,7 +787,7 @@ mod tests {
         assert!(text.contains("name=\"language\"\r\n\r\nen\r\n"));
         assert!(request.windows(wav().len()).any(|part| part == wav()));
         assert!(!text.contains("groq"));
-        assert_eq!(text.matches("jcode-secret-key").count(), 1);
+        assert_eq!(text.matches("kcode-secret-key").count(), 1);
     }
 
     #[tokio::test]
@@ -827,11 +827,11 @@ mod tests {
     #[tokio::test]
     async fn failures_never_expose_credentials_or_server_bodies() {
         for (status, body, expected) in [
-            (401, "jcode-secret-key", VoiceError::Unavailable),
+            (401, "kcode-secret-key", VoiceError::Unavailable),
             (403, "groq-secret-key", VoiceError::Unavailable),
             (404, "legacy", VoiceError::Unavailable),
             (429, "groq-secret-key", VoiceError::Http(429)),
-            (500, "jcode-secret-key", VoiceError::Http(500)),
+            (500, "kcode-secret-key", VoiceError::Http(500)),
             (200, "groq-secret-key", VoiceError::InvalidResponse),
         ] {
             let (base, worker) = mock(status, "", body.as_bytes().to_vec(), Duration::ZERO);

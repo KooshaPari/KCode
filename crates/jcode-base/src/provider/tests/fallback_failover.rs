@@ -99,7 +99,7 @@ fn test_parse_provider_hint_supports_known_values() {
 #[test]
 fn test_active_provider_env_only_seeds_sessions_when_explicitly_selected() {
     with_clean_provider_test_env(|| {
-        crate::env::set_var("JCODE_ACTIVE_PROVIDER", "openai");
+        crate::env::set_var("KCODE_ACTIVE_PROVIDER", "openai");
         assert_eq!(MultiProvider::initial_provider_from_env(), None);
 
         crate::provider::activation::select_initial_runtime_provider_key("openai");

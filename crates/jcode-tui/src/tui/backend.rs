@@ -396,7 +396,7 @@ impl RemoteConnection {
         // draw stalls during scrolling. The TUI hydrates the persisted remote
         // catalog cache for normal `/model` use; explicit refresh paths still
         // request fresh catalog data when needed.
-        if std::env::var_os("JCODE_REMOTE_BOOTSTRAP_MODEL_CATALOG").is_some() {
+        if std::env::var_os("KCODE_REMOTE_BOOTSTRAP_MODEL_CATALOG").is_some() {
             conn.send_request(Request::GetModelCatalog {
                 subscribe_usage_updates: true,
                 id: conn.next_request_id,

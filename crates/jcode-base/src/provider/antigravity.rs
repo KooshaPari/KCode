@@ -34,7 +34,7 @@ pub fn persisted_catalog_path() -> Result<std::path::PathBuf> {
 /// Load the persisted warm catalog, if present, non-empty, and fetched from
 /// the currently resolved Cloud Code endpoint. A catalog cached from a
 /// different endpoint (e.g. after an endpoint default change or a new
-/// `JCODE_ANTIGRAVITY_ENDPOINT`) is discarded rather than served stale: the
+/// `KCODE_ANTIGRAVITY_ENDPOINT`) is discarded rather than served stale: the
 /// set of models an endpoint serves is endpoint-specific, so reusing it could
 /// offer a model id the current endpoint cannot actually serve.
 pub fn load_persisted_catalog() -> Option<PersistedCatalog> {

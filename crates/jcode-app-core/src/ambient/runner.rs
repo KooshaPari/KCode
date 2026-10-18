@@ -6,6 +6,7 @@
 //! ambient cycles: scheduling, spawning agent sessions, handling results, and
 //! providing status for the TUI widget and debug socket.
 
+use super::auto_dream;
 use crate::agent::Agent;
 use crate::ambient::{
     self, AmbientCycleResult, AmbientLock, AmbientManager, AmbientState, AmbientStatus,
@@ -778,6 +779,17 @@ impl AmbientRunnerHandle {
 
                     // Stored memories are recalled directly by Jev, so ambient
                     // cycles must not initialize or backfill an embedding model.
+                    // Auto-dream: evaluate memory consolidation gates (fire-and-forget)
+                    {
+                        let total_cycles = s.total_cycles;
+                        let dream_provider = provider.clone();
+                        tokio::spawn(async move {
+                            if let Ok(data_dir) = crate::storage::jcode_dir() {
+                                auto_dream::maybe_dream(data_dir, total_cycles, dream_provider)
+                                    .await;
+                            }
+                        });
+                    }
                 }
                 Err(e) => {
                     logging::error(&format!("Ambient cycle failed: {}", e));
@@ -1032,7 +1044,7 @@ impl AmbientRunnerHandle {
 
         // Clear any previous result file
         if let Ok(result_path) = VisibleCycleContext::result_path() {
-            let _ = std::fs::remove_file(&result_path);
+            let _ = crate::storage::remove_state_file(&result_path);
         }
 
         // Spawn kitty with `jcode ambient run-visible`
@@ -1056,7 +1068,7 @@ impl AmbientRunnerHandle {
                     && let Ok(result) =
                         crate::storage::read_json::<AmbientCycleResult>(&result_path)
                 {
-                    let _ = std::fs::remove_file(&result_path);
+                    let _ = crate::storage::remove_state_file(&result_path);
                     return Ok(VisibleCycleOutcome::Completed(Box::new(
                         AmbientCycleResult {
                             started_at,

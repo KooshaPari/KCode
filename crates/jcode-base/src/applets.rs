@@ -1,5 +1,5 @@
 //! Persistence for agent-mounted applet instances, one file per session at
-//! `~/.jcode/agent_applets/<session_id>.json`.
+//! `~/.kcode/agent_applets/<session_id>.json`.
 use anyhow::{Context, Result, anyhow, bail};
 pub use jcode_applet_types::agent::{self, AgentApplets};
 use jcode_applet_types::{
@@ -198,14 +198,14 @@ mod tests {
     fn lifecycle() {
         let _env = crate::storage::lock_test_env();
         let dir = tempfile::tempdir().unwrap();
-        let prev = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", dir.path());
+        let prev = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", dir.path());
         struct Restore(Option<std::ffi::OsString>);
         impl Drop for Restore {
             fn drop(&mut self) {
                 match &self.0 {
-                    Some(v) => crate::env::set_var("JCODE_HOME", v),
-                    None => crate::env::remove_var("JCODE_HOME"),
+                    Some(v) => crate::env::set_var("KCODE_HOME", v),
+                    None => crate::env::remove_var("KCODE_HOME"),
                 }
             }
         }
@@ -274,7 +274,7 @@ pub fn document_for_mcp_resource(
         .unwrap_or(uri)
         .trim_end_matches('/')
         .to_string();
-    let mut doc: Document = if mime == agent::JCODE_APPLET_MIME {
+    let mut doc: Document = if mime == agent::KCODE_APPLET_MIME {
         serde_json::from_str(text?).ok()?
     } else if uri.starts_with("ui://") && mime.starts_with("text/uri-list") {
         let url = text?
@@ -371,7 +371,7 @@ mod mcp_tests {
         );
         let native = document_for_mcp_resource(
             "file:///x",
-            Some(agent::JCODE_APPLET_MIME),
+            Some(agent::KCODE_APPLET_MIME),
             Some(r#"{"revision":1,"title":"N","view":{"type":"text","text":"hi"}}"#),
         )
         .unwrap();

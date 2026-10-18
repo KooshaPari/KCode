@@ -4,7 +4,7 @@
 //! actions. Session IDs stay local and are returned only from the supplied list.
 //! Uses Jcode subscriber access (Typesafe upstream) or Typesafe direct BYOK via
 //! [`crate::jev::JevClient::for_voice`], with shared auth, timeouts and bounds.
-//! JCODE_VOICE_JEV_PROVIDER is independent of memory/browser provider selectors.
+//! KCODE_VOICE_JEV_PROVIDER is independent of memory/browser provider selectors.
 //! OpenRouter and AIMLAPI are never voice routes or fallback accounts.
 
 use anyhow::{Context, Result, ensure};

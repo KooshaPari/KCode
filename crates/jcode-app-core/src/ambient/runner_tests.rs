@@ -1,5 +1,5 @@
 use super::{AmbientRunnerHandle, ambient_allowed};
-use crate::ambient::{AmbientStatus, Priority, ScheduleTarget, ScheduledItem};
+use crate::ambient::{AmbientStatus, Priority, Recurrence, ScheduleTarget, ScheduledItem};
 use crate::config::Config;
 use crate::message::{Message, Role, StreamEvent, ToolDefinition};
 use crate::provider::{EventStream, Provider};
@@ -57,11 +57,11 @@ impl Drop for ResetConfigCache {
 #[test]
 fn ambient_gate_tracks_config_toggles_and_preserves_disabled_override() {
     let _guard = crate::storage::lock_test_env();
-    // Restore the process cache after JCODE_HOME is restored, including on panic.
+    // Restore the process cache after KCODE_HOME is restored, including on panic.
     let _cache = ResetConfigCache;
     let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
-    let _enabled = EnvVarGuard::unset("JCODE_AMBIENT_ENABLED");
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
+    let _enabled = EnvVarGuard::unset("KCODE_AMBIENT_ENABLED");
     let path = Config::path().expect("config path");
     std::fs::create_dir_all(path.parent().expect("config parent")).expect("create config parent");
 
@@ -92,8 +92,8 @@ async fn running_loop_observes_enable_edit_without_cache_invalidation() {
     let _guard = crate::storage::lock_test_env();
     let _cache = ResetConfigCache;
     let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
-    let _enabled = EnvVarGuard::unset("JCODE_AMBIENT_ENABLED");
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
+    let _enabled = EnvVarGuard::unset("KCODE_AMBIENT_ENABLED");
     let path = Config::path().expect("config path");
     std::fs::create_dir_all(path.parent().expect("config parent")).expect("create config parent");
     std::fs::write(
@@ -213,7 +213,7 @@ impl Provider for StreamingTestProvider {
 async fn runner_stays_alive_to_service_schedules_when_ambient_disabled() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let provider: Arc<dyn Provider> = Arc::new(TestProvider);
     let runner = AmbientRunnerHandle::new(Arc::new(crate::safety::SafetySystem::new()));
@@ -232,7 +232,7 @@ async fn runner_stays_alive_to_service_schedules_when_ambient_disabled() {
 async fn assert_visible_launch_error_falls_back(error_kind: std::io::ErrorKind) {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let provider: Arc<dyn Provider> = Arc::new(StreamingTestProvider::default());
     let runner = AmbientRunnerHandle::new(Arc::new(crate::safety::SafetySystem::new()));
@@ -272,7 +272,7 @@ async fn missing_visible_launcher_falls_back_to_headless() {
 async fn spawn_target_creates_one_child_session_and_runs_task() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let provider = StreamingTestProvider::default();
     provider.queue_response(vec![
@@ -304,6 +304,7 @@ async fn spawn_target_creates_one_child_session_and_runs_task() {
         relevant_files: vec!["src/lib.rs".to_string()],
         git_branch: None,
         additional_context: Some("Background: spawned schedule test".to_string()),
+        recurrence: Recurrence::Once,
     };
 
     let runner = AmbientRunnerHandle::new(Arc::new(crate::safety::SafetySystem::new()));

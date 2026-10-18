@@ -19,7 +19,7 @@ fn test_local_error_copy_badge_shortcut_supported() {
     // failed, so assert the text that actually reached the clipboard.
     assert_eq!(
         clipboard.text().as_deref(),
-        Some("permission denied while opening ~/.jcode/config.toml"),
+        Some("permission denied while opening ~/.kcode/config.toml"),
     );
 
     let text = render_and_snap(&app, &mut terminal);
@@ -65,7 +65,7 @@ fn test_clicking_copy_badge_copies_its_target() {
     assert_eq!(app.status_notice(), Some("Copied error".to_string()));
     assert_eq!(
         clipboard.text().as_deref(),
-        Some("permission denied while opening ~/.jcode/config.toml")
+        Some("permission denied while opening ~/.kcode/config.toml")
     );
 }
 
@@ -86,7 +86,9 @@ fn test_local_tool_error_copy_badge_shortcut_supported() {
         .unwrap();
 
     assert_eq!(app.status_notice(), Some("Copied error".to_string()));
-    let copied = clipboard.text().expect("tool error should reach the clipboard");
+    let copied = clipboard
+        .text()
+        .expect("tool error should reach the clipboard");
     assert!(
         copied.contains("permission denied"),
         "clipboard should carry the tool error: {copied:?}"
@@ -150,7 +152,9 @@ fn test_local_blockquote_copy_badge_shortcut_supported() {
         .unwrap();
 
     assert_eq!(app.status_notice(), Some("Copied quote".to_string()));
-    let copied = clipboard.text().expect("blockquote should reach the clipboard");
+    let copied = clipboard
+        .text()
+        .expect("blockquote should reach the clipboard");
     assert!(
         copied.contains("the quick brown fox") && copied.contains("jumps over the lazy dog"),
         "clipboard should carry the quoted lines: {copied:?}"
@@ -224,8 +228,7 @@ fn test_copy_selection_metrics_match_built_selection_text() {
     let text = app
         .current_copy_selection_text()
         .expect("selection text for full transcript");
-    let (chars, lines) =
-        crate::tui::ui::copy_selection_metrics(range).expect("selection metrics");
+    let (chars, lines) = crate::tui::ui::copy_selection_metrics(range).expect("selection metrics");
 
     assert_eq!(
         chars,
@@ -1001,9 +1004,7 @@ fn test_copy_selection_drag_to_top_edge_auto_scrolls_chat() {
         modifiers: KeyModifiers::empty(),
     });
     assert!(!app.progress_copy_selection_edge_autoscroll());
-    assert!(!crate::tui::TuiState::copy_selection_edge_autoscroll_active(
-        &app
-    ));
+    assert!(!crate::tui::TuiState::copy_selection_edge_autoscroll_active(&app));
 }
 
 #[test]
@@ -1195,9 +1196,7 @@ fn test_copy_selection_drag_near_top_edge_keeps_auto_scrolling() {
         row: near_top_row,
         modifiers: KeyModifiers::empty(),
     });
-    assert!(!crate::tui::TuiState::copy_selection_edge_autoscroll_active(
-        &app
-    ));
+    assert!(!crate::tui::TuiState::copy_selection_edge_autoscroll_active(&app));
 }
 
 #[test]
@@ -1526,8 +1525,7 @@ fn test_changelog_overlay_mouse_drag_release_copies_text() {
         .expect("changelog overlay should register a copy viewport snapshot");
     let line_idx = (visible_start..visible_end)
         .find(|&abs_line| {
-            crate::tui::ui::copy_viewport_line_text(abs_line)
-                .is_some_and(|t| !t.trim().is_empty())
+            crate::tui::ui::copy_viewport_line_text(abs_line).is_some_and(|t| !t.trim().is_empty())
         })
         .expect("expected a visible non-empty changelog line");
 
@@ -1571,6 +1569,8 @@ fn test_changelog_overlay_mouse_drag_release_copies_text() {
 
     // A copy was attempted (success/failure depends on clipboard availability
     // in the test environment, but the selection path must have run).
+    // Mouse-drag copy can leave the highlight visible, so accept either
+    // notice variant.
     assert!(matches!(
         app.status_notice().as_deref(),
         Some("Copied selection · highlight remains visible")

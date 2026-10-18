@@ -8,6 +8,7 @@ import { NdjsonDecoder, encodeFrame } from "./framing.js";
 import { apiSocketPath, transportEndpoint } from "./sockets.js";
 import { launchInstance, type LaunchOptions, type LaunchedInstance } from "./launch.js";
 import { HarnessError } from "./errors.js";
+import { assertKcodePath } from "./product.js";
 import { ToolCallbacks, prepareTools, type SessionToolsOptions, type ToolResult } from "./tools.js";
 import {
   assertRetryCount,
@@ -75,12 +76,13 @@ export interface Transport {
 }
 
 export function unixSocketTransport(socketPath: string): Promise<Transport> {
+  assertKcodePath(socketPath);
   return new Promise((resolve, reject) => {
     // On Windows the bridge listens on a named pipe derived from this path,
     // not on the path itself.
     const socket = net.createConnection(transportEndpoint(socketPath));
     socket.setNoDelay(true);
-    // A bare `connect ENOENT /run/user/1000/jcode-api.sock` names the syscall
+    // A bare `connect ENOENT /run/user/1000/kcode-api.sock` names the syscall
     // and hides the actual cause: the bridge is not running. The first thing
     // anyone does with this SDK is connect, so this is the error most likely
     // to be someone's first impression of it. Say what to do about it.
@@ -126,7 +128,7 @@ function connectError(socketPath: string, cause: NodeJS.ErrnoException): Harness
   const hint =
     code === "ENOENT"
       ? `no harness API socket at ${socketPath}. Start the bridge with ` +
-        "`jcode api-bridge`, or set JCODE_API_SOCKET to its path."
+        "`kcode api-bridge`, or set KCODE_API_SOCKET to its path."
       : code === "ECONNREFUSED"
         ? `nothing is listening on ${socketPath}; a stale socket file is left over ` +
           "from a bridge that exited. Restart the bridge."
@@ -312,7 +314,7 @@ export class JcodeClient extends EventEmitter {
   static async connect(options: ConnectOptions = {}): Promise<JcodeClient> {
     const socketPath = options.transport ? undefined : (options.socketPath ?? apiSocketPath());
     const transport = options.transport ?? (await unixSocketTransport(socketPath!));
-    const clientName = options.clientName ?? "jcode-sdk-ts";
+    const clientName = options.clientName ?? "kcode-sdk-ts";
     const client = new JcodeClient(
       transport,
       options.requestTimeoutMs ?? 30_000,

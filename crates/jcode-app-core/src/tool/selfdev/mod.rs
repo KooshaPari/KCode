@@ -33,7 +33,7 @@ pub use reload::{ReloadRecoveryDirective, persisted_background_tasks_note};
 pub use status::selfdev_status_output;
 
 /// Public GitHub source used when cloning the jcode repository for self-dev.
-pub const JCODE_REPO_URL: &str = "https://github.com/1jehuang/jcode.git";
+pub const KCODE_REPO_URL: &str = "https://github.com/KooshaPari/KCode.git";
 
 #[derive(Debug, Deserialize)]
 struct SelfDevInput {
@@ -186,7 +186,7 @@ impl BuildRequest {
     }
 
     fn terminal_history_limit() -> usize {
-        std::env::var("JCODE_SELFDEV_REQUEST_HISTORY_LIMIT")
+        std::env::var("KCODE_SELFDEV_REQUEST_HISTORY_LIMIT")
             .ok()
             .and_then(|value| value.trim().parse::<usize>().ok())
             .filter(|limit| *limit > 0)
@@ -341,7 +341,7 @@ impl BuildRequest {
         self.status_file.as_ref().map(PathBuf::from).or_else(|| {
             self.background_task_id.as_ref().map(|task_id| {
                 std::env::temp_dir()
-                    .join("jcode-bg-tasks")
+                    .join("kcode-bg-tasks")
                     .join(format!("{}.status.json", task_id))
             })
         })
@@ -707,7 +707,7 @@ impl Tool for SelfDevTool {
 
 impl SelfDevTool {
     fn is_test_session() -> bool {
-        std::env::var("JCODE_TEST_SESSION")
+        std::env::var("KCODE_TEST_SESSION")
             .map(|value| {
                 let trimmed = value.trim();
                 !trimmed.is_empty() && trimmed != "0" && !trimmed.eq_ignore_ascii_case("false")
@@ -716,7 +716,7 @@ impl SelfDevTool {
     }
 
     fn reload_timeout_secs() -> u64 {
-        std::env::var("JCODE_SELFDEV_RELOAD_TIMEOUT_SECS")
+        std::env::var("KCODE_SELFDEV_RELOAD_TIMEOUT_SECS")
             .ok()
             .and_then(|raw| raw.trim().parse::<u64>().ok())
             .filter(|secs| *secs > 0)
@@ -727,7 +727,7 @@ impl SelfDevTool {
     /// builds ahead of it in the queue) to finish before giving up and telling
     /// the agent to reload manually.
     fn build_reload_wait_secs() -> u64 {
-        std::env::var("JCODE_SELFDEV_BUILD_WAIT_SECS")
+        std::env::var("KCODE_SELFDEV_BUILD_WAIT_SECS")
             .ok()
             .and_then(|raw| raw.trim().parse::<u64>().ok())
             .filter(|secs| *secs > 0)

@@ -633,10 +633,7 @@ impl App {
             self.onboarding_telemetry_choice_made = true;
             if self.onboarding_sim_active() {
                 // A rehearsal must leave this machine's real settings alone.
-                self.set_status_notice(format!(
-                    "{} (rehearsal, not saved)",
-                    level.status_label()
-                ));
+                self.set_status_notice(format!("{} (rehearsal, not saved)", level.status_label()));
             } else {
                 level.persist();
                 self.set_status_notice(level.status_label().to_string());
@@ -874,19 +871,19 @@ impl App {
                     &approved,
                 )
                 .await
-            {
-                Ok(outcome) => outcome,
-                Err(err) => {
-                    crate::bus::Bus::global().publish(crate::bus::BusEvent::LoginCompleted(
-                        crate::bus::LoginCompleted {
-                            provider: "auto-import".to_string(),
-                            success: false,
-                            message: format!("Auto import failed: {}", err),
-                        },
-                    ));
-                    return;
-                }
-            };
+                {
+                    Ok(outcome) => outcome,
+                    Err(err) => {
+                        crate::bus::Bus::global().publish(crate::bus::BusEvent::LoginCompleted(
+                            crate::bus::LoginCompleted {
+                                provider: "auto-import".to_string(),
+                                success: false,
+                                message: format!("Auto import failed: {}", err),
+                            },
+                        ));
+                        return;
+                    }
+                };
             // Auto-import bypasses the manual `pending_login` path, so record
             // `auth_success` here for each imported provider. Without this the
             // onboarding activation funnel undercounts every imported login
@@ -954,7 +951,7 @@ impl App {
     ///
     /// Resolving the most active Git repository requires a full session-list
     /// scan, which is a cold multi-hundred-millisecond disk walk on machines
-    /// with a large `~/.jcode/sessions` directory. Doing it inline on Enter made
+    /// with a large `~/.kcode/sessions` directory. Doing it inline on Enter made
     /// the suggested repository review action feel laggy, so run it
     /// off-thread as soon as the choice is displayed and have the key handler
     /// consume the cached answer.

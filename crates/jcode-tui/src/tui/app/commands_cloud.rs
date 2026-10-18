@@ -68,7 +68,7 @@ pub(super) fn handle_cloud_command(app: &mut App, trimmed: &str, session_id: &st
             cmd.args(["where", "--session", session_id]);
         }
     }
-    cmd.env("JCODE_CLOUD_QUIET", "1");
+    cmd.env("KCODE_CLOUD_QUIET", "1");
     let output = match cmd.output() {
         Ok(output) => output,
         Err(error) => {

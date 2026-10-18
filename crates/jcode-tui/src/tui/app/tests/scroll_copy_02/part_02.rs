@@ -87,8 +87,8 @@ fn test_alt_shift_i_toggles_inline_images_and_persists() {
     let _env_guard = crate::storage::lock_test_env();
     let _render_lock = scroll_render_test_lock();
     let temp = tempfile::tempdir().expect("tempdir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let (mut app, _terminal) = create_copy_test_app();
     app.is_remote = true;
@@ -134,9 +134,9 @@ fn test_alt_shift_i_toggles_inline_images_and_persists() {
     assert!(crate::tui::app::ui_prefs::inline_images_visible());
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 

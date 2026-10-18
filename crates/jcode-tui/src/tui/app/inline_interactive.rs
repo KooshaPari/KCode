@@ -727,7 +727,7 @@ impl App {
             .filter(|route| {
                 route
                     .api_method
-                    .eq_ignore_ascii_case(crate::subscription_catalog::JCODE_ROUTE_API_METHOD)
+                    .eq_ignore_ascii_case(crate::subscription_catalog::KCODE_ROUTE_API_METHOD)
             })
             .filter_map(|route| crate::subscription_catalog::canonical_model_id(&route.model))
             .collect::<HashSet<_>>();
@@ -745,8 +745,8 @@ impl App {
         {
             routes.push(crate::provider::ModelRoute {
                 model: model.id.to_string(),
-                provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+                provider: crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+                api_method: crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
                 available: true,
                 detail: crate::subscription_catalog::routing_policy_detail(model),
                 usage: None,
@@ -785,7 +785,7 @@ impl App {
         // Do not mix in locally configured Anthropic/OpenAI credentials merely
         // because a curated model also belongs to one of those upstreams.
         let provider_is_jcode_subscription = remote_provider_name.is_some_and(|name| {
-            name.eq_ignore_ascii_case(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME)
+            name.eq_ignore_ascii_case(crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME)
         });
         if provider_is_jcode_subscription {
             routes.clear();
@@ -801,7 +801,7 @@ impl App {
             && routes.iter().all(|route| {
                 route
                     .api_method
-                    .eq_ignore_ascii_case(crate::subscription_catalog::JCODE_ROUTE_API_METHOD)
+                    .eq_ignore_ascii_case(crate::subscription_catalog::KCODE_ROUTE_API_METHOD)
             });
         if poisoned_by_jcode_subscription {
             // Version 1 could turn a mixed provider catalog into all-Jcode rows
@@ -1073,7 +1073,7 @@ impl App {
             self.cursor_pos = 0;
         }
 
-        if std::env::var("JCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
+        if std::env::var("KCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
             crate::logging::info(&format!(
                 "[TIMING] model_picker_open: cache_hit=true, remote={}, simplified={}, routes={}, models={}, entries={}, total={}ms",
                 self.is_remote,
@@ -1927,7 +1927,7 @@ impl App {
         let entries_ms = entries_started.elapsed().as_millis();
         let total_ms = picker_started.elapsed().as_millis();
 
-        if total_ms >= 250 || std::env::var("JCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
+        if total_ms >= 250 || std::env::var("KCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
             crate::logging::info(&format!(
                 "[TIMING] model_picker_open: remote={}, simplified={}, routes={}, models={}, entries={}, routes={}ms, grouping={}ms, timestamps={}ms, entries_sort={}ms, total={}ms",
                 self.is_remote,
@@ -2742,7 +2742,7 @@ impl App {
         }
 
         let default_cwd = std::env::current_dir().unwrap_or_default();
-        let socket = std::env::var("JCODE_SOCKET").ok();
+        let socket = std::env::var("KCODE_SOCKET").ok();
         let mut spawned = 0usize;
         let mut failed = Vec::new();
         let mut names = Vec::with_capacity(targets.len());
@@ -3000,7 +3000,7 @@ impl App {
 
         let exe = launch_client_executable();
         let cwd = std::env::current_dir().unwrap_or_default();
-        let socket = std::env::var("JCODE_SOCKET").ok();
+        let socket = std::env::var("KCODE_SOCKET").ok();
         let mut spawned = 0usize;
         let mut failed = Vec::new();
 

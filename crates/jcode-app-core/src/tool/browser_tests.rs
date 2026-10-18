@@ -255,14 +255,14 @@ async fn readiness_does_not_trust_a_stale_setup_marker() {
     use std::os::unix::fs::PermissionsExt;
 
     let _guard = jcode_base::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_autolaunch = std::env::var_os("JCODE_BROWSER_AUTOLAUNCH");
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let prev_autolaunch = std::env::var_os("KCODE_BROWSER_AUTOLAUNCH");
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    jcode_base::env::set_var("JCODE_HOME", temp.path());
-    let prev_auto_update = std::env::var_os("JCODE_BROWSER_AUTO_UPDATE");
+    jcode_base::env::set_var("KCODE_HOME", temp.path());
+    let prev_auto_update = std::env::var_os("KCODE_BROWSER_AUTO_UPDATE");
     // Keep the test hermetic: never launch a real Firefox or query GitHub.
-    jcode_base::env::set_var("JCODE_BROWSER_AUTOLAUNCH", "0");
-    jcode_base::env::set_var("JCODE_BROWSER_AUTO_UPDATE", "0");
+    jcode_base::env::set_var("KCODE_BROWSER_AUTOLAUNCH", "0");
+    jcode_base::env::set_var("KCODE_BROWSER_AUTO_UPDATE", "0");
 
     let browser_dir = temp.path().join("browser");
     std::fs::create_dir_all(&browser_dir).expect("create browser dir");
@@ -290,18 +290,18 @@ async fn readiness_does_not_trust_a_stale_setup_marker() {
     assert!(message.contains("capability discovery"), "{message}");
 
     if let Some(prev_home) = prev_home {
-        jcode_base::env::set_var("JCODE_HOME", prev_home);
+        jcode_base::env::set_var("KCODE_HOME", prev_home);
     } else {
-        jcode_base::env::remove_var("JCODE_HOME");
+        jcode_base::env::remove_var("KCODE_HOME");
     }
     if let Some(prev_autolaunch) = prev_autolaunch {
-        jcode_base::env::set_var("JCODE_BROWSER_AUTOLAUNCH", prev_autolaunch);
+        jcode_base::env::set_var("KCODE_BROWSER_AUTOLAUNCH", prev_autolaunch);
     } else {
-        jcode_base::env::remove_var("JCODE_BROWSER_AUTOLAUNCH");
+        jcode_base::env::remove_var("KCODE_BROWSER_AUTOLAUNCH");
     }
     match prev_auto_update {
-        Some(v) => jcode_base::env::set_var("JCODE_BROWSER_AUTO_UPDATE", v),
-        None => jcode_base::env::remove_var("JCODE_BROWSER_AUTO_UPDATE"),
+        Some(v) => jcode_base::env::set_var("KCODE_BROWSER_AUTO_UPDATE", v),
+        None => jcode_base::env::remove_var("KCODE_BROWSER_AUTO_UPDATE"),
     }
 }
 
@@ -341,7 +341,7 @@ fn handoff_schema_defaults_to_fast_agent_and_bounds_inputs() {
 
 #[tokio::test]
 async fn handoff_disabled_switch_removes_schema_and_rejects_execution_before_provider_setup() {
-    const KEY: &str = "JCODE_BROWSER_HANDOFF_DISABLED";
+    const KEY: &str = "KCODE_BROWSER_HANDOFF_DISABLED";
     struct RestoreEnv(Option<std::ffi::OsString>);
     impl Drop for RestoreEnv {
         fn drop(&mut self) {
@@ -407,7 +407,7 @@ async fn handoff_disabled_switch_removes_schema_and_rejects_execution_before_pro
             .await
             .expect_err("request must fail without browser side effects");
         if disabled {
-            assert!(err.to_string().contains("JCODE_BROWSER_HANDOFF_DISABLED=1"));
+            assert!(err.to_string().contains("KCODE_BROWSER_HANDOFF_DISABLED=1"));
         } else {
             assert!(err.to_string().contains("Unknown browser 'netscape'"));
         }

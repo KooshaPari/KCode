@@ -162,7 +162,7 @@ impl CopilotApiProvider {
     pub fn new() -> Result<Self> {
         let github_token = copilot_auth::load_github_token()?;
         let model =
-            std::env::var("JCODE_COPILOT_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+            std::env::var("KCODE_COPILOT_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
 
         let provider = Self {
             client: jcode_provider_core::shared_http_client(),
@@ -190,7 +190,7 @@ impl CopilotApiProvider {
     }
 
     fn env_premium_mode() -> u8 {
-        match std::env::var("JCODE_COPILOT_PREMIUM").ok().as_deref() {
+        match std::env::var("KCODE_COPILOT_PREMIUM").ok().as_deref() {
             Some("0") => PremiumMode::Zero as u8,
             Some("1") => PremiumMode::OnePerSession as u8,
             _ => PremiumMode::Normal as u8,
@@ -199,7 +199,7 @@ impl CopilotApiProvider {
 
     pub fn new_with_token(github_token: String) -> Self {
         let model =
-            std::env::var("JCODE_COPILOT_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+            std::env::var("KCODE_COPILOT_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
 
         let provider = Self {
             client: jcode_provider_core::shared_http_client(),
@@ -223,7 +223,7 @@ impl CopilotApiProvider {
     }
 
     fn startup_prefetch_grace_ms() -> u64 {
-        std::env::var("JCODE_COPILOT_PREFETCH_STARTUP_GRACE_MS")
+        std::env::var("KCODE_COPILOT_PREFETCH_STARTUP_GRACE_MS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(2000)
@@ -232,7 +232,7 @@ impl CopilotApiProvider {
     fn get_or_create_machine_id() -> String {
         let machine_id_path = dirs::home_dir()
             .unwrap_or_default()
-            .join(".jcode")
+            .join(".kcode")
             .join("machine_id");
         if let Ok(id) = std::fs::read_to_string(&machine_id_path) {
             let id = id.trim().to_string();
@@ -316,12 +316,12 @@ impl CopilotApiProvider {
 
     /// Detect the user's Copilot tier and set the best default model.
     /// Call this after construction. Fetches a bearer token and queries /models.
-    /// If JCODE_COPILOT_MODEL is set, this is a no-op (user override).
+    /// If KCODE_COPILOT_MODEL is set, this is a no-op (user override).
     pub async fn detect_tier_and_set_default(&self) {
         let detect_start = std::time::Instant::now();
-        if std::env::var("JCODE_COPILOT_MODEL").is_ok() {
+        if std::env::var("KCODE_COPILOT_MODEL").is_ok() {
             jcode_base::logging::info(
-                "Copilot model overridden via JCODE_COPILOT_MODEL, skipping tier detection",
+                "Copilot model overridden via KCODE_COPILOT_MODEL, skipping tier detection",
             );
             self.mark_init_done();
             return;
@@ -744,7 +744,7 @@ impl CopilotApiProvider {
         use futures::StreamExt;
 
         // Idle timeout between streamed chunks. Configurable via
-        // `[provider] stream_idle_timeout_secs` / `JCODE_STREAM_IDLE_TIMEOUT_SECS`
+        // `[provider] stream_idle_timeout_secs` / `KCODE_STREAM_IDLE_TIMEOUT_SECS`
         // so slow reasoning models don't trip a premature timeout (issue #434).
         let sse_chunk_timeout = jcode_base::provider::stream_idle_timeout();
 

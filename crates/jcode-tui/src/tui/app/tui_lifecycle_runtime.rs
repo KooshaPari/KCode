@@ -352,7 +352,7 @@ impl App {
                     self.push_display_message(DisplayMessage {
                         role: "system".to_string(),
                         content: format!(
-                            "⚠ Failed to restore model '{}' via '{}': {}",
+                            "▲ Failed to restore model '{}' via '{}': {}",
                             model, model_request, e
                         ),
                         tool_calls: vec![],
@@ -466,7 +466,7 @@ impl App {
                 self.push_display_message(DisplayMessage {
                     role: "system".to_string(),
                     content: format!(
-                        "⚠ Reload failed. Session could not be restored. Previous version: {}, Target version: {}.{}\n\
+                        "▲ Reload failed. Session could not be restored. Previous version: {}, Target version: {}.{}\n\
                          Starting fresh session. You may need to re-examine your changes.",
                         ctx.version_before,
                         ctx.version_after,
@@ -727,14 +727,14 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
                 PremiumMode::OnePerSession => "one premium per session",
                 PremiumMode::Zero => "zero premium requests",
             };
-            let env = std::env::var("JCODE_COPILOT_PREMIUM").ok();
+            let env = std::env::var("KCODE_COPILOT_PREMIUM").ok();
             let env_label = match env.as_deref() {
                 Some("0") => "0 (zero)",
                 Some("1") => "1 (one per session)",
                 _ => "unset (normal)",
             };
             app.push_display_message(DisplayMessage::system(format!(
-                "Premium mode: {}\nEnv JCODE_COPILOT_PREMIUM: {}",
+                "Premium mode: {}\nEnv KCODE_COPILOT_PREMIUM: {}",
                 label, env_label,
             )));
             return true;

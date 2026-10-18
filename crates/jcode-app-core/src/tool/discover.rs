@@ -27,7 +27,7 @@ const DISCOVERY_BUILD_CHANNEL_HEADER: &str = "x-jcode-discovery-build-channel";
 const DISCOVERY_GIT_CHECKOUT_HEADER: &str = "x-jcode-discovery-git-checkout";
 const DISCOVERY_CI_HEADER: &str = "x-jcode-discovery-ci";
 const DISCOVERY_RAN_FROM_CARGO_HEADER: &str = "x-jcode-discovery-ran-from-cargo";
-const DISCOVERY_BENCHMARK_ENV: &str = "JCODE_DISCOVERY_BENCHMARK";
+const DISCOVERY_BENCHMARK_ENV: &str = "KCODE_DISCOVERY_BENCHMARK";
 const DISCOVERY_QUERY_MIN_CHARS: usize = 20;
 const DISCOVERY_QUERY_MAX_CHARS: usize = 500;
 const DISCOVERY_REASON_MIN_CHARS: usize = 40;
@@ -671,9 +671,9 @@ impl Tool for DiscoverToolsTool {
         };
 
         if action == DiscoveryAction::Details {
-            let tool_name = tool_selection
-                .as_deref()
-                .expect("details action was parsed with a tool");
+            let tool_name = tool_selection.as_deref().ok_or_else(|| {
+                anyhow::anyhow!("internal error: details action reached without a tool selection")
+            })?;
             let details = validate_details(&params)?;
             let fetched = match fetch_details(&discovery_request, tool_name, &details).await {
                 Ok(result) => result,
@@ -2780,9 +2780,9 @@ mod tests {
     #[tokio::test]
     async fn execute_records_off_catalog_selection_without_provider_information() {
         let _guard = crate::storage::lock_test_env();
-        let prev_home = std::env::var_os("JCODE_HOME");
+        let prev_home = std::env::var_os("KCODE_HOME");
         let temp = tempfile::tempdir().unwrap();
-        crate::env::set_var("JCODE_HOME", temp.path());
+        crate::env::set_var("KCODE_HOME", temp.path());
 
         let body = json!({
             "category": "web-data",
@@ -2829,9 +2829,9 @@ mod tests {
         assert!(request.contains("tool=firecrawl"), "{request}");
 
         if let Some(prev) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev);
+            crate::env::set_var("KCODE_HOME", prev);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
         crate::config::Config::invalidate_cache();
     }
@@ -2839,9 +2839,9 @@ mod tests {
     #[tokio::test]
     async fn details_executes_through_public_tool_interface() {
         let _guard = crate::storage::lock_test_env();
-        let prev_home = std::env::var_os("JCODE_HOME");
+        let prev_home = std::env::var_os("KCODE_HOME");
         let temp = tempfile::tempdir().unwrap();
-        crate::env::set_var("JCODE_HOME", temp.path());
+        crate::env::set_var("KCODE_HOME", temp.path());
         let body = json!({
             "tool": "Stripe",
             "fit": "strong",
@@ -2900,9 +2900,9 @@ mod tests {
         );
 
         if let Some(prev) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev);
+            crate::env::set_var("KCODE_HOME", prev);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
         crate::config::Config::invalidate_cache();
     }
@@ -2910,9 +2910,9 @@ mod tests {
     #[tokio::test]
     async fn git_category_executes_end_to_end_with_enabled_config_and_local_server() {
         let _guard = crate::storage::lock_test_env();
-        let prev_home = std::env::var_os("JCODE_HOME");
+        let prev_home = std::env::var_os("KCODE_HOME");
         let temp = tempfile::tempdir().unwrap();
-        crate::env::set_var("JCODE_HOME", temp.path());
+        crate::env::set_var("KCODE_HOME", temp.path());
 
         let body = json!({"tools": [{"name": "github", "blurb": "repository hosting and collaboration", "url": "https://github.com", "setup": "MCP server: npx github-mcp"}]}).to_string();
         let (endpoint, server) = one_shot_server("HTTP/1.1 200 OK", body).await;
@@ -2973,9 +2973,9 @@ mod tests {
         assert!(err.to_string().contains("disabled"));
 
         if let Some(prev) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev);
+            crate::env::set_var("KCODE_HOME", prev);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
         crate::config::Config::invalidate_cache();
     }

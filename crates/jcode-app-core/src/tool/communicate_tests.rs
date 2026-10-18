@@ -1132,7 +1132,7 @@ fn description_includes_swarm_prompt_guidance() {
 #[test]
 fn existing_tool_keeps_prompt_while_new_tool_loads_edit() {
     let project = tempfile::tempdir().unwrap();
-    let prompt_dir = project.path().join(".jcode");
+    let prompt_dir = project.path().join(".kcode");
     std::fs::create_dir_all(&prompt_dir).unwrap();
     let prompt_path = prompt_dir.join("swarm-prompt.md");
     std::fs::write(&prompt_path, "first routing version").unwrap();

@@ -15,7 +15,7 @@ use crate::auth;
 pub fn can_prompt_for_external_auth() -> bool {
     std::io::stdin().is_terminal()
         && std::io::stderr().is_terminal()
-        && std::env::var("JCODE_NON_INTERACTIVE").is_err()
+        && std::env::var("KCODE_NON_INTERACTIVE").is_err()
 }
 
 pub fn external_auth_blocked_message(
@@ -819,8 +819,8 @@ mod rerun_safety_tests {
     impl TempHome {
         fn new() -> Self {
             let dir = tempfile::TempDir::new().unwrap();
-            let prev = std::env::var_os("JCODE_HOME");
-            crate::env::set_var("JCODE_HOME", dir.path());
+            let prev = std::env::var_os("KCODE_HOME");
+            crate::env::set_var("KCODE_HOME", dir.path());
             crate::config::invalidate_config_cache();
             auth::AuthStatus::invalidate_cache();
             Self { _dir: dir, prev }
@@ -830,8 +830,8 @@ mod rerun_safety_tests {
     impl Drop for TempHome {
         fn drop(&mut self) {
             match self.prev.take() {
-                Some(value) => crate::env::set_var("JCODE_HOME", value),
-                None => crate::env::remove_var("JCODE_HOME"),
+                Some(value) => crate::env::set_var("KCODE_HOME", value),
+                None => crate::env::remove_var("KCODE_HOME"),
             }
             crate::config::invalidate_config_cache();
             auth::AuthStatus::invalidate_cache();

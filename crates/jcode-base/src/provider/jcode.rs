@@ -63,8 +63,8 @@ impl JcodeProvider {
         Self::entitled_models_for(tier)
             .map(|model| ModelRoute {
                 model: model.id.to_string(),
-                provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+                provider: crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+                api_method: crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
                 available: true,
                 detail: crate::subscription_catalog::routing_policy_detail(model),
                 usage: None,
@@ -116,7 +116,7 @@ impl Provider for JcodeProvider {
     }
 
     fn name(&self) -> &str {
-        crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
+        crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
     }
 
     fn model(&self) -> String {

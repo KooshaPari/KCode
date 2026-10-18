@@ -1,4 +1,10 @@
-# @1jehuang/jcode-sdk
+# @kooshapari/kcode-sdk
+
+> KCode fork: local builds only. The npm runtime channel is disabled; this SDK
+> uses `kcode` (or an explicit KCode binary), `KCODE_*` overrides and `.kcode`
+> storage. It never bundles upstream jcode binaries or inherits jcode state.
+> Public `JcodeClient` API names remain compatible.
+
 
 TypeScript SDK for the **jcode harness API** (protocol v1) — the stable,
 versioned boundary between the jcode agent runtime and any client.
@@ -13,7 +19,7 @@ Full documentation: **[jcode.sh/sdk](https://jcode.sh/sdk)**
 ## Install
 
 ```bash
-npm install @1jehuang/jcode-sdk
+npm install @kooshapari/kcode-sdk
 ```
 
 From a source checkout:
@@ -50,7 +56,7 @@ It starts the jcode server if one is not already up, then exposes the API
 socket (`$XDG_RUNTIME_DIR/jcode-api.sock`) and translates onto the internal
 daemon socket. The socket is owner-only, matching the daemon socket it fronts.
 
-Use `--api-socket <path>` to listen elsewhere, and set `JCODE_API_SOCKET` to
+Use `--api-socket <path>` to listen elsewhere, and set `KCODE_API_SOCKET` to
 the same path in your client. (The global `--socket` selects the *internal
 daemon* socket, which is a different thing.)
 
@@ -95,7 +101,7 @@ A complete runnable application is available in
 [`examples/demo-app`](https://github.com/1jehuang/jcode/tree/master/sdk/typescript/examples/demo-app).
 
 ```ts
-import { JcodeClient } from "@1jehuang/jcode-sdk";
+import { JcodeClient } from "@kooshapari/kcode-sdk";
 
 const client = await JcodeClient.launch({ workingDir: process.cwd() });
 
@@ -215,7 +221,7 @@ engines. It needs no SDK code:
 - A `custom` tool named `websearch` replaces search entirely. It is called
   through your callback and is never swapped for provider search.
 - Set `websearch.prefer_native = false` in `config.toml`, or
-  `JCODE_WEBSEARCH_PREFER_NATIVE=0` in `launch({ env })`, to always search
+  `KCODE_WEBSEARCH_PREFER_NATIVE=0` in `launch({ env })`, to always search
   locally (unless `websearch.engine = "native"` is set explicitly).
 
 ### Assistant messages and final answers
@@ -247,7 +253,7 @@ To verify message framing and concurrent history reads against a real provider
 in a private instance, run the opt-in acceptance check from the repository root:
 
 ```sh
-JCODE_SDK_TEST_MODEL="your-model-id" node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/jcode
+KCODE_SDK_TEST_MODEL="your-model-id" node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/jcode
 ```
 
 This uses your existing provider login and quota, runs one harmless bash tool,
@@ -459,8 +465,8 @@ up for you:
 | `inheritLogins` | Inherit the user's provider logins. Defaults to `true`. |
 | `binary` | Path to the jcode binary. Defaults to `jcode` on `PATH`. |
 | `env` | Extra environment variables for the instance. |
-| `swarmModel` | Operator-enforced model for all swarm workers. Use `inherit` to keep the coordinator model and auth route. Takes precedence over `env.JCODE_SWARM_MODEL`. |
-| `wakeMode` | `internal` (daemon-owned wakes) or `external` (emit `wake_requested` for the operator). Takes precedence over `env.JCODE_WAKE_MODE`. |
+| `swarmModel` | Operator-enforced model for all swarm workers. Use `inherit` to keep the coordinator model and auth route. Takes precedence over `env.KCODE_SWARM_MODEL`. |
+| `wakeMode` | `internal` (daemon-owned wakes) or `external` (emit `wake_requested` for the operator). Takes precedence over `env.KCODE_WAKE_MODE`. |
 | `startupTimeoutMs` | How long to wait for the instance to come up. Defaults to 30000. |
 | `cleanupTimeoutMs` | How long `close()` spends removing an ephemeral home. Defaults to 30000. |
 | `inheritStderr` | Forward the instance's stderr to your process. Defaults to `false`. |
@@ -473,9 +479,9 @@ rebuild its complete session index without keeping a separate id registry.
 
 | Env var | Effect |
 | --- | --- |
-| `JCODE_API_SOCKET` | Override the API socket path |
-| `JCODE_WAKE_MODE` | Autonomous wake ownership: `internal` (default) or `external` |
-| `JCODE_RUNTIME_DIR` | Override the runtime directory |
+| `KCODE_API_SOCKET` | Override the API socket path |
+| `KCODE_WAKE_MODE` | Autonomous wake ownership: `internal` (default) or `external` |
+| `KCODE_RUNTIME_DIR` | Override the runtime directory |
 | `XDG_RUNTIME_DIR` | Default runtime directory on Linux |
 
 Or pass `socketPath` to `connect()`.
@@ -488,7 +494,7 @@ JavaScript errors (for example, an OS filesystem error) can still surface from
 the platform.
 
 ```ts
-import { HarnessError, StructuredOutputError } from "@1jehuang/jcode-sdk";
+import { HarnessError, StructuredOutputError } from "@kooshapari/kcode-sdk";
 
 try {
   await client.run(sessionId, prompt);
@@ -521,7 +527,7 @@ try {
 | `startup_failed` | The private instance exited before opening its API socket. Its stderr is included in the message. | Display/log the message; fix the reported configuration, credential, or binary error before retrying. |
 | `startup_timeout` | The private instance did not open its API socket within `startupTimeoutMs`. | Increase the timeout on a slow machine; otherwise inspect stderr and ensure the runtime directory is writable. |
 | `invalid_instance_home` | `jcodeHome`, its credential paths, or the source login home is unsafe (same directory, symlink, file, or traversal). | Choose a separate real directory. Do not point a private instance at the user's live jcode home. |
-| `connect_failed` | The bridge is absent, dead, or listening at another socket path. | Run `jcode api-bridge`; verify `socketPath` or `JCODE_API_SOCKET`. The message names the attempted path. |
+| `connect_failed` | The bridge is absent, dead, or listening at another socket path. | Run `jcode api-bridge`; verify `socketPath` or `KCODE_API_SOCKET`. The message names the attempted path. |
 | `handshake_failed` | The peer replied with an invalid frame during protocol negotiation. | Confirm the socket is a jcode harness socket and upgrade jcode/SDK together. |
 | `unsupported_version` | Client and bridge do not share a protocol major version. | Upgrade the older side. Do not retry unchanged versions. |
 

@@ -1,5 +1,6 @@
 use super::*;
 use crate::message::ToolDefinition;
+use jcode_herdr::AgentState;
 
 /// Keep raw JSON separate for every in-flight call. Unkeyed providers address
 /// the most recently started call, preserving the legacy sequential behavior.
@@ -170,6 +171,8 @@ impl App {
             self.begin_kv_cache_request(&request_messages, &tools, &static_part, &dynamic_part);
 
             // Make API call non-blocking - poll it in select! so we can handle input while waiting
+            // Report HERDR: provider request is starting (covers ForgeCode subprocess launch).
+            tokio::spawn(crate::herdr::report_state(AgentState::Working));
             let mut api_future = std::pin::pin!(provider.complete_split(
                 &request_messages,
                 &tools,
@@ -876,6 +879,8 @@ impl App {
                                             ));
                                             continue 'turn_loop;
                                         }
+                                        // Report HERDR: provider stream error (ForgeCode subprocess failure).
+                                        tokio::spawn(crate::herdr::report_state(AgentState::Blocked));
                                         return Err(anyhow::anyhow!("Stream error: {}", message));
                                     }
                                     StreamEvent::ThinkingStart => {
@@ -980,7 +985,7 @@ impl App {
                                             .map(|t| format!(" (was {} tokens)", t))
                                             .unwrap_or_default();
                                         let compact_msg = format!(
-                                            "📦 **Compaction complete** - context summarized ({}){}\n\n",
+                                            "◧ **Compaction complete** - context summarized ({}){}\n\n",
                                             trigger, tokens_str
                                         );
                                         self.append_streaming_text(&compact_msg);
@@ -1177,6 +1182,8 @@ impl App {
                                     ));
                                     continue 'turn_loop;
                                 }
+                                // Report HERDR: provider transport error (ForgeCode subprocess failure).
+                                tokio::spawn(crate::herdr::report_state(AgentState::Blocked));
                                 return Err(e);
                             }
                             None => {
@@ -1666,6 +1673,8 @@ impl App {
 
         super::commands::maybe_trigger_autoreview_local(self);
         super::commands::maybe_trigger_autojudge_local(self);
+        // Report HERDR: provider stream completed successfully.
+        tokio::spawn(crate::herdr::report_state(AgentState::Idle));
         Ok(())
     }
 }

@@ -19,18 +19,21 @@ use std::time::{Duration, Instant, SystemTime};
 
 #[path = "update_dev_guard.rs"]
 mod update_dev_guard;
+#[path = "update_display.rs"]
+mod update_display;
 #[path = "update_metadata.rs"]
 mod update_metadata;
+#[path = "update_product.rs"]
+mod update_product;
 #[path = "update_rate_limit.rs"]
 mod update_rate_limit;
+pub use update_display::print_centered;
 pub use update_metadata::UpdateMetadata;
 use update_metadata::{record_release_update_duration, record_source_update_duration};
 pub use update_rate_limit::{RATE_LIMIT_ERROR_PREFIX, is_rate_limit_error};
 use update_rate_limit::{clear_rate_limit_backoff, rate_limit_error};
 
-#[path = "update_product.rs"]
-mod update_product;
-const GITHUB_REPO: &str = update_product::UPDATE_REPO;
+const GITHUB_REPO: &str = "KooshaPari/KCode";
 /// Minimum gap between *automatic* update checks.
 ///
 /// Every automatic check costs one or two unauthenticated `api.github.com`
@@ -60,41 +63,6 @@ const DOWNLOAD_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(120);
 /// connection eventually fails.
 const DOWNLOAD_MAX_ATTEMPTS: usize = 10;
 const DOWNLOAD_PROGRESS_UPDATE_STEP: u64 = 1_048_576;
-pub fn print_centered(msg: &str) {
-    let msg = crate::output_style::terminal_text(msg);
-    let width = crossterm::terminal::size()
-        .map(|(w, _)| w as usize)
-        .unwrap_or(80);
-    for line in msg.lines() {
-        let visible_len = unicode_display_width(line);
-        if visible_len >= width {
-            println!("{}", line);
-        } else {
-            let pad = (width - visible_len) / 2;
-            println!("{:>pad$}{}", "", line, pad = pad);
-        }
-    }
-}
-
-fn unicode_display_width(s: &str) -> usize {
-    use unicode_width::UnicodeWidthChar;
-    let mut w = 0;
-    let mut in_escape = false;
-    for c in s.chars() {
-        if in_escape {
-            if c == 'm' {
-                in_escape = false;
-            }
-            continue;
-        }
-        if c == '\x1b' {
-            in_escape = true;
-            continue;
-        }
-        w += UnicodeWidthChar::width(c).unwrap_or(0);
-    }
-    w
-}
 
 pub fn is_release_build() -> bool {
     jcode_build_meta::is_release_build()
@@ -136,15 +104,15 @@ fn source_build_root() -> Result<PathBuf> {
 }
 
 fn source_build_repo_dir() -> Result<PathBuf> {
-    Ok(source_build_root()?.join("jcode"))
+    Ok(source_build_root()?.join("kcode"))
 }
 
 pub fn should_auto_update() -> bool {
-    if update_product::ensure_update_allowed().is_err() {
+    if !update_product::SELF_UPDATE_ENABLED {
         return false;
     }
     should_auto_update_with(
-        std::env::var("JCODE_NO_AUTO_UPDATE").is_ok(),
+        std::env::var("KCODE_NO_AUTO_UPDATE").is_ok(),
         is_release_build(),
         || std::env::current_exe().ok(),
         crate::logging::info,
@@ -213,11 +181,11 @@ fn auto_update_git_repo_skip_reason(path: &std::path::Path) -> Option<&'static s
 
 /// Env var naming a fake "latest release" endpoint used by the self-dev update
 /// rehearsal (`scripts/update_rehearsal.py`).
-pub const UPDATE_RELEASE_URL_OVERRIDE_ENV: &str = "JCODE_UPDATE_RELEASE_URL";
+pub const UPDATE_RELEASE_URL_OVERRIDE_ENV: &str = "KCODE_UPDATE_RELEASE_URL";
 
 /// Release-endpoint override for update rehearsals.
 ///
-/// Only honored when `JCODE_HOME` points at a sandbox, so a stray environment
+/// Only honored when `KCODE_HOME` points at a sandbox, so a stray environment
 /// variable can never redirect a real install to an arbitrary download.
 fn release_url_override() -> Option<String> {
     release_url_override_with(
@@ -233,7 +201,7 @@ fn release_url_override_with(value: Option<String>, sandboxed_home: bool) -> Opt
     }
     if !sandboxed_home {
         crate::logging::warn(&format!(
-            "Ignoring {UPDATE_RELEASE_URL_OVERRIDE_ENV}: only honored with a sandboxed JCODE_HOME"
+            "Ignoring {UPDATE_RELEASE_URL_OVERRIDE_ENV}: only honored with a sandboxed KCODE_HOME"
         ));
         return None;
     }
@@ -241,7 +209,7 @@ fn release_url_override_with(value: Option<String>, sandboxed_home: bool) -> Opt
 }
 
 pub fn fetch_latest_release_blocking() -> Result<GitHubRelease> {
-    update_product::ensure_update_allowed().map_err(anyhow::Error::msg)?;
+    update_product::require_update_channel()?;
     let override_url = release_url_override();
     let url = override_url.clone().unwrap_or_else(|| {
         format!(
@@ -252,7 +220,7 @@ pub fn fetch_latest_release_blocking() -> Result<GitHubRelease> {
 
     let client = reqwest::blocking::Client::builder()
         .timeout(UPDATE_CHECK_TIMEOUT)
-        .user_agent("jcode-updater")
+        .user_agent("kcode-updater")
         .build()?;
 
     let request = if override_url.is_some() {
@@ -301,11 +269,11 @@ fn github_api_request(
 }
 
 fn latest_main_sha_blocking() -> Result<String> {
-    update_product::ensure_update_allowed().map_err(anyhow::Error::msg)?;
+    update_product::require_update_channel()?;
     let url = format!("https://api.github.com/repos/{}/commits/main", GITHUB_REPO);
     let client = reqwest::blocking::Client::builder()
         .timeout(UPDATE_CHECK_TIMEOUT)
-        .user_agent("jcode-updater")
+        .user_agent("kcode-updater")
         .build()?;
 
     let response = github_api_request(&client, &url)
@@ -379,7 +347,6 @@ fn synthetic_main_release(latest_sha: &str) -> GitHubRelease {
 }
 
 fn install_main_source_update_blocking(latest_sha: &str) -> Result<PathBuf> {
-    update_product::ensure_update_allowed().map_err(anyhow::Error::msg)?;
     let path = build_from_source()?;
     crate::logging::info(&format!(
         "Main channel: built successfully at {}",
@@ -519,7 +486,7 @@ fn prepare_main_update_blocking() -> Result<PreparedUpdate> {
 }
 
 pub fn prepare_update_blocking() -> Result<PreparedUpdate> {
-    update_product::ensure_update_allowed().map_err(anyhow::Error::msg)?;
+    update_product::require_update_channel()?;
     let channel = crate::config::config().features.update_channel;
     match channel {
         crate::config::UpdateChannel::Main => prepare_main_update_blocking(),
@@ -632,7 +599,6 @@ pub fn spawn_background_session_update(session_id: String) {
 }
 
 pub fn check_for_update_blocking() -> Result<Option<GitHubRelease>> {
-    update_product::ensure_update_allowed().map_err(anyhow::Error::msg)?;
     let channel = crate::config::config().features.update_channel;
     match channel {
         crate::config::UpdateChannel::Main => check_for_main_update_blocking(),
@@ -735,12 +701,11 @@ fn has_cargo() -> bool {
 
 /// Build jcode from source by cloning/pulling the repo and running cargo build
 fn build_from_source() -> Result<PathBuf> {
-    update_product::ensure_update_allowed().map_err(anyhow::Error::msg)?;
     let started = Instant::now();
     let build_dir = source_build_root()?;
     fs::create_dir_all(&build_dir)?;
 
-    let repo_dir = build_dir.join("jcode");
+    let repo_dir = build_dir.join("kcode");
 
     if repo_dir.join(".git").exists() {
         // Pull latest
@@ -803,7 +768,7 @@ fn build_from_source() -> Result<PathBuf> {
     let output = std::process::Command::new("cargo")
         .args(["build", "--release"])
         .current_dir(&repo_dir)
-        .env("JCODE_RELEASE_BUILD", "1")
+        .env("KCODE_RELEASE_BUILD", "1")
         .output()
         .context("Failed to run cargo build")?;
 
@@ -1017,7 +982,7 @@ pub fn download_and_install_blocking_with_progress(
     release: &GitHubRelease,
     mut on_progress: impl FnMut(DownloadProgress),
 ) -> Result<PathBuf> {
-    update_product::ensure_update_allowed().map_err(anyhow::Error::msg)?;
+    update_product::require_update_channel()?;
     let started = Instant::now();
     let asset_name = get_asset_name();
     let asset = release
@@ -1029,7 +994,7 @@ pub fn download_and_install_blocking_with_progress(
     let download_url = asset.browser_download_url.clone();
 
     let temp_dir = std::env::temp_dir();
-    let temp_path = temp_dir.join(format!("jcode-update-{}", std::process::id()));
+    let temp_path = temp_dir.join(format!("kcode-update-{}", std::process::id()));
 
     // The `timeout` here applies per request. Since each retry below is a
     // separate request, this acts as a *per-attempt* budget rather than a cap
@@ -1040,7 +1005,7 @@ pub fn download_and_install_blocking_with_progress(
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(DOWNLOAD_CONNECT_TIMEOUT)
         .timeout(DOWNLOAD_ATTEMPT_TIMEOUT)
-        .user_agent("jcode-updater")
+        .user_agent("kcode-updater")
         .build()?;
 
     let total_hint = if asset._size > 0 {
@@ -1353,7 +1318,3 @@ mod tests;
 #[cfg(test)]
 #[path = "update_github_auth_tests.rs"]
 mod github_auth_tests;
-
-#[cfg(test)]
-#[path = "update_product_entry_tests.rs"]
-mod update_product_entry_tests;

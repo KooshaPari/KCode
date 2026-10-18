@@ -32,15 +32,15 @@ use super::{
 };
 use crossterm::event::{KeyCode, KeyModifiers};
 
-/// Drop parsing is disabled under SSH. Other tests set `JCODE_SSH_REMOTE`
+/// Drop parsing is disabled under SSH. Other tests set `KCODE_SSH_REMOTE`
 /// in-process while holding the env lock, so hold it too and run local.
 fn with_local_env<T>(f: impl FnOnce() -> T) -> T {
     let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_SSH_REMOTE");
-    crate::env::remove_var("JCODE_SSH_REMOTE");
+    let previous = std::env::var_os("KCODE_SSH_REMOTE");
+    crate::env::remove_var("KCODE_SSH_REMOTE");
     let result = f();
     if let Some(previous) = previous {
-        crate::env::set_var("JCODE_SSH_REMOTE", previous);
+        crate::env::set_var("KCODE_SSH_REMOTE", previous);
     }
     result
 }

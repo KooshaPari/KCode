@@ -1,15 +1,15 @@
 mod agentgrep;
 pub mod ambient;
-mod apply_patch;
-mod bash;
+pub mod apply_patch;
+pub mod bash;
 mod batch;
-mod bg;
+pub mod bg;
 #[cfg(unix)]
 pub(crate) mod bridge_reload;
-mod browser;
+pub mod browser;
 mod calendar;
 mod codemode;
-mod communicate;
+pub mod communicate;
 mod compile_remote;
 #[cfg(target_os = "macos")]
 mod computer;
@@ -19,9 +19,10 @@ mod debug_socket;
 mod desktop_selfdev;
 mod discover;
 mod discover_secrets;
-mod edit;
+pub mod edit;
 mod edit_stats;
-mod feedback;
+mod elicitation;
+pub mod feedback;
 mod file_diff;
 pub(crate) mod file_lock;
 mod gmail;
@@ -30,27 +31,29 @@ pub mod applet;
 #[allow(dead_code)]
 mod goal;
 pub mod inflight;
-mod invalid;
-mod jcode_docs;
-mod ls;
+pub mod invalid;
+pub mod jcode_docs;
+pub mod ls;
 pub mod mcp;
-mod memory;
-mod open;
+pub mod memory;
+pub mod multiedit;
+pub mod open;
 mod panel;
-mod patch;
-mod read;
+pub mod patch;
+pub mod read;
 mod replace;
 pub(crate) mod sdk;
 pub mod selfdev;
 pub(crate) mod serde_coerce;
-mod session_search;
+pub mod session_search;
 pub(crate) mod session_search_index;
-mod side_panel;
-mod skill;
-mod todo;
-mod webfetch;
-mod websearch;
-mod write;
+pub mod side_panel;
+pub mod skill;
+pub mod todo;
+pub mod tool_search;
+pub mod webfetch;
+pub mod websearch;
+pub mod write;
 
 use crate::compaction::CompactionManager;
 use crate::provider::Provider;
@@ -282,6 +285,7 @@ pub struct Registry {
     mcp_policy: Arc<StdRwLock<McpPolicyIndex>>,
     skills: Arc<RwLock<SkillRegistry>>,
     compaction: Arc<RwLock<CompactionManager>>,
+    search_index: tool_search::ToolSearchIndex,
 }
 
 /// Non-owning handle used by tools stored inside a registry.
@@ -293,6 +297,7 @@ pub(super) struct WeakRegistry {
     mcp_policy: Arc<StdRwLock<McpPolicyIndex>>,
     skills: Arc<RwLock<SkillRegistry>>,
     compaction: Arc<RwLock<CompactionManager>>,
+    search_index: tool_search::ToolSearchIndex,
 }
 
 impl WeakRegistry {
@@ -302,6 +307,7 @@ impl WeakRegistry {
             mcp_policy: Arc::clone(&self.mcp_policy),
             skills: Arc::clone(&self.skills),
             compaction: Arc::clone(&self.compaction),
+            search_index: self.search_index.clone(),
         })
     }
 }
@@ -315,6 +321,7 @@ impl Clone for Registry {
             // Each clone gets a fresh CompactionManager to prevent parallel
             // subagents from corrupting each other's message history
             compaction: Arc::new(RwLock::new(CompactionManager::new())),
+            search_index: self.search_index.clone(),
         }
     }
 }
@@ -326,6 +333,7 @@ impl Registry {
             mcp_policy: Arc::clone(&self.mcp_policy),
             skills: Arc::clone(&self.skills),
             compaction: Arc::clone(&self.compaction),
+            search_index: self.search_index.clone(),
         }
     }
 
@@ -361,6 +369,7 @@ impl Registry {
             mcp_policy: Arc::default(),
             skills: Arc::new(RwLock::new(SkillRegistry::default())),
             compaction: Arc::new(RwLock::new(CompactionManager::new())),
+            search_index: tool_search::ToolSearchIndex::new(),
         }
     }
 
@@ -438,10 +447,22 @@ impl Registry {
             Self::insert_tool_timed(
                 &mut m,
                 &mut timings,
+                "elicitate_mcp",
+                elicitation::ElicitateMcpTool::new,
+            );
+            Self::insert_tool_timed(
+                &mut m,
+                &mut timings,
                 "jcode_docs",
                 jcode_docs::JcodeDocsTool::new,
             );
             Self::insert_tool_timed(&mut m, &mut timings, "todo", todo::TodoTool::new);
+            Self::insert_tool_timed(
+                &mut m,
+                &mut timings,
+                "initiative",
+                goal::InitiativeTool::new,
+            );
             Self::insert_tool_timed(&mut m, &mut timings, "bg", bg::BgTool::new);
             Self::insert_tool_timed(
                 &mut m,
@@ -504,12 +525,14 @@ impl Registry {
         let compaction_start = std::time::Instant::now();
         let compaction = Arc::new(RwLock::new(CompactionManager::new()));
         let compaction_ms = compaction_start.elapsed().as_millis();
+        let search_index = tool_search::ToolSearchIndex::new();
         let registry_struct_start = std::time::Instant::now();
         let registry = Self {
             tools: Arc::new(RwLock::new(HashMap::new())),
             mcp_policy: Arc::default(),
             skills: skills.clone(),
             compaction: compaction.clone(),
+            search_index: search_index.clone(),
         };
         let registry_struct_ms = registry_struct_start.elapsed().as_millis();
 
@@ -551,6 +574,16 @@ impl Registry {
         let session_tools_ms = session_tools_start.elapsed().as_millis();
 
         let write_start = std::time::Instant::now();
+        // Populate the search index with tool names and descriptions before
+        // handing the map to the shared lock so the index is ready from the
+        // first query.
+        for (name, tool) in &tools_map {
+            search_index.register_name(name.clone());
+            let def = tool.to_definition();
+            if !def.description.is_empty() {
+                search_index.store_description(name.clone(), def.description);
+            }
+        }
         *registry.tools.write().await = tools_map;
         let write_ms = write_start.elapsed().as_millis();
         crate::logging::info(&format!(
@@ -1289,6 +1322,14 @@ impl Registry {
 
     /// Register a tool dynamically (for MCP tools, etc.)
     pub async fn register(&self, name: String, tool: Arc<dyn Tool>) {
+        // Populate the search index before handing the tool to the shared map
+        // so concurrent searches see the new entry immediately.
+        self.search_index.register_name(name.clone());
+        let def = tool.to_definition();
+        if !def.description.is_empty() {
+            self.search_index
+                .store_description(name.clone(), def.description);
+        }
         let mut tools = self.tools.write().await;
         let is_mcp = tool.mcp_identity().is_some();
         tools.insert(name, tool);
@@ -1466,7 +1507,7 @@ impl Registry {
     }
 
     /// Like [`Self::register_mcp_tools`], but resolves project-local MCP config
-    /// (`.mcp.json`, `.jcode/mcp.json`, `.claude/mcp.json`) against
+    /// (`.mcp.json`, `.kcode/mcp.json`, `.claude/mcp.json`) against
     /// `working_dir` instead of the server process cwd. Remote/client sessions
     /// must pass their session working directory here (issue #420).
     pub async fn register_mcp_tools_for_dir(
@@ -1794,6 +1835,20 @@ impl Registry {
     /// Get shared access to the compaction manager
     pub fn compaction(&self) -> Arc<RwLock<CompactionManager>> {
         self.compaction.clone()
+    }
+
+    /// Get a clone of the tool search index.
+    pub fn search_index(&self) -> tool_search::ToolSearchIndex {
+        self.search_index.clone()
+    }
+
+    /// Search registered tools by keyword query.
+    ///
+    /// Returns results ranked by relevance. Descriptions are loaded lazily
+    /// from the index where available; tools registered without descriptions
+    /// are matched by name only.
+    pub fn search(&self, query: &str) -> Vec<jcode_tool_search::SearchResult> {
+        self.search_index.search(query)
     }
 }
 

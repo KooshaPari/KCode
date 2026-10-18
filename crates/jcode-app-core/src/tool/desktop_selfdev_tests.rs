@@ -61,7 +61,7 @@ fn builds_both_desktop_packages_with_matching_profile() {
     ] {
         let spec = command_spec(Path::new("/desktop"), &input("build"), profile, None).unwrap();
         assert_eq!(spec.program, "cargo");
-        let mut expected = vec!["build", "-p", "jcode-desktop", "-p", "jcode-desktop-ui"];
+        let mut expected = vec!["build", "-p", "kcode-desktop", "-p", "kcode-desktop-ui"];
         expected.extend(suffix);
         assert_eq!(spec.args, expected);
         assert!(!spec.args.iter().any(|a| a == "jcode" || a == "self-dev"));
@@ -144,12 +144,12 @@ fn ambiguous_instances_and_foreign_executables_are_rejected() {
     // The shared single-panel host is reachable by its fixed socket name.
     assert_eq!(
         instance_socket_name("single-panel"),
-        "jcode-desktop-single-panel.sock"
+        "kcode-desktop-single-panel.sock"
     );
-    assert_eq!(instance_socket_name("main"), "jcode-desktop.sock");
+    assert_eq!(instance_socket_name("main"), "kcode-desktop.sock");
     assert_eq!(
         instance_socket_name("no-sidebar"),
-        "jcode-desktop-no-sidebar.sock"
+        "kcode-desktop-no-sidebar.sock"
     );
     let root = Path::new("/desktop");
     assert_eq!(

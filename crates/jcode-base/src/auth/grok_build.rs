@@ -12,7 +12,7 @@
 //! answers `426 Upgrade Required` with version `(none)` otherwise), so every
 //! request carries the Grok CLI identity from [`cli_version`] and the header
 //! constants below. Override the advertised version with
-//! `JCODE_GROK_CLI_VERSION` when xAI raises the minimum supported CLI version.
+//! `KCODE_GROK_CLI_VERSION` when xAI raises the minimum supported CLI version.
 
 use anyhow::{Context, Result, bail};
 use base64::Engine as _;
@@ -25,7 +25,7 @@ pub const CLI_CHAT_PROXY_BASE_URL: &str = "https://cli-chat-proxy.grok.com/v1";
 /// Env override for [`CLI_CHAT_PROXY_BASE_URL`] (same name the Grok CLI honours).
 pub const CLI_CHAT_PROXY_BASE_URL_ENV: &str = "GROK_CLI_CHAT_PROXY_BASE_URL";
 /// Env override for the advertised Grok CLI version.
-pub const CLI_VERSION_ENV: &str = "JCODE_GROK_CLI_VERSION";
+pub const CLI_VERSION_ENV: &str = "KCODE_GROK_CLI_VERSION";
 /// Grok CLI release whose identity Jcode presents (`x.ai/cli/stable` on 2026-09-23).
 pub const DEFAULT_CLI_VERSION: &str = "1.0.41";
 
@@ -47,7 +47,7 @@ const OAUTH_SCOPES: &str = "openid profile email offline_access grok-cli:access 
 /// Refresh this long before `expires_at` so a turn never starts on a dying token.
 const EXPIRY_SKEW_SECS: i64 = 60;
 
-/// Advertised Grok CLI version (`JCODE_GROK_CLI_VERSION` or [`DEFAULT_CLI_VERSION`]).
+/// Advertised Grok CLI version (`KCODE_GROK_CLI_VERSION` or [`DEFAULT_CLI_VERSION`]).
 pub fn cli_version() -> String {
     cli_version_from(std::env::var(CLI_VERSION_ENV).ok().as_deref())
 }

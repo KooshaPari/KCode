@@ -123,7 +123,7 @@ fn available_models_display_prefers_discovered_models_and_current_model() {
 fn available_models_display_without_discovery_uses_current_model_only() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let provider = GeminiProvider::new();
     provider.set_model("gemini-4-pro-preview").unwrap();
@@ -138,7 +138,7 @@ fn available_models_display_without_discovery_uses_current_model_only() {
 fn available_models_display_seeds_from_persisted_catalog() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let path = GeminiProvider::persisted_catalog_path().expect("catalog path");
     jcode_base::storage::write_json(
@@ -601,9 +601,9 @@ fn parses_candidate_finish_message() {
 fn auth_mode_prefers_api_key_when_present() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _google = EnvVarGuard::unset("GOOGLE_API_KEY");
-    let _force = EnvVarGuard::unset("JCODE_GEMINI_FORCE_OAUTH");
+    let _force = EnvVarGuard::unset("KCODE_GEMINI_FORCE_OAUTH");
     let _key = EnvVarGuard::set_value("GEMINI_API_KEY", "test-developer-key");
     jcode_base::config::Config::invalidate_cache();
 
@@ -617,10 +617,10 @@ fn auth_mode_prefers_api_key_when_present() {
 fn auth_mode_force_oauth_overrides_api_key() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _google = EnvVarGuard::unset("GOOGLE_API_KEY");
     let _key = EnvVarGuard::set_value("GEMINI_API_KEY", "test-developer-key");
-    let _force = EnvVarGuard::set_value("JCODE_GEMINI_FORCE_OAUTH", "1");
+    let _force = EnvVarGuard::set_value("KCODE_GEMINI_FORCE_OAUTH", "1");
     jcode_base::config::Config::invalidate_cache();
 
     assert!(matches!(GeminiProvider::auth_mode(), GeminiAuthMode::Oauth));
@@ -630,10 +630,10 @@ fn auth_mode_force_oauth_overrides_api_key() {
 fn auth_mode_defaults_to_oauth_without_api_key() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _key = EnvVarGuard::unset("GEMINI_API_KEY");
     let _google = EnvVarGuard::unset("GOOGLE_API_KEY");
-    let _force = EnvVarGuard::unset("JCODE_GEMINI_FORCE_OAUTH");
+    let _force = EnvVarGuard::unset("KCODE_GEMINI_FORCE_OAUTH");
     jcode_base::config::Config::invalidate_cache();
 
     assert!(matches!(GeminiProvider::auth_mode(), GeminiAuthMode::Oauth));
@@ -1027,10 +1027,10 @@ fn http_retry_policy_does_not_replay_onboarding_or_persistent_quota_errors() {
 fn runtime_state_key_changes_when_configured_project_or_auth_route_changes() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _project = EnvVarGuard::unset("GOOGLE_CLOUD_PROJECT");
     let _alias = EnvVarGuard::unset("GOOGLE_CLOUD_PROJECT_ID");
-    let _force = EnvVarGuard::unset("JCODE_GEMINI_FORCE_OAUTH");
+    let _force = EnvVarGuard::unset("KCODE_GEMINI_FORCE_OAUTH");
     let _key = EnvVarGuard::set_value("GEMINI_API_KEY", "test-developer-key");
     let mut cfg = jcode_base::config::Config::default();
     cfg.provider.gemini_force_oauth = true;
@@ -1054,7 +1054,7 @@ fn post_json_retries_transient_http_responses_against_local_server() {
     use std::io::{BufRead, Read, Write};
     let _guard = jcode_base::storage::lock_test_env();
     let home = tempfile::tempdir().unwrap();
-    let _home = EnvVarGuard::set_path("JCODE_HOME", home.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", home.path());
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     listener.set_nonblocking(true).unwrap();
     let endpoint = format!("http://{}", listener.local_addr().unwrap());
@@ -1138,9 +1138,9 @@ fn post_json_retries_transient_http_responses_against_local_server() {
 fn ensure_state_replaces_oauth_cache_when_switching_to_api_key() {
     let _lock = jcode_base::storage::lock_test_env();
     let home = tempfile::tempdir().unwrap();
-    let _home = EnvVarGuard::set_path("JCODE_HOME", home.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", home.path());
     let _key = EnvVarGuard::set_value("GEMINI_API_KEY", "test-developer-key");
-    let _force = EnvVarGuard::set_value("JCODE_GEMINI_FORCE_OAUTH", "false");
+    let _force = EnvVarGuard::set_value("KCODE_GEMINI_FORCE_OAUTH", "false");
     jcode_base::config::Config::invalidate_cache();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

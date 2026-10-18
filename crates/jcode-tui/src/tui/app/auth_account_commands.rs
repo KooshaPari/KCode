@@ -846,7 +846,7 @@ fn save_openai_compat_setting(app: &mut App, setting: OpenAiCompatSetting, value
                 },
                 None => None,
             };
-            ("JCODE_OPENAI_COMPAT_API_BASE", normalized)
+            ("KCODE_OPENAI_COMPAT_API_BASE", normalized)
         }
         OpenAiCompatSetting::ApiKeyName => {
             if let Some(value) = value
@@ -859,7 +859,7 @@ fn save_openai_compat_setting(app: &mut App, setting: OpenAiCompatSetting, value
                 return;
             }
             (
-                "JCODE_OPENAI_COMPAT_API_KEY_NAME",
+                "KCODE_OPENAI_COMPAT_API_KEY_NAME",
                 value.map(ToString::to_string),
             )
         }
@@ -873,12 +873,12 @@ fn save_openai_compat_setting(app: &mut App, setting: OpenAiCompatSetting, value
                 return;
             }
             (
-                "JCODE_OPENAI_COMPAT_ENV_FILE",
+                "KCODE_OPENAI_COMPAT_ENV_FILE",
                 value.map(ToString::to_string),
             )
         }
         OpenAiCompatSetting::DefaultModel => (
-            "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
+            "KCODE_OPENAI_COMPAT_DEFAULT_MODEL",
             value.map(ToString::to_string),
         ),
     };

@@ -29,9 +29,9 @@ const MAX_OUTPUT_LEN: usize = 30000;
 const DEFAULT_TIMEOUT_MS: u64 = 120000;
 const STDIN_POLL_INTERVAL_MS: u64 = 500;
 const STDIN_INITIAL_DELAY_MS: u64 = 300;
-const PROGRESS_MARKER_PREFIX: &str = "JCODE_PROGRESS ";
-const CHECKPOINT_MARKER_PREFIX: &str = "JCODE_CHECKPOINT ";
-const BACKGROUND_PROGRESS_GUIDANCE: &str = "For long-running background commands, prefer scripts or commands that periodically print progress updates. Best format: print lines starting with `JCODE_PROGRESS ` followed by JSON like {\"percent\":42,\"message\":\"Running\"} or {\"current\":120,\"total\":1000,\"unit\":\"batches\",\"message\":\"Epoch 2/5\",\"eta_seconds\":30}. Supported JSON fields are `percent`, `message`, `current`, `total`, `unit`, `eta_seconds`, and optional `kind`=`indeterminate` or `kind`=`checkpoint`. For milestone-style wakeups, print `JCODE_CHECKPOINT {\"message\":\"Unit tests passed\"}`. Generic fallback output that can be parsed includes `42%`, `3/10 tests`, `3 of 10 steps`, `1.5/3.0 GiB`, or phase lines like `Compiling ...`, `Downloading ...`, `Running ...`, and `Building ...`. If you are writing the script yourself, add these progress/checkpoint lines explicitly. Put large temporary files, worktrees, and virtual environments under `$JCODE_SCRATCH_DIR`, not `/tmp`, because `/tmp` may be RAM-backed.";
+const PROGRESS_MARKER_PREFIX: &str = "KCODE_PROGRESS ";
+const CHECKPOINT_MARKER_PREFIX: &str = "KCODE_CHECKPOINT ";
+const BACKGROUND_PROGRESS_GUIDANCE: &str = "For long-running background commands, prefer scripts or commands that periodically print progress updates. Best format: print lines starting with `KCODE_PROGRESS ` followed by JSON like {\"percent\":42,\"message\":\"Running\"} or {\"current\":120,\"total\":1000,\"unit\":\"batches\",\"message\":\"Epoch 2/5\",\"eta_seconds\":30}. Supported JSON fields are `percent`, `message`, `current`, `total`, `unit`, `eta_seconds`, and optional `kind`=`indeterminate` or `kind`=`checkpoint`. For milestone-style wakeups, print `KCODE_CHECKPOINT {\"message\":\"Unit tests passed\"}`. Generic fallback output that can be parsed includes `42%`, `3/10 tests`, `3 of 10 steps`, `1.5/3.0 GiB`, or phase lines like `Compiling ...`, `Downloading ...`, `Running ...`, and `Building ...`. If you are writing the script yourself, add these progress/checkpoint lines explicitly. Put large temporary files, worktrees, and virtual environments under `$KCODE_SCRATCH_DIR`, not `/tmp`, because `/tmp` may be RAM-backed.";
 const BASH_TOOL_DESCRIPTION: &str = "Run a bash command.";
 const WINDOWS_SHELL_TOOL_DESCRIPTION: &str =
     "Run a Windows cmd.exe command (compatibility name `bash`). Use cmd.exe syntax, not Bash.";
@@ -54,12 +54,12 @@ fn wrap_repo_cargo_commands(command: &str, working_dir: Option<&Path>) -> Option
     }
 
     Some(format!(
-        r#"export JCODE_DEV_CARGO_SCRIPT={wrapper}
+        r#"export KCODE_DEV_CARGO_SCRIPT={wrapper}
 cargo() {{
-  if [[ "${{JCODE_IN_DEV_CARGO:-0}}" == "1" ]]; then
+  if [[ "${{KCODE_IN_DEV_CARGO:-0}}" == "1" ]]; then
     command cargo "$@"
   else
-    JCODE_IN_DEV_CARGO=1 "$JCODE_DEV_CARGO_SCRIPT" "$@"
+    KCODE_IN_DEV_CARGO=1 "$KCODE_DEV_CARGO_SCRIPT" "$@"
   fi
 }}
 export -f cargo
@@ -68,11 +68,8 @@ export -f cargo
     ))
 }
 
-/// Build a clear timeout message. The `timeout` param is in milliseconds, which
-/// agents frequently mistake for seconds (e.g. passing 1000 thinking it means
-/// 1000s when it is 1s). Spell out the seconds equivalent and, for suspiciously
-/// short timeouts, hint that the unit is milliseconds so the next attempt uses a
-/// sane value instead of repeating the same mistake.
+/// Build a clear timeout message. `timeout` is in milliseconds, which agents
+/// frequently mistake for seconds, so spell out the seconds equivalent too.
 fn timeout_message(timeout_ms: u64) -> String {
     let secs = timeout_ms as f64 / 1000.0;
     let mut msg = format!("Command timed out after {}ms ({:.1}s)", timeout_ms, secs);
@@ -164,17 +161,12 @@ fn summarize_background_command(description: Option<&str>, command: &str) -> Str
     {
         return truncate_str(description, 28).to_string();
     }
-
     let trimmed = command.trim();
     if trimmed.is_empty() {
         return "bash".to_string();
     }
-
     let tokens: Vec<&str> = trimmed.split_whitespace().collect();
-    let start = tokens
-        .iter()
-        .position(|token| !token.contains('='))
-        .unwrap_or(0);
+    let start = tokens.iter().position(|t| !t.contains('=')).unwrap_or(0);
     let tokens = &tokens[start..];
     if tokens.is_empty() {
         return truncate_str(trimmed, 28).to_string();
@@ -203,14 +195,13 @@ fn parse_progress_marker_with_checkpoint(line: &str) -> Option<(BackgroundTaskPr
     let marker: ProgressMarker = serde_json::from_str(payload).ok()?;
     let is_checkpoint =
         marker.checkpoint.unwrap_or(false) || matches!(marker.kind.as_deref(), Some("checkpoint"));
-    let kind = if marker.percent.is_some()
-        || matches!((marker.current, marker.total), (_, Some(total)) if total > 0)
-    {
+    let warm = marker.percent.is_some()
+        || matches!((marker.current, marker.total), (_, Some(total)) if total > 0);
+    let kind = if warm {
         BackgroundTaskProgressKind::Determinate
     } else {
         parse_progress_kind(marker.kind.as_deref())
     };
-
     Some((
         BackgroundTaskProgress {
             kind,
@@ -469,7 +460,7 @@ pub(super) enum ProgressLineUpdate {
 }
 
 /// Parse one output line for any supported progress signal: explicit
-/// `JCODE_CHECKPOINT`/`JCODE_PROGRESS` markers first, then heuristic patterns
+/// `KCODE_CHECKPOINT`/`KCODE_PROGRESS` markers first, then heuristic patterns
 /// (ratios, percentages, byte ratios, phase prefixes).
 pub(super) fn parse_progress_line(line: &str) -> Result<Option<ProgressLineUpdate>> {
     if let Some(progress) = parse_checkpoint_marker(line) {
@@ -513,9 +504,9 @@ struct PromotedCommandProgress {
 impl PromotedCommandProgress {
     async fn record(&self, update: ProgressLineUpdate) {
         let direct = {
-            let mut pending = self.pending.lock().expect("progress mutex poisoned");
+            let mut guard = self.pending.lock().unwrap_or_else(|e| e.into_inner());
             if self.task_id.get().is_none() {
-                *pending = Some(update);
+                *guard = Some(update);
                 None
             } else {
                 Some(update)
@@ -530,7 +521,11 @@ impl PromotedCommandProgress {
 
     async fn attach_task(&self, task_id: &str) {
         let _ = self.task_id.set(task_id.to_string());
-        let pending = self.pending.lock().expect("progress mutex poisoned").take();
+        let pending = self
+            .pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
         if let Some(update) = pending {
             apply_progress_update(task_id, update).await;
         }
@@ -567,8 +562,7 @@ where
 ///
 /// Detached commands write directly to their output file, so nothing in-process
 /// sees their output as it streams. This follower polls the file while the task
-/// is `Running`, parsing complete lines from where it left off. It performs one
-/// final drain after the task leaves `Running` and then exits.
+/// is `Running`, parsing complete lines, then performs one final drain.
 #[cfg(unix)]
 fn spawn_detached_progress_follower(task_id: String, output_file: std::path::PathBuf) {
     tokio::spawn(async move {
@@ -610,7 +604,7 @@ fn spawn_detached_progress_follower(task_id: String, output_file: std::path::Pat
 
 #[cfg(not(windows))]
 fn tool_scratch_dir() -> Option<std::path::PathBuf> {
-    let dir = std::env::var_os("JCODE_SCRATCH_DIR")
+    let dir = std::env::var_os("KCODE_SCRATCH_DIR")
         .filter(|value| !value.is_empty())
         .map(std::path::PathBuf::from)
         .or_else(|| {
@@ -625,7 +619,7 @@ fn tool_scratch_dir() -> Option<std::path::PathBuf> {
 #[cfg(not(windows))]
 fn configure_tool_scratch(command: &mut TokioCommand) {
     if let Some(dir) = tool_scratch_dir() {
-        command.env("TMPDIR", &dir).env("JCODE_SCRATCH_DIR", dir);
+        command.env("TMPDIR", &dir).env("KCODE_SCRATCH_DIR", dir);
     }
 }
 
@@ -693,11 +687,11 @@ fn build_detached_shell_wrapper(command: &str) -> StdCommand {
     let mut cmd = StdCommand::new("bash");
     cmd.arg("-lc")
         .arg(
-            r#"eval "$JCODE_RELOAD_DETACH_COMMAND"; status=$?; printf '\n--- Command finished with exit code: %s ---\n' "$status"; exit "$status""#,
+            r#"eval "$KCODE_RELOAD_DETACH_COMMAND"; status=$?; printf '\n--- Command finished with exit code: %s ---\n' "$status"; exit "$status""#,
         )
-        .env("JCODE_RELOAD_DETACH_COMMAND", command);
+        .env("KCODE_RELOAD_DETACH_COMMAND", command);
     if let Some(dir) = tool_scratch_dir() {
-        cmd.env("TMPDIR", &dir).env("JCODE_SCRATCH_DIR", dir);
+        cmd.env("TMPDIR", &dir).env("KCODE_SCRATCH_DIR", dir);
     }
     cmd
 }
@@ -749,7 +743,7 @@ mod utf8_truncation_tests {
         );
 
         let probe_path = std::env::temp_dir().join(format!(
-            "jcode-cmd-quoting-probe-{}.cmd",
+            "kcode-cmd-quoting-probe-{}.cmd",
             std::process::id()
         ));
         std::fs::write(
@@ -787,11 +781,11 @@ mod utf8_truncation_tests {
     #[cfg(unix)]
     #[test]
     fn build_shell_command_uses_disk_backed_scratch_directory() {
-        // Keep JCODE_HOME stable until the final directory assertion. Running
+        // Keep KCODE_HOME stable until the final directory assertion. Running
         // synchronously avoids holding the environment MutexGuard across await.
         let _env_lock = crate::storage::lock_test_env();
         let expected = super::tool_scratch_dir().expect("jcode scratch directory");
-        let output = build_shell_command("printf '%s\\n%s\\n' \"$TMPDIR\" \"$JCODE_SCRATCH_DIR\"")
+        let output = build_shell_command("printf '%s\\n%s\\n' \"$TMPDIR\" \"$KCODE_SCRATCH_DIR\"")
             .as_std_mut()
             .output()
             .expect("run bash command");
@@ -809,6 +803,12 @@ pub struct BashTool;
 impl BashTool {
     pub fn new() -> Self {
         Self
+    }
+}
+
+impl Default for BashTool {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1013,7 +1013,7 @@ impl BashTool {
 
         let mut command = build_shell_command(&params.command);
         command
-            .env("JCODE_SESSION_ID", &ctx.session_id)
+            .env("KCODE_SESSION_ID", &ctx.session_id)
             .kill_on_drop(true)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -1233,7 +1233,7 @@ impl BashTool {
         let display_name = summarize_background_command(params.intent.as_deref(), &params.command);
 
         let mut cmd = build_detached_shell_wrapper(&params.command);
-        cmd.env("JCODE_SESSION_ID", &ctx.session_id);
+        cmd.env("KCODE_SESSION_ID", &ctx.session_id);
         let stdout = OpenOptions::new()
             .create(true)
             .append(true)
@@ -1283,6 +1283,10 @@ impl BashTool {
                 // in-process reader sees their output. Follow the file to keep
                 // the task's progress bar live.
                 spawn_detached_progress_follower(info.task_id.clone(), info.output_file.clone());
+                // The command outlives this call, so hand the child to a reaper.
+                // Dropping a `std::process::Child` without `wait()` leaves the
+                // process as a <defunct> zombie parented to the server forever.
+                crate::platform::reap_detached(child);
 
                 let elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
                 let output = format!(
@@ -1341,6 +1345,9 @@ impl BashTool {
                     )
                     .await;
                 spawn_detached_progress_follower(info.task_id.clone(), info.output_file.clone());
+                // Same as the timeout handoff: the reloaded server will not own
+                // this child, so reap it here or it lingers as a zombie.
+                crate::platform::reap_detached(child);
                 let output = format!(
                     "Command continued in background due to reload.\n\nTask ID: {}\nOutput file: {}\nStatus file: {}\n\nUse `bg` with action=\"wait\" and task_id=\"{}\" after reload to wait for completion or the next progress checkpoint.",
                     info.task_id,
@@ -1390,7 +1397,7 @@ impl BashTool {
                 wake,
 				move |output_path| async move {
 					let mut cmd = build_shell_command(&command);
-					cmd.env("JCODE_SESSION_ID", &session_id_env);
+					cmd.env("KCODE_SESSION_ID", &session_id_env);
 					#[cfg(unix)]
 					unsafe {
 						cmd.pre_exec(|| {

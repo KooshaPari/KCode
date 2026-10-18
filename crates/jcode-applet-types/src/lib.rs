@@ -24,7 +24,7 @@ pub mod placement;
 pub mod validate;
 pub mod view;
 
-pub use agent::{AgentApplets, JCODE_APPLET_MIME};
+pub use agent::{AgentApplets, KCODE_APPLET_MIME};
 pub use asset::{AssetDecl, ImageFit, ImageSource};
 pub use manifest::{Capability, Launcher, Manifest, ToolCardClaim};
 pub use message::{Document, HostMessage, Instance, ProviderMessage};

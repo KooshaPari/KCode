@@ -1119,12 +1119,12 @@ fn api_key_env_bindings_for_provider(provider_id: &str) -> Vec<(String, String)>
         )],
         "jcode" => vec![
             (
-                crate::subscription_catalog::JCODE_API_KEY_ENV.to_string(),
-                crate::subscription_catalog::JCODE_ENV_FILE.to_string(),
+                crate::subscription_catalog::KCODE_API_KEY_ENV.to_string(),
+                crate::subscription_catalog::KCODE_ENV_FILE.to_string(),
             ),
             (
-                crate::subscription_catalog::JCODE_API_BASE_ENV.to_string(),
-                crate::subscription_catalog::JCODE_ENV_FILE.to_string(),
+                crate::subscription_catalog::KCODE_API_BASE_ENV.to_string(),
+                crate::subscription_catalog::KCODE_ENV_FILE.to_string(),
             ),
         ],
         "bedrock" => vec![
@@ -1677,8 +1677,8 @@ mod tests {
 
     #[test]
     fn direct_login_provider_activation_sets_runtime_identity_and_active_provider() {
-        // Sandbox JCODE_HOME so activation's env-file credential sync (#453)
-        // cannot read the developer's real ~/.config/jcode/*.env files and
+        // Sandbox KCODE_HOME so activation's env-file credential sync (#453)
+        // cannot read the developer's real ~/.config/kcode/*.env files and
         // leak keys into this process during the matrix run.
         let _sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().expect("sandbox");
 
@@ -1696,9 +1696,9 @@ mod tests {
             ("gemini", "gemini", "gemini"),
             ("antigravity", "antigravity", "antigravity"),
         ] {
-            crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
-            crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
-            crate::env::remove_var("JCODE_INITIAL_PROVIDER_EXPLICIT");
+            crate::env::remove_var("KCODE_RUNTIME_PROVIDER");
+            crate::env::remove_var("KCODE_ACTIVE_PROVIDER");
+            crate::env::remove_var("KCODE_INITIAL_PROVIDER_EXPLICIT");
 
             let activation = activate_auth_change(&AuthActivationRequest::new(
                 None,
@@ -1707,15 +1707,15 @@ mod tests {
 
             assert_eq!(activation.provider_id.as_deref(), Some(provider));
             assert_eq!(
-                std::env::var("JCODE_RUNTIME_PROVIDER").as_deref(),
+                std::env::var("KCODE_RUNTIME_PROVIDER").as_deref(),
                 Ok(runtime)
             );
             assert_eq!(
-                std::env::var("JCODE_ACTIVE_PROVIDER").as_deref(),
+                std::env::var("KCODE_ACTIVE_PROVIDER").as_deref(),
                 Ok(active)
             );
             assert_eq!(
-                std::env::var("JCODE_INITIAL_PROVIDER_EXPLICIT").as_deref(),
+                std::env::var("KCODE_INITIAL_PROVIDER_EXPLICIT").as_deref(),
                 Ok("1")
             );
         }
@@ -1723,7 +1723,7 @@ mod tests {
 
     #[test]
     fn direct_login_provider_descriptor_matrix_has_full_lifecycle_parity() {
-        // Sandbox JCODE_HOME for the same reason as the activation matrix
+        // Sandbox KCODE_HOME for the same reason as the activation matrix
         // above: keep the #453 credential sync away from real env files.
         let _sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().expect("sandbox");
 
@@ -1794,9 +1794,9 @@ mod tests {
                 provider.id
             );
 
-            crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
-            crate::env::remove_var("JCODE_ACTIVE_PROVIDER");
-            crate::env::remove_var("JCODE_INITIAL_PROVIDER_EXPLICIT");
+            crate::env::remove_var("KCODE_RUNTIME_PROVIDER");
+            crate::env::remove_var("KCODE_ACTIVE_PROVIDER");
+            crate::env::remove_var("KCODE_INITIAL_PROVIDER_EXPLICIT");
 
             let activation = activate_auth_change(&AuthActivationRequest::new(
                 None,
@@ -1808,15 +1808,15 @@ mod tests {
                 Some(provider.display_name)
             );
             assert_eq!(
-                std::env::var("JCODE_RUNTIME_PROVIDER").as_deref(),
+                std::env::var("KCODE_RUNTIME_PROVIDER").as_deref(),
                 Ok(runtime)
             );
             assert_eq!(
-                std::env::var("JCODE_ACTIVE_PROVIDER").as_deref(),
+                std::env::var("KCODE_ACTIVE_PROVIDER").as_deref(),
                 Ok(active)
             );
             assert_eq!(
-                std::env::var("JCODE_INITIAL_PROVIDER_EXPLICIT").as_deref(),
+                std::env::var("KCODE_INITIAL_PROVIDER_EXPLICIT").as_deref(),
                 Ok("1")
             );
             let expected_switch = if switch_prefix.is_empty() {
@@ -1905,7 +1905,7 @@ mod tests {
             route(
                 "gpt-5.5",
                 "Jcode Subscription",
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD,
+                crate::subscription_catalog::KCODE_ROUTE_API_METHOD,
                 true,
             ),
         ];
@@ -1920,7 +1920,7 @@ mod tests {
             report.route_sample,
             vec![format!(
                 "`gpt-5.5` via {}",
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD
+                crate::subscription_catalog::KCODE_ROUTE_API_METHOD
             )]
         );
         assert_eq!(
@@ -2308,11 +2308,11 @@ mod tests {
         // order; the fallback must preserve live-catalog order for them.
         //
         // Selection consults the process-global namespaced catalog, so hold the
-        // shared test-env lock (and a private JCODE_HOME) or a sibling test's
+        // shared test-env lock (and a private KCODE_HOME) or a sibling test's
         // cached catalog decides this assertion depending on ordering.
-        let _env = EnvGuard::new(&["JCODE_HOME"]);
+        let _env = EnvGuard::new(&["KCODE_HOME"]);
         let temp = tempfile::tempdir().expect("tempdir");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        crate::env::set_var("KCODE_HOME", temp.path());
         let activation = AuthActivationResult {
             provider_id: Some("cerebras".to_string()),
             provider_label: Some("Cerebras".to_string()),
@@ -2344,9 +2344,9 @@ mod tests {
 
     #[test]
     fn post_auth_model_selection_prefers_newest_live_release_for_unranked_provider() {
-        let _env = EnvGuard::new(&["JCODE_HOME"]);
+        let _env = EnvGuard::new(&["KCODE_HOME"]);
         let temp = tempfile::tempdir().expect("tempdir");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        crate::env::set_var("KCODE_HOME", temp.path());
         jcode_provider_openrouter::save_disk_cache_with_source_for_namespace(
             "cerebras",
             &[

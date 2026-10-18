@@ -134,7 +134,7 @@
 //! `web_search`, with no `ToolCall` to answer, and appear in history. The
 //! session tool policy governs them like any tool. A custom tool named
 //! `websearch` is always called through your application and never replaced by
-//! provider search. Set `JCODE_WEBSEARCH_PREFER_NATIVE=0` to always search
+//! provider search. Set `KCODE_WEBSEARCH_PREFER_NATIVE=0` to always search
 //! locally.
 
 mod auth;

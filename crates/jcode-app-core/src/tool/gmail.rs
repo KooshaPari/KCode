@@ -163,7 +163,7 @@ impl Tool for GmailTool {
             if !self.client.supports_connect() {
                 return Ok(ToolOutput::new(
                     "The 'connect' action is only available with the Composio Gmail backend. \
-                     Set JCODE_GMAIL_BACKEND=composio and COMPOSIO_API_KEY, then retry. \
+                     Set KCODE_GMAIL_BACKEND=composio and COMPOSIO_API_KEY, then retry. \
                      For the default backend, run `jcode login google` instead.",
                 ));
             }

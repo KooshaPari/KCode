@@ -839,7 +839,7 @@ impl OpenRouterProvider {
     /// writes should use.
     ///
     /// Every `new_named_openai_compatible()` constructor sets the process-global
-    /// `JCODE_OPENROUTER_CACHE_NAMESPACE` env var, so with several named
+    /// `KCODE_OPENROUTER_CACHE_NAMESPACE` env var, so with several named
     /// profiles in one process the last one constructed wins and all profiles
     /// collide on a single `<last-profile>_models.json`. The background refresh
     /// path already passes an explicit namespace; the foreground paths did not.

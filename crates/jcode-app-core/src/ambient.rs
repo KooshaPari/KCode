@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+pub mod auto_dream;
 mod directives;
 mod manager;
 mod paths;
@@ -10,6 +11,7 @@ mod persistence;
 mod prompt;
 pub mod runner;
 pub mod scheduler;
+pub mod session_memory;
 
 pub use directives::{
     UserDirective, add_directive, has_pending_directives, load_directives, take_pending_directives,
@@ -31,7 +33,7 @@ use crate::storage;
 // ---------------------------------------------------------------------------
 
 /// Context passed from the ambient runner to a visible TUI cycle.
-/// Saved to `~/.jcode/ambient/visible_cycle.json`.
+/// Saved to `~/.kcode/ambient/visible_cycle.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VisibleCycleContext {
     pub system_prompt: String,
@@ -82,6 +84,32 @@ pub enum AmbientStatus {
     Disabled,
 }
 
+/// Recurrence pattern for a scheduled item.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum Recurrence {
+    /// Fire every N minutes, re-enqueue after each execution.
+    Interval { every_minutes: u32 },
+    /// Fire once (default).
+    #[default]
+    Once,
+}
+
+impl Recurrence {
+    /// Returns `true` if this is the default `Once` recurrence (used for
+    /// `skip_serializing_if`).
+    pub fn is_once(&self) -> bool {
+        matches!(self, Self::Once)
+    }
+
+    /// Interval in minutes, if this is an `Interval` variant.
+    pub fn interval_minutes(&self) -> Option<u32> {
+        match self {
+            Self::Interval { every_minutes } => Some(*every_minutes),
+            Self::Once => None,
+        }
+    }
+}
+
 /// Priority for scheduled items
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Priority {
@@ -130,6 +158,10 @@ pub struct ScheduledItem {
     pub git_branch: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_context: Option<String>,
+    /// Recurrence pattern. `Once` means fire once; `Interval` means
+    /// re-enqueue after each execution.
+    #[serde(default, skip_serializing_if = "Recurrence::is_once")]
+    pub recurrence: Recurrence,
 }
 
 /// Persistent ambient state
@@ -186,6 +218,10 @@ pub struct ScheduleRequest {
     pub git_branch: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_context: Option<String>,
+    /// Recurrence pattern. `Once` means fire once; `Interval` means
+    /// re-enqueue after each execution.
+    #[serde(default, skip_serializing_if = "Recurrence::is_once")]
+    pub recurrence: Recurrence,
 }
 
 // ---------------------------------------------------------------------------

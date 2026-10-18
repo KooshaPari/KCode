@@ -3,9 +3,9 @@
 //! Hooks are external commands that jcode runs at well-defined lifecycle
 //! points so other programs can observe or gate agent behavior without
 //! forking jcode. They are configured in `[hooks]` in config.toml (or
-//! `JCODE_HOOK_*` env vars) and follow the same command-line conventions as
+//! `KCODE_HOOK_*` env vars) and follow the same command-line conventions as
 //! `[terminal] spawn_hook`: the command is parsed shell-style but executed
-//! directly (no shell), with `JCODE_HOOK_*` metadata env vars describing the
+//! directly (no shell), with `KCODE_HOOK_*` metadata env vars describing the
 //! event.
 //!
 //! Two dispatch styles:
@@ -22,7 +22,7 @@
 //!   the tool result the model sees (e.g. linter findings for an edited file).
 //!   Timeouts and spawn failures add nothing.
 //!
-//! Hook processes get `JCODE_HOOKS_DISABLED=1` in their environment so a
+//! Hook processes get `KCODE_HOOKS_DISABLED=1` in their environment so a
 //! hook that itself invokes jcode does not recursively trigger hooks.
 
 use serde_json::Value;
@@ -35,7 +35,7 @@ tokio::task_local! {
     static CLIENT_TERMINAL_ENV: Vec<(String, String)>;
 }
 
-/// Maximum bytes of JSON payload exported via `JCODE_HOOK_PAYLOAD`.
+/// Maximum bytes of JSON payload exported via `KCODE_HOOK_PAYLOAD`.
 const PAYLOAD_ENV_LIMIT: usize = 16 * 1024;
 /// Maximum bytes of tool input JSON exported to the pre_tool gate.
 const TOOL_INPUT_ENV_LIMIT: usize = 16 * 1024;
@@ -61,7 +61,7 @@ pub struct HookEvent {
     pub session_id: Option<String>,
     pub cwd: Option<String>,
     /// Extra env fields. Keys are suffixes: ("STATUS", "ok") becomes
-    /// `JCODE_HOOK_STATUS=ok` and `"status": "ok"` in the JSON payload.
+    /// `KCODE_HOOK_STATUS=ok` and `"status": "ok"` in the JSON payload.
     pub fields: Vec<(&'static str, String)>,
 }
 
@@ -235,7 +235,7 @@ pub async fn transform_tool_input(
 
 /// True when running inside a hook process (recursion guard).
 fn hooks_suppressed() -> bool {
-    std::env::var_os("JCODE_HOOKS_DISABLED").is_some()
+    std::env::var_os("KCODE_HOOKS_DISABLED").is_some()
 }
 
 fn expand_home(program: &str) -> PathBuf {
@@ -258,12 +258,12 @@ fn truncate_bytes(value: &str, limit: usize) -> &str {
     &value[..end]
 }
 
-/// Tool input JSON truncated to the size exported in `JCODE_HOOK_TOOL_INPUT`.
+/// Tool input JSON truncated to the size exported in `KCODE_HOOK_TOOL_INPUT`.
 pub fn truncate_tool_input(tool_input_json: &str) -> &str {
     truncate_bytes(tool_input_json, TOOL_INPUT_ENV_LIMIT)
 }
 
-/// JSON payload mirroring the env fields, exported as `JCODE_HOOK_PAYLOAD`.
+/// JSON payload mirroring the env fields, exported as `KCODE_HOOK_PAYLOAD`.
 fn payload_json(event: &HookEvent) -> String {
     let mut map = serde_json::Map::new();
     map.insert(
@@ -290,18 +290,18 @@ fn payload_json(event: &HookEvent) -> String {
 }
 
 fn apply_event_env(cmd: &mut std::process::Command, event: &HookEvent) {
-    cmd.env("JCODE_HOOKS_DISABLED", "1");
-    cmd.env("JCODE_HOOK_EVENT", event.event);
+    cmd.env("KCODE_HOOKS_DISABLED", "1");
+    cmd.env("KCODE_HOOK_EVENT", event.event);
     if let Some(session_id) = &event.session_id {
-        cmd.env("JCODE_HOOK_SESSION_ID", session_id);
+        cmd.env("KCODE_HOOK_SESSION_ID", session_id);
     }
     if let Some(cwd) = &event.cwd {
-        cmd.env("JCODE_HOOK_CWD", cwd);
+        cmd.env("KCODE_HOOK_CWD", cwd);
     }
     for (key, value) in &event.fields {
-        cmd.env(format!("JCODE_HOOK_{key}"), value);
+        cmd.env(format!("KCODE_HOOK_{key}"), value);
     }
-    cmd.env("JCODE_HOOK_PAYLOAD", payload_json(event));
+    cmd.env("KCODE_HOOK_PAYLOAD", payload_json(event));
 }
 
 fn build_hook_process(
@@ -377,8 +377,8 @@ pub fn dispatch_observer(event: HookEvent) {
 
 /// Run the `pre_tool` gate hook for a tool call, if configured.
 ///
-/// The hook receives `JCODE_HOOK_TOOL_NAME` plus the full tool input JSON on
-/// stdin (and truncated in `JCODE_HOOK_TOOL_INPUT`). Contract:
+/// The hook receives `KCODE_HOOK_TOOL_NAME` plus the full tool input JSON on
+/// stdin (and truncated in `KCODE_HOOK_TOOL_INPUT`). Contract:
 ///
 /// - exit 0: allow the tool call
 /// - exit 2: block it; stderr becomes the error shown to the model
@@ -650,16 +650,16 @@ mod tests {
         }
         let reset = EnvReset(vec![
             (
-                "JCODE_HOOK_PRE_TOOL",
-                std::env::var_os("JCODE_HOOK_PRE_TOOL"),
+                "KCODE_HOOK_PRE_TOOL",
+                std::env::var_os("KCODE_HOOK_PRE_TOOL"),
             ),
             (
-                "JCODE_HOOK_PRE_TOOL_TIMEOUT_MS",
-                std::env::var_os("JCODE_HOOK_PRE_TOOL_TIMEOUT_MS"),
+                "KCODE_HOOK_PRE_TOOL_TIMEOUT_MS",
+                std::env::var_os("KCODE_HOOK_PRE_TOOL_TIMEOUT_MS"),
             ),
         ]);
-        crate::env::set_var("JCODE_HOOK_PRE_TOOL", hook);
-        crate::env::set_var("JCODE_HOOK_PRE_TOOL_TIMEOUT_MS", timeout_ms.to_string());
+        crate::env::set_var("KCODE_HOOK_PRE_TOOL", hook);
+        crate::env::set_var("KCODE_HOOK_PRE_TOOL_TIMEOUT_MS", timeout_ms.to_string());
         reset
     }
 
@@ -678,17 +678,17 @@ mod tests {
         }
         let reset = EnvReset(vec![
             (
-                "JCODE_HOOK_PRE_TOOL_TRANSFORM",
-                std::env::var_os("JCODE_HOOK_PRE_TOOL_TRANSFORM"),
+                "KCODE_HOOK_PRE_TOOL_TRANSFORM",
+                std::env::var_os("KCODE_HOOK_PRE_TOOL_TRANSFORM"),
             ),
             (
-                "JCODE_HOOK_PRE_TOOL_TRANSFORM_TIMEOUT_MS",
-                std::env::var_os("JCODE_HOOK_PRE_TOOL_TRANSFORM_TIMEOUT_MS"),
+                "KCODE_HOOK_PRE_TOOL_TRANSFORM_TIMEOUT_MS",
+                std::env::var_os("KCODE_HOOK_PRE_TOOL_TRANSFORM_TIMEOUT_MS"),
             ),
         ]);
-        crate::env::set_var("JCODE_HOOK_PRE_TOOL_TRANSFORM", hook);
+        crate::env::set_var("KCODE_HOOK_PRE_TOOL_TRANSFORM", hook);
         crate::env::set_var(
-            "JCODE_HOOK_PRE_TOOL_TRANSFORM_TIMEOUT_MS",
+            "KCODE_HOOK_PRE_TOOL_TRANSFORM_TIMEOUT_MS",
             timeout_ms.to_string(),
         );
         reset
@@ -784,7 +784,7 @@ mod tests {
         let block = write_executable_script(
             temp.path(),
             "block.sh",
-            "#!/bin/sh\ncat > /dev/null\necho \"dangerous tool: $JCODE_HOOK_TOOL_NAME\" >&2\nexit 2\n",
+            "#!/bin/sh\ncat > /dev/null\necho \"dangerous tool: $KCODE_HOOK_TOOL_NAME\" >&2\nexit 2\n",
         );
         {
             let _env = gate_test_config(&block.to_string_lossy(), 5000);
@@ -923,13 +923,13 @@ mod tests {
             temp.path(),
             "observe.sh",
             &format!(
-                "#!/bin/sh\nprintf '%s|%s|%s|%s' \"$JCODE_HOOK_EVENT\" \"$JCODE_HOOK_SESSION_ID\" \"$JCODE_HOOK_STATUS\" \"$JCODE_HOOKS_DISABLED\" > {}\n",
+                "#!/bin/sh\nprintf '%s|%s|%s|%s' \"$KCODE_HOOK_EVENT\" \"$KCODE_HOOK_SESSION_ID\" \"$KCODE_HOOK_STATUS\" \"$KCODE_HOOKS_DISABLED\" > {}\n",
                 crate::terminal_launch::sh_escape(&record.to_string_lossy())
             ),
         );
 
-        let prev = std::env::var_os("JCODE_HOOK_TURN_END");
-        crate::env::set_var("JCODE_HOOK_TURN_END", script.to_string_lossy().to_string());
+        let prev = std::env::var_os("KCODE_HOOK_TURN_END");
+        crate::env::set_var("KCODE_HOOK_TURN_END", script.to_string_lossy().to_string());
 
         dispatch_observer(
             HookEvent::new("turn_end")
@@ -948,8 +948,8 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         match prev {
-            Some(value) => crate::env::set_var("JCODE_HOOK_TURN_END", value),
-            None => crate::env::remove_var("JCODE_HOOK_TURN_END"),
+            Some(value) => crate::env::set_var("KCODE_HOOK_TURN_END", value),
+            None => crate::env::remove_var("KCODE_HOOK_TURN_END"),
         }
         assert_eq!(recorded, "turn_end|ses_obs|ok|1");
     }
@@ -969,8 +969,8 @@ mod tests {
             ),
         );
 
-        let previous = std::env::var_os("JCODE_HOOK_TURN_END");
-        crate::env::set_var("JCODE_HOOK_TURN_END", script.to_string_lossy().to_string());
+        let previous = std::env::var_os("KCODE_HOOK_TURN_END");
+        crate::env::set_var("KCODE_HOOK_TURN_END", script.to_string_lossy().to_string());
         dispatch_observer(HookEvent::new("turn_end").session_id("ses_reap"));
 
         let mut pid: Option<u32> = None;
@@ -984,8 +984,8 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         match previous {
-            Some(value) => crate::env::set_var("JCODE_HOOK_TURN_END", value),
-            None => crate::env::remove_var("JCODE_HOOK_TURN_END"),
+            Some(value) => crate::env::set_var("KCODE_HOOK_TURN_END", value),
+            None => crate::env::remove_var("KCODE_HOOK_TURN_END"),
         }
 
         let pid = pid.expect("hook should record its pid");
@@ -1022,9 +1022,9 @@ mod tests {
                 crate::terminal_launch::sh_escape(&second_record.to_string_lossy())
             ),
         );
-        let previous = std::env::var_os("JCODE_HOOK_SESSION_START");
+        let previous = std::env::var_os("KCODE_HOOK_SESSION_START");
         crate::env::set_var(
-            "JCODE_HOOK_SESSION_START",
+            "KCODE_HOOK_SESSION_START",
             format!(
                 "[{:?}, {:?}]",
                 first.to_string_lossy(),
@@ -1040,8 +1040,8 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         match previous {
-            Some(value) => crate::env::set_var("JCODE_HOOK_SESSION_START", value),
-            None => crate::env::remove_var("JCODE_HOOK_SESSION_START"),
+            Some(value) => crate::env::set_var("KCODE_HOOK_SESSION_START", value),
+            None => crate::env::remove_var("KCODE_HOOK_SESSION_START"),
         }
         assert_eq!(std::fs::read_to_string(first_record).unwrap(), "first");
         assert_eq!(std::fs::read_to_string(second_record).unwrap(), "second");
@@ -1081,7 +1081,7 @@ mod tests {
         let script = write_executable_script(
             temp.path(),
             "env.sh",
-            "#!/bin/sh\nprintf '%s|%s|%s|%s' \"$TMUX_PANE\" \"$HERDR_PANE_ID\" \"$JCODE_CLIENT_TMUX_PANE\" \"$JCODE_CLIENT_HERDR_PANE_ID\"\n",
+            "#!/bin/sh\nprintf '%s|%s|%s|%s' \"$TMUX_PANE\" \"$HERDR_PANE_ID\" \"$KCODE_CLIENT_TMUX_PANE\" \"$KCODE_CLIENT_HERDR_PANE_ID\"\n",
         );
         let previous_tmux = std::env::var_os("TMUX_PANE");
         let previous_herdr = std::env::var_os("HERDR_PANE_ID");

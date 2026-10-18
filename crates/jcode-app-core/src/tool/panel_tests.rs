@@ -18,15 +18,15 @@ fn context(dir: &std::path::Path, session: &str) -> ToolContext {
 async fn panel_registered_lifecycle_and_validation() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
-    let old = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let old = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
     struct Restore(Option<std::ffi::OsString>);
     impl Drop for Restore {
         fn drop(&mut self) {
             if let Some(v) = &self.0 {
-                crate::env::set_var("JCODE_HOME", v);
+                crate::env::set_var("KCODE_HOME", v);
             } else {
-                crate::env::remove_var("JCODE_HOME");
+                crate::env::remove_var("KCODE_HOME");
             }
         }
     }

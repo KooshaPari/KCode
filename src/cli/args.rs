@@ -3,8 +3,10 @@ use clap::{Parser, Subcommand, ValueEnum};
 use super::provider_init::ProviderChoice;
 
 mod google;
+mod session;
 #[allow(unused_imports)]
 pub(crate) use google::{GoogleAccessTierArg, GoogleLoginArgs};
+pub(crate) use session::SessionCommand;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
 pub(crate) enum TranscriptModeArg {
@@ -25,7 +27,7 @@ pub(crate) enum ProviderAuthArg {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "jcode")]
+#[command(name = "kcode")]
 #[command(version = jcode_build_meta::version())]
 #[command(about = "J-Code: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
 pub(crate) struct Args {
@@ -68,6 +70,18 @@ pub(crate) struct Args {
     /// Suppress non-error CLI/status output for scripting and wrappers
     #[arg(long, global = true)]
     pub(crate) quiet: bool,
+
+    /// Force HERDR terminal runtime integration (for testing outside HERDR)
+    #[arg(long, global = true)]
+    pub(crate) herdr: bool,
+
+    /// Agent kind for HERDR reporting (jcode, forge, forgecode)
+    #[arg(long, global = true, default_value = "jcode")]
+    pub(crate) herdr_kind: String,
+
+    /// Agent operating mode: execute (default), manager (coordinate only), researcher (read-only)
+    #[arg(long, global = true, default_value = "execute")]
+    pub(crate) mode: String,
 
     /// Resume a session by ID, or list sessions if no ID provided
     #[arg(long, global = true, num_args = 0..=1, default_missing_value = "")]
@@ -486,6 +500,9 @@ pub(crate) enum Command {
 
     /// Diagnose why a provider/model or the model picker is broken by walking the
     /// strict end-to-end checkpoints (catalog, picker, model-switch, chat, streaming, tools).
+    ///
+    /// Use the global `-m`/`--model` flag to test a specific model instead of the
+    /// auto-selected one, e.g. `jcode provider-doctor cerebras -m llama-4-scout-17b`.
     #[command(name = "provider-doctor", alias = "provider-strict-e2e")]
     ProviderDoctor {
         /// OpenAI-compatible provider id to diagnose (e.g. cerebras, fpt, nvidia-nim)
@@ -567,9 +584,15 @@ pub(crate) enum Command {
         json: bool,
     },
 
+    /// Show HERDR pane info (socket path, pane ID, agent state)
+    HerdrStatus,
+
+    /// Install screen manifests for jcode and ForgeCode to ~/.config/herdr/agent-detection/
+    HerdrInstall,
+
     /// Serve the stable harness API on a Unix socket, for SDK clients.
     ///
-    /// This is the endpoint the TypeScript SDK (`@1jehuang/jcode-sdk`) connects to. It
+    /// This is the endpoint the TypeScript SDK (`@KooshaPari/KCode-sdk`) connects to. It
     /// ships in the released binary on purpose: the API is only "generally
     /// available" if reaching it does not require a Rust toolchain and a
     /// source checkout.
@@ -781,7 +804,7 @@ pub(crate) enum CloudCommand {
 #[derive(Parser, Debug, Clone, Default)]
 pub(crate) struct CloudMoveTarget {
     /// SSH host alias for the cloud machine. Defaults to [cloud] host in config
-    /// or $JCODE_CLOUD_HOST.
+    /// or $KCODE_CLOUD_HOST.
     #[arg(long)]
     pub(crate) host: Option<String>,
     /// Remote jcode binary (name or path). Defaults to `jcode`.
@@ -789,7 +812,7 @@ pub(crate) struct CloudMoveTarget {
     pub(crate) remote_binary: Option<String>,
     /// Local command used in place of `ssh <host>` (for tests and custom
     /// transports). Receives the remote shell command as its final argument.
-    /// Also read from $JCODE_CLOUD_TRANSPORT.
+    /// Also read from $KCODE_CLOUD_TRANSPORT.
     #[arg(long, hide = true)]
     pub(crate) transport: Option<String>,
 }
@@ -850,7 +873,7 @@ pub(crate) enum CloudSessionsCommand {
     /// Upload the newest local Jcode session to Jade cloud storage
     UploadLatest {
         /// Directory containing local Jcode session JSON files
-        #[arg(long, default_value = "~/.jcode/sessions")]
+        #[arg(long, default_value = "~/.kcode/sessions")]
         sessions_dir: String,
 
         /// Upload without Jade's redaction pass
@@ -863,7 +886,7 @@ pub(crate) enum CloudSessionsCommand {
 
     /// Sync new or changed local sessions to Jade cloud storage (idempotent; safe to schedule)
     Sync {
-        /// Directory containing local Jcode session JSON files (default: ~/.jcode/sessions)
+        /// Directory containing local Jcode session JSON files (default: ~/.kcode/sessions)
         #[arg(long)]
         sessions_dir: Option<String>,
 
@@ -984,7 +1007,7 @@ pub(crate) struct JadeCloudOptions {
     #[arg(long)]
     pub(crate) region: Option<String>,
 
-    /// Path to the private Jade session helper. Defaults to $JCODE_JADE_SESSIONS_HELPER or ~/jade/scripts/jade_sessions.py.
+    /// Path to the private Jade session helper. Defaults to $KCODE_JADE_SESSIONS_HELPER or ~/jade/scripts/jade_sessions.py.
     #[arg(long)]
     pub(crate) helper: Option<String>,
 }
@@ -1033,27 +1056,6 @@ pub(crate) enum ModelCommand {
         /// Show provider/selection summary before the list
         #[arg(long)]
         verbose: bool,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub(crate) enum SessionCommand {
-    /// Rename a saved session's human-readable name/title
-    Rename {
-        /// Session ID or memorable short name, e.g. fox
-        session: String,
-
-        /// New session name/title
-        #[arg(required_unless_present = "clear")]
-        name: Option<String>,
-
-        /// Clear the custom session name/title
-        #[arg(long, conflicts_with = "name")]
-        clear: bool,
-
-        /// Emit JSON instead of human-readable output
-        #[arg(long)]
-        json: bool,
     },
 }
 

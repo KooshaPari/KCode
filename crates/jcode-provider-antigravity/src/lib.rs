@@ -26,12 +26,12 @@ pub const AVAILABLE_MODELS: &[&str] = &[
 /// `aicode-consumers` project, the non-`daily` host rejects otherwise-valid
 /// requests with `HTTP 429 RESOURCE_EXHAUSTED`, even though the identical
 /// token succeeds against `daily-cloudcode-pa.googleapis.com`. See
-/// <https://github.com/1jehuang/jcode/issues/1329>.
+/// <https://github.com/KooshaPari/KCode/issues/1329>.
 pub const DEFAULT_ENDPOINT: &str = "https://daily-cloudcode-pa.googleapis.com";
 /// Environment variable that overrides [`DEFAULT_ENDPOINT`], for accounts or
 /// environments that need a different Cloud Code host.
-pub const ENDPOINT_ENV: &str = "JCODE_ANTIGRAVITY_ENDPOINT";
-const VERSION_ENV: &str = "JCODE_ANTIGRAVITY_VERSION";
+pub const ENDPOINT_ENV: &str = "KCODE_ANTIGRAVITY_ENDPOINT";
+const VERSION_ENV: &str = "KCODE_ANTIGRAVITY_VERSION";
 pub const ANTIGRAVITY_VERSION: &str = "1.18.3";
 pub const X_GOOG_API_CLIENT: &str = "google-cloud-sdk vscode_cloudshelleditor/0.1";
 const CATALOG_REFRESH_TTL_HOURS: i64 = 6;
@@ -95,7 +95,7 @@ pub struct PersistedCatalog {
     /// quotas can differ between Cloud Code hosts (e.g. `cloudcode-pa` vs
     /// `daily-cloudcode-pa`). A cache written against one endpoint must not be
     /// trusted after the resolved endpoint changes (default flip, or a new
-    /// `JCODE_ANTIGRAVITY_ENDPOINT` value), or a user could be offered a model
+    /// `KCODE_ANTIGRAVITY_ENDPOINT` value), or a user could be offered a model
     /// id that the new endpoint doesn't actually serve. See
     /// [`catalog_matches_current_endpoint`].
     #[serde(default, skip_serializing_if = "Option::is_none")]

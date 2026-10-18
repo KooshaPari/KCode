@@ -8,10 +8,10 @@ use crate::server::{Client, Server};
 fn scheduled_live_delivery_reaches_subscribed_client() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("isolated server directory");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
-    let _runtime_dir = EnvVarGuard::set_path("JCODE_RUNTIME_DIR", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
+    let _runtime_dir = EnvVarGuard::set_path("KCODE_RUNTIME_DIR", temp.path());
     let socket = temp.path().join("schedule.sock");
-    let _socket = EnvVarGuard::set_path("JCODE_SOCKET", &socket);
+    let _socket = EnvVarGuard::set_path("KCODE_SOCKET", &socket);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

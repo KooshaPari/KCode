@@ -49,10 +49,10 @@ use std::path::Path;
 use std::sync::{Mutex, RwLock};
 use std::time::Instant;
 
-/// Cached auth status plus the `JCODE_HOME` it was computed under.
+/// Cached auth status plus the `KCODE_HOME` it was computed under.
 ///
-/// Auth probes read credential files relative to `JCODE_HOME`. Tests swap
-/// `JCODE_HOME` to per-test temp dirs, and a status computed under one home
+/// Auth probes read credential files relative to `KCODE_HOME`. Tests swap
+/// `KCODE_HOME` to per-test temp dirs, and a status computed under one home
 /// must never be served for another (issue #361: parallel provider tests
 /// intermittently observed another test's auth snapshot through this global
 /// cache). In production the home never changes, so the key check is free.
@@ -64,7 +64,7 @@ static AUTH_STATUS_FAST_CACHE: std::sync::LazyLock<RwLock<Option<CachedAuthStatu
     std::sync::LazyLock::new(|| RwLock::new(None));
 
 fn auth_cache_home_key() -> Option<std::ffi::OsString> {
-    std::env::var_os("JCODE_HOME")
+    std::env::var_os("KCODE_HOME")
 }
 
 const AUTH_STATUS_CACHE_TTL_SECS: u64 = 30;
@@ -113,7 +113,7 @@ enum AuthProbeMode {
 pub fn browser_suppressed(cli_no_browser: bool) -> bool {
     cli_no_browser
         || env_truthy("NO_BROWSER")
-        || env_truthy("JCODE_NO_BROWSER")
+        || env_truthy("KCODE_NO_BROWSER")
         || running_in_test_harness()
         || browser_unusable_here()
 }
@@ -143,12 +143,12 @@ fn browser_unusable_here() -> bool {
 /// Used to keep tests from opening real browser windows (OAuth login pages,
 /// files) on the developer's desktop: many login/onboarding flows are
 /// exercised by TUI tests, and without this guard each test run could pop
-/// multiple browser tabs. Set `JCODE_ALLOW_BROWSER_IN_TESTS=1` to opt out
+/// multiple browser tabs. Set `KCODE_ALLOW_BROWSER_IN_TESTS=1` to opt out
 /// (e.g. for an intentionally interactive live test).
 pub fn running_in_test_harness() -> bool {
     static IN_TEST_HARNESS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *IN_TEST_HARNESS.get_or_init(|| {
-        if env_truthy("JCODE_ALLOW_BROWSER_IN_TESTS") {
+        if env_truthy("KCODE_ALLOW_BROWSER_IN_TESTS") {
             return false;
         }
         std::env::current_exe()
@@ -189,7 +189,7 @@ fn env_truthy(key: &str) -> bool {
 }
 
 fn auth_timing_logging_enabled() -> bool {
-    env_truthy("JCODE_AUTH_TIMING")
+    env_truthy("KCODE_AUTH_TIMING")
 }
 
 fn openai_api_key_configured() -> bool {
@@ -386,7 +386,7 @@ impl AuthStatus {
     /// The only blocking case is the very first call in a process with no
     /// cached snapshot at all, which matches the old behavior for frame one.
     /// Tests always take the blocking path: background refreshes racing
-    /// per-test `JCODE_HOME` swaps would poison the shared cache.
+    /// per-test `KCODE_HOME` swaps would poison the shared cache.
     pub fn check_fast_nonblocking() -> Self {
         if running_in_test_harness() {
             return Self::check_fast();
@@ -611,12 +611,12 @@ impl AuthStatus {
                     if crate::subscription_catalog::has_router_base() {
                         format!(
                             "API key (`{}`) + router base",
-                            crate::subscription_catalog::JCODE_API_KEY_ENV
+                            crate::subscription_catalog::KCODE_API_KEY_ENV
                         )
                     } else {
                         format!(
                             "API key (`{}`), router base pending",
-                            crate::subscription_catalog::JCODE_API_KEY_ENV
+                            crate::subscription_catalog::KCODE_API_KEY_ENV
                         )
                     }
                 } else {
@@ -776,11 +776,11 @@ impl AuthStatus {
             ),
             crate::provider_catalog::LoginProviderTarget::Jcode => {
                 let (source, detail) = summarize_sources(vec![
-                    env_source(crate::subscription_catalog::JCODE_API_KEY_ENV),
+                    env_source(crate::subscription_catalog::KCODE_API_KEY_ENV),
                     config_source(
-                        crate::subscription_catalog::JCODE_API_KEY_ENV,
-                        crate::subscription_catalog::JCODE_ENV_FILE,
-                        "~/.config/jcode/jcode-subscription.env",
+                        crate::subscription_catalog::KCODE_API_KEY_ENV,
+                        crate::subscription_catalog::KCODE_ENV_FILE,
+                        "~/.config/kcode/jcode-subscription.env",
                     ),
                 ]);
                 (
@@ -797,7 +797,7 @@ impl AuthStatus {
                     config_source(
                         "OPENROUTER_API_KEY",
                         "openrouter.env",
-                        "~/.config/jcode/openrouter.env",
+                        "~/.config/kcode/openrouter.env",
                     ),
                     external_api_key_source("OPENROUTER_API_KEY"),
                 ]);
@@ -812,7 +812,7 @@ impl AuthStatus {
             crate::provider_catalog::LoginProviderTarget::OpenAiApiKey => {
                 let (source, detail) = summarize_sources(vec![
                     env_source("OPENAI_API_KEY"),
-                    config_source("OPENAI_API_KEY", "openai.env", "~/.config/jcode/openai.env"),
+                    config_source("OPENAI_API_KEY", "openai.env", "~/.config/kcode/openai.env"),
                     external_api_key_source("OPENAI_API_KEY"),
                 ]);
                 (
@@ -825,8 +825,8 @@ impl AuthStatus {
             }
             crate::provider_catalog::LoginProviderTarget::ClaudeApiKey => {
                 // The Anthropic API key is most commonly stored in the app
-                // config file (`~/.config/jcode/anthropic.env`), *not* an env
-                // var and *not* `~/.jcode/auth.json` (which holds the separate
+                // config file (`~/.config/kcode/anthropic.env`), *not* an env
+                // var and *not* `~/.kcode/auth.json` (which holds the separate
                 // OAuth accounts). List every place it can live so the real
                 // source is always discoverable instead of looking "absent".
                 let (source, detail) = summarize_sources(vec![
@@ -834,7 +834,7 @@ impl AuthStatus {
                     config_source(
                         "ANTHROPIC_API_KEY",
                         "anthropic.env",
-                        "~/.config/jcode/anthropic.env",
+                        "~/.config/kcode/anthropic.env",
                     ),
                     external_api_key_source("ANTHROPIC_API_KEY"),
                 ]);
@@ -853,7 +853,7 @@ impl AuthStatus {
                     config_source(
                         crate::auth::azure::API_KEY_ENV,
                         crate::auth::azure::ENV_FILE,
-                        "~/.config/jcode/azure-openai.env",
+                        "~/.config/kcode/azure-openai.env",
                     ),
                 ]);
                 (
@@ -874,10 +874,10 @@ impl AuthStatus {
                     config_source(
                         crate::provider::bedrock::API_KEY_ENV,
                         crate::provider::bedrock::ENV_FILE,
-                        "~/.config/jcode/bedrock.env",
+                        "~/.config/kcode/bedrock.env",
                     ),
                     env_source("AWS_PROFILE"),
-                    env_source("JCODE_BEDROCK_PROFILE"),
+                    env_source("KCODE_BEDROCK_PROFILE"),
                     env_source("AWS_ACCESS_KEY_ID"),
                 ]);
                 (
@@ -912,7 +912,7 @@ impl AuthStatus {
                 {
                     summarize_sources(vec![
                         env_source(&key_env),
-                        config_source(&key_env, &env_file, format!("~/.config/jcode/{}", env_file)),
+                        config_source(&key_env, &env_file, format!("~/.config/kcode/{}", env_file)),
                         external_api_key_source(&key_env),
                     ])
                 } else {
@@ -923,7 +923,7 @@ impl AuthStatus {
                         config_source(
                             &resolved.api_key_env,
                             &resolved.env_file,
-                            format!("~/.config/jcode/{}", resolved.env_file),
+                            format!("~/.config/kcode/{}", resolved.env_file),
                         ),
                         external_api_key_source(&resolved.api_key_env),
                     ])
@@ -1495,7 +1495,7 @@ fn anthropic_oauth_source(status: &AuthStatus) -> Option<(AuthCredentialSource, 
     {
         return Some((
             AuthCredentialSource::JcodeManagedFile,
-            "~/.jcode/auth.json".to_string(),
+            "~/.kcode/auth.json".to_string(),
         ));
     }
     if let Some(source) = crate::auth::claude::preferred_external_auth_source()
@@ -1526,7 +1526,7 @@ fn openai_oauth_source(status: &AuthStatus) -> Option<(AuthCredentialSource, Str
     {
         return Some((
             AuthCredentialSource::JcodeManagedFile,
-            "~/.jcode/openai-auth.json".to_string(),
+            "~/.kcode/openai-auth.json".to_string(),
         ));
     }
     if crate::auth::codex::legacy_auth_allowed() && crate::auth::codex::legacy_auth_source_exists()
@@ -1637,8 +1637,8 @@ fn cursor_source() -> Option<(AuthCredentialSource, String)> {
             format!("trusted Cursor app state ({})", path.display()),
         ));
     }
-    if config_source("CURSOR_API_KEY", "cursor.env", "~/.config/jcode/cursor.env").is_some() {
-        return config_source("CURSOR_API_KEY", "cursor.env", "~/.config/jcode/cursor.env");
+    if config_source("CURSOR_API_KEY", "cursor.env", "~/.config/kcode/cursor.env").is_some() {
+        return config_source("CURSOR_API_KEY", "cursor.env", "~/.config/kcode/cursor.env");
     }
     None
 }

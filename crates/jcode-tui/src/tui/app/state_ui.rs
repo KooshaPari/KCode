@@ -639,12 +639,12 @@ impl App {
             // We have a bookmark - teleport back to it
             self.scroll_offset = saved;
             self.auto_scroll_paused = saved > 0;
-            self.set_status_notice("📌 Returned to bookmark");
+            self.set_status_notice("◈ Returned to bookmark");
         } else if self.auto_scroll_paused && self.scroll_offset > 0 {
             // We're scrolled up - save position and jump to bottom
             self.scroll_bookmark = Some(self.scroll_offset);
             self.follow_chat_bottom();
-            self.set_status_notice("📌 Bookmark set - press again to return");
+            self.set_status_notice("◈ Bookmark set - press again to return");
         }
         // If already at bottom with no bookmark, do nothing
     }
@@ -989,7 +989,7 @@ impl App {
 
     /// Get the debug socket path
     pub fn debug_socket_path() -> std::path::PathBuf {
-        crate::storage::runtime_dir().join("jcode-debug.sock")
+        crate::storage::runtime_dir().join("kcode-debug.sock")
     }
 }
 
@@ -1773,7 +1773,7 @@ fn build_skills_report(app: &App) -> String {
         skills.sort_by(|a, b| a.name.cmp(&b.name));
         if skills.is_empty() {
             out.push_str(
-                "- none loaded\n  Add skills under ~/.jcode/skills/<name>/SKILL.md or ./.jcode/skills/<name>/SKILL.md\n",
+                "- none loaded\n  Add skills under ~/.kcode/skills/<name>/SKILL.md or ./.kcode/skills/<name>/SKILL.md\n",
             );
         } else {
             for skill in skills {

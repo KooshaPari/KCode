@@ -194,6 +194,15 @@ pub struct Session {
     /// (`jcode cloud move` / `return`). Zero for sessions that never moved.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub migration_epoch: u64,
+    /// Fork depth guard: current depth in the fork chain (0 = root session).
+    #[serde(default)]
+    pub fork_depth: u8,
+    /// Fork depth guard: maximum allowed fork depth.
+    #[serde(default = "default_fork_max_depth")]
+    pub fork_max_depth: u8,
+    /// Fork depth guard: chain of fork IDs from root to this session.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fork_chain: Vec<String>,
     #[serde(skip)]
     persist_state: SessionPersistState,
     #[serde(skip)]
@@ -288,11 +297,15 @@ fn env_flag_enabled(name: &str) -> bool {
 }
 
 fn default_is_test_session() -> bool {
-    env_flag_enabled("JCODE_TEST_SESSION")
+    env_flag_enabled("KCODE_TEST_SESSION")
 }
 
 fn is_zero_u64(value: &u64) -> bool {
     *value == 0
+}
+
+fn default_fork_max_depth() -> u8 {
+    jcode_permission_bubble::MAX_FORK_DEPTH as u8
 }
 
 pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
@@ -301,21 +314,21 @@ pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
         return Some("jcode".to_string());
     }
 
-    if let Ok(runtime_provider) = std::env::var("JCODE_RUNTIME_PROVIDER") {
+    if let Ok(runtime_provider) = std::env::var("KCODE_RUNTIME_PROVIDER") {
         let runtime_provider = runtime_provider.trim().to_ascii_lowercase();
         if !runtime_provider.is_empty() && runtime_provider != "openai-compatible" {
             return Some(runtime_provider);
         }
     }
 
-    if let Ok(namespace) = std::env::var("JCODE_OPENROUTER_CACHE_NAMESPACE") {
+    if let Ok(namespace) = std::env::var("KCODE_OPENROUTER_CACHE_NAMESPACE") {
         let namespace = namespace.trim().to_ascii_lowercase();
         if !namespace.is_empty() {
             return Some(namespace);
         }
     }
 
-    if let Ok(active) = std::env::var("JCODE_ACTIVE_PROVIDER") {
+    if let Ok(active) = std::env::var("KCODE_ACTIVE_PROVIDER") {
         let active = active.trim().to_ascii_lowercase();
         if !active.is_empty() {
             return Some(active);
@@ -791,6 +804,9 @@ impl Session {
             memory_injections: Vec::new(),
             replay_events: Vec::new(),
             migration_epoch: 0,
+            fork_depth: 0,
+            fork_max_depth: default_fork_max_depth(),
+            fork_chain: Vec::new(),
             persist_state: SessionPersistState::default(),
             provider_messages_cache: Vec::new(),
             provider_message_prefix_hashes_cache: Vec::new(),
@@ -848,6 +864,9 @@ impl Session {
             memory_injections: Vec::new(),
             replay_events: Vec::new(),
             migration_epoch: 0,
+            fork_depth: 0,
+            fork_max_depth: default_fork_max_depth(),
+            fork_chain: Vec::new(),
             persist_state: SessionPersistState::default(),
             provider_messages_cache: Vec::new(),
             provider_message_prefix_hashes_cache: Vec::new(),

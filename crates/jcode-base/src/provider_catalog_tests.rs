@@ -238,9 +238,9 @@ fn auth_issue_profile_metadata_matches_direct_provider_endpoints() {
 #[test]
 fn resolved_named_profile_suggests_newest_cached_live_release() {
     let _lock = crate::storage::lock_test_env();
-    let _guard = EnvGuard::save(&["JCODE_HOME"]);
+    let _guard = EnvGuard::save(&["KCODE_HOME"]);
     let temp = tempfile::tempdir().expect("tempdir");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     jcode_provider_openrouter::save_disk_cache_with_source_for_namespace(
         "cerebras",
         &[
@@ -277,9 +277,9 @@ fn resolved_named_profile_skips_non_chat_models_when_picking_newest_default() {
     // non-chat model (e.g. `canopylabs/orpheus-*` TTS) which previously won the
     // newest-by-created tiebreak and became the chat default.
     let _lock = crate::storage::lock_test_env();
-    let _guard = EnvGuard::save(&["JCODE_HOME"]);
+    let _guard = EnvGuard::save(&["KCODE_HOME"]);
     let temp = tempfile::tempdir().expect("tempdir");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     jcode_provider_openrouter::save_disk_cache_with_source_for_namespace(
         "cerebras",
         &[
@@ -332,9 +332,9 @@ fn resolved_named_profile_skips_non_chat_models_when_picking_newest_default() {
 #[test]
 fn minimax_token_plan_keys_resolve_to_china_endpoint_without_changing_international_default() {
     let _lock = crate::storage::lock_test_env();
-    let _guard = EnvGuard::save(&["JCODE_HOME", "MINIMAX_API_KEY", "OPENAI_API_KEY"]);
-    let home = tempfile::tempdir().expect("temporary JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", home.path());
+    let _guard = EnvGuard::save(&["KCODE_HOME", "MINIMAX_API_KEY", "OPENAI_API_KEY"]);
+    let home = tempfile::tempdir().expect("temporary KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", home.path());
     crate::env::remove_var("MINIMAX_API_KEY");
     crate::env::remove_var("OPENAI_API_KEY");
 
@@ -375,21 +375,21 @@ fn auth_issue_lan_openai_compatible_bases_are_valid_for_local_model_servers() {
 fn auth_issue_runtime_display_name_tracks_direct_compatible_profiles() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_RUNTIME_PROVIDER",
-        "JCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_CACHE_NAMESPACE",
+        "KCODE_OPENROUTER_PROVIDER_FEATURES",
+        "KCODE_OPENROUTER_TRANSPORT_STATE",
+        "KCODE_OPENROUTER_ALLOW_NO_AUTH",
+        "KCODE_RUNTIME_PROVIDER",
+        "KCODE_NAMED_PROVIDER_PROFILE",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
     ]);
 
-    crate::env::set_var("JCODE_RUNTIME_PROVIDER", "azure-openai");
+    crate::env::set_var("KCODE_RUNTIME_PROVIDER", "azure-openai");
     assert_eq!(runtime_provider_display_name("openrouter"), "Azure OpenAI");
-    crate::env::remove_var("JCODE_RUNTIME_PROVIDER");
+    crate::env::remove_var("KCODE_RUNTIME_PROVIDER");
 
     apply_openai_compatible_profile_env(Some(DEEPSEEK_PROFILE));
     assert_eq!(runtime_provider_display_name("openrouter"), "DeepSeek");
@@ -402,90 +402,90 @@ fn auth_issue_runtime_display_name_tracks_direct_compatible_profiles() {
 fn auth_profile_env_application_flushes_stale_openrouter_catalog_state() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_OPENROUTER_MODEL",
-        "JCODE_OPENROUTER_STATIC_MODELS",
-        "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_AUTH_HEADER_NAME",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
-        "JCODE_OPENROUTER_PROVIDER",
-        "JCODE_OPENROUTER_NO_FALLBACK",
-        "JCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_CACHE_NAMESPACE",
+        "KCODE_OPENROUTER_PROVIDER_FEATURES",
+        "KCODE_OPENROUTER_TRANSPORT_STATE",
+        "KCODE_OPENROUTER_ALLOW_NO_AUTH",
+        "KCODE_OPENROUTER_MODEL_CATALOG",
+        "KCODE_OPENROUTER_MODEL",
+        "KCODE_OPENROUTER_STATIC_MODELS",
+        "KCODE_OPENROUTER_AUTH_HEADER",
+        "KCODE_OPENROUTER_AUTH_HEADER_NAME",
+        "KCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
+        "KCODE_OPENROUTER_PROVIDER",
+        "KCODE_OPENROUTER_NO_FALLBACK",
+        "KCODE_NAMED_PROVIDER_PROFILE",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
     ]);
 
-    crate::env::set_var("JCODE_OPENROUTER_API_BASE", "https://openrouter.ai/api/v1");
-    crate::env::set_var("JCODE_OPENROUTER_API_KEY_NAME", "OPENROUTER_API_KEY");
-    crate::env::set_var("JCODE_OPENROUTER_ENV_FILE", "openrouter.env");
-    crate::env::set_var("JCODE_OPENROUTER_CACHE_NAMESPACE", "openrouter");
-    crate::env::set_var("JCODE_OPENROUTER_PROVIDER_FEATURES", "1");
-    crate::env::set_var("JCODE_OPENROUTER_TRANSPORT_STATE", "stale");
-    crate::env::set_var("JCODE_OPENROUTER_ALLOW_NO_AUTH", "1");
+    crate::env::set_var("KCODE_OPENROUTER_API_BASE", "https://openrouter.ai/api/v1");
+    crate::env::set_var("KCODE_OPENROUTER_API_KEY_NAME", "OPENROUTER_API_KEY");
+    crate::env::set_var("KCODE_OPENROUTER_ENV_FILE", "openrouter.env");
+    crate::env::set_var("KCODE_OPENROUTER_CACHE_NAMESPACE", "openrouter");
+    crate::env::set_var("KCODE_OPENROUTER_PROVIDER_FEATURES", "1");
+    crate::env::set_var("KCODE_OPENROUTER_TRANSPORT_STATE", "stale");
+    crate::env::set_var("KCODE_OPENROUTER_ALLOW_NO_AUTH", "1");
     crate::env::set_var(
-        "JCODE_OPENROUTER_MODEL_CATALOG",
+        "KCODE_OPENROUTER_MODEL_CATALOG",
         "stale-openrouter-catalog.json",
     );
-    crate::env::set_var("JCODE_OPENROUTER_MODEL", "gpt-5.5");
+    crate::env::set_var("KCODE_OPENROUTER_MODEL", "gpt-5.5");
     crate::env::set_var(
-        "JCODE_OPENROUTER_STATIC_MODELS",
+        "KCODE_OPENROUTER_STATIC_MODELS",
         "stale-openrouter-only-model",
     );
-    crate::env::set_var("JCODE_OPENROUTER_AUTH_HEADER", "Bearer stale");
-    crate::env::set_var("JCODE_OPENROUTER_AUTH_HEADER_NAME", "Authorization");
-    crate::env::set_var("JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER", "openrouter");
-    crate::env::set_var("JCODE_OPENROUTER_PROVIDER", "openrouter");
-    crate::env::set_var("JCODE_OPENROUTER_NO_FALLBACK", "1");
-    crate::env::set_var("JCODE_NAMED_PROVIDER_PROFILE", "openrouter");
-    crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
-    crate::env::set_var("JCODE_PROVIDER_PROFILE_NAME", "openrouter");
+    crate::env::set_var("KCODE_OPENROUTER_AUTH_HEADER", "Bearer stale");
+    crate::env::set_var("KCODE_OPENROUTER_AUTH_HEADER_NAME", "Authorization");
+    crate::env::set_var("KCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER", "openrouter");
+    crate::env::set_var("KCODE_OPENROUTER_PROVIDER", "openrouter");
+    crate::env::set_var("KCODE_OPENROUTER_NO_FALLBACK", "1");
+    crate::env::set_var("KCODE_NAMED_PROVIDER_PROFILE", "openrouter");
+    crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
+    crate::env::set_var("KCODE_PROVIDER_PROFILE_NAME", "openrouter");
 
     force_apply_openai_compatible_profile_env(Some(CEREBRAS_PROFILE));
 
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_BASE").as_deref(),
+        std::env::var("KCODE_OPENROUTER_API_BASE").as_deref(),
         Ok("https://api.cerebras.ai/v1")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_KEY_NAME").as_deref(),
+        std::env::var("KCODE_OPENROUTER_API_KEY_NAME").as_deref(),
         Ok("CEREBRAS_API_KEY")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_ENV_FILE").as_deref(),
+        std::env::var("KCODE_OPENROUTER_ENV_FILE").as_deref(),
         Ok("cerebras.env")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_CACHE_NAMESPACE").as_deref(),
+        std::env::var("KCODE_OPENROUTER_CACHE_NAMESPACE").as_deref(),
         Ok("cerebras")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_PROVIDER_FEATURES").as_deref(),
+        std::env::var("KCODE_OPENROUTER_PROVIDER_FEATURES").as_deref(),
         Ok("0")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_TRANSPORT_STATE").as_deref(),
+        std::env::var("KCODE_OPENROUTER_TRANSPORT_STATE").as_deref(),
         Ok("direct-api-key")
     );
-    assert!(std::env::var_os("JCODE_OPENROUTER_ALLOW_NO_AUTH").is_none());
-    assert!(std::env::var_os("JCODE_OPENROUTER_MODEL_CATALOG").is_none());
-    assert!(std::env::var_os("JCODE_OPENROUTER_MODEL").is_none());
-    assert!(std::env::var_os("JCODE_OPENROUTER_AUTH_HEADER").is_none());
-    assert!(std::env::var_os("JCODE_OPENROUTER_AUTH_HEADER_NAME").is_none());
-    assert!(std::env::var_os("JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER").is_none());
-    assert!(std::env::var_os("JCODE_OPENROUTER_PROVIDER").is_none());
-    assert!(std::env::var_os("JCODE_OPENROUTER_NO_FALLBACK").is_none());
-    assert!(std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none());
-    assert!(std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none());
-    assert!(std::env::var_os("JCODE_PROVIDER_PROFILE_NAME").is_none());
+    assert!(std::env::var_os("KCODE_OPENROUTER_ALLOW_NO_AUTH").is_none());
+    assert!(std::env::var_os("KCODE_OPENROUTER_MODEL_CATALOG").is_none());
+    assert!(std::env::var_os("KCODE_OPENROUTER_MODEL").is_none());
+    assert!(std::env::var_os("KCODE_OPENROUTER_AUTH_HEADER").is_none());
+    assert!(std::env::var_os("KCODE_OPENROUTER_AUTH_HEADER_NAME").is_none());
+    assert!(std::env::var_os("KCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER").is_none());
+    assert!(std::env::var_os("KCODE_OPENROUTER_PROVIDER").is_none());
+    assert!(std::env::var_os("KCODE_OPENROUTER_NO_FALLBACK").is_none());
+    assert!(std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none());
+    assert!(std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none());
+    assert!(std::env::var_os("KCODE_PROVIDER_PROFILE_NAME").is_none());
     assert_ne!(
-        std::env::var("JCODE_OPENROUTER_STATIC_MODELS")
+        std::env::var("KCODE_OPENROUTER_STATIC_MODELS")
             .ok()
             .as_deref(),
         Some("stale-openrouter-only-model")
@@ -601,15 +601,15 @@ fn matrix_cli_login_selection_preserves_existing_order() {
 fn matrix_openrouter_like_sources_include_all_static_profiles() {
     let _lock = crate::storage::lock_test_env();
     let guard = EnvGuard::save(&[
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENAI_COMPAT_API_KEY_NAME",
+        "KCODE_OPENAI_COMPAT_ENV_FILE",
     ]);
-    crate::env::remove_var("JCODE_OPENROUTER_API_KEY_NAME");
-    crate::env::remove_var("JCODE_OPENROUTER_ENV_FILE");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_API_KEY_NAME");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_ENV_FILE");
+    crate::env::remove_var("KCODE_OPENROUTER_API_KEY_NAME");
+    crate::env::remove_var("KCODE_OPENROUTER_ENV_FILE");
+    crate::env::remove_var("KCODE_OPENAI_COMPAT_API_KEY_NAME");
+    crate::env::remove_var("KCODE_OPENAI_COMPAT_ENV_FILE");
 
     let sources = openrouter_like_api_key_sources();
     drop(guard);
@@ -632,16 +632,16 @@ fn matrix_openrouter_like_sources_include_all_static_profiles() {
 fn matrix_openrouter_like_sources_accept_valid_overrides() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENAI_COMPAT_API_KEY_NAME",
+        "KCODE_OPENAI_COMPAT_ENV_FILE",
     ]);
 
-    crate::env::set_var("JCODE_OPENROUTER_API_KEY_NAME", "ALT_OPENROUTER_KEY");
-    crate::env::set_var("JCODE_OPENROUTER_ENV_FILE", "alt-openrouter.env");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "ALT_COMPAT_KEY");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "alt-compat.env");
+    crate::env::set_var("KCODE_OPENROUTER_API_KEY_NAME", "ALT_OPENROUTER_KEY");
+    crate::env::set_var("KCODE_OPENROUTER_ENV_FILE", "alt-openrouter.env");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_API_KEY_NAME", "ALT_COMPAT_KEY");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_ENV_FILE", "alt-compat.env");
 
     let sources = openrouter_like_api_key_sources();
     assert!(sources.contains(&(
@@ -683,18 +683,18 @@ fn named_provider_config_accepts_openai_compatible_spelling() {
 fn named_anthropic_compatible_profile_maps_endpoint_auth_headers_and_model() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_ANTHROPIC_API_BASE",
-        "JCODE_ANTHROPIC_API_KEY_NAME",
-        "JCODE_ANTHROPIC_AUTH",
-        "JCODE_ANTHROPIC_AUTH_HEADER",
-        "JCODE_ANTHROPIC_HEADERS",
-        "JCODE_ANTHROPIC_MODEL",
-        "JCODE_RUNTIME_PROVIDER",
+        "KCODE_NAMED_PROVIDER_PROFILE",
+        "KCODE_ANTHROPIC_API_BASE",
+        "KCODE_ANTHROPIC_API_KEY_NAME",
+        "KCODE_ANTHROPIC_AUTH",
+        "KCODE_ANTHROPIC_AUTH_HEADER",
+        "KCODE_ANTHROPIC_HEADERS",
+        "KCODE_ANTHROPIC_MODEL",
+        "KCODE_RUNTIME_PROVIDER",
     ]);
-    let previous_home = std::env::var_os("JCODE_HOME");
+    let previous_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().expect("tempdir");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     crate::config::Config::invalidate_cache();
 
     let config_path = crate::config::Config::path().expect("config path");
@@ -722,25 +722,25 @@ fn named_anthropic_compatible_profile_maps_endpoint_auth_headers_and_model() {
 
     apply_named_provider_profile_env("corporate-claude").expect("apply Anthropic profile");
     assert_eq!(
-        std::env::var("JCODE_ANTHROPIC_API_BASE").ok().as_deref(),
+        std::env::var("KCODE_ANTHROPIC_API_BASE").ok().as_deref(),
         Some("https://gateway.example.com/anthropic/v1")
     );
     assert_eq!(
-        std::env::var("JCODE_ANTHROPIC_API_KEY_NAME")
+        std::env::var("KCODE_ANTHROPIC_API_KEY_NAME")
             .ok()
             .as_deref(),
         Some("CORPORATE_CLAUDE_TOKEN")
     );
     assert_eq!(
-        std::env::var("JCODE_ANTHROPIC_AUTH").ok().as_deref(),
+        std::env::var("KCODE_ANTHROPIC_AUTH").ok().as_deref(),
         Some("bearer")
     );
     assert_eq!(
-        std::env::var("JCODE_ANTHROPIC_MODEL").ok().as_deref(),
+        std::env::var("KCODE_ANTHROPIC_MODEL").ok().as_deref(),
         Some("claude-custom")
     );
     let headers: std::collections::BTreeMap<String, String> = serde_json::from_str(
-        &std::env::var("JCODE_ANTHROPIC_HEADERS").expect("custom headers env"),
+        &std::env::var("KCODE_ANTHROPIC_HEADERS").expect("custom headers env"),
     )
     .expect("headers JSON");
     assert_eq!(
@@ -748,14 +748,14 @@ fn named_anthropic_compatible_profile_maps_endpoint_auth_headers_and_model() {
         Some("tenant-42")
     );
     assert_eq!(
-        std::env::var("JCODE_RUNTIME_PROVIDER").ok().as_deref(),
+        std::env::var("KCODE_RUNTIME_PROVIDER").ok().as_deref(),
         Some("anthropic-api")
     );
 
     if let Some(previous_home) = previous_home {
-        crate::env::set_var("JCODE_HOME", previous_home);
+        crate::env::set_var("KCODE_HOME", previous_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
     crate::config::Config::invalidate_cache();
 }
@@ -764,19 +764,19 @@ fn named_anthropic_compatible_profile_maps_endpoint_auth_headers_and_model() {
 fn named_provider_profile_maps_to_openai_compatible_runtime_env() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_ALLOW_NO_AUTH",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_OPENROUTER_MODEL",
-        "JCODE_OPENROUTER_STATIC_MODELS",
-        "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_AUTH_HEADER_NAME",
-        "JCODE_NAMED_PROVIDER_PROFILE",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_CACHE_NAMESPACE",
+        "KCODE_OPENROUTER_PROVIDER_FEATURES",
+        "KCODE_OPENROUTER_TRANSPORT_STATE",
+        "KCODE_OPENROUTER_ALLOW_NO_AUTH",
+        "KCODE_OPENROUTER_MODEL_CATALOG",
+        "KCODE_OPENROUTER_MODEL",
+        "KCODE_OPENROUTER_STATIC_MODELS",
+        "KCODE_OPENROUTER_AUTH_HEADER",
+        "KCODE_OPENROUTER_AUTH_HEADER_NAME",
+        "KCODE_NAMED_PROVIDER_PROFILE",
         "MY_GATEWAY_API_KEY",
     ]);
 
@@ -803,57 +803,57 @@ fn named_provider_profile_maps_to_openai_compatible_runtime_env() {
     apply_named_provider_profile_env_from_config("my-gateway", &cfg).expect("apply profile");
 
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_BASE").ok().as_deref(),
+        std::env::var("KCODE_OPENROUTER_API_BASE").ok().as_deref(),
         Some("https://llm.example.com/v1")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
+        std::env::var("KCODE_OPENROUTER_API_KEY_NAME")
             .ok()
             .as_deref(),
         Some("MY_GATEWAY_API_KEY")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_PROVIDER_FEATURES")
+        std::env::var("KCODE_OPENROUTER_PROVIDER_FEATURES")
             .ok()
             .as_deref(),
         Some("0")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_TRANSPORT_STATE")
+        std::env::var("KCODE_OPENROUTER_TRANSPORT_STATE")
             .ok()
             .as_deref(),
         Some("direct-api-key")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_MODEL_CATALOG")
+        std::env::var("KCODE_OPENROUTER_MODEL_CATALOG")
             .ok()
             .as_deref(),
         Some("0")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_MODEL").ok().as_deref(),
+        std::env::var("KCODE_OPENROUTER_MODEL").ok().as_deref(),
         Some("opaque/model@id")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_STATIC_MODELS")
+        std::env::var("KCODE_OPENROUTER_STATIC_MODELS")
             .ok()
             .as_deref(),
         Some("opaque/model@id\nanother-local-id")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_AUTH_HEADER")
+        std::env::var("KCODE_OPENROUTER_AUTH_HEADER")
             .ok()
             .as_deref(),
         Some("api-key")
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_AUTH_HEADER_NAME")
+        std::env::var("KCODE_OPENROUTER_AUTH_HEADER_NAME")
             .ok()
             .as_deref(),
         Some("x-api-key")
     );
     assert_eq!(
-        std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
+        std::env::var("KCODE_NAMED_PROVIDER_PROFILE")
             .ok()
             .as_deref(),
         Some("my-gateway")
@@ -864,14 +864,14 @@ fn named_provider_profile_maps_to_openai_compatible_runtime_env() {
 fn named_provider_inline_api_key_is_private_runtime_fallback() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_NAMED_PROVIDER_PROFILE",
-        "JCODE_PROVIDER_MY_GATEWAY_API_KEY",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_CACHE_NAMESPACE",
+        "KCODE_OPENROUTER_PROVIDER_FEATURES",
+        "KCODE_OPENROUTER_TRANSPORT_STATE",
+        "KCODE_OPENROUTER_MODEL_CATALOG",
+        "KCODE_NAMED_PROVIDER_PROFILE",
+        "KCODE_PROVIDER_MY_GATEWAY_API_KEY",
     ]);
 
     let cfg: crate::config::Config = toml::from_str(
@@ -887,13 +887,13 @@ fn named_provider_inline_api_key_is_private_runtime_fallback() {
     apply_named_provider_profile_env_from_config("my-gateway", &cfg).expect("apply profile");
 
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
+        std::env::var("KCODE_OPENROUTER_API_KEY_NAME")
             .ok()
             .as_deref(),
-        Some("JCODE_PROVIDER_MY_GATEWAY_API_KEY")
+        Some("KCODE_PROVIDER_MY_GATEWAY_API_KEY")
     );
     assert_eq!(
-        std::env::var("JCODE_PROVIDER_MY_GATEWAY_API_KEY")
+        std::env::var("KCODE_PROVIDER_MY_GATEWAY_API_KEY")
             .ok()
             .as_deref(),
         Some("inline-secret")
@@ -904,16 +904,16 @@ fn named_provider_inline_api_key_is_private_runtime_fallback() {
 fn matrix_openrouter_like_sources_reject_invalid_overrides() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENAI_COMPAT_API_KEY_NAME",
+        "KCODE_OPENAI_COMPAT_ENV_FILE",
     ]);
 
-    crate::env::set_var("JCODE_OPENROUTER_API_KEY_NAME", "bad-key-name");
-    crate::env::set_var("JCODE_OPENROUTER_ENV_FILE", "../bad.env");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "bad key");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "../bad-compat.env");
+    crate::env::set_var("KCODE_OPENROUTER_API_KEY_NAME", "bad-key-name");
+    crate::env::set_var("KCODE_OPENROUTER_ENV_FILE", "../bad.env");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_API_KEY_NAME", "bad key");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_ENV_FILE", "../bad-compat.env");
 
     let sources = openrouter_like_api_key_sources();
     assert!(
@@ -932,19 +932,19 @@ fn matrix_openrouter_like_sources_reject_invalid_overrides() {
 fn matrix_openai_compatible_profile_overrides_apply_when_valid() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
+        "KCODE_OPENAI_COMPAT_API_BASE",
+        "KCODE_OPENAI_COMPAT_API_KEY_NAME",
+        "KCODE_OPENAI_COMPAT_ENV_FILE",
+        "KCODE_OPENAI_COMPAT_DEFAULT_MODEL",
     ]);
 
     crate::env::set_var(
-        "JCODE_OPENAI_COMPAT_API_BASE",
+        "KCODE_OPENAI_COMPAT_API_BASE",
         "https://api.groq.com/openai/v1/",
     );
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "GROQ_API_KEY");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "groq.env");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL", "openai/gpt-oss-120b");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_API_KEY_NAME", "GROQ_API_KEY");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_ENV_FILE", "groq.env");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_DEFAULT_MODEL", "openai/gpt-oss-120b");
 
     let resolved = resolve_openai_compatible_profile(OPENAI_COMPAT_PROFILE);
     assert_eq!(resolved.api_base, "https://api.groq.com/openai/v1");
@@ -960,14 +960,14 @@ fn matrix_openai_compatible_profile_overrides_apply_when_valid() {
 fn matrix_openai_compatible_profile_overrides_reject_invalid_values() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
+        "KCODE_OPENAI_COMPAT_API_BASE",
+        "KCODE_OPENAI_COMPAT_API_KEY_NAME",
+        "KCODE_OPENAI_COMPAT_ENV_FILE",
     ]);
 
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", "http://example.com/v1");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_KEY_NAME", "bad-key-name");
-    crate::env::set_var("JCODE_OPENAI_COMPAT_ENV_FILE", "../bad.env");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_API_BASE", "http://example.com/v1");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_API_KEY_NAME", "bad-key-name");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_ENV_FILE", "../bad.env");
 
     let resolved = resolve_openai_compatible_profile(OPENAI_COMPAT_PROFILE);
     assert_eq!(resolved.api_base, OPENAI_COMPAT_PROFILE.api_base);
@@ -979,28 +979,28 @@ fn matrix_openai_compatible_profile_overrides_reject_invalid_values() {
 fn matrix_openai_compatible_profile_overrides_read_from_env_file() {
     let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let config_root = temp.path().join("config").join("jcode");
+    let config_root = temp.path().join("config").join("kcode");
     std::fs::create_dir_all(&config_root).expect("config dir");
 
     let _guard = EnvGuard::save(&[
-        "JCODE_HOME",
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
+        "KCODE_HOME",
+        "KCODE_OPENAI_COMPAT_API_BASE",
+        "KCODE_OPENAI_COMPAT_API_KEY_NAME",
+        "KCODE_OPENAI_COMPAT_ENV_FILE",
+        "KCODE_OPENAI_COMPAT_DEFAULT_MODEL",
     ]);
-    crate::env::set_var("JCODE_HOME", temp.path());
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_API_BASE");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_API_KEY_NAME");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_ENV_FILE");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_DEFAULT_MODEL");
+    crate::env::set_var("KCODE_HOME", temp.path());
+    crate::env::remove_var("KCODE_OPENAI_COMPAT_API_BASE");
+    crate::env::remove_var("KCODE_OPENAI_COMPAT_API_KEY_NAME");
+    crate::env::remove_var("KCODE_OPENAI_COMPAT_ENV_FILE");
+    crate::env::remove_var("KCODE_OPENAI_COMPAT_DEFAULT_MODEL");
     std::fs::write(
         config_root.join(OPENAI_COMPAT_PROFILE.env_file),
         concat!(
-            "JCODE_OPENAI_COMPAT_API_BASE=https://api.example.com/v1\n",
-            "JCODE_OPENAI_COMPAT_API_KEY_NAME=EXAMPLE_API_KEY\n",
-            "JCODE_OPENAI_COMPAT_ENV_FILE=example.env\n",
-            "JCODE_OPENAI_COMPAT_DEFAULT_MODEL=example/model\n",
+            "KCODE_OPENAI_COMPAT_API_BASE=https://api.example.com/v1\n",
+            "KCODE_OPENAI_COMPAT_API_KEY_NAME=EXAMPLE_API_KEY\n",
+            "KCODE_OPENAI_COMPAT_ENV_FILE=example.env\n",
+            "KCODE_OPENAI_COMPAT_DEFAULT_MODEL=example/model\n",
         ),
     )
     .expect("env file");
@@ -1016,16 +1016,16 @@ fn matrix_openai_compatible_profile_overrides_read_from_env_file() {
 fn matrix_openai_compatible_localhost_override_allows_no_auth() {
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENAI_COMPAT_API_BASE",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_ENV_FILE",
-        "JCODE_OPENAI_COMPAT_LOCAL_ENABLED",
+        "KCODE_OPENAI_COMPAT_API_BASE",
+        "KCODE_OPENAI_COMPAT_API_KEY_NAME",
+        "KCODE_OPENAI_COMPAT_ENV_FILE",
+        "KCODE_OPENAI_COMPAT_LOCAL_ENABLED",
     ]);
 
-    crate::env::set_var("JCODE_OPENAI_COMPAT_API_BASE", "http://localhost:11434/v1");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_API_KEY_NAME");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_ENV_FILE");
-    crate::env::remove_var("JCODE_OPENAI_COMPAT_LOCAL_ENABLED");
+    crate::env::set_var("KCODE_OPENAI_COMPAT_API_BASE", "http://localhost:11434/v1");
+    crate::env::remove_var("KCODE_OPENAI_COMPAT_API_KEY_NAME");
+    crate::env::remove_var("KCODE_OPENAI_COMPAT_ENV_FILE");
+    crate::env::remove_var("KCODE_OPENAI_COMPAT_LOCAL_ENABLED");
 
     let resolved = resolve_openai_compatible_profile(OPENAI_COMPAT_PROFILE);
     assert_eq!(resolved.api_base, "http://localhost:11434/v1");
@@ -1039,11 +1039,11 @@ fn matrix_openai_compatible_localhost_override_allows_no_auth() {
 fn matrix_load_api_key_from_env_or_config_prefers_env() {
     let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let config_root = temp.path().join("config").join("jcode");
+    let config_root = temp.path().join("config").join("kcode");
     std::fs::create_dir_all(&config_root).expect("config dir");
 
-    let _guard = EnvGuard::save(&["JCODE_HOME", "OPENCODE_API_KEY"]);
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let _guard = EnvGuard::save(&["KCODE_HOME", "OPENCODE_API_KEY"]);
+    crate::env::set_var("KCODE_HOME", temp.path());
     crate::env::set_var("OPENCODE_API_KEY", "env-secret");
     std::fs::write(
         config_root.join("opencode.env"),
@@ -1061,11 +1061,11 @@ fn matrix_load_api_key_from_env_or_config_prefers_env() {
 fn matrix_load_api_key_from_env_or_config_reads_config_file() {
     let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let config_root = temp.path().join("config").join("jcode");
+    let config_root = temp.path().join("config").join("kcode");
     std::fs::create_dir_all(&config_root).expect("config dir");
 
-    let _guard = EnvGuard::save(&["JCODE_HOME", "OPENCODE_API_KEY"]);
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let _guard = EnvGuard::save(&["KCODE_HOME", "OPENCODE_API_KEY"]);
+    crate::env::set_var("KCODE_HOME", temp.path());
     crate::env::remove_var("OPENCODE_API_KEY");
     std::fs::write(
         config_root.join("opencode.env"),
@@ -1083,11 +1083,11 @@ fn matrix_load_api_key_from_env_or_config_reads_config_file() {
 fn load_api_key_accepts_legacy_zai_key_name() {
     let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("tempdir");
-    let config_root = temp.path().join("config").join("jcode");
+    let config_root = temp.path().join("config").join("kcode");
     std::fs::create_dir_all(&config_root).expect("config dir");
 
-    let _guard = EnvGuard::save(&["JCODE_HOME", "ZHIPU_API_KEY", "ZAI_API_KEY"]);
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let _guard = EnvGuard::save(&["KCODE_HOME", "ZHIPU_API_KEY", "ZAI_API_KEY"]);
+    crate::env::set_var("KCODE_HOME", temp.path());
     crate::env::remove_var("ZHIPU_API_KEY");
     crate::env::remove_var("ZAI_API_KEY");
     std::fs::write(config_root.join("zai.env"), "ZAI_API_KEY=legacy-secret\n").expect("env file");
@@ -1141,9 +1141,9 @@ fn quality_tier_ranks_flagship_above_bare_above_cheap() {
 fn newest_release_picker_prefers_strongest_tier_over_newest_cheap() {
     use jcode_provider_openrouter::ModelInfo;
     let _lock = crate::storage::lock_test_env();
-    let _env = EnvGuard::save(&["JCODE_HOME"]);
+    let _env = EnvGuard::save(&["KCODE_HOME"]);
     let temp = tempfile::tempdir().expect("tempdir");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let mk = |id: &str, created: u64| ModelInfo {
         id: id.to_string(),
@@ -1178,9 +1178,9 @@ fn newest_release_picker_prefers_strongest_tier_over_newest_cheap() {
 fn newest_release_picker_uses_recency_within_a_tier() {
     use jcode_provider_openrouter::ModelInfo;
     let _lock = crate::storage::lock_test_env();
-    let _env = EnvGuard::save(&["JCODE_HOME"]);
+    let _env = EnvGuard::save(&["KCODE_HOME"]);
     let temp = tempfile::tempdir().expect("tempdir");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let mk = |id: &str, created: u64| ModelInfo {
         id: id.to_string(),
@@ -1301,20 +1301,20 @@ fn minimax_default_provider_applies_minimax_api_key_env_not_openrouter() {
     // default_model.
     let _lock = crate::storage::lock_test_env();
     let _guard = EnvGuard::save(&[
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_NAMED_PROVIDER_PROFILE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_CACHE_NAMESPACE",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_NAMED_PROVIDER_PROFILE",
     ]);
     for v in [
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_PROVIDER_PROFILE_ACTIVE",
-        "JCODE_NAMED_PROVIDER_PROFILE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_CACHE_NAMESPACE",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_NAMED_PROVIDER_PROFILE",
     ] {
         crate::env::remove_var(v);
     }
@@ -1329,14 +1329,14 @@ fn minimax_default_provider_applies_minimax_api_key_env_not_openrouter() {
     apply_openai_compatible_profile_env(selection);
 
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
+        std::env::var("KCODE_OPENROUTER_API_KEY_NAME")
             .ok()
             .as_deref(),
         Some("MINIMAX_API_KEY"),
         "MiniMax profile must use MINIMAX_API_KEY, not OPENROUTER_API_KEY"
     );
     assert_eq!(
-        std::env::var("JCODE_OPENROUTER_ENV_FILE").ok().as_deref(),
+        std::env::var("KCODE_OPENROUTER_ENV_FILE").ok().as_deref(),
         Some("minimax.env"),
         "MiniMax profile must use minimax.env, not openrouter.env"
     );

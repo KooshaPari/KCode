@@ -524,7 +524,7 @@ fn test_observe_marks_large_tool_results() {
     assert!(page.content.contains("12k tok"));
     assert!(page.content.contains("[very large]"));
     assert!(!page.content.contains('🔴'));
-    assert!(!page.content.contains('⚠'));
+    assert!(!page.content.contains('▲'));
 }
 
 #[test]
@@ -556,7 +556,7 @@ fn test_observe_repaint_does_not_leave_severity_badge_artifact() {
 
     assert!(!second.contains("[very large]"));
     assert!(!second.contains('🔴'));
-    assert!(!second.contains('⚠'));
+    assert!(!second.contains('▲'));
 }
 
 #[test]
@@ -805,6 +805,10 @@ fn test_swarm_completion_notification_inserts_agent_snapshot_without_report_pros
             auth_method: Some("OAuth".to_string()),
             effort: Some("high".to_string()),
             elapsed_secs: Some(35),
+            input_tokens: None,
+            output_tokens: None,
+            queue_depth: None,
+            cost_cents: None,
         },
     }];
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -959,7 +963,7 @@ fn test_handle_remote_disconnect_flushes_streaming_text_and_sets_reconnect_state
         .expect("missing reconnect status message");
     assert_eq!(last.role, "system");
     assert_eq!(last.title.as_deref(), Some("Connection"));
-    assert!(last.content.contains("⚡ Connection lost - retrying"));
+    assert!(last.content.contains("◈ Connection lost - retrying"));
     assert!(last.content.contains("connection to server dropped"));
     assert!(
         !last.content.contains('\n'),

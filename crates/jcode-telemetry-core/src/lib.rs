@@ -1,8 +1,16 @@
 use jcode_logging as logging;
 use jcode_storage as storage;
 mod concurrency;
+mod delivery;
 mod lifecycle;
 pub use concurrency::{ConcurrencySession, begin_concurrency_session};
+pub(crate) use delivery::{background_sender, post_payload, transcript_background_sender};
+// Only the test module reaches for these two; re-exporting them unconditionally
+// leaves production builds with unused-import warnings.
+#[cfg(test)]
+pub(crate) use delivery::{
+    payload_is_breaker_exempt, spawn_background_worker, telemetry_status_is_permanent,
+};
 pub mod onboarding_trace;
 mod state_support;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -20,37 +28,26 @@ use lifecycle::emit_lifecycle_event;
 use serde_json::Value;
 use state_support::*;
 use std::collections::HashSet;
-use std::sync::Mutex;
-#[cfg(not(test))]
-use std::sync::OnceLock;
-#[cfg(not(test))]
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(not(test))]
-use std::sync::mpsc::TrySendError;
-use std::sync::mpsc::{SyncSender, sync_channel};
+use std::sync::mpsc::{SyncSender, TrySendError};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const TELEMETRY_ENDPOINT: &str = "https://telemetry.jcode.sh/v1/event";
 const TRANSCRIPT_ENDPOINT: &str = "https://telemetry.jcode.sh/v1/transcript";
-#[cfg(not(test))]
 const ASYNC_SEND_TIMEOUT: Duration = Duration::from_secs(5);
-#[cfg(not(test))]
 const BACKGROUND_QUEUE_CAPACITY: usize = 2048;
 const BLOCKING_INSTALL_TIMEOUT: Duration = Duration::from_millis(1200);
 const BLOCKING_LIFECYCLE_TIMEOUT: Duration = Duration::from_millis(800);
 const BLOCKING_FIRST_PROMPT_TIMEOUT: Duration = Duration::from_millis(500);
 const TELEMETRY_SCHEMA_VERSION: u32 = 6;
 const DEFAULT_DISCOVERY_ENDPOINT: &str = "https://api.jcode.sh/v1/discovery";
-#[cfg(not(test))]
 static TELEMETRY_PERMANENTLY_REJECTED: AtomicBool = AtomicBool::new(false);
 #[cfg(not(test))]
 static TELEMETRY_QUEUE_OVERFLOW_WARNED: AtomicBool = AtomicBool::new(false);
-#[cfg(not(test))]
-static TELEMETRY_BACKGROUND_SENDER: OnceLock<SyncSender<Value>> = OnceLock::new();
-#[cfg(not(test))]
-static TRANSCRIPT_BACKGROUND_SENDER: OnceLock<SyncSender<Value>> = OnceLock::new();
-#[cfg(not(test))]
-static TELEMETRY_HTTP_CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
+static TELEMETRY_BACKGROUND_SENDER: OnceLock<Option<SyncSender<Value>>> = OnceLock::new();
+static TRANSCRIPT_BACKGROUND_SENDER: OnceLock<Option<SyncSender<Value>>> = OnceLock::new();
+static TELEMETRY_HTTP_CLIENT: OnceLock<Option<reqwest::blocking::Client>> = OnceLock::new();
 #[cfg(test)]
 static TEST_EMITTED_PAYLOADS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 
@@ -483,7 +480,7 @@ pub fn is_enabled() -> bool {
 }
 
 /// Marker file recording that the user opted out of anonymous usage telemetry.
-/// Its presence is equivalent to setting `JCODE_NO_TELEMETRY=1`, but persists
+/// Its presence is equivalent to setting `KCODE_NO_TELEMETRY=1`, but persists
 /// across shells so the onboarding "Telemetry settings" screen can honor the
 /// choice without asking the user to edit their environment.
 fn opt_out_marker_path() -> Option<std::path::PathBuf> {
@@ -502,7 +499,7 @@ pub fn opt_out_forced_by_env() -> bool {
             )
         })
     }
-    is_truthy("JCODE_NO_TELEMETRY") || is_truthy("DO_NOT_TRACK")
+    is_truthy("KCODE_NO_TELEMETRY") || is_truthy("DO_NOT_TRACK")
 }
 
 /// Persist the user's anonymous-usage telemetry choice. `enabled == false`
@@ -588,7 +585,7 @@ pub fn content_sharing_enabled() -> bool {
     if !is_enabled() {
         return false;
     }
-    if std::env::var("JCODE_NO_TELEMETRY").is_ok() || std::env::var("DO_NOT_TRACK").is_ok() {
+    if std::env::var("KCODE_NO_TELEMETRY").is_ok() || std::env::var("DO_NOT_TRACK").is_ok() {
         return false;
     }
     share_content_marker_path()
@@ -1300,154 +1297,23 @@ pub fn record_command_family(command: &str) {
     maybe_emit_session_start();
 }
 
-#[cfg(not(test))]
-fn post_payload(payload: serde_json::Value, timeout: Duration) -> bool {
-    if TELEMETRY_PERMANENTLY_REJECTED.load(Ordering::Relaxed) {
-        return false;
-    }
-    // Newer event types can reach an older worker that rejects them as unknown.
-    // That must only drop the one payload, never disable all telemetry.
-    let breaker_exempt = payload_is_breaker_exempt(&payload);
-    let client = TELEMETRY_HTTP_CLIENT.get_or_init(|| {
-        reqwest::blocking::Client::builder()
-            .user_agent(jcode_provider_core::JCODE_USER_AGENT)
-            .build()
-            .expect("telemetry HTTP client should build")
-    });
-    match client
-        .post(TELEMETRY_ENDPOINT)
-        .timeout(timeout)
-        .json(&payload)
-        .send()
-    {
-        Ok(response) if response.status().is_success() => true,
-        Ok(response) => {
-            let status = response.status();
-            if telemetry_status_is_permanent(status.as_u16()) && !breaker_exempt {
-                TELEMETRY_PERMANENTLY_REJECTED.store(true, Ordering::Relaxed);
-                logging::warn(&format!(
-                    "telemetry endpoint permanently rejected payload with HTTP {status}; suppressing telemetry delivery for this process"
-                ));
-            } else {
-                logging::warn(&format!(
-                    "telemetry endpoint temporarily rejected payload with HTTP {status}"
-                ));
-            }
-            false
-        }
-        Err(err) => {
-            logging::warn(&format!("telemetry payload send failed: {err}"));
-            false
-        }
-    }
-}
+// HTTP delivery and background workers live in the `delivery` submodule.
 
-#[cfg(not(test))]
-fn post_payload_with_retry(payload: serde_json::Value, timeout: Duration) -> bool {
-    const RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(200), Duration::from_millis(800)];
-    if post_payload(payload.clone(), timeout) {
+fn send_transcript_payload(payload: Value) -> bool {
+    #[cfg(test)]
+    {
+        if let Ok(mut emitted) = TEST_EMITTED_PAYLOADS.lock() {
+            emitted.push(payload);
+        }
         return true;
     }
-    for delay in RETRY_DELAYS {
-        if TELEMETRY_PERMANENTLY_REJECTED.load(Ordering::Relaxed) {
-            return false;
-        }
-        std::thread::sleep(delay);
-        if post_payload(payload.clone(), timeout) {
-            return true;
-        }
-    }
-    false
-}
-
-#[cfg(not(test))]
-fn post_transcript_payload(payload: serde_json::Value, timeout: Duration) -> bool {
-    let client = TELEMETRY_HTTP_CLIENT.get_or_init(|| {
-        reqwest::blocking::Client::builder()
-            .user_agent(jcode_provider_core::JCODE_USER_AGENT)
-            .build()
-            .expect("telemetry HTTP client should build")
-    });
-    match client
-        .post(TRANSCRIPT_ENDPOINT)
-        .timeout(timeout)
-        .json(&payload)
-        .send()
-    {
-        Ok(response) if response.status().is_success() => true,
-        Ok(response) => {
-            logging::warn(&format!(
-                "transcript endpoint rejected upload with HTTP {}",
-                response.status()
-            ));
-            false
-        }
-        Err(err) => {
-            logging::warn(&format!("transcript upload failed: {err}"));
-            false
-        }
-    }
-}
-
-fn telemetry_status_is_permanent(status: u16) -> bool {
-    (400..500).contains(&status) && !matches!(status, 408 | 425 | 429)
-}
-
-/// Event types added after the worker's validation was frozen. A 4xx for one of
-/// these means "this worker does not know the event yet", not "stop sending".
-fn payload_is_breaker_exempt(payload: &serde_json::Value) -> bool {
-    matches!(
-        payload.get("event").and_then(|value| value.as_str()),
-        Some("usage_report")
-    )
-}
-
-fn spawn_background_worker<F>(capacity: usize, mut deliver: F) -> std::io::Result<SyncSender<Value>>
-where
-    F: FnMut(Value) + Send + 'static,
-{
-    let (sender, receiver) = sync_channel(capacity);
-    std::thread::Builder::new()
-        .name("jcode-telemetry".to_string())
-        .spawn(move || {
-            while let Ok(payload) = receiver.recv() {
-                deliver(payload);
-            }
-        })?;
-    Ok(sender)
-}
-
-#[cfg(not(test))]
-fn background_sender() -> &'static SyncSender<Value> {
-    TELEMETRY_BACKGROUND_SENDER.get_or_init(|| {
-        spawn_background_worker(BACKGROUND_QUEUE_CAPACITY, |payload| {
-            let _ = post_payload_with_retry(payload, ASYNC_SEND_TIMEOUT);
-        })
-        .expect("telemetry background worker should start")
-    })
-}
-
-#[cfg(not(test))]
-fn transcript_background_sender() -> &'static SyncSender<Value> {
-    TRANSCRIPT_BACKGROUND_SENDER.get_or_init(|| {
-        spawn_background_worker(64, |payload| {
-            let _ = post_transcript_payload(payload, ASYNC_SEND_TIMEOUT);
-        })
-        .expect("transcript telemetry background worker should start")
-    })
-}
-
-#[cfg(test)]
-fn send_transcript_payload(payload: Value) -> bool {
-    if let Ok(mut emitted) = TEST_EMITTED_PAYLOADS.lock() {
-        emitted.push(payload);
-    }
-    true
-}
-
-#[cfg(not(test))]
-fn send_transcript_payload(payload: Value) -> bool {
-    match transcript_background_sender().try_send(payload) {
+    #[cfg(not(test))]
+    let Some(sender) = transcript_background_sender() else {
+        logging::warn("transcript background worker unavailable; dropping transcript");
+        return false;
+    };
+    #[cfg(not(test))]
+    match sender.try_send(payload) {
         Ok(()) => true,
         Err(TrySendError::Full(_)) => {
             logging::warn("transcript upload queue is full; dropping transcript");
@@ -1479,7 +1345,11 @@ fn send_payload(mut payload: serde_json::Value, mode: DeliveryMode) -> bool {
                 return false;
             }
             logging::debug("queueing telemetry payload for background delivery");
-            match background_sender().try_send(payload) {
+            let Some(sender) = background_sender() else {
+                logging::warn("telemetry background worker unavailable; dropping payload");
+                return false;
+            };
+            match sender.try_send(payload) {
                 Ok(()) => {
                     TELEMETRY_QUEUE_OVERFLOW_WARNED.store(false, Ordering::Relaxed);
                     true
@@ -1806,7 +1676,7 @@ pub fn record_install_if_first_run() {
         return;
     }
     // Skip install/onboarding emission under CI. Ephemeral runners start with a
-    // fresh ~/.jcode (so a new telemetry_id) on every job, which would otherwise
+    // fresh ~/.kcode (so a new telemetry_id) on every job, which would otherwise
     // look like a brand-new install and user, inflating install/active counts,
     // the onboarding funnel, and depressing retention. Session/turn/lifecycle
     // events are still emitted (tagged is_ci) so CI crash/error signal stays
@@ -2731,8 +2601,8 @@ fn show_first_run_notice() {
     eprintln!("  jcode collects anonymous usage statistics (install count, version, OS,");
     eprintln!("  session activity, tool counts, and crash/exit reasons). No code, filenames,");
     eprintln!("  prompts, or personal data is sent.");
-    eprintln!("  To opt out: export JCODE_NO_TELEMETRY=1");
-    eprintln!("  Details: https://github.com/1jehuang/jcode/blob/master/TELEMETRY.md");
+    eprintln!("  To opt out: export KCODE_NO_TELEMETRY=1");
+    eprintln!("  Details: https://github.com/KooshaPari/KCode/blob/master/TELEMETRY.md");
     eprintln!("{reset}");
 }
 

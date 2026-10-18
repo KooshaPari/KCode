@@ -118,7 +118,7 @@ pub(crate) fn invalidate_ambient_info_cache() {
 /// Open a file/URL with the system opener, unless suppressed.
 ///
 /// Every TUI-initiated `open::that_detached` must go through here: it honors
-/// NO_BROWSER/JCODE_NO_BROWSER and refuses to open anything from test binaries
+/// NO_BROWSER/KCODE_NO_BROWSER and refuses to open anything from test binaries
 /// (`browser_suppressed` detects the test harness), so `cargo test` runs never
 /// pop browser windows, image viewers, or OAuth pages on the developer's
 /// desktop.
@@ -135,7 +135,7 @@ pub(crate) fn open_path_or_url_detached(
     }
     if crate::auth::browser_suppressed(false) {
         return Err(std::io::Error::other(
-            "opening files/URLs is suppressed (NO_BROWSER/JCODE_NO_BROWSER or test harness)",
+            "opening files/URLs is suppressed (NO_BROWSER/KCODE_NO_BROWSER or test harness)",
         ));
     }
     open::that_detached(target)
@@ -232,7 +232,7 @@ pub(super) fn ctrl_bracket_fallback_to_esc(_code: &mut KeyCode, _modifiers: &mut
 
 /// Debug command file path
 pub(super) fn debug_cmd_path() -> PathBuf {
-    if let Ok(path) = std::env::var("JCODE_DEBUG_CMD_PATH") {
+    if let Ok(path) = std::env::var("KCODE_DEBUG_CMD_PATH") {
         return PathBuf::from(path);
     }
     std::env::temp_dir().join("jcode_debug_cmd")
@@ -240,7 +240,7 @@ pub(super) fn debug_cmd_path() -> PathBuf {
 
 /// Debug response file path
 pub(super) fn debug_response_path() -> PathBuf {
-    if let Ok(path) = std::env::var("JCODE_DEBUG_RESPONSE_PATH") {
+    if let Ok(path) = std::env::var("KCODE_DEBUG_RESPONSE_PATH") {
         return PathBuf::from(path);
     }
     std::env::temp_dir().join("jcode_debug_response")
@@ -735,7 +735,7 @@ pub(super) fn build_resume_command(
             let exe = launch_client_executable();
             let imported_id = crate::import::imported_codex_session_id(session_id);
             let args = resume_invocation_args(&imported_id, socket);
-            let title = format!("🧠 Codex {}", jcode_core::util::truncate_str(session_id, 8));
+            let title = format!("◉ Codex {}", jcode_core::util::truncate_str(session_id, 8));
             (exe, args, title)
         }
         ResumeTarget::PiSession { session_path } => {
@@ -826,7 +826,7 @@ pub(super) fn spawn_fresh_session_in_new_terminal(cwd: &Path) -> anyhow::Result<
         // Never launch real terminal windows from unit tests.
         return Ok(false);
     }
-    let socket = std::env::var("JCODE_SOCKET").ok();
+    let socket = std::env::var("KCODE_SOCKET").ok();
     let command = build_fresh_session_command(socket.as_deref());
     crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)
 }
@@ -1312,7 +1312,7 @@ pub(super) fn gather_ambient_info(ambient_enabled: bool) -> Option<AmbientWidget
 ///
 /// Under `cfg(test)` there is no render loop to serve, and the background
 /// refresh is exactly what makes the suite parallel-unsafe: it re-reads the
-/// queue under whatever `JCODE_HOME` is current when the thread runs, not when
+/// queue under whatever `KCODE_HOME` is current when the thread runs, not when
 /// it was queued, so an in-flight refresh can overwrite the cleared process
 /// cache with data loaded from another test's temp home (upstream #596). The
 /// synchronous tests read via `gather_ambient_info_inner` directly, so keeping

@@ -119,7 +119,7 @@ pub enum ProviderChoice {
     #[value(alias = "belvedir.ai", alias = "belvedir-ai")]
     Belvedir,
     #[value(alias = "orca-router")]
-    Orcarouter,
+    OrcaRouter,
     #[value(
         alias = "bailian",
         alias = "aliyun-bailian",
@@ -141,6 +141,7 @@ pub enum ProviderChoice {
     GeminiApi,
     Antigravity,
     Google,
+    ForgeCode,
     Auto,
 }
 
@@ -193,7 +194,7 @@ impl ProviderChoice {
             Self::Chutes => "chutes",
             Self::Cerebras => "cerebras",
             Self::Belvedir => "belvedir",
-            Self::Orcarouter => "orcarouter",
+            Self::OrcaRouter => "orcarouter",
             Self::AlibabaCodingPlan => "alibaba-coding-plan",
             Self::OpenaiCompatible => "openai-compatible",
             Self::Cursor => "cursor",
@@ -202,6 +203,7 @@ impl ProviderChoice {
             Self::GeminiApi => "gemini-api",
             Self::Antigravity => "antigravity",
             Self::Google => "google",
+            Self::ForgeCode => "forgecode",
             Self::Auto => "auto",
         }
     }
@@ -211,7 +213,7 @@ impl ProviderChoice {
 const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescriptor)] = &[
     (
         ProviderChoice::Jcode,
-        crate::provider_catalog::JCODE_LOGIN_PROVIDER,
+        crate::provider_catalog::KCODE_LOGIN_PROVIDER,
     ),
     (
         ProviderChoice::Claude,
@@ -390,7 +392,7 @@ const PROVIDER_CHOICE_LOGIN_PROVIDERS: &[(ProviderChoice, LoginProviderDescripto
         crate::provider_catalog::BELVEDIR_LOGIN_PROVIDER,
     ),
     (
-        ProviderChoice::Orcarouter,
+        ProviderChoice::OrcaRouter,
         crate::provider_catalog::ORCAROUTER_LOGIN_PROVIDER,
     ),
     (
@@ -431,9 +433,9 @@ pub fn login_provider_choice_mappings() -> &'static [(ProviderChoice, LoginProvi
     PROVIDER_CHOICE_LOGIN_PROVIDERS
 }
 
-/// `JCODE_OPENROUTER_MODEL` as set by the user when the process started.
+/// `KCODE_OPENROUTER_MODEL` as set by the user when the process started.
 ///
-/// Provider init clears and rewrites the `JCODE_OPENROUTER_*` env slots for
+/// Provider init clears and rewrites the `KCODE_OPENROUTER_*` env slots for
 /// whichever runtime it activates, so by the time the OpenRouter runtime reads
 /// the variable a user-supplied value is already gone. Snapshot it first.
 static USER_OPENROUTER_MODEL: OnceLock<Option<String>> = OnceLock::new();
@@ -442,7 +444,7 @@ static USER_OPENROUTER_MODEL: OnceLock<Option<String>> = OnceLock::new();
 /// that skip startup (unit tests, embedded flows) never consult the snapshot.
 pub fn capture_user_openrouter_model_env() {
     let _ = USER_OPENROUTER_MODEL.set(
-        std::env::var("JCODE_OPENROUTER_MODEL")
+        std::env::var("KCODE_OPENROUTER_MODEL")
             .ok()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty()),
@@ -454,7 +456,7 @@ fn user_openrouter_model_env() -> Option<&'static str> {
 }
 
 /// Model to use when the caller passed no `--model`: the user's
-/// `JCODE_OPENROUTER_MODEL`, but only for runtimes that variable targets
+/// `KCODE_OPENROUTER_MODEL`, but only for runtimes that variable targets
 /// (OpenRouter and OpenAI-compatible profiles).
 fn env_model_for_choice(choice: &ProviderChoice) -> Option<&'static str> {
     env_model_for_choice_from(choice, user_openrouter_model_env())
@@ -720,10 +722,10 @@ async fn detect_auto_provider_flags() -> AutoProviderAvailability {
     // An exec-based daemon reload inherits this one-shot, non-secret snapshot
     // from its predecessor. Consuming it avoids repeating credential discovery
     // on the reload critical path while ensuring later processes cannot reuse it.
-    let auth_status = std::env::var("JCODE_RELOAD_AUTH_STATUS")
+    let auth_status = std::env::var("KCODE_RELOAD_AUTH_STATUS")
         .ok()
         .and_then(|snapshot| {
-            crate::env::remove_var("JCODE_RELOAD_AUTH_STATUS");
+            crate::env::remove_var("KCODE_RELOAD_AUTH_STATUS");
             serde_json::from_str::<auth::AuthStatus>(&snapshot).ok()
         })
         .unwrap_or_else(auth::AuthStatus::check_fast);
@@ -1306,10 +1308,10 @@ fn disable_subscription_runtime_mode() {
 }
 
 fn disable_subscription_runtime_mode_preserving_active_provider_profile() {
-    if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_some()
-        || std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_some()
+    if std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_some()
+        || std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_some()
     {
-        crate::env::remove_var(crate::subscription_catalog::JCODE_SUBSCRIPTION_ACTIVE_ENV);
+        crate::env::remove_var(crate::subscription_catalog::KCODE_SUBSCRIPTION_ACTIVE_ENV);
     } else {
         disable_subscription_runtime_mode();
     }
@@ -1318,7 +1320,7 @@ fn disable_subscription_runtime_mode_preserving_active_provider_profile() {
 pub fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
     // #712: the arms below clear an explicitly selected named profile, which
     // made auth-test probe (and false-negative) the generic compatible slot.
-    if std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_some() {
+    if std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_some() {
         return;
     }
     match provider.target {
@@ -1327,7 +1329,7 @@ pub fn apply_login_provider_profile_env(provider: LoginProviderDescriptor) {
             // Bootstrap login still spawns the daemon with `--provider auto`. Mark the
             // just-selected compatible provider as active so the child process does
             // not clear these inherited runtime vars before credential detection.
-            crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
+            crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
         }
         LoginProviderTarget::AutoImport | LoginProviderTarget::Google => {}
         _ => {
@@ -1414,7 +1416,7 @@ pub async fn login_and_bootstrap_provider(
         LoginProviderTarget::Cursor => {
             disable_subscription_runtime_mode();
             clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
+            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "cursor");
             Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
         }
         LoginProviderTarget::Copilot => {
@@ -1424,13 +1426,13 @@ pub async fn login_and_bootstrap_provider(
         LoginProviderTarget::Gemini => {
             disable_subscription_runtime_mode();
             clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
+            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "gemini");
             Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new())
         }
         LoginProviderTarget::Antigravity => {
             disable_subscription_runtime_mode();
             clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
+            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
         }
         LoginProviderTarget::Google => {
@@ -1522,15 +1524,15 @@ async fn init_provider_with_model_policy(
 
     let model = model.or_else(|| env_model_for_choice(choice));
 
-    if let Ok(profile_name) = std::env::var("JCODE_PROVIDER_PROFILE_NAME")
+    if let Ok(profile_name) = std::env::var("KCODE_PROVIDER_PROFILE_NAME")
         && !profile_name.trim().is_empty()
     {
         crate::provider_catalog::apply_named_provider_profile_env(profile_name.trim())?;
-        crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
+        crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
     }
 
-    if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
-        && std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none()
+    if std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none()
+        && std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none()
     {
         if let Some(profile) = profile_for_choice(choice) {
             apply_openai_compatible_profile_env(Some(profile));
@@ -1583,7 +1585,7 @@ async fn init_provider_with_model_policy(
             ensure_cursor_auth_allowed_for_explicit_choice()?;
             init_notice("Using Cursor native HTTPS provider (experimental)");
             clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "cursor");
+            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "cursor");
             Arc::new(jcode_provider_cursor_runtime::CursorCliProvider::new())
         }
         ProviderChoice::Copilot => {
@@ -1604,14 +1606,14 @@ async fn init_provider_with_model_policy(
                 init_notice("Using Gemini provider (native Google Code Assist OAuth)");
             }
             clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "gemini");
+            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "gemini");
             Arc::new(jcode_provider_gemini_runtime::GeminiProvider::new())
         }
         ProviderChoice::GrokBuild => {
             disable_subscription_runtime_mode();
             init_notice("Using Grok Build subscription (Grok CLI login, direct HTTPS)");
             clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "grok-build");
+            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "grok-build");
             crate::provider::external::instantiate_external_provider(
                 crate::provider::external::GROK_BUILD_RUNTIME,
             )
@@ -1676,14 +1678,14 @@ async fn init_provider_with_model_policy(
         | ProviderChoice::Chutes
         | ProviderChoice::Cerebras
         | ProviderChoice::Belvedir
-        | ProviderChoice::Orcarouter
+        | ProviderChoice::OrcaRouter
         | ProviderChoice::AlibabaCodingPlan
         | ProviderChoice::GeminiApi
         | ProviderChoice::OpenaiCompatible => {
             disable_subscription_runtime_mode();
             let profile = profile_for_choice(choice)
                 .ok_or_else(|| anyhow::anyhow!("missing provider profile for choice"))?;
-            if std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none() {
+            if std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none() {
                 // An explicit `--provider <compatible>` selection should win over
                 // any stale active-profile marker inherited from a previous
                 // bootstrap/login flow. Named provider profiles still take
@@ -1691,7 +1693,7 @@ async fn init_provider_with_model_policy(
                 force_apply_openai_compatible_profile_env(Some(profile));
             }
             let mut runtime_model_hint = None;
-            let display_name = if let Ok(named) = std::env::var("JCODE_NAMED_PROVIDER_PROFILE") {
+            let display_name = if let Ok(named) = std::env::var("KCODE_NAMED_PROVIDER_PROFILE") {
                 if let Some(profile) = crate::config::config().providers.get(&named) {
                     runtime_model_hint = profile.default_model.clone();
                 }
@@ -1703,7 +1705,10 @@ async fn init_provider_with_model_policy(
                         &resolved.api_key_env,
                     )?;
                 }
-                runtime_model_hint = resolved.default_model.clone();
+                runtime_model_hint = resolved
+                    .default_model
+                    .clone()
+                    .or_else(|| crate::config::config().provider.default_model.clone());
                 resolved.display_name
             };
             init_notice(&format!(
@@ -1711,8 +1716,8 @@ async fn init_provider_with_model_policy(
                 display_name
             ));
             crate::provider::activation::apply_openai_compatible_runtime(runtime_model_hint)?;
-            if std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_some() {
-                let profile_name = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")?;
+            if std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_some() {
+                let profile_name = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")?;
                 let cfg = crate::config::config();
                 let profile = cfg.providers.get(&profile_name).ok_or_else(|| {
                     anyhow::anyhow!("Unknown provider profile '{}'", profile_name)
@@ -1732,7 +1737,7 @@ async fn init_provider_with_model_policy(
             ensure_antigravity_auth_allowed_for_explicit_choice()?;
             init_notice("Using Antigravity provider (experimental)");
             clear_initial_model_provider();
-            crate::env::set_var("JCODE_ACTIVE_PROVIDER", "antigravity");
+            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "antigravity");
             Arc::new(jcode_provider_antigravity_runtime::AntigravityProvider::new())
         }
         ProviderChoice::Google => {
@@ -1745,6 +1750,16 @@ async fn init_provider_with_model_policy(
             );
             clear_initial_model_provider();
             Arc::new(provider::MultiProvider::new_fast())
+        }
+        ProviderChoice::ForgeCode => {
+            disable_subscription_runtime_mode();
+            init_notice("Using ForgeCode as the initial provider (use /model to switch)");
+            clear_initial_model_provider();
+            crate::env::set_var("KCODE_ACTIVE_PROVIDER", "forgecode");
+            crate::provider::external::instantiate_external_provider(
+                crate::provider::external::FORGECODE_RUNTIME,
+            )
+            .ok_or_else(|| anyhow::anyhow!("ForgeCode runtime is not registered"))?
         }
         ProviderChoice::Auto => {
             disable_subscription_runtime_mode_preserving_active_provider_profile();
@@ -1880,22 +1895,22 @@ async fn init_provider_with_model_policy(
                     "Using {} (use /model to switch models)",
                     multi.name()
                 ));
-                crate::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
+                crate::env::set_var("KCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
                 Arc::new(multi)
             } else {
-                let non_interactive = std::env::var("JCODE_NON_INTERACTIVE").is_ok();
+                let non_interactive = std::env::var("KCODE_NON_INTERACTIVE").is_ok();
                 // Both Desktop and TUI clients authenticate through the running
                 // daemon. Keep request-time auth checks, but let the control plane
                 // start with an empty provider. Other CLI entry points retain their
                 // guard unless the interactive TUI explicitly opts in.
                 if allow_deferred_auth
-                    || std::env::var_os("JCODE_DEFERRED_AUTH_BOOTSTRAP").is_some()
+                    || std::env::var_os("KCODE_DEFERRED_AUTH_BOOTSTRAP").is_some()
                 {
                     crate::logging::info(
                         "No credentials configured; booting deferred-auth MultiProvider for client onboarding",
                     );
                     let multi = provider::MultiProvider::from_auth_status(availability.auth_status);
-                    crate::env::set_var("JCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
+                    crate::env::set_var("KCODE_ACTIVE_PROVIDER", multi.name().to_lowercase());
                     Arc::new(multi)
                 } else if non_interactive {
                     anyhow::bail!(
@@ -1925,18 +1940,23 @@ async fn init_provider_with_model_policy(
         })?;
     }
 
-    if std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
-        && std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none()
+    if std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none()
+        && std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none()
         && model.is_none()
-        && let Some(profile) = profile_for_choice(choice)
-        && let Some(default_model) = resolved_profile_default_model(profile)
-        && provider.set_model(&default_model).is_ok()
     {
-        let resolved = resolve_openai_compatible_profile(profile);
-        init_notice(&format!(
-            "Using default model for {}: {}",
-            resolved.display_name, default_model
-        ));
+        let effective_default = profile_for_choice(choice)
+            .and_then(resolved_profile_default_model)
+            .or_else(|| crate::config::config().provider.default_model.clone());
+        if let Some(default_model) = effective_default
+            && provider.set_model(&default_model).is_ok()
+            && let Some(profile) = profile_for_choice(choice)
+        {
+            let resolved = resolve_openai_compatible_profile(profile);
+            init_notice(&format!(
+                "Using default model for {}: {}",
+                resolved.display_name, default_model
+            ));
+        }
     }
 
     if let Some(model_name) = model {

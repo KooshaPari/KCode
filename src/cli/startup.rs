@@ -19,8 +19,24 @@ pub async fn run() -> Result<()> {
     // Parse once, before startup side effects. Invalid arguments and --help
     // must not harden credential files or create configuration/telemetry state.
     let args = Args::parse();
+    // Explicit session import has no startup hardening, migrations, provider
+    // bootstrap, backup pruning, or daemon side effects in either product.
+    if matches!(
+        &args.command,
+        Some(Command::Session(
+            super::args::SessionCommand::ImportJcode { .. }
+        ))
+    ) {
+        return dispatch::run_main(args).await;
+    }
     // Snapshot user-supplied provider env before provider init rewrites it.
     super::provider_init::capture_user_openrouter_model_env();
+
+    // Propagate agent mode to env so tool-gating and status bar can read it.
+    let resolved_mode = jcode_config_types::AgentMode::parse(&args.mode)
+        .unwrap_or(jcode_config_types::AgentMode::Execute);
+    crate::env::set_var("KCODE_AGENT_MODE", resolved_mode.as_str());
+
     // Credential import must refuse existing stores without normal startup
     // hardening, migrations, telemetry, or provider discovery touching them.
     if args.ssh.is_none()
@@ -34,6 +50,10 @@ pub async fn run() -> Result<()> {
         }
         return dispatch::run_main(args).await;
     }
+    // Reject aliased product roots before logging, cleanup, or migrations can
+    // follow a .kcode junction/symlink into jcode's installation.
+    storage::jcode_dir()?;
+    storage::app_config_dir()?;
     startup_profile::init();
 
     terminal::install_panic_hook();
@@ -45,13 +65,13 @@ pub async fn run() -> Result<()> {
     // so it no longer blocks startup. Memory-event logs have a separate,
     // longer (14-day) retention, so prune them on their own background thread.
     std::thread::Builder::new()
-        .name("jcode-memlog-cleanup".to_string())
+        .name("kcode-memlog-cleanup".to_string())
         .spawn(crate::memory_log::cleanup_old_memory_logs)
         .ok();
     // Prune stale per-session `.bak` recovery copies (never the transcripts
     // themselves) so the sessions directory does not grow without bound.
     std::thread::Builder::new()
-        .name("jcode-session-bak-prune".to_string())
+        .name("kcode-session-bak-prune".to_string())
         .spawn(crate::session::prune_old_session_backups)
         .ok();
     // Record which binary actually launched. Stale copies earlier on PATH (or a
@@ -153,11 +173,22 @@ pub async fn run() -> Result<()> {
     let args = parse_and_prepare_args(args)?;
     spawn_background_update_check(&args);
 
+    // Initialize HERDR terminal runtime reporter. No-op when not inside
+    // a HERDR pane. Reports lifecycle state (working/idle/blocked) and
+    // session identity for restore.
+    if args.herdr {
+        crate::herdr::init_forced(&args.herdr_kind);
+    } else {
+        crate::herdr::init(&args.herdr_kind);
+    }
+
     if let Err(e) = dispatch::run_main(args).await {
         report_main_error(&e);
+        crate::herdr::shutdown().await;
         return Err(e);
     }
 
+    crate::herdr::shutdown().await;
     Ok(())
 }
 
@@ -233,6 +264,10 @@ pub fn register_external_provider_runtimes() {
         crate::provider::external::ANTHROPIC_RUNTIME,
         || std::sync::Arc::new(jcode_provider_anthropic_runtime::AnthropicProvider::new()),
     );
+    crate::provider::external::register_external_provider(
+        crate::provider::external::FORGECODE_RUNTIME,
+        || std::sync::Arc::new(jcode_provider_forgecode_runtime::ForgeCodeProvider::new()),
+    );
     // OpenRouter serves several identities (aggregator, pinned API-key
     // runtime, direct OpenAI-compatible profiles, named config profiles)
     // through one concrete type, so it registers a parameterized factory.
@@ -282,7 +317,7 @@ pub fn register_external_provider_runtimes() {
             let provider = std::sync::Arc::new(
                 jcode_provider_copilot_runtime::CopilotApiProvider::new().ok()?,
             );
-            let eager_tier_detection = std::env::var("JCODE_NON_INTERACTIVE").is_err();
+            let eager_tier_detection = std::env::var("KCODE_NON_INTERACTIVE").is_err();
             if eager_tier_detection && tokio::runtime::Handle::try_current().is_ok() {
                 let p_clone = std::sync::Arc::clone(&provider);
                 tokio::spawn(async move {
@@ -313,7 +348,7 @@ fn parse_and_prepare_args(args: Args) -> Result<Args> {
     validate_remote_working_dir(args.remote_working_dir.as_deref())?;
 
     if args.trace {
-        crate::env::set_var("JCODE_TRACE", "1");
+        crate::env::set_var("KCODE_TRACE", "1");
     }
 
     if let Some(ref socket) = args.socket {

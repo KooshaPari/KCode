@@ -13,7 +13,7 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-const CHILD_MARKER: &str = "JCODE_MCP_STDIO_TEST_CHILD";
+const CHILD_MARKER: &str = "KCODE_MCP_STDIO_TEST_CHILD";
 const TEST_NAME: &str = "real_stdio_collision_aliases_preserve_original_targets";
 const SERVERS: [(&str, [&str; 2]); 2] = [
     ("server-a", ["query-docs", "only-a"]),
@@ -70,7 +70,7 @@ fn real_stdio_collision_aliases_preserve_original_targets() {
         let mut child = Command::new(std::env::current_exe().expect("test executable"));
         child.env_clear();
         // Only executable/dynamic-library search and Windows process setup are
-        // inherited. In particular, no provider credentials or JCODE_* config.
+        // inherited. In particular, no provider credentials or KCODE_* config.
         for key in ["PATH", "LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "SYSTEMROOT"] {
             if let Some(value) = std::env::var_os(key) {
                 child.env(key, value);
@@ -87,8 +87,8 @@ fn real_stdio_collision_aliases_preserve_original_targets() {
         }
         let status = child
             .env(CHILD_MARKER, "1")
-            .env("JCODE_HOME", sandbox.path().join("jcode"))
-            .env("JCODE_RUNTIME_DIR", sandbox.path().join("runtime"))
+            .env("KCODE_HOME", sandbox.path().join("kcode"))
+            .env("KCODE_RUNTIME_DIR", sandbox.path().join("runtime"))
             .current_dir(sandbox.path())
             .args(["--exact", TEST_NAME, "--nocapture"])
             .status()

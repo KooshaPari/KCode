@@ -19,8 +19,8 @@ pub const MAX_VALUE_BYTES: usize = 10 * 1024 * 1024;
 
 /// Cursor's AgentService rejects MCP names that collide with its builtins.
 /// `cc_` is the namespace used by the proven public bridge implementation.
-pub const JCODE_TOOL_PROVIDER: &str = "ccbridge";
-pub const JCODE_TOOL_PREFIX: &str = "cc_";
+pub const KCODE_TOOL_PROVIDER: &str = "ccbridge";
+pub const KCODE_TOOL_PREFIX: &str = "cc_";
 pub const MAX_CURSOR_TOOL_NAME_LEN: usize = 128;
 
 // --------------------------------------------------------------------------
@@ -285,10 +285,10 @@ pub fn decode_google_protobuf_value(bytes: &[u8], depth: usize) -> Result<Value>
 /// Derive the `cc_` namespaced wire name used by Cursor's AgentService.
 pub fn mcp_wire_name(tool_name: &str) -> String {
     let bare = tool_name
-        .strip_prefix(JCODE_TOOL_PREFIX)
+        .strip_prefix(KCODE_TOOL_PREFIX)
         .unwrap_or(tool_name);
-    let mut sanitized = String::with_capacity(bare.len() + JCODE_TOOL_PREFIX.len());
-    sanitized.push_str(JCODE_TOOL_PREFIX);
+    let mut sanitized = String::with_capacity(bare.len() + KCODE_TOOL_PREFIX.len());
+    sanitized.push_str(KCODE_TOOL_PREFIX);
     sanitized.push_str(&sanitize_cursor_name(bare));
     fit_cursor_name(&sanitized, tool_name)
 }
@@ -374,7 +374,7 @@ fn stable_name_hash(value: &str) -> u32 {
 
 /// Extract bare tool name from an advertised or inbound wire name.
 pub fn mcp_bare_name(wire_name: &str) -> &str {
-    if let Some(rest) = wire_name.strip_prefix(JCODE_TOOL_PREFIX) {
+    if let Some(rest) = wire_name.strip_prefix(KCODE_TOOL_PREFIX) {
         rest
     } else if let Some((_, rest)) = wire_name.split_once("__") {
         rest
@@ -413,7 +413,7 @@ fn encode_mcp_tool_definition_with_wire_name(
     let mut out = field_str(1, &safe_wire_name);
     out.extend(field_str(2, &def.description));
     out.extend(field_ld(3, &schema_bytes));
-    out.extend(field_str(4, JCODE_TOOL_PROVIDER));
+    out.extend(field_str(4, KCODE_TOOL_PROVIDER));
     out.extend(field_str(5, &safe_tool_name));
     Ok(out)
 }
@@ -437,7 +437,7 @@ pub fn encode_mcp_tools(tools: &[ToolDefinition]) -> Result<Vec<u8>> {
 /// `mcp_state_exec_result` (field 36) -> `McpStateSuccess` (case 1).
 ///
 /// jcode advertises every bridged tool under one pseudo server,
-/// [`JCODE_TOOL_PROVIDER`]. Report that server as ready with the same tool
+/// [`KCODE_TOOL_PROVIDER`]. Report that server as ready with the same tool
 /// definitions sent in `RunRequest.mcp_tools` so Cursor proceeds to the
 /// `McpArgs` call instead of waiting for a server it thinks is still loading.
 pub fn encode_mcp_state_result(
@@ -451,12 +451,12 @@ pub fn encode_mcp_state_result(
         || requested
             .server_identifiers
             .iter()
-            .any(|id| id == JCODE_TOOL_PROVIDER);
+            .any(|id| id == KCODE_TOOL_PROVIDER);
     if wants_bridge {
         // McpStateServer: server_name=1, server_identifier=2, tools=5 (repeated
         // McpToolDefinition), status=7
-        let mut server = field_str(1, JCODE_TOOL_PROVIDER);
-        server.extend(field_str(2, JCODE_TOOL_PROVIDER));
+        let mut server = field_str(1, KCODE_TOOL_PROVIDER);
+        server.extend(field_str(2, KCODE_TOOL_PROVIDER));
         let aliases = mcp_wire_aliases(tools);
         for tool in tools {
             let wire_name = aliases

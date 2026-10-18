@@ -489,7 +489,7 @@ impl CursorCliProvider {
     }
 
     pub fn new() -> Self {
-        let model = std::env::var("JCODE_CURSOR_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
+        let model = std::env::var("KCODE_CURSOR_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
         let multiplexer = ToolResultMultiplexer::new();
         let (result_tx, result_rx) = mpsc::channel::<NativeToolResult>(64);
         let provider = Self {

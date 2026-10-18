@@ -1,3 +1,14 @@
+# KCode fork
+
+KCode uses the `kcode` executable, `KCODE_*` overrides and `.kcode` storage.
+Self-update and bundled npm runtime downloads are disabled for this branch.
+Build and install KCode using [the isolation/install guide](docs/KCODE_ISOLATION.md).
+Import selected jcode sessions with `kcode session import-jcode <id>`; the source
+is never written back. The upstream documentation retained below describes
+jcode; its release installers and npm runtime packages do not install KCode.
+
+---
+
 <div align="center">
 
 # jcode
@@ -11,6 +22,8 @@
 
 The most RAM efficient harness <br>
 The most intelligent harness
+
+> **Fork note:** This is a [KooshaPari](https://github.com/KooshaPari) fork of [1jehuang/jcode](https://github.com/1jehuang/jcode). Latest fork release: **v0.85.0-k1.0.0**.
 
 <a href="https://trendshift.io/repositories/25042?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-25042" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/25042" alt="1jehuang/jcode | Trendshift" width="250" height="55"></a>
 
@@ -41,6 +54,20 @@ curl -fsSL https://jcode.sh/install | bash
 # Windows 11 (PowerShell 5.1+)
 irm https://jcode.sh/install.ps1 | iex
 ```
+
+```bash
+# Bun (requires Bun installed)
+bunx jcode-install
+# or
+bun run --bun https://jcode.sh/install_bun.sh
+```
+
+```bash
+# GitHub Packages (replace <version> with desired release, e.g. 0.85.0-k1.0.0)
+docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+```
+
+**Manual download:** Grab a prebuilt binary from [GitHub Releases](https://github.com/KooshaPari/jcode/releases) and add it to your `PATH`.
 
 Need Homebrew, source builds, provider setup, or want an agent to set it up for you?
 [Jump to detailed installation](#detailed-installation).
@@ -926,6 +953,23 @@ curl -fsSL https://jcode.sh/install | bash
 irm https://jcode.sh/install.ps1 | iex
 ```
 
+```bash
+# Bun (requires Bun installed)
+bunx jcode-install
+# or
+bun run --bun https://jcode.sh/install_bun.sh
+```
+
+```bash
+# GitHub Packages (replace <version> with desired release)
+docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+```
+
+**Manual download:** Prebuilt binaries are available on the
+[GitHub Releases](https://github.com/KooshaPari/jcode/releases) page.
+Download the archive for your platform, extract, and place the `jcode` binary
+on your `PATH` (e.g. `~/.local/bin/` or `/usr/local/bin/`).
+
 The Windows installer selects the correct architecture and verifies the download
 against the release's `SHA256SUMS`. Alacritty and the optional global launch
 hotkey require explicit consent and are not installed by default. See
@@ -943,13 +987,74 @@ brew tap 1jehuang/jcode
 brew install jcode
 ```
 
-### From Source (all platforms)
+### Building from Source
+
+#### Prerequisites
+
+- **Rust toolchain** (stable). Install via [rustup](https://rustup.rs/):
+  ```bash
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+  ```
+- **macOS**: Xcode Command Line Tools (for the macOS SDK):
+  ```bash
+  xcode-select --install
+  ```
+
+#### Build
 
 ```bash
 git clone https://github.com/1jehuang/jcode.git
 cd jcode
 cargo build --release
 ```
+
+#### macOS SDKROOT Workaround
+
+On macOS with Xcode Command Line Tools (without the full Xcode.app), Cargo may
+fail to locate the macOS SDK, producing errors like:
+
+```
+error: failed to run custom build script for `openssl-sys v...`
+...
+note: SDK not found; set SDKROOT to the SDK path
+```
+
+This happens because Command Line Tools installs the SDK under a versioned path
+that the toolchain does not always discover automatically. The fix is to set two
+environment variables before building:
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `SDKROOT` | `/Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk` | Points the compiler at the macOS SDK installed by Command Line Tools |
+| `MACOSX_DEPLOYMENT_TARGET` | `15.0` (or your macOS version) | Sets the minimum deployment target for compiled binaries |
+
+Find your installed SDK version:
+
+```bash
+ls /Library/Developer/CommandLineTools/SDKs/
+```
+
+Then set the variables. You can **export** them for your shell session:
+
+```bash
+export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk
+export MACOSX_DEPLOYMENT_TARGET=15.0
+cargo build --release
+```
+
+Or set them **inline** for a single build:
+
+```bash
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk \
+  MACOSX_DEPLOYMENT_TARGET=15.0 \
+  cargo build --release
+```
+
+> **Note:** This workaround is only needed on macOS with Xcode Command Line
+> Tools. If you have the full Xcode.app installed, the SDK is typically found
+> automatically and these variables are not required.
+
+#### Linux self-dev
 
 For local self-dev / refactor work on Linux x86_64, prefer:
 
@@ -963,7 +1068,7 @@ working local linker setup (`clang + lld`) instead of assuming every machine's
 `mold` configuration is valid, and can print the active linker/cache setup via
 `--print-setup` so slow-path builds are easier to diagnose.
 
-Then symlink to your PATH:
+#### Install the built binary
 
 ```bash
 scripts/install_release.sh

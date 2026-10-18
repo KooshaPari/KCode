@@ -255,7 +255,7 @@ fn test_jcode_subscription_set_route_is_wire_safe() -> Result<()> {
 
     let line = serde_json::to_string(&request)?;
     assert!(line.contains("\"type\":\"set_route\""));
-    assert!(line.contains("\"kind\":\"jcode-subscription\""));
+    assert!(line.contains("\"kind\":\"kcode-subscription\""));
 
     let decoded = decode_request(&line)?;
     let Request::SetRoute { id, selection } = decoded else {

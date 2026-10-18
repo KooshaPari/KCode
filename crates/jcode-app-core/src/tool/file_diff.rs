@@ -123,14 +123,14 @@ mod tests {
         impl Drop for Home {
             fn drop(&mut self) {
                 if let Some(old) = self.0.take() {
-                    crate::env::set_var("JCODE_HOME", old);
+                    crate::env::set_var("KCODE_HOME", old);
                 } else {
-                    crate::env::remove_var("JCODE_HOME");
+                    crate::env::remove_var("KCODE_HOME");
                 }
             }
         }
-        let _home = Home(std::env::var_os("JCODE_HOME"));
-        crate::env::set_var("JCODE_HOME", home.path());
+        let _home = Home(std::env::var_os("KCODE_HOME"));
+        crate::env::set_var("KCODE_HOME", home.path());
         let ctx = ToolContext {
             session_id: "file_diff_test".into(),
             message_id: "m".into(),

@@ -133,7 +133,7 @@ fn command_spec(
 ) -> Result<CommandSpec> {
     let (program, args, note) = match input.action.as_str() {
         "build" => {
-            let mut args = vec!["build", "-p", "jcode-desktop", "-p", "jcode-desktop-ui"]
+            let mut args = vec!["build", "-p", "kcode-desktop", "-p", "kcode-desktop-ui"]
                 .into_iter()
                 .map(String::from)
                 .collect::<Vec<_>>();
@@ -211,9 +211,9 @@ const INSTANCES: &[&str] = &["main", "no-sidebar", "single-panel"];
 
 fn instance_socket_name(name: &str) -> &'static str {
     match name {
-        "no-sidebar" => "jcode-desktop-no-sidebar.sock",
-        "single-panel" => "jcode-desktop-single-panel.sock",
-        _ => "jcode-desktop.sock",
+        "no-sidebar" => "kcode-desktop-no-sidebar.sock",
+        "single-panel" => "kcode-desktop-single-panel.sock",
+        _ => "kcode-desktop.sock",
     }
 }
 
@@ -363,7 +363,7 @@ fn host_profile(root: &Path, exe: &Path) -> Result<String> {
         .strip_prefix(root.join("target"))
         .context("Desktop instance is not a build from this checkout's target directory")?;
     let parts = relative.components().collect::<Vec<_>>();
-    if parts.len() != 2 || parts[1].as_os_str() != "jcode-desktop" {
+    if parts.len() != 2 || parts[1].as_os_str() != "kcode-desktop" {
         bail!(
             "Cannot safely determine the Desktop instance build profile: {}",
             exe.display()

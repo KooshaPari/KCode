@@ -259,7 +259,7 @@ impl DecisionTransport for JevTransport {
             .await?;
         let decision = parse_decision(&value, request)?;
         #[cfg(test)]
-        if std::env::var_os("JCODE_BROWSER_HANDOFF_TEST_TRACE").is_some() {
+        if std::env::var_os("KCODE_BROWSER_HANDOFF_TEST_TRACE").is_some() {
             eprintln!(
                 "Jev decision: choice={} confidence={} probabilities={}",
                 decision.choice, decision.confidence, value["answers"]["action"]["probabilities"]
@@ -555,7 +555,7 @@ mod tests {
         assert_eq!(
             transport.provider_name(),
             "jcode",
-            "Set JCODE_BROWSER_JEV_PROVIDER=jcode and sign in with jcode account login. BYOK is not subscription validation."
+            "Set KCODE_BROWSER_JEV_PROVIDER=jcode and sign in with jcode account login. BYOK is not subscription validation."
         );
         let decision = transport.decide(&request()).await.unwrap();
         assert_eq!(decision.choice, "a0");

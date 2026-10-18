@@ -11,10 +11,10 @@ const OVERLAY: &str = "PROMPT_ACCEPTANCE_OVERLAY_MARKER\n";
 const TOOLS: &str = "PROMPT_ACCEPTANCE_TOOLS_MARKER\n";
 
 fn write_guidance(dir: &Path) {
-    std::fs::create_dir_all(dir.join(".jcode")).unwrap();
+    std::fs::create_dir_all(dir.join(".kcode")).unwrap();
     std::fs::write(dir.join("AGENTS.md"), AGENTS).unwrap();
-    std::fs::write(dir.join(".jcode/prompt-overlay.md"), OVERLAY).unwrap();
-    std::fs::write(dir.join(".jcode/preferred-tools.md"), TOOLS).unwrap();
+    std::fs::write(dir.join(".kcode/prompt-overlay.md"), OVERLAY).unwrap();
+    std::fs::write(dir.join(".kcode/preferred-tools.md"), TOOLS).unwrap();
 }
 
 #[test]
@@ -26,7 +26,7 @@ fn public_prompt_builders_deduplicate_home_and_aliases_but_preserve_distinct_fil
     write_guidance(&home);
     write_guidance(&distinct);
     std::fs::create_dir(&alias).unwrap();
-    std::os::unix::fs::symlink(home.join(".jcode"), alias.join(".jcode")).unwrap();
+    std::os::unix::fs::symlink(home.join(".kcode"), alias.join(".kcode")).unwrap();
     std::os::unix::fs::symlink(home.join("AGENTS.md"), alias.join("AGENTS.md")).unwrap();
 
     for (case, cwd) in [("home", &home), ("alias", &alias), ("distinct", &distinct)] {
@@ -43,8 +43,8 @@ fn public_prompt_builders_deduplicate_home_and_aliases_but_preserve_distinct_fil
             .env("HOME", &home)
             .env("XDG_CONFIG_HOME", home.join(".config"))
             .env("XDG_CACHE_HOME", home.join(".cache"))
-            .env_remove("JCODE_HOME")
-            .env("JCODE_PROMPT_ACCEPTANCE_CASE", case)
+            .env_remove("KCODE_HOME")
+            .env("KCODE_PROMPT_ACCEPTANCE_CASE", case)
             .output()
             .unwrap();
         assert!(
@@ -60,7 +60,7 @@ fn public_prompt_builders_deduplicate_home_and_aliases_but_preserve_distinct_fil
 #[test]
 #[ignore = "invoked in an isolated HOME/cwd by the parent acceptance test"]
 fn prompt_guidance_child() {
-    let case = std::env::var("JCODE_PROMPT_ACCEPTANCE_CASE").unwrap();
+    let case = std::env::var("KCODE_PROMPT_ACCEPTANCE_CASE").unwrap();
     let copies = if case == "distinct" { 2 } else { 1 };
     let (full, full_info) = build_system_prompt_full(None, &[], false, None, None);
     let (split, split_info) = build_system_prompt_split(None, &[], false, None, None);

@@ -460,7 +460,7 @@ pub fn reap_detached(child: std::process::Child) {
     {
         let mut child = child;
         let _ = std::thread::Builder::new()
-            .name("jcode-detached-child".to_string())
+            .name("kcode-detached-child".to_string())
             .spawn(move || {
                 let _ = child.wait();
             });

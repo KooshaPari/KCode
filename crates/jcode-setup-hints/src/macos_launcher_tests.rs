@@ -22,26 +22,26 @@ fn macos_launcher_icon_asset_is_valid_icns_container() {
 fn legacy_cli_launchers_and_old_broker_location_are_found() {
     let temp = tempfile::tempdir().expect("tempdir");
     let apps = temp.path();
-    write_bundle(&apps.join("Jcode.app"), "com.jcode.launcher");
+    write_bundle(&apps.join("kcode.app"), "com.kcode.launcher");
     write_bundle(
         &apps.join(MACOS_NOTIFICATION_APP_NAME),
-        "com.jcode.notifications",
+        "com.kcode.notifications",
     );
 
     let found = legacy_macos_bundles(apps);
     assert_eq!(
         found,
-        vec![apps.join("Jcode Notifications.app"), apps.join("Jcode.app")]
+        vec![apps.join("Jcode Notifications.app"), apps.join("kcode.app")]
     );
 }
 
 #[test]
 fn original_lowercase_launcher_is_found() {
     let temp = tempfile::tempdir().expect("tempdir");
-    write_bundle(&temp.path().join("jcode.app"), "com.jcode.app");
+    write_bundle(&temp.path().join("kcode.app"), "com.kcode.app");
     assert_eq!(
         legacy_macos_bundles(temp.path()),
-        vec![temp.path().join("jcode.app")]
+        vec![temp.path().join("kcode.app")]
     );
 }
 
@@ -49,8 +49,8 @@ fn original_lowercase_launcher_is_found() {
 fn desktop_app_in_user_applications_is_never_matched() {
     let temp = tempfile::tempdir().expect("tempdir");
     write_bundle(
-        &temp.path().join("Jcode.app"),
-        "dev.solosystems.jcode.desktop",
+        &temp.path().join("kcode.app"),
+        "dev.solosystems.kcode.desktop",
     );
     assert!(legacy_macos_bundles(temp.path()).is_empty());
 }
@@ -58,7 +58,7 @@ fn desktop_app_in_user_applications_is_never_matched() {
 #[test]
 fn bundles_without_a_readable_identifier_are_left_alone() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let app = temp.path().join("Jcode.app");
+    let app = temp.path().join("kcode.app");
     std::fs::create_dir_all(app.join("Contents")).expect("create bundle");
     // Signed apps may ship a binary plist. Unknown means not ours.
     std::fs::write(app.join("Contents/Info.plist"), b"bplist00\x01\x02").expect("write plist");
@@ -88,7 +88,7 @@ fn broker_lives_in_a_hidden_directory_outside_applications() {
     let dir = macos_notification_broker_dir_in(home);
     assert_eq!(
         dir,
-        Path::new("/Users/test/.jcode/notifications/macos/Jcode Notifications.app")
+        Path::new("/Users/test/.kcode/notifications/macos/Jcode Notifications.app")
     );
     assert!(!dir.starts_with(home.join("Applications")));
 }
@@ -97,7 +97,7 @@ fn broker_lives_in_a_hidden_directory_outside_applications() {
 fn macos_notification_bundle_is_faceless_and_uses_multicall_binary() {
     let plist = macos_notification_info_plist();
     assert!(plist.contains("<key>LSUIElement</key>\n    <true/>"));
-    assert!(plist.contains("<string>com.jcode.notifications</string>"));
+    assert!(plist.contains("<string>com.kcode.notifications</string>"));
     assert!(plist.contains("<string>jcode-notification-broker</string>"));
     assert!(plist.contains(jcode_build_meta::version()));
 }

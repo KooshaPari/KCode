@@ -316,12 +316,12 @@ fn resume_argv_for_session(
     get: impl Fn(&str) -> Option<String>,
 ) -> Option<Vec<String>> {
     let mut argv = vec!["jcode".to_string()];
-    if let Some(host) = get("JCODE_SSH_REMOTE").filter(|h| !h.trim().is_empty()) {
+    if let Some(host) = get("KCODE_SSH_REMOTE").filter(|h| !h.trim().is_empty()) {
         argv.extend(["--ssh".to_string(), host]);
         for (flag, variable) in [
-            ("--ssh-binary", "JCODE_SSH_BINARY"),
-            ("--ssh-server-socket", "JCODE_SSH_SERVER_SOCKET"),
-            ("--remote-working-dir", "JCODE_SSH_WORKING_DIR"),
+            ("--ssh-binary", "KCODE_SSH_BINARY"),
+            ("--ssh-server-socket", "KCODE_SSH_SERVER_SOCKET"),
+            ("--remote-working-dir", "KCODE_SSH_WORKING_DIR"),
         ] {
             if let Some(value) = get(variable) {
                 argv.extend([flag.to_string(), value]);
@@ -343,7 +343,7 @@ fn run_herdr(bin: &str, args: &[String]) -> Option<ExitStatus> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .env("JCODE_HOOKS_DISABLED", "1")
+        .env("KCODE_HOOKS_DISABLED", "1")
         .spawn();
     let mut child = match child {
         Ok(child) => child,
@@ -501,8 +501,8 @@ mod tests {
     #[test]
     fn resume_argv_keeps_ssh_target_and_selfdev() {
         let vars: std::collections::HashMap<&str, &str> = [
-            ("JCODE_SSH_REMOTE", "devbox"),
-            ("JCODE_SSH_WORKING_DIR", "/srv/repo"),
+            ("KCODE_SSH_REMOTE", "devbox"),
+            ("KCODE_SSH_WORKING_DIR", "/srv/repo"),
             (jcode_selfdev_types::CLIENT_SELFDEV_ENV, "1"),
         ]
         .into_iter()
@@ -549,7 +549,7 @@ mod tests {
             let serial = lock(&SERIAL);
             RESUME_UNSUPPORTED.store(false, Ordering::Relaxed);
             let dir = std::env::temp_dir().join(format!(
-                "jcode-herdr-fake-{}-{}",
+                "kcode-herdr-fake-{}-{}",
                 std::process::id(),
                 next_seq()
             ));

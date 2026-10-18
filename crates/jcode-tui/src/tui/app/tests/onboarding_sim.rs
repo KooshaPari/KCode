@@ -6,7 +6,7 @@
 
 use crossterm::event::{KeyCode, KeyModifiers};
 
-/// Put a Gemini CLI login where the detector looks (`$JCODE_HOME/external`).
+/// Put a Gemini CLI login where the detector looks (`$KCODE_HOME/external`).
 fn write_fake_gemini_cli_login() -> std::path::PathBuf {
     let path = crate::storage::user_home_path(".gemini/oauth_creds.json").unwrap();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -132,7 +132,7 @@ fn rehearsal_telemetry_choice_is_not_saved() {
             crate::tui::app::onboarding_flow::TelemetryLevel::current(),
             before
         );
-        let marker = std::path::Path::new(&std::env::var_os("JCODE_HOME").unwrap())
+        let marker = std::path::Path::new(&std::env::var_os("KCODE_HOME").unwrap())
             .join("no_telemetry");
         assert!(!marker.exists(), "rehearsal must not write telemetry markers");
     });

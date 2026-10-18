@@ -1390,8 +1390,8 @@ mod tests {
     impl IsolatedRuntimeDir {
         fn new() -> Self {
             let temp = tempfile::TempDir::new().expect("runtime dir");
-            let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
-            crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+            let prev_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
+            crate::env::set_var("KCODE_RUNTIME_DIR", temp.path());
             Self {
                 _prev_runtime: prev_runtime,
                 _temp: temp,
@@ -1402,9 +1402,9 @@ mod tests {
     impl Drop for IsolatedRuntimeDir {
         fn drop(&mut self) {
             if let Some(prev_runtime) = self._prev_runtime.take() {
-                crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+                crate::env::set_var("KCODE_RUNTIME_DIR", prev_runtime);
             } else {
-                crate::env::remove_var("JCODE_RUNTIME_DIR");
+                crate::env::remove_var("KCODE_RUNTIME_DIR");
             }
         }
     }

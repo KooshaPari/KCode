@@ -2,10 +2,10 @@ use super::idle_animation_repaint::{copy_cells_in, idle_animation_partial_repain
 use super::*;
 
 fn report_reload_interaction_gap() {
-    let Ok(started) = std::env::var("JCODE_RELOAD_GAP_STARTED_MS") else {
+    let Ok(started) = std::env::var("KCODE_RELOAD_GAP_STARTED_MS") else {
         return;
     };
-    crate::env::remove_var("JCODE_RELOAD_GAP_STARTED_MS");
+    crate::env::remove_var("KCODE_RELOAD_GAP_STARTED_MS");
     let Some(started_ms) = started.parse::<u128>().ok() else {
         return;
     };
@@ -493,11 +493,14 @@ impl StatusSpinnerRenderer {
         let previous_frame = self.last_frame.as_ref();
         let draw_start = Instant::now();
         let mut render_elapsed = Duration::ZERO;
+        // Synchronized update prevents tearing on supported terminals.
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026h");
         let completed = terminal.draw(|frame| {
             let render_start = Instant::now();
             crate::tui::ui::draw(frame, app);
             render_elapsed = render_start.elapsed();
         })?;
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026l");
         let total_elapsed = draw_start.elapsed();
         let changed_cells = previous_frame
             .filter(|previous| previous.area == completed.buffer.area)
@@ -749,6 +752,13 @@ impl App {
                     bus_event = bus_receiver.recv() => {
                         needs_redraw |= local::handle_bus_event(&mut self, bus_event);
                     }
+                    // Handle elicitation requests from tool-core (agent → user)
+                    elicit_msg = self.elicit_rx.recv() => {
+                        if let Some(msg) = elicit_msg {
+                            self.handle_elicit_msg(msg);
+                            needs_redraw = true;
+                        }
+                    }
                 }
             }
         }
@@ -986,6 +996,13 @@ impl App {
                     bus_event = bus_receiver_remote.recv() => {
                         needs_redraw |= remote::handle_bus_event(&mut self, &mut remote_conn, bus_event).await;
                     }
+                    // Handle elicitation requests from tool-core (agent → user)
+                    elicit_msg = self.elicit_rx.recv() => {
+                        if let Some(msg) = elicit_msg {
+                            self.handle_elicit_msg(msg);
+                            needs_redraw = true;
+                        }
+                    }
                 }
             }
         }
@@ -1066,7 +1083,9 @@ impl App {
         let mut event_cursor: usize = 0;
         let mut replay_turn_id: u64 = 0;
 
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026h");
         terminal.draw(|f| crate::tui::render_frame(f, &self))?;
+        let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026l");
         frames.push((0.0, terminal.backend().buffer().clone()));
 
         let progress_interval = (total_duration_ms / 20.0).max(1000.0);
@@ -1089,7 +1108,9 @@ impl App {
 
             if sim_time_ms >= next_frame_at {
                 replay::update_replay_elapsed_override(&mut self, sim_time_ms);
+                let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026h");
                 terminal.draw(|f| crate::tui::render_frame(f, &self))?;
+                let _ = std::io::Write::write_all(&mut std::io::stdout(), b"\x1b[?2026l");
                 frames.push((sim_time_ms / 1000.0, terminal.backend().buffer().clone()));
                 next_frame_at = sim_time_ms + frame_duration_ms;
             }

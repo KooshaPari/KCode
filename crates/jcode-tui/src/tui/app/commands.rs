@@ -441,7 +441,7 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
                         .filter(|path| path.is_dir())
                         .or_else(|| std::env::current_dir().ok())
                         .unwrap_or_else(|| std::path::PathBuf::from("."));
-                    let socket = std::env::var("JCODE_SOCKET").ok();
+                    let socket = std::env::var("KCODE_SOCKET").ok();
                     match super::spawn_in_new_terminal(
                         &exe,
                         &prepared.session_id,
@@ -1028,7 +1028,7 @@ pub(super) fn handle_log_command(app: &mut App, trimmed: &str) -> bool {
     let note_for_log = if note.is_empty() { "(none)" } else { note };
 
     crate::logging::info(&format!(
-        "JCODE_LOG_MARK id={} session={} provider={} model={} cwd={} note={}",
+        "KCODE_LOG_MARK id={} session={} provider={} model={} cwd={} note={}",
         marker_id,
         app.session.id,
         app.provider_name(),
@@ -1038,7 +1038,7 @@ pub(super) fn handle_log_command(app: &mut App, trimmed: &str) -> bool {
     ));
 
     let mut message = format!(
-        "Log mark written: {}\n\nAgents can search ~/.jcode/logs/ for JCODE_LOG_MARK or this marker id.",
+        "Log mark written: {}\n\nAgents can search ~/.kcode/logs/ for KCODE_LOG_MARK or this marker id.",
         marker_id
     );
     if !note.is_empty() {
@@ -1280,7 +1280,7 @@ Type your password into that SSH prompt if asked. Jcode will not see or store it
             profile.name,
             crate::ssh_remote::control_socket_path(&profile.name)
                 .map(|p| p.display().to_string())
-                .unwrap_or_else(|_| "~/.jcode/ssh-control/remote.sock".to_string()),
+                .unwrap_or_else(|_| "~/.kcode/ssh-control/remote.sock".to_string()),
             profile.ssh_target
         ))),
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
@@ -1801,7 +1801,7 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         let name = app.session.display_name().to_string();
         let msg = if let Some(ref lbl) = app.session.save_label {
             format!(
-                "📌 Session {} saved as \"{}\". It will appear at the top of /resume.",
+                "◈ Session {} saved as \"{}\". It will appear at the top of /resume.",
                 name, lbl,
             )
         } else {
@@ -1937,10 +1937,6 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
     }
 
     if handle_test_command(app, trimmed) {
-        return true;
-    }
-
-    if handle_disabled_mission_command(app, trimmed) {
         return true;
     }
 
@@ -2281,7 +2277,7 @@ pub(super) fn triage_launch_notice(interrupted: bool) -> String {
     if interrupted {
         "👉 Interrupting and starting GitHub issue triage...".to_string()
     } else {
-        "🚀 Starting GitHub issue triage...".to_string()
+        "▸ Starting GitHub issue triage...".to_string()
     }
 }
 
@@ -2327,7 +2323,7 @@ pub(super) fn commit_launch_notice(interrupted: bool) -> String {
     if interrupted {
         "👉 Interrupting and starting logical commits...".to_string()
     } else {
-        "🚀 Starting logical commits...".to_string()
+        "▸ Starting logical commits...".to_string()
     }
 }
 
@@ -2335,7 +2331,7 @@ pub(super) fn commit_push_launch_notice(interrupted: bool) -> String {
     if interrupted {
         "👉 Interrupting and starting logical commits + push...".to_string()
     } else {
-        "🚀 Starting logical commits + push...".to_string()
+        "▸ Starting logical commits + push...".to_string()
     }
 }
 
@@ -2343,7 +2339,7 @@ pub(super) fn fast_release_launch_notice(interrupted: bool) -> String {
     if interrupted {
         "👉 Interrupting and starting logical commits + push + fast local release...".to_string()
     } else {
-        "🚀 Starting logical commits + push + fast local release...".to_string()
+        "▸ Starting logical commits + push + fast local release...".to_string()
     }
 }
 
@@ -2351,7 +2347,7 @@ pub(super) fn fast_macos_release_launch_notice(interrupted: bool) -> String {
     if interrupted {
         "👉 Interrupting and starting logical commits + push + fast macOS release...".to_string()
     } else {
-        "🚀 Starting logical commits + push + fast macOS release...".to_string()
+        "▸ Starting logical commits + push + fast macOS release...".to_string()
     }
 }
 
@@ -2367,7 +2363,7 @@ pub(super) fn remote_release_launch_notice(interrupted: bool) -> String {
     if interrupted {
         "👉 Interrupting and starting logical commits + push + remote release...".to_string()
     } else {
-        "🚀 Starting logical commits + push + remote release...".to_string()
+        "▸ Starting logical commits + push + remote release...".to_string()
     }
 }
 
@@ -2524,7 +2520,7 @@ fn handle_selfdev_command(app: &mut App, trimmed: &str) -> bool {
                     "Created self-dev session {} but could not auto-open a supported terminal.\n\nRun manually:\n{}",
                     launch.session_id,
                     launch.command_preview().unwrap_or_else(|| format!(
-                        "jcode --resume {} self-dev",
+                        "kcode --resume {} self-dev",
                         launch.session_id
                     ))
                 )
@@ -2662,19 +2658,6 @@ pub(super) fn handle_goals_command(app: &mut App, trimmed: &str) -> bool {
         return true;
     }
 
-    true
-}
-
-pub(super) fn handle_disabled_mission_command(app: &mut App, trimmed: &str) -> bool {
-    if slash_command_rest(trimmed, "/mission").is_none()
-        && slash_command_rest(trimmed, "/goal").is_none()
-    {
-        return false;
-    }
-
-    app.push_display_message(DisplayMessage::system(
-        "The /mission and /goal commands are disabled in this build.".to_string(),
-    ));
     true
 }
 
@@ -2871,7 +2854,7 @@ pub(super) fn handle_dictation_command(app: &mut App, trimmed: &str) -> bool {
         let key = app.voice_input_key_label().unwrap_or("unbound").to_string();
         app.push_display_message(DisplayMessage::error(format!(
             "Usage: /voice (or {key}) starts recording, run it again to send, Esc cancels.\n\
-             Needs a Nari API key (NARI_API_KEY or ~/.config/jcode/nari.env)."
+             Needs a Nari API key (NARI_API_KEY or ~/.config/kcode/nari.env)."
         )));
         return true;
     }
@@ -2882,7 +2865,7 @@ pub(super) fn handle_dictation_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed.starts_with("/dictate ") || trimmed.starts_with("/dictation ") {
         app.push_display_message(DisplayMessage::error(
-            "Usage: /dictate\nConfigure [dictation] in ~/.jcode/config.toml to customize command, mode, hotkey, and timeout."
+            "Usage: /dictate\nConfigure [dictation] in ~/.kcode/config.toml to customize command, mode, hotkey, and timeout."
                 .to_string(),
         ));
         return true;
@@ -3086,7 +3069,7 @@ fn ensure_swarm_prompt_edit_path(
         Some(path) => PathBuf::from(path),
         None => std::env::current_dir()?,
     };
-    let project_path = project_dir.join(".jcode").join("swarm-prompt.md");
+    let project_path = project_dir.join(".kcode").join("swarm-prompt.md");
     if file_has_nonblank_content(&project_path) {
         return Ok(project_path);
     }
@@ -3538,7 +3521,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
                         app.push_display_message(DisplayMessage {
                             role: "system".to_string(),
                             content: format!(
-                                "{}\n\n⚠ Cannot compact: {}\n\
+                                "{}\n\n▲ Cannot compact: {}\n\
                                 Try /fix for emergency recovery.",
                                 status_msg, reason
                             ),
@@ -3553,7 +3536,7 @@ pub(super) fn handle_config_command(app: &mut App, trimmed: &str) -> bool {
             Err(_) => {
                 app.push_display_message(DisplayMessage {
                     role: "system".to_string(),
-                    content: "⚠ Cannot access compaction manager (lock held)".to_string(),
+                    content: "▲ Cannot access compaction manager (lock held)".to_string(),
                     tool_calls: vec![],
                     duration_secs: None,
                     title: None,

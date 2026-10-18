@@ -67,7 +67,7 @@ fn test_chatgpt_web_model_bypasses_live_api_catalog() {
     let _guard = jcode_base::storage::lock_test_env();
     jcode_base::auth::codex::set_active_account_override(Some("web-model-test".to_string()));
     jcode_base::provider::populate_account_models(vec!["gpt-5.6-sol".to_string()]);
-    let _model = EnvVarGuard::set("JCODE_OPENAI_MODEL", CHATGPT_WEB_MODEL);
+    let _model = EnvVarGuard::set("KCODE_OPENAI_MODEL", CHATGPT_WEB_MODEL);
 
     let provider = OpenAIProvider::new(CodexCredentials {
         access_token: "test".to_string(),
@@ -116,7 +116,7 @@ fn test_chatgpt_browser_only_runtime_rejects_api_models_and_uses_local_compactio
 #[test]
 fn test_chatgpt_web_model_environment_override_is_trimmed() {
     let _guard = jcode_base::storage::lock_test_env();
-    let _model = EnvVarGuard::set("JCODE_OPENAI_MODEL", "  gpt-5.6-pro[web]  ");
+    let _model = EnvVarGuard::set("KCODE_OPENAI_MODEL", "  gpt-5.6-pro[web]  ");
     let provider = OpenAIProvider::new(CodexCredentials {
         access_token: "test".to_string(),
         refresh_token: String::new(),
@@ -283,7 +283,7 @@ async fn test_set_model_clears_persistent_ws_state() {
 // process-global env access with other tests (see comment below).
 #[allow(clippy::await_holding_lock)]
 async fn test_switching_to_https_clears_persistent_ws_state() {
-    // Serialize with the tests that set JCODE_OPENAI_MODEL via EnvVarGuard:
+    // Serialize with the tests that set KCODE_OPENAI_MODEL via EnvVarGuard:
     // provider construction reads that process-global env var, so an
     // unsynchronized overlap can construct this provider pinned to the
     // browser-only web model and fail the HTTPS transport switch below.
@@ -409,7 +409,7 @@ fn openai_catalog_and_chat_endpoints_agree_on_credential_shape() {
 #[test]
 fn responses_url_honors_api_base_override_in_api_key_mode() {
     let _guard = jcode_base::storage::lock_test_env();
-    let _b = EnvVarGuard::remove("JCODE_OPENAI_API_BASE");
+    let _b = EnvVarGuard::remove("KCODE_OPENAI_API_BASE");
     let _c = EnvVarGuard::remove("OPENAI_BASE_URL");
     let _d = EnvVarGuard::remove("OPENAI_API_BASE");
 
@@ -428,7 +428,7 @@ fn responses_url_honors_api_base_override_in_api_key_mode() {
     );
 
     // Override is applied (and a trailing slash is tolerated).
-    let _override = EnvVarGuard::set("JCODE_OPENAI_API_BASE", "http://127.0.0.1:8317/v1/");
+    let _override = EnvVarGuard::set("KCODE_OPENAI_API_BASE", "http://127.0.0.1:8317/v1/");
     assert_eq!(
         OpenAIProvider::responses_url(&api_key_creds),
         "http://127.0.0.1:8317/v1/responses",
@@ -448,7 +448,7 @@ fn responses_url_honors_api_base_override_in_api_key_mode() {
 #[test]
 fn responses_url_ignores_override_in_chatgpt_mode() {
     let _guard = jcode_base::storage::lock_test_env();
-    let _override = EnvVarGuard::set("JCODE_OPENAI_API_BASE", "http://127.0.0.1:8317/v1");
+    let _override = EnvVarGuard::set("KCODE_OPENAI_API_BASE", "http://127.0.0.1:8317/v1");
 
     let oauth_creds = CodexCredentials {
         access_token: "oauth-access".to_string(),
@@ -467,25 +467,25 @@ fn responses_url_ignores_override_in_chatgpt_mode() {
 #[test]
 fn resolve_api_base_precedence_and_validation() {
     let _guard = jcode_base::storage::lock_test_env();
-    let _a = EnvVarGuard::remove("JCODE_OPENAI_API_BASE");
+    let _a = EnvVarGuard::remove("KCODE_OPENAI_API_BASE");
     let _b = EnvVarGuard::remove("OPENAI_BASE_URL");
     let _c = EnvVarGuard::remove("OPENAI_API_BASE");
 
     // Default.
     assert_eq!(OpenAIProvider::resolve_api_base(), OPENAI_API_BASE);
 
-    // JCODE_OPENAI_API_BASE wins over OPENAI_BASE_URL / OPENAI_API_BASE.
+    // KCODE_OPENAI_API_BASE wins over OPENAI_BASE_URL / OPENAI_API_BASE.
     let _p1 = EnvVarGuard::set("OPENAI_API_BASE", "https://c.example/v1");
     let _p2 = EnvVarGuard::set("OPENAI_BASE_URL", "https://b.example/v1");
-    let _p3 = EnvVarGuard::set("JCODE_OPENAI_API_BASE", "https://a.example/v1");
+    let _p3 = EnvVarGuard::set("KCODE_OPENAI_API_BASE", "https://a.example/v1");
     assert_eq!(OpenAIProvider::resolve_api_base(), "https://a.example/v1");
 
     // A trailing /responses is trimmed so callers don't double it.
-    let _p4 = EnvVarGuard::set("JCODE_OPENAI_API_BASE", "https://a.example/v1/responses");
+    let _p4 = EnvVarGuard::set("KCODE_OPENAI_API_BASE", "https://a.example/v1/responses");
     assert_eq!(OpenAIProvider::resolve_api_base(), "https://a.example/v1");
 
     // Non-URL values are ignored, falling through to the next candidate.
-    let _p5 = EnvVarGuard::set("JCODE_OPENAI_API_BASE", "not-a-url");
+    let _p5 = EnvVarGuard::set("KCODE_OPENAI_API_BASE", "not-a-url");
     assert_eq!(OpenAIProvider::resolve_api_base(), "https://b.example/v1");
 }
 
@@ -550,7 +550,7 @@ fn oauth_creds() -> CodexCredentials {
 fn oauth_catalog_refresh_does_not_clobber_api_key_catalog() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().unwrap();
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     jcode_base::auth::codex::set_active_account_override(Some("split-scope".to_string()));
 
     let api = OpenAIProvider::new(api_key_creds("sk-split-scope-test"));

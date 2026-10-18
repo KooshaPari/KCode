@@ -7,7 +7,7 @@ use crate::tui::app::remote::swarm_plan_core::RemoteSwarmPlanSnapshot;
 use crate::tui::app::remote::swarm_status_core::swarm_status_transition_notice;
 
 fn allow_runtime_identity_mismatch() -> bool {
-    std::env::var_os("JCODE_ALLOW_SERVER_VERSION_MISMATCH").is_some()
+    std::env::var_os("KCODE_ALLOW_SERVER_VERSION_MISMATCH").is_some()
 }
 
 /// Parse a jcode version string into an orderable `(major, minor, patch)`, but
@@ -109,7 +109,7 @@ fn should_defer_history_for_runtime_identity_with_allow(
 /// unorderable and short-circuit the comparison).
 fn client_release_version() -> String {
     if (cfg!(test) || cfg!(debug_assertions))
-        && let Some(v) = std::env::var_os("JCODE_TEST_CLIENT_VERSION_OVERRIDE")
+        && let Some(v) = std::env::var_os("KCODE_TEST_CLIENT_VERSION_OVERRIDE")
     {
         return v.to_string_lossy().into_owned();
     }
@@ -1506,7 +1506,7 @@ pub(in crate::tui::app) fn handle_server_event(
             }
         }
         ServerEvent::Reloading { .. } => {
-            app.append_reload_message("🔄 Server reload initiated...");
+            app.append_reload_message("⟳ Server reload initiated...");
             // In-process server reloads (self-dev build-reload) keep the same
             // server PID and never disconnect this client, so the reconnect-time
             // client re-exec never fires. If a newer client binary is on disk and
@@ -1642,7 +1642,7 @@ pub(in crate::tui::app) fn handle_server_event(
                         "Connected server is an older release; reloading it before attach",
                     );
                     app.push_display_message(DisplayMessage::system(format!(
-                        "ℹ Connected server is running an older release ({}) than this client ({}). Reloading it before applying session state. If reload does not take, run `jcode server stop` and relaunch. Set JCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing.",
+                        "ℹ Connected server is running an older release ({}) than this client ({}). Reloading it before applying session state. If reload does not take, run `jcode server stop` and relaunch. Set KCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing.",
                         app.remote_server_version.as_deref().unwrap_or("unknown"),
                         jcode_build_meta::version(),
                     )));
@@ -1651,7 +1651,7 @@ pub(in crate::tui::app) fn handle_server_event(
                         "Server/runtime mismatch detected; reloading server before attach",
                     );
                     app.push_display_message(DisplayMessage::system(
-                        "ℹ Connected server binary differs from the installed client channel. Reloading the server before applying remote session state. Set JCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing."
+                        "ℹ Connected server binary differs from the installed client channel. Reloading the server before applying remote session state. Set KCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing."
                             .to_string(),
                     ));
                 }
@@ -2890,7 +2890,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 .filter(|path| path.is_dir())
                 .or_else(|| std::env::current_dir().ok())
                 .unwrap_or_else(|| std::path::PathBuf::from("."));
-            let socket = std::env::var("JCODE_SOCKET").ok();
+            let socket = std::env::var("KCODE_SOCKET").ok();
             match spawn_in_new_terminal(&exe, &new_session_id, &cwd, socket.as_deref()) {
                 Ok(true) => {
                     if let Some(label) = split_label.as_deref() {

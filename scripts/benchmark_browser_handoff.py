@@ -281,12 +281,12 @@ def terminate(process):
 def environment(runtime, mode="normal"):
     env = dict(os.environ)
     # Retain normal credentials/config, but do not inherit another agent's routing.
-    for key in ('JCODE_SOCKET', 'JCODE_SESSION_ID', 'JCODE_PARENT_SESSION_ID'):
+    for key in ('KCODE_SOCKET', 'KCODE_SESSION_ID', 'KCODE_PARENT_SESSION_ID'):
         env.pop(key, None)
-    env['JCODE_RUNTIME_DIR'] = str(runtime)
-    env['JCODE_BROWSER_HANDOFF_DISABLED'] = '1' if mode == 'direct' else '0'
+    env['KCODE_RUNTIME_DIR'] = str(runtime)
+    env['KCODE_BROWSER_HANDOFF_DISABLED'] = '1' if mode == 'direct' else '0'
     # Readiness uses server:info, which is gated even in an isolated home.
-    env['JCODE_DEBUG_CONTROL'] = '1'
+    env['KCODE_DEBUG_CONTROL'] = '1'
     return env
 
 
@@ -460,7 +460,7 @@ def self_test():
         sample = {'browser_calls': [dict(call, handoff_status=status, handoff_executed_steps=steps, error=error)]}
         assert handoff_metrics(sample)['handoff_effective'] == effective
     assert not extract_trace('{"type":"text_delta","text":"handoff"}')['browser_calls']
-    assert environment(Path('/isolated-runtime'))['JCODE_DEBUG_CONTROL'] == '1'
+    assert environment(Path('/isolated-runtime'))['KCODE_DEBUG_CONTROL'] == '1'
     assert summarize([])['median_direct_over_handoff_ratio'] is None
     normal = {'pair': 1, 'mode': 'normal', 'valid_success': True,
               'handoff_used': True, 'handoff_effective': True, 'elapsed_seconds': 2}
@@ -470,8 +470,8 @@ def self_test():
     assert summarize([normal, dict(direct, valid_success=False)])['eligible_speed_pairs'] == 0
     assert summarize([dict(normal, handoff_used=False), direct])['eligible_speed_pairs'] == 0
     assert summarize([dict(normal, handoff_effective=False), direct])['eligible_speed_pairs'] == 0
-    assert environment(Path('/isolated-runtime'), 'direct')['JCODE_BROWSER_HANDOFF_DISABLED'] == '1'
-    assert environment(Path('/isolated-runtime'), 'jev')['JCODE_BROWSER_HANDOFF_DISABLED'] == '0'
+    assert environment(Path('/isolated-runtime'), 'direct')['KCODE_BROWSER_HANDOFF_DISABLED'] == '1'
+    assert environment(Path('/isolated-runtime'), 'jev')['KCODE_BROWSER_HANDOFF_DISABLED'] == '0'
     assert timing_fields({'action_trace': [{'duration_ms': 12}], 'timing': {'total_ms': 40}}) == {
         'action_trace[0].duration_ms': 12, 'timing': {'total_ms': 40}}
     telemetry = extract_trace('\n'.join(json.dumps(e) for e in [
@@ -567,7 +567,7 @@ _TAB_LOCK = None
 
 
 def bridge_call(action, tab_id, **params):
-    bridge = Path(os.environ['JCODE_HOME']) / 'browser/browser'
+    bridge = Path(os.environ['KCODE_HOME']) / 'browser/browser'
     probe = subprocess.run([str(bridge), action, json.dumps(dict(params, tabId=tab_id))],
                            capture_output=True, text=True, timeout=20, check=True)
     return json.loads(probe.stdout)
@@ -620,9 +620,9 @@ def main():
     if args.trials < 1 or args.timeout <= 0:
         parser.error('--trials and --timeout must be positive')
     isolated_home = args.jcode_home.resolve(strict=True)
-    if not isolated_home.is_dir() or isolated_home == (Path.home() / '.jcode').resolve():
-        parser.error('--jcode-home must be a prepared isolated directory, not ~/.jcode')
-    os.environ['JCODE_HOME'] = str(isolated_home)
+    if not isolated_home.is_dir() or isolated_home == (Path.home() / '.kcode').resolve():
+        parser.error('--jcode-home must be a prepared isolated directory, not ~/.kcode')
+    os.environ['KCODE_HOME'] = str(isolated_home)
     guard_tab(args.tab_id)
     args.binary = str(Path(args.binary).resolve(strict=True))
     args.output = args.output.resolve()
@@ -632,7 +632,7 @@ def main():
                 'pairs_per_task_phase': args.trials, 'tasks': args.tasks, 'phase': args.phase, 'arm': args.arm, 'expected_handoff_provider': args.expected_handoff_provider, 'timing': 'run process start through process exit, daemon startup excluded'}
     (args.output / 'metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
     # Short private runtime path avoids Unix socket path limits. Do not alter shared daemon.
-    with tempfile.TemporaryDirectory(prefix='jbh-', dir=os.environ.get('JCODE_SCRATCH_DIR', '/tmp')) as directory:
+    with tempfile.TemporaryDirectory(prefix='jbh-', dir=os.environ.get('KCODE_SCRATCH_DIR', '/tmp')) as directory:
         runtime = Path(directory)
         fixture = Fixture()
         results = []

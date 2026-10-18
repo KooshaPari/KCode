@@ -6,11 +6,11 @@ struct TestEnvironment(Vec<(&'static str, Option<std::ffi::OsString>)>);
 impl TestEnvironment {
     fn new(home: &std::path::Path) -> Self {
         let keys = [
-            "JCODE_HOME",
-            "JCODE_TOOLS",
-            "JCODE_DISABLED_TOOLS",
-            "JCODE_TOOL_PROFILE",
-            "JCODE_DISABLE_BASE_TOOLS",
+            "KCODE_HOME",
+            "KCODE_TOOLS",
+            "KCODE_DISABLED_TOOLS",
+            "KCODE_TOOL_PROFILE",
+            "KCODE_DISABLE_BASE_TOOLS",
         ];
         let saved = keys
             .iter()
@@ -19,7 +19,7 @@ impl TestEnvironment {
         for key in keys {
             crate::env::remove_var(key);
         }
-        crate::env::set_var("JCODE_HOME", home);
+        crate::env::set_var("KCODE_HOME", home);
         crate::config::Config::invalidate_cache();
         Self(saved)
     }
@@ -43,12 +43,12 @@ fn checkout(root: &std::path::Path) -> std::path::PathBuf {
     std::fs::create_dir_all(repo.join("crates/jcode-desktop-ui/src")).unwrap();
     std::fs::write(
         repo.join("Cargo.toml"),
-        "[package]\nname = \"jcode-desktop\"\nversion = \"0.1.0\"\n",
+        "[package]\nname = \"kcode-desktop\"\nversion = \"0.1.0\"\n",
     )
     .unwrap();
     std::fs::write(
         repo.join("crates/jcode-desktop-ui/Cargo.toml"),
-        "[package]\nname = \"jcode-desktop-ui\"\nversion = \"0.1.0\"\n",
+        "[package]\nname = \"kcode-desktop-ui\"\nversion = \"0.1.0\"\n",
     )
     .unwrap();
     repo

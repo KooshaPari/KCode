@@ -21,7 +21,7 @@ mod callback;
 pub struct AuthOptions {
     /// Trusted local executable. No shell is used.
     pub binary: PathBuf,
-    /// Credential home. None inherits the current JCODE_HOME/default home.
+    /// Credential home. None inherits the current KCODE_HOME/default home.
     pub jcode_home: Option<PathBuf>,
     /// Native daemon socket, NOT the harness API socket.
     pub socket: Option<PathBuf>,
@@ -32,9 +32,9 @@ pub struct AuthOptions {
 impl Default for AuthOptions {
     fn default() -> Self {
         Self {
-            binary: std::env::var_os("JCODE_BIN")
+            binary: std::env::var_os("KCODE_BIN")
                 .map(PathBuf::from)
-                .unwrap_or_else(|| "jcode".into()),
+                .unwrap_or_else(|| "kcode".into()),
             jcode_home: None,
             socket: None,
             timeout: Duration::from_secs(900),
@@ -211,6 +211,10 @@ fn failed(message: &'static str) -> Error {
 fn cancelled() -> Error {
     failed("Login cancelled. Already issued credentials are not revoked.")
 }
+/// Convert a poisoned mutex into a transport error instead of panicking.
+fn locked<T>(guard: std::sync::LockResult<T>) -> Result<T> {
+    guard.map_err(|_| failed("internal state lock poisoned"))
+}
 
 fn parse_login_response(bytes: &[u8], operation: Operation) -> Result<serde_json::Value> {
     if let Ok(value) = serde_json::from_slice(bytes) {
@@ -275,7 +279,7 @@ fn callback_provider_error(input: &str) -> Option<Error> {
 
 impl AuthFlow {
     pub fn start(&self) -> Result<AuthPrompt> {
-        let mut state = self.0.state.lock().unwrap();
+        let mut state = locked(self.0.state.lock())?;
         if !matches!(*state, State::Created) {
             return Err(invalid("Login was already started"));
         }
@@ -389,7 +393,7 @@ impl AuthFlow {
                 "Login input must be a non-empty single line of at most 16 KiB",
             ));
         }
-        let mut state = self.0.state.lock().unwrap();
+        let mut state = locked(self.0.state.lock())?;
         let State::Pending(kind) = *state else {
             return Err(invalid("Login is not awaiting completion"));
         };
@@ -433,7 +437,7 @@ impl AuthFlow {
         self.0.cancelled.store(true, Ordering::Release);
         self.0.close_callback();
         self.0.kill_child();
-        let _state = self.0.state.lock().unwrap();
+        let _state = self.0.state.lock().unwrap_or_else(|e| e.into_inner());
         self.0.close_callback();
         let (value, success) = self.0.execute(Operation::Cancel, None)?;
         if !success || value["status"] != "cancelled" {
@@ -473,6 +477,7 @@ impl FlowInner {
         let _ = rx.recv_timeout(Duration::from_secs(1));
     }
 
+    #[allow(clippy::collapsible_if)]
     fn command(&self, operation: Operation) -> Command {
         let mut command = Command::new(&self.options.binary);
         command.args(["--no-update", "--no-selfdev"]);
@@ -480,7 +485,7 @@ impl FlowInner {
             command.arg("--socket").arg(socket);
         }
         if let Some(home) = &self.options.jcode_home {
-            command.env("JCODE_HOME", home);
+            command.env("KCODE_HOME", home);
         }
         command.args([
             "login",
@@ -508,7 +513,14 @@ impl FlowInner {
     }
 
     fn kill_child(&self) {
-        if let Some(child) = self.child.lock().unwrap().as_mut() {
+        // Recovery from a poisoned mutex is correct here: cleanup should proceed
+        // even if another thread panicked while holding the lock.
+        if let Some(child) = self
+            .child
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_mut()
+        {
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -595,12 +607,9 @@ impl FlowInner {
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 if status.is_none() {
-                    status = self
-                        .child
-                        .lock()
-                        .unwrap()
+                    status = locked(self.child.lock())?
                         .as_mut()
-                        .unwrap()
+                        .ok_or_else(|| failed("child process missing"))?
                         .try_wait()
                         .map_err(|_| failed("Could not wait for login process"))?;
                 }
@@ -626,7 +635,9 @@ impl FlowInner {
         if result.is_err() {
             self.kill_child();
         }
-        self.child.lock().unwrap().take();
+        // Poisoned mutexes are recovered silently here: nothing else cares
+        // about the child's stored handle after this point.
+        drop(self.child.lock().map(|mut c| c.take()));
         result
     }
 }

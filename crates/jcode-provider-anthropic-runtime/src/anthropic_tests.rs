@@ -37,7 +37,7 @@ fn direct_api_url_supports_standard_and_profile_overrides() {
     assert_eq!(direct_api_url(), "https://proxy.example/v1/messages");
 
     let _profile = EnvVarGuard::set(
-        "JCODE_ANTHROPIC_API_BASE",
+        "KCODE_ANTHROPIC_API_BASE",
         "https://gateway.example/anthropic/v1/messages",
     );
     assert_eq!(
@@ -50,14 +50,14 @@ fn direct_api_url_supports_standard_and_profile_overrides() {
 fn configured_direct_headers_parse_and_reject_invalid_values() {
     let _lock = jcode_base::storage::lock_test_env();
     let _headers = EnvVarGuard::set(
-        "JCODE_ANTHROPIC_HEADERS",
+        "KCODE_ANTHROPIC_HEADERS",
         r#"{"x-tenant":"alpha","x-route":"claude"}"#,
     );
     let parsed = configured_direct_headers().expect("valid custom headers");
     assert_eq!(parsed.get("x-tenant").unwrap(), "alpha");
     assert_eq!(parsed.get("x-route").unwrap(), "claude");
 
-    let _invalid = EnvVarGuard::set("JCODE_ANTHROPIC_HEADERS", r#"{"bad header":"x"}"#);
+    let _invalid = EnvVarGuard::set("KCODE_ANTHROPIC_HEADERS", r#"{"bad header":"x"}"#);
     assert!(configured_direct_headers().is_err());
 }
 
@@ -67,20 +67,20 @@ fn anthropic_auth_token_selects_bearer_without_affecting_explicit_profile_auth()
     let _token = EnvVarGuard::set("ANTHROPIC_AUTH_TOKEN", "gateway-token");
     assert_eq!(direct_auth_mode(), "bearer");
 
-    let _explicit = EnvVarGuard::set("JCODE_ANTHROPIC_AUTH", "header");
+    let _explicit = EnvVarGuard::set("KCODE_ANTHROPIC_AUTH", "header");
     assert_eq!(direct_auth_mode(), "header");
 }
 
 #[test]
 fn named_profile_runtime_captures_transport_and_credential_immutably() {
     let _lock = jcode_base::storage::lock_test_env();
-    let _base = EnvVarGuard::set("JCODE_ANTHROPIC_API_BASE", "https://one.example/v1");
-    let _auth = EnvVarGuard::set("JCODE_ANTHROPIC_AUTH", "bearer");
-    let _key_name = EnvVarGuard::set("JCODE_ANTHROPIC_API_KEY_NAME", "PROFILE_ONE_KEY");
+    let _base = EnvVarGuard::set("KCODE_ANTHROPIC_API_BASE", "https://one.example/v1");
+    let _auth = EnvVarGuard::set("KCODE_ANTHROPIC_AUTH", "bearer");
+    let _key_name = EnvVarGuard::set("KCODE_ANTHROPIC_API_KEY_NAME", "PROFILE_ONE_KEY");
     let _key = EnvVarGuard::set("PROFILE_ONE_KEY", "one-secret");
     let provider = AnthropicProvider::new();
 
-    let _changed_base = EnvVarGuard::set("JCODE_ANTHROPIC_API_BASE", "https://two.example/v1");
+    let _changed_base = EnvVarGuard::set("KCODE_ANTHROPIC_API_BASE", "https://two.example/v1");
     let _changed_key = EnvVarGuard::set("PROFILE_ONE_KEY", "two-secret");
     assert_eq!(
         provider.direct_transport.api_url,
@@ -97,7 +97,7 @@ fn named_profile_runtime_captures_transport_and_credential_immutably() {
 fn named_anthropic_profile_accepts_its_configured_custom_model() {
     let _lock = jcode_base::storage::lock_test_env();
     let _home = tempfile::TempDir::new().expect("temp home");
-    let _home_guard = EnvVarGuard::set("JCODE_HOME", _home.path());
+    let _home_guard = EnvVarGuard::set("KCODE_HOME", _home.path());
     std::fs::write(
         _home.path().join("config.toml"),
         r#"
@@ -109,7 +109,7 @@ fn named_anthropic_profile_accepts_its_configured_custom_model() {
     )
     .expect("write config");
     jcode_base::config::Config::invalidate_cache();
-    let _profile = EnvVarGuard::set("JCODE_NAMED_PROVIDER_PROFILE", "custom");
+    let _profile = EnvVarGuard::set("KCODE_NAMED_PROVIDER_PROFILE", "custom");
     let models = active_anthropic_profile_models().expect("active profile models");
     assert!(models.iter().any(|model| model == "claude-private"));
     assert!(!models.iter().any(|model| model == "not-configured"));
@@ -764,30 +764,30 @@ fn test_anthropic_signed_thinking_replayed_in_request_blocks() {
 }
 
 #[tokio::test]
-#[ignore = "live smoke: requires ANTHROPIC_API_KEY, or set JCODE_LIVE_ANTHROPIC_ALLOW_OAUTH=1 to use Claude OAuth credentials"]
+#[ignore = "live smoke: requires ANTHROPIC_API_KEY, or set KCODE_LIVE_ANTHROPIC_ALLOW_OAUTH=1 to use Claude OAuth credentials"]
 async fn live_anthropic_reasoning_smoke() -> Result<()> {
     let _env_lock = jcode_base::storage::lock_test_env();
     let using_api_key = std::env::var_os("ANTHROPIC_API_KEY").is_some();
-    let allow_oauth = std::env::var_os("JCODE_LIVE_ANTHROPIC_ALLOW_OAUTH").is_some();
+    let allow_oauth = std::env::var_os("KCODE_LIVE_ANTHROPIC_ALLOW_OAUTH").is_some();
     if !using_api_key && !allow_oauth {
         eprintln!(
-            "skipping live Anthropic smoke: set ANTHROPIC_API_KEY or JCODE_LIVE_ANTHROPIC_ALLOW_OAUTH=1"
+            "skipping live Anthropic smoke: set ANTHROPIC_API_KEY or KCODE_LIVE_ANTHROPIC_ALLOW_OAUTH=1"
         );
         return Ok(());
     }
 
-    let _max_tokens = EnvVarGuard::set_if_missing("JCODE_ANTHROPIC_MAX_TOKENS", "2048");
-    let model = std::env::var("JCODE_LIVE_ANTHROPIC_MODEL")
-        .or_else(|_| std::env::var("JCODE_ANTHROPIC_MODEL"))
+    let _max_tokens = EnvVarGuard::set_if_missing("KCODE_ANTHROPIC_MAX_TOKENS", "2048");
+    let model = std::env::var("KCODE_LIVE_ANTHROPIC_MODEL")
+        .or_else(|_| std::env::var("KCODE_ANTHROPIC_MODEL"))
         .unwrap_or_else(|_| "claude-sonnet-4-6".to_string());
-    let effort = std::env::var("JCODE_LIVE_ANTHROPIC_REASONING_EFFORT")
+    let effort = std::env::var("KCODE_LIVE_ANTHROPIC_REASONING_EFFORT")
         .unwrap_or_else(|_| "low".to_string());
-    let prompt = std::env::var("JCODE_LIVE_ANTHROPIC_PROMPT")
+    let prompt = std::env::var("KCODE_LIVE_ANTHROPIC_PROMPT")
         .unwrap_or_else(|_| "Live smoke test: answer exactly OK.".to_string());
-    let system = std::env::var("JCODE_LIVE_ANTHROPIC_SYSTEM").unwrap_or_else(|_| {
+    let system = std::env::var("KCODE_LIVE_ANTHROPIC_SYSTEM").unwrap_or_else(|_| {
         "You are a live provider smoke test. Keep the answer tiny.".to_string()
     });
-    let require_thinking = std::env::var_os("JCODE_LIVE_ANTHROPIC_REQUIRE_THINKING").is_some();
+    let require_thinking = std::env::var_os("KCODE_LIVE_ANTHROPIC_REQUIRE_THINKING").is_some();
 
     let provider = AnthropicProvider::new();
     provider.set_model(&model)?;
@@ -824,7 +824,7 @@ async fn live_anthropic_reasoning_smoke() -> Result<()> {
     if require_thinking {
         assert!(
             thinking_bytes > 0,
-            "live Anthropic response did not include thinking deltas despite JCODE_LIVE_ANTHROPIC_REQUIRE_THINKING"
+            "live Anthropic response did not include thinking deltas despite KCODE_LIVE_ANTHROPIC_REQUIRE_THINKING"
         );
     }
     Ok(())
@@ -1799,16 +1799,16 @@ async fn test_sanitize_dangling_tool_ids_with_dots() {
 #[test]
 fn credential_mode_runtime_provider_identity_round_trips() {
     let _guard = jcode_base::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_RUNTIME_PROVIDER");
+    let previous = std::env::var_os("KCODE_RUNTIME_PROVIDER");
 
-    jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", "claude");
+    jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", "claude");
     assert_eq!(
         AnthropicCredentialMode::from_runtime_env(jcode_provider_core::DualAuthProvider::Anthropic),
         AnthropicCredentialMode::OAuth,
         "OAuth selection must surface as the OAuth runtime identity"
     );
 
-    jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", "claude-api");
+    jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", "claude-api");
     assert_eq!(
         AnthropicCredentialMode::from_runtime_env(jcode_provider_core::DualAuthProvider::Anthropic),
         AnthropicCredentialMode::ApiKey,
@@ -1816,8 +1816,8 @@ fn credential_mode_runtime_provider_identity_round_trips() {
     );
 
     match previous {
-        Some(value) => jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", value),
-        None => jcode_base::env::remove_var("JCODE_RUNTIME_PROVIDER"),
+        Some(value) => jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", value),
+        None => jcode_base::env::remove_var("KCODE_RUNTIME_PROVIDER"),
     }
 }
 
@@ -1825,9 +1825,9 @@ fn credential_mode_runtime_provider_identity_round_trips() {
 async fn auto_mode_falls_back_to_api_key_when_oauth_is_expired() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().unwrap();
-    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
     let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "test-anthropic-api-key");
-    let _runtime = EnvVarGuard::set("JCODE_RUNTIME_PROVIDER", "auto");
+    let _runtime = EnvVarGuard::set("KCODE_RUNTIME_PROVIDER", "auto");
 
     jcode_base::auth::claude::upsert_account(jcode_base::auth::claude::AnthropicAccount {
         label: "claude-1".to_string(),
@@ -1858,9 +1858,9 @@ async fn auto_mode_falls_back_to_api_key_when_oauth_is_expired() {
 async fn explicit_oauth_mode_does_not_silently_fall_back_to_api_key() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().unwrap();
-    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
     let _api_key = EnvVarGuard::set("ANTHROPIC_API_KEY", "test-anthropic-api-key");
-    let _runtime = EnvVarGuard::set("JCODE_RUNTIME_PROVIDER", "claude");
+    let _runtime = EnvVarGuard::set("KCODE_RUNTIME_PROVIDER", "claude");
 
     jcode_base::auth::claude::upsert_account(jcode_base::auth::claude::AnthropicAccount {
         label: "claude-1".to_string(),
@@ -2340,16 +2340,16 @@ fn configured_swarm_root_effort_controls_adaptive_and_manual_thinking() {
 fn configured_swarm_root_effort_reads_real_config() {
     // Run this single test in a child process so changing config cannot race
     // other provider tests or reuse an already-initialized global config cache.
-    if std::env::var_os("JCODE_TEST_SWARM_ROOT_CHILD").is_none() {
+    if std::env::var_os("KCODE_TEST_SWARM_ROOT_CHILD").is_none() {
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
                 std::thread::current().name().unwrap(),
                 "--nocapture",
             ])
-            .env("JCODE_TEST_SWARM_ROOT_CHILD", "1")
-            .env("JCODE_SWARM_ROOT_EFFORT", "low")
-            .env("JCODE_SWARM_DEEP_ROOT_EFFORT", "none")
+            .env("KCODE_TEST_SWARM_ROOT_CHILD", "1")
+            .env("KCODE_SWARM_ROOT_EFFORT", "low")
+            .env("KCODE_SWARM_DEEP_ROOT_EFFORT", "none")
             .output()
             .expect("run isolated config test");
         assert!(

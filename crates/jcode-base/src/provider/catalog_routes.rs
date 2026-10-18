@@ -268,7 +268,7 @@ pub(super) fn multiprovider_model_routes(provider: &MultiProvider) -> Vec<ModelR
     }
 
     let total_ms = routes_started.elapsed().as_millis();
-    if total_ms >= 250 || std::env::var("JCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
+    if total_ms >= 250 || std::env::var("KCODE_LOG_MODEL_PICKER_TIMING").is_ok() {
         crate::logging::info(&format!(
             "[TIMING] model_routes: routes={}, openrouter_configured={}, openrouter_models={}, openrouter_endpoint_cache_hits={}, openrouter_endpoint_routes={}, openrouter_scheduled_endpoint_refreshes={}, total={}ms",
             routes.len(),
@@ -885,15 +885,15 @@ pub fn remote_model_routes_fallback(
     remote_available_entries: &[String],
 ) -> Vec<ModelRoute> {
     if remote_provider_name.is_some_and(|name| {
-        name.eq_ignore_ascii_case(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME)
+        name.eq_ignore_ascii_case(crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME)
     }) {
         return remote_available_entries
             .iter()
             .filter(|model| is_listable_model_name(model))
             .map(|model| ModelRoute {
                 model: model.clone(),
-                provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+                provider: crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+                api_method: crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
                 available: true,
                 detail: "jcode subscription routing · managed server-side".to_string(),
                 usage: None,
@@ -1090,7 +1090,7 @@ pub fn remote_model_routes_lightweight_fallback(
     current_model: &str,
 ) -> Vec<ModelRoute> {
     let is_jcode_subscription = remote_provider_name.is_some_and(|name| {
-        name.eq_ignore_ascii_case(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME)
+        name.eq_ignore_ascii_case(crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME)
     });
     let provider = remote_provider_name
         .map(str::to_string)
@@ -1104,7 +1104,7 @@ pub fn remote_model_routes_lightweight_fallback(
             model: model.clone(),
             provider: provider.clone(),
             api_method: if is_jcode_subscription {
-                crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string()
+                crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string()
             } else {
                 "remote-catalog".to_string()
             },
@@ -1318,10 +1318,10 @@ mod tests {
             let lock = crate::storage::lock_test_env();
             let temp = tempfile::tempdir().expect("tempdir");
             let vars = vec![
-                ("JCODE_HOME", std::env::var_os("JCODE_HOME")),
+                ("KCODE_HOME", std::env::var_os("KCODE_HOME")),
                 ("OPENCODE_API_KEY", std::env::var_os("OPENCODE_API_KEY")),
             ];
-            crate::env::set_var("JCODE_HOME", temp.path());
+            crate::env::set_var("KCODE_HOME", temp.path());
             crate::env::set_var("OPENCODE_API_KEY", "sk-test-opencode");
             Self {
                 vars,
@@ -1331,7 +1331,7 @@ mod tests {
         }
 
         fn save_opencode_cache(&self, source_api_base: &str, model_ids: &[&str]) {
-            let jcode_home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME set");
+            let jcode_home = std::env::var_os("KCODE_HOME").expect("KCODE_HOME set");
             let cache_dir = std::path::PathBuf::from(jcode_home).join("cache");
             std::fs::create_dir_all(&cache_dir).expect("create cache dir");
             let cache = jcode_provider_openrouter::DiskCache {
@@ -1449,9 +1449,9 @@ mod tests {
         for key in [
             "ANTHROPIC_API_KEY",
             "ANTHROPIC_AUTH_TOKEN",
-            "JCODE_ANTHROPIC_AUTH",
-            "JCODE_ANTHROPIC_API_KEY_NAME",
-            "JCODE_ANTHROPIC_ENV_FILE",
+            "KCODE_ANTHROPIC_AUTH",
+            "KCODE_ANTHROPIC_API_KEY_NAME",
+            "KCODE_ANTHROPIC_ENV_FILE",
         ] {
             guard.vars.push((key, std::env::var_os(key)));
             crate::env::remove_var(key);
@@ -1516,7 +1516,7 @@ mod tests {
     #[test]
     fn custom_config_profile_model_is_routed_and_not_offered_a_copilot_route() {
         let _guard = EnvGuard::new();
-        let jcode_home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME set");
+        let jcode_home = std::env::var_os("KCODE_HOME").expect("KCODE_HOME set");
         std::fs::write(
             std::path::PathBuf::from(jcode_home).join("config.toml"),
             "[providers.omlx]\ntype = \"openai-compatible\"\nbase_url = \"http://127.0.0.1:18000/v1\"\ndefault_model = \"KAT-Coder-V2.5-Dev-OptiQ-4bit\"\n",
@@ -1558,7 +1558,7 @@ mod tests {
     #[test]
     fn custom_config_profile_model_never_gets_a_copilot_route_from_either_source() {
         let _guard = EnvGuard::new();
-        let jcode_home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME set");
+        let jcode_home = std::env::var_os("KCODE_HOME").expect("KCODE_HOME set");
         std::fs::write(
             std::path::PathBuf::from(jcode_home).join("config.toml"),
             "[providers.omlx]\ntype = \"openai-compatible\"\nbase_url = \"http://127.0.0.1:18000/v1\"\ndefault_model = \"KAT-Coder-V2.5-Dev-OptiQ-4bit\"\n",
@@ -1666,12 +1666,12 @@ mod tests {
     }
 
     fn save_openrouter_catalog_cache(model_ids: &[&str]) {
-        let jcode_home = std::env::var_os("JCODE_HOME").expect("JCODE_HOME set");
+        let jcode_home = std::env::var_os("KCODE_HOME").expect("KCODE_HOME set");
         let cache_dir = std::path::PathBuf::from(jcode_home).join("cache");
         std::fs::create_dir_all(&cache_dir).expect("create cache dir");
         let cache = jcode_provider_openrouter::DiskCache {
             cached_at: jcode_provider_openrouter::current_unix_secs().expect("current unix time"),
-            source_api_base: None,
+            source_api_base: Some(super::super::STANDARD_OPENROUTER_API_BASE.to_string()),
             models: model_ids
                 .iter()
                 .map(|id| jcode_provider_openrouter::ModelInfo {

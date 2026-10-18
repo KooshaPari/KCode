@@ -181,11 +181,13 @@ impl Agent {
             self.provider
                 .prewarm(&tools, &split_prompt.static_part)
                 .await;
+            micro_compact::maybe_compact(&mut self.session, &mut self.micro_compact_trigger);
             let (messages, compaction_event) = self.messages_for_provider();
             if let Some(event) = compaction_event {
                 // Reset cache tracker and tool lock on compaction since the message history changes
                 self.cache_tracker.reset();
                 self.kv_cache_monitor.reset();
+                self.cache_vectors.reset();
                 self.locked_tools = None;
                 logging::info(&format!(
                     "Context compacted ({}{})",
@@ -230,6 +232,10 @@ impl Agent {
             // Memory is an ephemeral suffix that changes each turn; tracking it would cause
             // false-positive violations every turn (prior turn's memory ≠ current history prefix).
             self.record_client_cache_request(&messages);
+
+            // Snapshot prompt-cache vectors to detect which cache vector changed
+            // (system prompt, tool schemas, model, etc.) when the provider cache is invalidated.
+            self.record_prompt_cache_vectors(&split_prompt.static_part, &tools);
 
             // `messages` now owns the provider-facing request snapshot. Do not
             // retain the session's second, derived copy for the entire network
@@ -1530,7 +1536,7 @@ impl Agent {
             ));
 
             if self.provider.handles_tools_internally() {
-                tool_calls.retain(|tc| JCODE_NATIVE_TOOLS.contains(&tc.name.as_str()));
+                tool_calls.retain(|tc| KCODE_NATIVE_TOOLS.contains(&tc.name.as_str()));
                 if tool_calls.is_empty() {
                     // === INJECTION POINT D: After provider-handled tools, before next API call ===
                     let injected = self.inject_soft_interrupts();
@@ -1624,7 +1630,7 @@ impl Agent {
                 executed_valid_call = true;
                 self.validate_tool_allowed(&tc.name)?;
 
-                let is_native_tool = JCODE_NATIVE_TOOLS.contains(&tc.name.as_str());
+                let is_native_tool = KCODE_NATIVE_TOOLS.contains(&tc.name.as_str());
 
                 if let Some((sdk_content, sdk_is_error)) = sdk_tool_results.remove(&tc.id) {
                     // For native tools, ignore SDK errors and execute locally

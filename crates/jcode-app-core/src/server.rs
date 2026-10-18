@@ -141,8 +141,8 @@ pub(super) async fn remove_session_entry<T>(
     removed
 }
 
-const SERVER_NAME_ENV: &str = "JCODE_SERVER_NAME";
-const SERVER_DISPLAY_NAME_ENV: &str = "JCODE_SERVER_DISPLAY_NAME";
+const SERVER_NAME_ENV: &str = "KCODE_SERVER_NAME";
+const SERVER_DISPLAY_NAME_ENV: &str = "KCODE_SERVER_DISPLAY_NAME";
 const MAX_CONFIGURED_SERVER_NAME_LEN: usize = 64;
 const SWARM_TERMINAL_MEMBER_GC_BATCH_SIZE: usize = 64;
 
@@ -1884,7 +1884,7 @@ impl Server {
         if !inhibitor.is_available() {
             // Disabled via the legacy env escape hatch, or unsupported platform.
             crate::logging::info(
-                "power_inhibit: unavailable (unsupported platform or JCODE_DISABLE_POWER_INHIBIT set); not monitoring",
+                "power_inhibit: unavailable (unsupported platform or KCODE_DISABLE_POWER_INHIBIT set); not monitoring",
             );
             return;
         }
@@ -2314,7 +2314,7 @@ impl Server {
         // processes would claim the daily slot and exit mid-walk. Each pass is
         // rate limited machine-wide to once per day.
         let _ = std::thread::Builder::new()
-            .name("jcode-disk-cleanup".to_string())
+            .name("kcode-disk-cleanup".to_string())
             .spawn(|| {
                 loop {
                     crate::scratch_maintenance::prune_stale_scratch();

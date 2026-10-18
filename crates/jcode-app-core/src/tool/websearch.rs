@@ -18,6 +18,12 @@ impl WebSearchTool {
     }
 }
 
+impl Default for WebSearchTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Deserialize)]
 struct WebSearchInput {
     query: String,
@@ -70,11 +76,11 @@ impl Tool for WebSearchTool {
                 "engine": {
                     "type": "string",
                     "enum": ["duckduckgo", "bing", "searxng"],
-                    "description": "Engine. Defaults to duckduckgo; searxng uses JCODE_SEARXNG_URL."
+                    "description": "Engine. Defaults to duckduckgo; searxng uses KCODE_SEARXNG_URL."
                 },
                 "bing_market": {
                     "type": "string",
-                    "description": "Optional Bing market, e.g. en-US or zh-CN. Defaults to JCODE_BING_MARKET or en-US."
+                    "description": "Optional Bing market, e.g. en-US or zh-CN. Defaults to KCODE_BING_MARKET or en-US."
                 }
             }
         })
@@ -135,7 +141,7 @@ impl Tool for WebSearchTool {
                  DuckDuckGo/Bing engines may be blocked here by TLS fingerprinting \
                  or IP reputation (common on Linux/servers). Workaround:\n\
                  - Point at a SearXNG instance: set `websearch.searxng_url` (or \
-                 JCODE_SEARXNG_URL) and use engine \"searxng\".",
+                 KCODE_SEARXNG_URL) and use engine \"searxng\".",
                 params.query
             )));
         }

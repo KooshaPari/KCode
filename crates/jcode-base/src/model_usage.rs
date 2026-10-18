@@ -12,6 +12,7 @@ use serde::Deserialize;
 use std::{collections::HashMap, path::Path, time::Duration};
 
 type RouteKey = (String, String, String);
+type EnrichRow = (RouteKey, u64, Option<u64>);
 
 fn key(model: &str, provider: &str, api_method: &str) -> RouteKey {
     let provider = jcode_provider_core::normalize_model_route_provider_label(provider);
@@ -145,12 +146,11 @@ fn method_usage_counts_at(path: &Path) -> Result<HashMap<String, u64>> {
 
 /// Add local usage to provider-owned catalog rows. Failure leaves usage unknown,
 /// never fabricated zero. No transcript loading or historical inference occurs.
-type RouteUsageRow = (RouteKey, u64, Option<u64>);
 
 pub fn enrich_routes(routes: &mut [ModelRoute]) {
     let mut usage = legacy();
     let mut started: Option<u64> = None;
-    let read = || -> Result<(u64, Vec<RouteUsageRow>)> {
+    let read = || -> Result<(u64, Vec<EnrichRow>)> {
         let db = Connection::open_with_flags(path()?, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         db.busy_timeout(Duration::from_secs(2))?;
         let started = db.query_row("SELECT started FROM tracking WHERE id=1", [], |row| {

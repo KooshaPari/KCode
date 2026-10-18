@@ -27,7 +27,7 @@ impl Provider for OpenAIProvider {
     async fn prewarm(&self, tools: &[ToolDefinition], system: &str) {
         if self.is_browser_only()
             || is_chatgpt_web_model(&self.model())
-            || std::env::var("JCODE_OPENAI_PREWARM").is_ok_and(|value| {
+            || std::env::var("KCODE_OPENAI_PREWARM").is_ok_and(|value| {
                 matches!(
                     value.trim().to_ascii_lowercase().as_str(),
                     "0" | "false" | "off"

@@ -331,11 +331,11 @@ fn missing_launch_binary_is_typed_and_cleans_up_its_temporary_home() {
             entry
                 .file_name()
                 .to_string_lossy()
-                .starts_with("jcode-sdk-instance-")
+                .starts_with("kcode-sdk-instance-")
         })
         .count();
     let error = match JcodeClient::launch(LaunchOptions {
-        binary: Some(PathBuf::from("jcode-definitely-not-installed-sdk-test")),
+        binary: Some(PathBuf::from("kcode-definitely-not-installed-sdk-test")),
         inherit_logins: false,
         startup_timeout: Duration::from_millis(100),
         cleanup_timeout: Duration::ZERO,
@@ -352,7 +352,7 @@ fn missing_launch_binary_is_typed_and_cleans_up_its_temporary_home() {
             entry
                 .file_name()
                 .to_string_lossy()
-                .starts_with("jcode-sdk-instance-")
+                .starts_with("kcode-sdk-instance-")
         })
         .count();
     assert_eq!(after, before, "failed launch leaked a temporary home");

@@ -193,8 +193,8 @@ pub fn redact_secrets(text: &str) -> String {
 
     // Also redact custom API key variable names configured at runtime.
     for source in [
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENAI_COMPAT_API_KEY_NAME",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENAI_COMPAT_API_KEY_NAME",
     ] {
         let Some(key_name) = std::env::var(source)
             .ok()

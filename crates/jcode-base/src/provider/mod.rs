@@ -21,6 +21,8 @@ pub mod openai;
 pub mod openai_request;
 pub mod openrouter;
 pub mod pricing;
+mod profile_catalog_cache;
+use profile_catalog_cache::cached_live_models_for_namespace;
 mod registry;
 mod route_builders;
 mod routing;
@@ -55,7 +57,7 @@ pub use jcode_provider_core::cli_provider_arg_for_session_key;
 pub use jcode_provider_core::{
     ALL_CLAUDE_MODELS, ALL_OPENAI_MODELS, CHATGPT_WEB_MODEL, CHEAPNESS_REFERENCE_INPUT_TOKENS,
     CHEAPNESS_REFERENCE_OUTPUT_TOKENS, CredentialMode, DEFAULT_CONTEXT_LIMIT, EventStream,
-    JCODE_USER_AGENT, ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute,
+    KCODE_USER_AGENT, ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute,
     ModelRouteApiMethod, NativeCompactionResult, NativeToolResult, NativeToolResultSender,
     PremiumMode, Provider, RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence,
     RouteCostSource, RouteSelection, RuntimeKey, dedupe_model_routes,
@@ -175,6 +177,10 @@ pub fn stores_reasoning_content_for_context(provider_name: &str) -> bool {
 // cached routes immediately while a background refresh updates the catalog.
 pub(crate) const OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS: u64 = 15 * 60;
 
+/// Public OpenRouter API base. The `openrouter` cache namespace must have been
+/// fetched from this endpoint for its catalog to be trusted as OpenRouter's.
+pub(crate) const STANDARD_OPENROUTER_API_BASE: &str = "https://openrouter.ai/api/v1";
+
 fn openai_compatible_profile_catalog_cache_is_stale(cached_at: u64, now: u64) -> bool {
     now.saturating_sub(cached_at) >= OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS
 }
@@ -182,30 +188,7 @@ fn openai_compatible_profile_catalog_cache_is_stale(cached_at: u64, now: u64) ->
 pub(crate) fn cached_live_models_for_openai_compatible_profile(
     resolved: &crate::provider_catalog::ResolvedOpenAiCompatibleProfile,
 ) -> Option<(Vec<String>, bool)> {
-    let cache = jcode_provider_openrouter::load_disk_cache_entry_for_namespace(&resolved.id)?;
-    let cache_is_stale = jcode_provider_openrouter::current_unix_secs()
-        .map(|now| openai_compatible_profile_catalog_cache_is_stale(cache.cached_at, now))
-        .unwrap_or(false);
-    let source_api_base = cache
-        .source_api_base
-        .as_deref()
-        .and_then(crate::provider_catalog::normalize_api_base)?;
-    let expected_api_base = crate::provider_catalog::normalize_api_base(&resolved.api_base)?;
-    if source_api_base != expected_api_base {
-        return None;
-    }
-
-    let models = cache
-        .models
-        .into_iter()
-        .map(|model| model.id.trim().to_string())
-        .filter(|model| !model.is_empty())
-        .collect::<Vec<_>>();
-    if models.is_empty() {
-        None
-    } else {
-        Some((models, cache_is_stale))
-    }
+    cached_live_models_for_namespace(&resolved.id, &resolved.api_base)
 }
 
 fn direct_openai_compatible_profile_routes(
@@ -229,6 +212,23 @@ fn direct_openai_compatible_profile_routes(
         }
         (models, false)
     };
+
+    // Models the user declared in config.toml under
+    // `[[providers.<name>.models]]` are an explicit statement about what this
+    // endpoint serves, so they are unioned into the fetched/static list instead
+    // of being replaced by it. Many gateways serve a model on chat completions
+    // while omitting it from `GET /models` (issue #1824, MiniMax
+    // `MiniMax-M3.1-Flash-Preview`), which otherwise makes the model unusable
+    // from the picker. Declared ids are appended after the fetched list, so
+    // existing entries and their ordering are untouched.
+    for model in crate::provider_declared_models::config_declared_model_ids_for_profile(
+        &resolved.id,
+        &resolved.api_base,
+    ) {
+        if !models.iter().any(|existing| existing == &model) {
+            models.push(model);
+        }
+    }
 
     let provider = resolved.display_name.clone();
     let api_method = format!("openai-compatible:{}", resolved.id);
@@ -278,26 +278,18 @@ fn standard_openrouter_profile_configured() -> bool {
 }
 
 fn configured_standard_openrouter_profile_routes() -> Vec<ModelRoute> {
-    let Some(cache) = jcode_provider_openrouter::load_disk_cache_entry_for_namespace("openrouter")
+    // Same validated read as every other consumer: a cache in the `openrouter`
+    // namespace that was fetched from a different endpoint is not evidence about
+    // the public OpenRouter catalog (issue #1824).
+    let Some((models, _cache_is_stale)) =
+        cached_live_models_for_namespace("openrouter", STANDARD_OPENROUTER_API_BASE)
     else {
         return Vec::new();
     };
 
-    let source_matches_openrouter = cache
-        .source_api_base
-        .as_deref()
-        .and_then(crate::provider_catalog::normalize_api_base)
-        .map(|base| base.contains("openrouter.ai"))
-        .unwrap_or(false);
-    if !source_matches_openrouter {
-        return Vec::new();
-    }
-
     let available = standard_openrouter_profile_configured();
-    cache
-        .models
+    models
         .into_iter()
-        .map(|model| model.id.trim().to_string())
         .filter(|model| is_listable_model_name(model))
         .map(|model| build_openrouter_auto_route(&model, available, String::new()))
         .collect()
@@ -563,9 +555,9 @@ impl MultiProvider {
         .join(",");
         format!(
             "{}|{}|{}|{:?}|{}|{}|{}",
-            // Scope by home so sandboxes (tests, JCODE_HOME switches) never
+            // Scope by home so sandboxes (tests, KCODE_HOME switches) never
             // share catalogs that were built from different credential files.
-            std::env::var("JCODE_HOME").unwrap_or_default(),
+            std::env::var("KCODE_HOME").unwrap_or_default(),
             Self::provider_key(active),
             self.model(),
             credential_mode,
@@ -912,7 +904,7 @@ impl MultiProvider {
                     .active_openrouter_execution_provider()
                     .map(|execution| execution.runtime_display_name())
                     .unwrap_or_else(|| "OpenRouter".to_string());
-                let runtime = std::env::var("JCODE_RUNTIME_PROVIDER").ok();
+                let runtime = std::env::var("KCODE_RUNTIME_PROVIDER").ok();
                 crate::provider_activity::source_key_for_provider_label(&label, runtime.as_deref())
             }
             other => Self::provider_key(other).to_string(),
@@ -1142,7 +1134,7 @@ impl MultiProvider {
 
         match provider {
             ActiveProvider::Claude => {
-                let switching_from_named_anthropic = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
+                let switching_from_named_anthropic = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")
                     .ok()
                     .and_then(|name| crate::config::config().providers.get(&name))
                     .is_some_and(|profile| {
@@ -1152,12 +1144,12 @@ impl MultiProvider {
                         )
                     });
                 if switching_from_named_anthropic {
-                    crate::env::remove_var("JCODE_NAMED_PROVIDER_PROFILE");
-                    crate::env::remove_var("JCODE_PROVIDER_PROFILE_ACTIVE");
-                    crate::env::remove_var("JCODE_PROVIDER_PROFILE_NAME");
+                    crate::env::remove_var("KCODE_NAMED_PROVIDER_PROFILE");
+                    crate::env::remove_var("KCODE_PROVIDER_PROFILE_ACTIVE");
+                    crate::env::remove_var("KCODE_PROVIDER_PROFILE_NAME");
                     crate::provider_catalog::clear_anthropic_profile_env();
                     crate::env::set_var(
-                        "JCODE_RUNTIME_PROVIDER",
+                        "KCODE_RUNTIME_PROVIDER",
                         match anthropic_credential_mode {
                             Some(mode) => match mode {
                                 anthropic::AnthropicCredentialMode::ApiKey => "anthropic-api",
@@ -3106,9 +3098,9 @@ mod bedrock_placeholder_default_tests {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::tempdir().expect("tempdir");
         let keys = [
-            "JCODE_HOME",
-            "JCODE_BEDROCK_MODEL",
-            "JCODE_BEDROCK_REGION",
+            "KCODE_HOME",
+            "KCODE_BEDROCK_MODEL",
+            "KCODE_BEDROCK_REGION",
             "AWS_REGION",
             "AWS_DEFAULT_REGION",
         ];
@@ -3116,7 +3108,7 @@ mod bedrock_placeholder_default_tests {
         for key in &keys[1..] {
             crate::env::remove_var(key);
         }
-        crate::env::set_var("JCODE_HOME", temp.path());
+        crate::env::set_var("KCODE_HOME", temp.path());
 
         let fresh = new_bedrock_provider();
         assert_eq!(
@@ -3147,7 +3139,7 @@ mod bedrock_placeholder_default_tests {
         let promoted = new_bedrock_provider().model();
 
         crate::env::set_var(
-            "JCODE_BEDROCK_MODEL",
+            "KCODE_BEDROCK_MODEL",
             "anthropic.claude-3-5-haiku-20241022-v1:0",
         );
         let pinned = new_bedrock_provider().model();

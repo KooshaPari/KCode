@@ -83,7 +83,7 @@ pub(crate) fn desktop_bridge_launch(desktop_root: &Path) -> Result<BridgeLaunch>
             desktop_root
                 .join("target")
                 .join(profile)
-                .join("jcode-harness-api-bridge")
+                .join("kcode-harness-api-bridge")
         })
         .filter_map(|path| {
             let modified = path.metadata().ok()?.modified().ok()?;
@@ -209,7 +209,7 @@ fn spawn_bridge(launch: &BridgeLaunch, log: &Path) -> Result<SpawnedBridge> {
     let exited = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let exited_flag = std::sync::Arc::clone(&exited);
     std::thread::Builder::new()
-        .name("jcode-api-bridge-reaper".into())
+        .name("kcode-api-bridge-reaper".into())
         .spawn(move || {
             let _ = child.wait();
             exited_flag.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -376,7 +376,7 @@ pub(crate) async fn spawn_bridge_reload(session_id: &str, new_launch: BridgeLaun
             move |output| {
                 let log = crate::storage::jcode_dir()
                     .map(|dir| dir.join("logs").join("api-bridge.log"))
-                    .unwrap_or_else(|_| std::env::temp_dir().join("jcode-api-bridge.log"));
+                    .unwrap_or_else(|_| std::env::temp_dir().join("kcode-api-bridge.log"));
                 restart_bridge(
                     new_launch,
                     jcode_harness_api::api_socket_path(),
@@ -422,7 +422,7 @@ mod tests {
         for profile in ["debug", "release"] {
             let dir = root.path().join("target").join(profile);
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("jcode-harness-api-bridge"), b"").unwrap();
+            std::fs::write(dir.join("kcode-harness-api-bridge"), b"").unwrap();
             std::thread::sleep(Duration::from_millis(20));
         }
         let launch = desktop_bridge_launch(root.path()).unwrap();

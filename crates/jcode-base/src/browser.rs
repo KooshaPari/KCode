@@ -47,7 +47,7 @@ fn jcode_dir() -> PathBuf {
     storage::jcode_dir().unwrap_or_else(|_| {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".jcode")
+            .join(".kcode")
     })
 }
 
@@ -124,7 +124,7 @@ fn save_browser_preference(kind: BrowserKind) {
 
 /// Which browser jcode should set up and launch.
 pub fn detect_target_browser() -> BrowserDetection {
-    let env = std::env::var("JCODE_BROWSER").ok();
+    let env = std::env::var("KCODE_BROWSER").ok();
     let env = env
         .as_deref()
         .filter(|v| !v.trim().is_empty() && *v != "auto");
@@ -272,7 +272,7 @@ pub async fn ensure_browser_setup_for(target: BrowserDetection) -> Result<String
         && target.source != browser_detect::DetectionSource::EnvOverride
     {
         log.push_str(
-            "Override with `jcode browser setup <firefox|chrome|edge|brave|chromium|safari>` or JCODE_BROWSER.\n",
+            "Override with `jcode browser setup <firefox|chrome|edge|brave|chromium|safari>` or KCODE_BROWSER.\n",
         );
     }
 
@@ -951,7 +951,7 @@ fn native_messaging_hosts_dirs_for(kind: BrowserKind) -> Result<Vec<PathBuf>> {
     let mut dirs = kind.native_messaging_dirs();
     if kind.family() == BrowserFamily::Chromium {
         dirs.extend(extra_native_messaging_dirs(
-            std::env::var_os("JCODE_BROWSER_NATIVE_HOST_DIRS").as_deref(),
+            std::env::var_os("KCODE_BROWSER_NATIVE_HOST_DIRS").as_deref(),
         ));
     }
     if dirs.is_empty() {
@@ -964,7 +964,7 @@ fn native_messaging_hosts_dirs_for(kind: BrowserKind) -> Result<Vec<PathBuf>> {
 }
 
 /// Extra `NativeMessagingHosts` directories for Chromium forks jcode does not
-/// know (Helium, Vivaldi, Thorium, ...), from `JCODE_BROWSER_NATIVE_HOST_DIRS`
+/// know (Helium, Vivaldi, Thorium, ...), from `KCODE_BROWSER_NATIVE_HOST_DIRS`
 /// (an OS path list). Setup installs the Chromium host manifest there too.
 fn extra_native_messaging_dirs(value: Option<&std::ffi::OsStr>) -> Vec<PathBuf> {
     let Some(value) = value else {
@@ -1375,11 +1375,11 @@ pub fn should_attempt_firefox_launch(status: &BrowserStatus, firefox_running: bo
 
 /// Whether automatic browser launching is disabled via environment.
 ///
-/// Set `JCODE_BROWSER_AUTOLAUNCH=0` to keep jcode from starting the browser on
+/// Set `KCODE_BROWSER_AUTOLAUNCH=0` to keep jcode from starting the browser on
 /// its own. Tests also use this to stay hermetic.
 pub fn firefox_autolaunch_disabled() -> bool {
     matches!(
-        std::env::var("JCODE_BROWSER_AUTOLAUNCH").as_deref(),
+        std::env::var("KCODE_BROWSER_AUTOLAUNCH").as_deref(),
         Ok("0") | Ok("false") | Ok("off") | Ok("no")
     )
 }

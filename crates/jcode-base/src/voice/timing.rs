@@ -1,4 +1,4 @@
-//! Opt-in push-to-talk latency marks. Enable with `JCODE_VOICE_TIMING=1`.
+//! Opt-in push-to-talk latency marks. Enable with `KCODE_VOICE_TIMING=1`.
 //! Prints only stage names and milliseconds since the press (and since the
 //! release once it happens), never audio, transcripts, or credentials.
 use std::sync::{Mutex, OnceLock};
@@ -9,7 +9,7 @@ static RELEASE: Mutex<Option<Instant>> = Mutex::new(None);
 
 pub fn enabled() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var_os("JCODE_VOICE_TIMING").is_some_and(|v| v != "0"))
+    *ON.get_or_init(|| std::env::var_os("KCODE_VOICE_TIMING").is_some_and(|v| v != "0"))
 }
 
 /// Starts a new attempt. Call at the user's press.

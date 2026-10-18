@@ -1,6 +1,6 @@
 [package]
-name = "jcode"
-version = "0.93.0"
+name = "kcode"
+version = "0.93.0-k0.1.0"
 description = "Possibly the greatest coding agent ever built — blazing-fast TUI, multi-model, swarm coordination, 30+ tools"
 edition = "2024"
 autobins = false
@@ -24,8 +24,12 @@ members = [
     "crates/jcode-batch-types",
     "crates/jcode-build-support",
     "crates/jcode-compaction-core",
+    "crates/jcode-micro-compact",
     "crates/jcode-config-types",
     "crates/jcode-command-risk",
+    "crates/jcode-terminal-detect",
+    "crates/jcode-shell-integration",
+
     "crates/jcode-core",
     "crates/jcode-fuzzy",
     "crates/jcode-harness-api",
@@ -65,6 +69,8 @@ members = [
     "crates/jcode-provider-anthropic-runtime",
     "crates/jcode-provider-openai-runtime",
     "crates/jcode-provider-grok-build-runtime",
+    "crates/jcode-provider-forgecode-runtime",
+    "crates/jcode-herdr",
     "crates/jcode-provider-doctor",
     "crates/jcode-tui-markdown",
     "crates/jcode-tui-messages",
@@ -75,6 +81,7 @@ members = [
     "crates/jcode-transport",
     "crates/jcode-codemode",
     "crates/jcode-tool-core",
+    "crates/jcode-tool-search",
     "crates/jcode-tool-types",
     "crates/jcode-tui-account-picker",
     "crates/jcode-tui-anim",
@@ -91,6 +98,10 @@ members = [
     "crates/jcode-telemetry-core",
     "crates/jcode-tui-workspace",
     "crates/jcode-render-core",
+    "crates/jcode-permission-bubble",
+    "crates/jcode-session-memory",
+    "crates/jcode-cache-vectors",
+    "crates/jcode-auto-dream",
 ]
 
 [lib]
@@ -98,7 +109,7 @@ name = "jcode"
 path = "src/lib.rs"
 
 [[bin]]
-name = "jcode"
+name = "kcode"
 path = "src/main.rs"
 
 [[bin]]
@@ -106,7 +117,7 @@ name = "test_api"
 path = "src/bin/test_api.rs"
 
 [[bin]]
-name = "jcode-harness"
+name = "kcode-harness"
 path = "src/bin/harness.rs"
 
 [[bin]]
@@ -179,6 +190,8 @@ crossterm = { version = "0.29", features = ["event-stream"] }
 
 # PDF parsing (behind feature flag)
 jcode-build-meta = { path = "crates/jcode-build-meta" }
+# Agent mode config types (`AgentMode`) used by the CLI startup path.
+jcode-config-types = { path = "crates/jcode-config-types" }
 # Tiny leaf helpers (console/env/fs/id) used directly by the cli layer.
 # Presentation layer: the terminal UI (`tui`) + offline replay (`video_export`),
 # compiled as a separate rustc unit. It re-exports the application core
@@ -201,6 +214,8 @@ jcode-provider-openrouter-runtime = { path = "crates/jcode-provider-openrouter-r
 jcode-provider-anthropic-runtime = { path = "crates/jcode-provider-anthropic-runtime" }
 jcode-provider-openai-runtime = { path = "crates/jcode-provider-openai-runtime" }
 jcode-provider-grok-build-runtime = { path = "crates/jcode-provider-grok-build-runtime" }
+jcode-provider-forgecode-runtime = { path = "crates/jcode-provider-forgecode-runtime" }
+jcode-herdr = { path = "crates/jcode-herdr" }
 jcode-selfdev-types = { path = "crates/jcode-selfdev-types" }
 
 # Archive extraction (for auto-update)
@@ -404,12 +419,6 @@ opt-level = 3
 [profile.test.package.unicode-truncate]
 opt-level = 3
 
-[profile.dev.package.unicode-linebreak]
-opt-level = 3
-[profile.selfdev.package.unicode-linebreak]
-opt-level = 3
-[profile.test.package.unicode-linebreak]
-opt-level = 3
 
 [profile.dev.package.compact_str]
 opt-level = 3
@@ -420,20 +429,14 @@ opt-level = 3
 
 # Keep the text-shaping stack optimized even in dev/selfdev/test builds.
 #
-# cosmic-text + rustybuzz + ttf-parser + swash + yazi do all of the desktop
-# transcript glyph shaping. At opt-level = 0 they are 15-40x slower, which made
-# scrolling real (emoji/markdown-heavy) transcripts janky in dev/selfdev builds
-# even though the production release build was smooth. These are stable
-# third-party crates that almost never recompile, so pinning them to opt-level =
-# 3 costs a one-time compile and is then reused across every iterative jcode
-# rebuild (same rationale as jcode-tui-anim above). It does NOT slow down
-# recompiles of jcode's own crates.
-[profile.dev.package.cosmic-text]
-opt-level = 3
-[profile.selfdev.package.cosmic-text]
-opt-level = 3
-[profile.test.package.cosmic-text]
-opt-level = 3
+# rustybuzz + ttf-parser do core text shaping for the desktop transcript glyph
+# pipeline. At opt-level = 0 they are significantly slower, which made scrolling
+# real (emoji/markdown-heavy) transcripts janky in dev/selfdev builds even though
+# the production release build was smooth. These are stable third-party crates
+# that almost never recompile, so pinning them to opt-level = 3 costs a one-time
+# compile and is then reused across every iterative jcode rebuild (same rationale
+# as jcode-tui-anim above). It does NOT slow down recompiles of jcode's own
+# crates.
 
 [profile.dev.package.rustybuzz]
 opt-level = 3
@@ -449,19 +452,7 @@ opt-level = 3
 [profile.test.package.ttf-parser]
 opt-level = 3
 
-[profile.dev.package.swash]
-opt-level = 3
-[profile.selfdev.package.swash]
-opt-level = 3
-[profile.test.package.swash]
-opt-level = 3
 
-[profile.dev.package.yazi]
-opt-level = 3
-[profile.selfdev.package.yazi]
-opt-level = 3
-[profile.test.package.yazi]
-opt-level = 3
 
 [profile.dev.package.fontdb]
 opt-level = 3
@@ -595,8 +586,13 @@ debug = 0
 incremental = true
 codegen-units = 256
 
+[[bench]]
+name = "startup"
+harness = false
+
 [dev-dependencies]
 async-stream = "0.3"
+criterion = { version = "0.5", features = ["html_reports"] }
 jcode-harness-api = { path = "crates/jcode-harness-api" }
 # Used by tests/context_window_matrix.rs to assert the shared context-window
 # resolution invariants directly, without going through a live provider.

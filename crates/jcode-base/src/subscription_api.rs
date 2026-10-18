@@ -240,7 +240,7 @@ struct ApprovedAccountKeyWire {
 
 pub fn configured_api_base() -> String {
     subscription_catalog::configured_api_base()
-        .unwrap_or_else(|| subscription_catalog::DEFAULT_JCODE_API_BASE.to_string())
+        .unwrap_or_else(|| subscription_catalog::DEFAULT_KCODE_API_BASE.to_string())
         .trim_end_matches('/')
         .to_string()
 }
@@ -277,7 +277,7 @@ pub async fn request_device_authorization(
     requested_tier: Option<JcodeTier>,
 ) -> std::result::Result<DeviceAuthorization, AccountApiError> {
     let url = endpoint_url(api_base, "auth/device");
-    let mut payload = serde_json::json!({ "client_name": "jcode-cli" });
+    let mut payload = serde_json::json!({ "client_name": "kcode-cli" });
     if let Some(tier) = requested_tier {
         payload["requested_tier"] = serde_json::Value::String(tier.as_str().to_string());
     }
@@ -425,7 +425,7 @@ pub async fn request_email_code(
 ) -> std::result::Result<EmailCodeStart, AccountApiError> {
     let response = client
         .post(endpoint_url(api_base, "auth/email/start"))
-        .json(&serde_json::json!({ "client_name": "jcode-cli", "email": email.trim() }))
+        .json(&serde_json::json!({ "client_name": "kcode-cli", "email": email.trim() }))
         .timeout(DEVICE_REQUEST_TIMEOUT)
         .send()
         .await
@@ -1022,7 +1022,7 @@ mod tests {
             .await
             .expect("device auth");
         let request = request_rx.recv().expect("captured request");
-        assert!(request.contains(r#"{"client_name":"jcode-cli"}"#));
+        assert!(request.contains(r#"{"client_name":"kcode-cli"}"#));
         assert!(!request.contains("requested_tier"), "{request}");
     }
 

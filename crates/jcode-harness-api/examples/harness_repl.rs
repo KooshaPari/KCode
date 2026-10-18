@@ -36,7 +36,7 @@ fn main() {
 
 fn default_socket_path() -> String {
     let home = std::env::var("HOME").expect("HOME not set");
-    format!("{home}/.jcode/jcode-api.sock")
+    format!("{home}/.kcode/jcode-api.sock")
 }
 
 fn run_session<R: BufRead, W: Write>(mut client: HarnessClient<R, W>, message: &str) {
@@ -112,7 +112,7 @@ fn run_demo() {
                     id,
                     ApiEvent::HelloOk {
                         version: API_VERSION_MAJOR,
-                        server: "jcode-demo/0".into(),
+                        server: "kcode-demo/0".into(),
                         capabilities: vec!["sessions".into()],
                     },
                 )),

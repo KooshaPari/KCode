@@ -75,6 +75,8 @@ use std::time::Duration;
 pub type EventStream = Pin<Box<dyn Stream<Item = Result<StreamEvent>> + Send>>;
 
 /// Provider trait for LLM backends.
+// async_trait adds must_use to methods returning an already must-use boxed Future.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Provider: Send + Sync {
     /// Prepare provider-specific request state before the foreground completion.
@@ -610,7 +612,7 @@ pub enum CredentialMode {
 }
 
 impl CredentialMode {
-    /// Resolve the runtime-env pin (JCODE_*_AUTH / route aliases) for a
+    /// Resolve the runtime-env pin (KCODE_*_AUTH / route aliases) for a
     /// dual-auth provider through the canonical auth_mode vocabulary.
     pub fn from_runtime_env(provider: DualAuthProvider) -> Self {
         match runtime_env_pinned_mode(provider) {
@@ -685,7 +687,7 @@ impl NativeToolResult {
 }
 
 /// Canonical User-Agent for generic outbound Jcode HTTP requests.
-pub const JCODE_USER_AGENT: &str = concat!("jcode/", env!("CARGO_PKG_VERSION"));
+pub const KCODE_USER_AGENT: &str = concat!("jcode/", env!("CARGO_PKG_VERSION"));
 
 /// Read an HTTP error body without hiding failures behind an empty string.
 ///
@@ -709,7 +711,7 @@ pub fn shared_http_client() -> reqwest::Client {
     CLIENT
         .get_or_init(|| {
             reqwest::Client::builder()
-                .user_agent(JCODE_USER_AGENT)
+                .user_agent(KCODE_USER_AGENT)
                 .connect_timeout(Duration::from_secs(15))
                 .tcp_keepalive(Some(Duration::from_secs(30)))
                 // Proactively detect half-dead pooled HTTP/2 connections before we
@@ -726,7 +728,7 @@ pub fn shared_http_client() -> reqwest::Client {
                 .unwrap_or_else(|err| {
                     eprintln!("jcode: failed to build shared provider HTTP client: {err}");
                     match reqwest::Client::builder()
-                        .user_agent(JCODE_USER_AGENT)
+                        .user_agent(KCODE_USER_AGENT)
                         .build()
                     {
                         Ok(client) => client,
@@ -753,7 +755,7 @@ pub fn shared_http_client() -> reqwest::Client {
 /// costs ~10ms, which is fine on a retry path that already backs off >=1s.
 pub fn fresh_transport_client() -> reqwest::Client {
     reqwest::Client::builder()
-        .user_agent(JCODE_USER_AGENT)
+        .user_agent(KCODE_USER_AGENT)
         .connect_timeout(Duration::from_secs(15))
         .tcp_keepalive(Some(Duration::from_secs(30)))
         .http2_keep_alive_interval(Some(Duration::from_secs(30)))
@@ -1512,7 +1514,7 @@ mod tests {
 
     #[test]
     fn canonical_user_agent_identifies_jcode() {
-        assert!(JCODE_USER_AGENT.starts_with("jcode/"));
+        assert!(KCODE_USER_AGENT.starts_with("jcode/"));
     }
 
     #[test]

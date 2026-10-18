@@ -4,6 +4,7 @@ impl Agent {
     pub(super) fn note_compaction_applied(&mut self) {
         self.cache_tracker.reset();
         self.kv_cache_monitor.reset();
+        self.cache_vectors.reset();
         self.locked_tools = None;
         self.provider_session_id = None;
         self.session.provider_session_id = None;
@@ -164,6 +165,7 @@ impl Agent {
 
         self.cache_tracker.reset();
         self.kv_cache_monitor.reset();
+        self.cache_vectors.reset();
         self.locked_tools = None;
         self.provider_session_id = None;
         self.session.provider_session_id = None;
@@ -279,6 +281,7 @@ impl Agent {
 
         self.cache_tracker.reset();
         self.kv_cache_monitor.reset();
+        self.cache_vectors.reset();
         self.locked_tools = None;
         self.provider_session_id = None;
         self.session.provider_session_id = None;
@@ -308,6 +311,7 @@ impl Agent {
 
         self.cache_tracker.reset();
         self.kv_cache_monitor.reset();
+        self.cache_vectors.reset();
         self.locked_tools = None;
         self.provider_session_id = None;
         self.session.provider_session_id = None;

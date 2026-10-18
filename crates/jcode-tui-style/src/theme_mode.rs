@@ -13,7 +13,7 @@
 //! it does on dark themes today.
 //!
 //! The mode itself is set once at startup by the TUI's terminal-background
-//! detection (OSC 11 query / `JCODE_THEME` / `display.theme` config) and
+//! detection (OSC 11 query / `KCODE_THEME` / `display.theme` config) and
 //! defaults to dark, which keeps every existing code path byte-identical.
 
 use ratatui::buffer::Buffer;

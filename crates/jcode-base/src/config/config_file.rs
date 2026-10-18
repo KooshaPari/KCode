@@ -293,7 +293,7 @@ impl Config {
 
     /// One-time bake of per-repo launch hotkeys from session history.
     ///
-    /// Scans `~/.jcode/sessions` for the directories the user works in most,
+    /// Scans `~/.kcode/sessions` for the directories the user works in most,
     /// ranks them (recency-weighted, git-root folded, home excluded), and writes
     /// a static chord -> directory mapping into config: top repo on `Cmd+;`, home
     /// on `Cmd+'`, and the next repos on `Cmd+[` / `Cmd+]` / `Cmd+\`.
@@ -633,7 +633,7 @@ impl Config {
             path,
             metadata.as_ref().and_then(|meta| meta.modified().ok()),
             metadata.as_ref().map(std::fs::Metadata::len),
-            std::env::var("JCODE_TRUSTED_EXTERNAL_AUTH_SOURCES").ok(),
+            std::env::var("KCODE_TRUSTED_EXTERNAL_AUTH_SOURCES").ok(),
         );
         if let Ok(guard) = TRUSTED_EXTERNAL_AUTH_MEMO.lock()
             && let Some((cached_key, lists)) = guard.as_ref()
@@ -674,7 +674,7 @@ impl Config {
         }
 
         // The global config snapshot can be initialized before an auth flow saves
-        // a new path-bound trust decision, or before tests switch JCODE_HOME. Fall
+        // a new path-bound trust decision, or before tests switch KCODE_HOME. Fall
         // back to a fresh read on cache misses so fast auth probes remain correct
         // without penalizing the common already-trusted path. The memo re-stats
         // config.toml, so it is as fresh as a full reload.
@@ -808,7 +808,7 @@ mod issue_1056_tests {
     fn effort_update_preserves_profile_with_capitalized_bearer_auth() {
         let _lock = crate::storage::lock_test_env();
         let home = tempfile::tempdir().unwrap();
-        let _home = EnvGuard::set("JCODE_HOME", home.path());
+        let _home = EnvGuard::set("KCODE_HOME", home.path());
         let path = home.path().join("config.toml");
         std::fs::write(
             &path,
@@ -848,7 +848,7 @@ reasoning_effort = "max"
     fn effort_update_refuses_to_overwrite_malformed_config() {
         let _lock = crate::storage::lock_test_env();
         let home = tempfile::tempdir().unwrap();
-        let _home = EnvGuard::set("JCODE_HOME", home.path());
+        let _home = EnvGuard::set("KCODE_HOME", home.path());
         let path = home.path().join("config.toml");
         let original = "[providers.broken]\nauth = \"invalid-auth-mode\"\n";
         std::fs::write(&path, original).unwrap();

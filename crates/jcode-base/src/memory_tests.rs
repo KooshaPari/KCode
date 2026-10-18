@@ -73,20 +73,20 @@ where
     F: FnOnce(&Path) -> T,
 {
     let _guard = crate::storage::lock_test_env();
-    let old = std::env::var("JCODE_HOME").ok();
+    let old = std::env::var("KCODE_HOME").ok();
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time went backwards")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("jcode-test-{}", unique));
+    let dir = std::env::temp_dir().join(format!("kcode-test-{}", unique));
     fs::create_dir_all(&dir).expect("create temp dir");
-    crate::env::set_var("JCODE_HOME", &dir);
+    crate::env::set_var("KCODE_HOME", &dir);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&dir)));
 
     match old {
-        Some(value) => crate::env::set_var("JCODE_HOME", value),
-        None => crate::env::remove_var("JCODE_HOME"),
+        Some(value) => crate::env::set_var("KCODE_HOME", value),
+        None => crate::env::remove_var("KCODE_HOME"),
     }
     let _ = fs::remove_dir_all(&dir);
 
@@ -742,10 +742,10 @@ fn retrieval_candidates_include_local_skills() {
                 .collect()
         });
         let project_dir = home.join("project-with-skill");
-        fs::create_dir_all(project_dir.join(".jcode/skills/firefox-browser"))
+        fs::create_dir_all(project_dir.join(".kcode/skills/firefox-browser"))
             .expect("create skills dir");
         fs::write(
-                project_dir.join(".jcode/skills/firefox-browser/SKILL.md"),
+                project_dir.join(".kcode/skills/firefox-browser/SKILL.md"),
                 "---\nname: firefox-browser\ndescription: Control Firefox browser sessions\nallowed-tools: bash, read, write\n---\n\nUse this skill to open sites and click buttons.",
             )
             .expect("write skill");

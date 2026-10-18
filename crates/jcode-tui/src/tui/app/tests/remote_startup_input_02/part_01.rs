@@ -258,8 +258,8 @@ fn test_remote_placeholder_only_openai_routes_are_replaced_with_real_routes() {
 #[test]
 fn test_remote_hydrated_catalog_restores_missing_direct_bedrock_route() {
     with_temp_jcode_home(|| {
-        let previous_enable = std::env::var_os("JCODE_BEDROCK_ENABLE");
-        crate::env::set_var("JCODE_BEDROCK_ENABLE", "1");
+        let previous_enable = std::env::var_os("KCODE_BEDROCK_ENABLE");
+        crate::env::set_var("KCODE_BEDROCK_ENABLE", "1");
         crate::auth::AuthStatus::invalidate_cache();
 
         let model = "amazon.nova-pro-v1:0";
@@ -280,8 +280,8 @@ fn test_remote_hydrated_catalog_restores_missing_direct_bedrock_route() {
         app.open_model_picker();
 
         match previous_enable {
-            Some(value) => crate::env::set_var("JCODE_BEDROCK_ENABLE", value),
-            None => crate::env::remove_var("JCODE_BEDROCK_ENABLE"),
+            Some(value) => crate::env::set_var("KCODE_BEDROCK_ENABLE", value),
+            None => crate::env::remove_var("KCODE_BEDROCK_ENABLE"),
         }
         crate::auth::AuthStatus::invalidate_cache();
 
@@ -437,7 +437,7 @@ fn test_remote_jcode_subscription_catalog_is_not_augmented_with_local_auth_route
         let mut app = create_test_app();
         app.is_remote = true;
         app.remote_provider_name =
-            Some(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string());
+            Some(crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string());
         app.remote_available_entries = vec![
             "claude-opus-4-8".to_string(),
             "gpt-5.5".to_string(),
@@ -470,8 +470,8 @@ fn test_remote_jcode_subscription_catalog_is_not_augmented_with_local_auth_route
             .collect::<std::collections::BTreeSet<_>>();
         assert_eq!(app.remote_model_options.len(), expected.len());
         assert!(app.remote_model_options.iter().all(|route| {
-            route.provider == crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
-                && route.api_method == crate::subscription_catalog::JCODE_ROUTE_API_METHOD
+            route.provider == crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
+                && route.api_method == crate::subscription_catalog::KCODE_ROUTE_API_METHOD
                 && route.available
         }));
         assert_eq!(
@@ -520,8 +520,8 @@ fn test_remote_mixed_catalog_keeps_jcode_subscription_separate_from_other_provid
         },
         crate::provider::ModelRoute {
             model: "claude-opus-4-8".to_string(),
-            provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-            api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+            provider: crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+            api_method: crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
             available: true,
             detail: "managed subscription route".to_string(),
             usage: None,
@@ -529,8 +529,8 @@ fn test_remote_mixed_catalog_keeps_jcode_subscription_separate_from_other_provid
         },
         crate::provider::ModelRoute {
             model: "gpt-5.5".to_string(),
-            provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-            api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+            provider: crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+            api_method: crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
             available: true,
             detail: "managed subscription route".to_string(),
             usage: None,
@@ -538,8 +538,8 @@ fn test_remote_mixed_catalog_keeps_jcode_subscription_separate_from_other_provid
         },
         crate::provider::ModelRoute {
             model: "gpt-5.6-sol".to_string(),
-            provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-            api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+            provider: crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+            api_method: crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
             available: true,
             detail: "managed subscription route".to_string(),
             usage: None,
@@ -563,8 +563,8 @@ fn test_remote_mixed_catalog_keeps_jcode_subscription_separate_from_other_provid
         .remote_model_options
         .iter()
         .filter(|route| {
-            route.provider == crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
-                && route.api_method == crate::subscription_catalog::JCODE_ROUTE_API_METHOD
+            route.provider == crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
+                && route.api_method == crate::subscription_catalog::KCODE_ROUTE_API_METHOD
         })
         .collect::<Vec<_>>();
     assert_eq!(jcode_routes.len(), 3);
@@ -586,7 +586,7 @@ fn test_remote_mixed_catalog_keeps_jcode_subscription_separate_from_other_provid
             && route.api_method == "openrouter"
     }));
     assert!(app.remote_model_options.iter().all(|route| {
-        route.provider != crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
+        route.provider != crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
             || matches!(
                 route.model.as_str(),
                 "claude-opus-4-8" | "gpt-5.5" | "gpt-5.6-sol"
@@ -598,13 +598,13 @@ fn test_remote_mixed_catalog_keeps_jcode_subscription_separate_from_other_provid
 #[test]
 fn test_remote_hydrated_catalog_adds_entitled_jcode_subscription_routes() {
     with_temp_jcode_home(|| {
-        let previous_key = std::env::var_os(crate::subscription_catalog::JCODE_API_KEY_ENV);
-        let previous_tier = std::env::var_os(crate::subscription_catalog::JCODE_TIER_ENV);
+        let previous_key = std::env::var_os(crate::subscription_catalog::KCODE_API_KEY_ENV);
+        let previous_tier = std::env::var_os(crate::subscription_catalog::KCODE_TIER_ENV);
         crate::env::set_var(
-            crate::subscription_catalog::JCODE_API_KEY_ENV,
+            crate::subscription_catalog::KCODE_API_KEY_ENV,
             "jcode_test_subscription_key",
         );
-        crate::env::set_var(crate::subscription_catalog::JCODE_TIER_ENV, "plus");
+        crate::env::set_var(crate::subscription_catalog::KCODE_TIER_ENV, "plus");
 
         let mut app = create_test_app();
         app.is_remote = true;
@@ -659,21 +659,21 @@ fn test_remote_hydrated_catalog_adds_entitled_jcode_subscription_routes() {
 
         match previous_key {
             Some(value) => {
-                crate::env::set_var(crate::subscription_catalog::JCODE_API_KEY_ENV, value)
+                crate::env::set_var(crate::subscription_catalog::KCODE_API_KEY_ENV, value)
             }
-            None => crate::env::remove_var(crate::subscription_catalog::JCODE_API_KEY_ENV),
+            None => crate::env::remove_var(crate::subscription_catalog::KCODE_API_KEY_ENV),
         }
         match previous_tier {
-            Some(value) => crate::env::set_var(crate::subscription_catalog::JCODE_TIER_ENV, value),
-            None => crate::env::remove_var(crate::subscription_catalog::JCODE_TIER_ENV),
+            Some(value) => crate::env::set_var(crate::subscription_catalog::KCODE_TIER_ENV, value),
+            None => crate::env::remove_var(crate::subscription_catalog::KCODE_TIER_ENV),
         }
 
         let jcode_routes = app
             .remote_model_options
             .iter()
             .filter(|route| {
-                route.provider == crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
-                    && route.api_method == crate::subscription_catalog::JCODE_ROUTE_API_METHOD
+                route.provider == crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
+                    && route.api_method == crate::subscription_catalog::KCODE_ROUTE_API_METHOD
             })
             .collect::<Vec<_>>();
         let expected = crate::subscription_catalog::curated_models()
@@ -702,7 +702,7 @@ fn test_remote_hydrated_catalog_adds_entitled_jcode_subscription_routes() {
                 && route.api_method == "openrouter"
         }));
         assert!(app.remote_model_options.iter().all(|route| {
-            route.provider != crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
+            route.provider != crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
                 || crate::subscription_catalog::find_curated_model(&route.model)
                     .is_some_and(|model| {
                         crate::subscription_catalog::JcodeTier::Plus.allows(model.min_tier)
@@ -714,8 +714,8 @@ fn test_remote_hydrated_catalog_adds_entitled_jcode_subscription_routes() {
 #[test]
 fn test_remote_non_jcode_catalog_repairs_poisoned_all_jcode_routes() {
     with_temp_jcode_home(|| {
-        let previous_tier = std::env::var_os(crate::subscription_catalog::JCODE_TIER_ENV);
-        crate::env::set_var(crate::subscription_catalog::JCODE_TIER_ENV, "plus");
+        let previous_tier = std::env::var_os(crate::subscription_catalog::KCODE_TIER_ENV);
+        crate::env::set_var(crate::subscription_catalog::KCODE_TIER_ENV, "plus");
 
         let mut app = create_test_app();
         app.is_remote = true;
@@ -732,8 +732,8 @@ fn test_remote_non_jcode_catalog_repairs_poisoned_all_jcode_routes() {
             .iter()
             .map(|model| crate::provider::ModelRoute {
                 model: model.clone(),
-                provider: crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                api_method: crate::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+                provider: crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+                api_method: crate::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
                 available: true,
                 detail: "poisoned version 1 cache".to_string(),
                 usage: None,
@@ -744,16 +744,16 @@ fn test_remote_non_jcode_catalog_repairs_poisoned_all_jcode_routes() {
         app.open_model_picker();
 
         match previous_tier {
-            Some(value) => crate::env::set_var(crate::subscription_catalog::JCODE_TIER_ENV, value),
-            None => crate::env::remove_var(crate::subscription_catalog::JCODE_TIER_ENV),
+            Some(value) => crate::env::set_var(crate::subscription_catalog::KCODE_TIER_ENV, value),
+            None => crate::env::remove_var(crate::subscription_catalog::KCODE_TIER_ENV),
         }
 
         let jcode_routes = app
             .remote_model_options
             .iter()
             .filter(|route| {
-                route.provider == crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
-                    && route.api_method == crate::subscription_catalog::JCODE_ROUTE_API_METHOD
+                route.provider == crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
+                    && route.api_method == crate::subscription_catalog::KCODE_ROUTE_API_METHOD
             })
             .collect::<Vec<_>>();
         assert_eq!(
@@ -770,10 +770,10 @@ fn test_remote_non_jcode_catalog_repairs_poisoned_all_jcode_routes() {
         );
         assert!(app.remote_model_options.iter().any(|route| {
             route.model == "deepseek/deepseek-v4-pro"
-                && route.provider != crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
+                && route.provider != crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
         }));
         assert!(app.remote_model_options.iter().all(|route| {
-            route.provider != crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
+            route.provider != crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
                 || matches!(
                     route.model.as_str(),
                     "claude-fable-5" | "claude-opus-4-8" | "gpt-5.5" | "gpt-5.6-sol"

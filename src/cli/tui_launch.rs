@@ -101,13 +101,13 @@ pub async fn run_tui_client(
     if let Some(ref session_id) = resume_session {
         set_current_session(session_id);
     }
-    let native_ssh = std::env::var_os("JCODE_SSH_REMOTE").is_some();
+    let native_ssh = std::env::var_os("KCODE_SSH_REMOTE").is_some();
     if !native_ssh {
         spawn_session_signal_watchers();
     }
 
     if native_ssh {
-        let host = std::env::var("JCODE_SSH_REMOTE").unwrap_or_default();
+        let host = std::env::var("KCODE_SSH_REMOTE").unwrap_or_default();
         let label = resume_session.as_deref().unwrap_or("new session");
         crate::process_title::set_client_remote_display_title(
             &host,
@@ -187,11 +187,8 @@ pub async fn run_tui_client(
                 "local reload/update actions are unavailable during SSH attach; reconnect after updating explicitly"
             );
         }
-        if run_result.exit_code.is_some_and(|code| code != 0) {
-            anyhow::bail!(
-                "SSH client exited with code {}",
-                run_result.exit_code.unwrap()
-            );
+        if let Some(code) = run_result.exit_code.filter(|code| *code != 0) {
+            anyhow::bail!("SSH client exited with code {code}");
         }
         if let Some(ref session_id) = run_result.session_id {
             print_session_resume_hint(session_id);

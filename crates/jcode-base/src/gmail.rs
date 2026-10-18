@@ -35,10 +35,10 @@ pub struct ComposioConfig {
 impl GmailBackend {
     /// Resolve the backend from environment configuration.
     ///
-    /// Defaults to `Direct`. Set `JCODE_GMAIL_BACKEND=composio` (with
+    /// Defaults to `Direct`. Set `KCODE_GMAIL_BACKEND=composio` (with
     /// `COMPOSIO_API_KEY` present) to broker Gmail through Composio.
     pub fn from_env() -> Self {
-        let selection = std::env::var("JCODE_GMAIL_BACKEND")
+        let selection = std::env::var("KCODE_GMAIL_BACKEND")
             .unwrap_or_default()
             .trim()
             .to_lowercase();
@@ -47,7 +47,7 @@ impl GmailBackend {
                 return GmailBackend::Composio(cfg);
             }
             eprintln!(
-                "JCODE_GMAIL_BACKEND=composio but COMPOSIO_API_KEY is not set; falling back to direct Gmail backend"
+                "KCODE_GMAIL_BACKEND=composio but COMPOSIO_API_KEY is not set; falling back to direct Gmail backend"
             );
         }
         GmailBackend::Direct
@@ -105,7 +105,7 @@ impl ComposioConfig {
 }
 
 /// Persisted record of a completed Composio Gmail connection, stored at
-/// `~/.jcode/composio_gmail.json`.
+/// `~/.kcode/composio_gmail.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComposioConnection {
     pub connected_account_id: String,
@@ -237,7 +237,7 @@ impl GmailClient {
             GmailBackend::Composio(cfg) => cfg,
             GmailBackend::Direct => {
                 anyhow::bail!(
-                    "The Composio connect flow is only available when JCODE_GMAIL_BACKEND=composio."
+                    "The Composio connect flow is only available when KCODE_GMAIL_BACKEND=composio."
                 )
             }
         };

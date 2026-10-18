@@ -89,7 +89,7 @@ fn detect_multiplexer_from_env() -> Multiplexer {
 /// into Zellij panes from an outer kitty, and the stdio probe succeeds because
 /// Zellij answers Kitty queries, so both detection paths would pick Kitty.
 /// Fall back to halfblocks (Mermaid then shows its source) unless the user
-/// opts in with `JCODE_ZELLIJ_KITTY_IMAGES=1`, for Zellij builds that add
+/// opts in with `KCODE_ZELLIJ_KITTY_IMAGES=1`, for Zellij builds that add
 /// placeholder support.
 pub(super) fn adjust_protocol_for_multiplexer(
     protocol: ProtocolType,
@@ -105,7 +105,7 @@ pub(super) fn adjust_protocol_for_multiplexer(
 }
 
 fn zellij_kitty_images_opt_in() -> bool {
-    std::env::var("JCODE_ZELLIJ_KITTY_IMAGES")
+    std::env::var("KCODE_ZELLIJ_KITTY_IMAGES")
         .ok()
         .as_deref()
         .and_then(parse_env_bool)
@@ -118,7 +118,7 @@ fn apply_multiplexer_protocol_limits(picker: &mut Picker, multiplexer: Multiplex
         adjust_protocol_for_multiplexer(current, multiplexer, zellij_kitty_images_opt_in());
     if adjusted != current {
         crate::log_info(&format!(
-            "Image protocol {:?} unusable inside {} (no Kitty unicode placeholder support); using {:?}. Set JCODE_ZELLIJ_KITTY_IMAGES=1 to override",
+            "Image protocol {:?} unusable inside {} (no Kitty unicode placeholder support); using {:?}. Set KCODE_ZELLIJ_KITTY_IMAGES=1 to override",
             current,
             multiplexer.label(),
             adjusted
@@ -190,7 +190,7 @@ fn parse_env_bool(raw: &str) -> Option<bool> {
 
 /// Decide how to initialize the picker.
 ///
-/// * `probe_override` is the parsed value of `JCODE_MERMAID_PICKER_PROBE`
+/// * `probe_override` is the parsed value of `KCODE_MERMAID_PICKER_PROBE`
 ///   (`Some(true)`/`Some(false)` when set explicitly, `None` otherwise) and
 ///   always wins so users can force either behavior.
 /// * When the override is absent, startup stays on the environment-based fast
@@ -198,7 +198,7 @@ fn parse_env_bool(raw: &str) -> Option<bool> {
 ///   does not answer, which made an optional image capability dominate the TUI
 ///   critical path. Users behind multiplexers that hide the outer terminal can
 ///   still opt into the authoritative probe with
-///   `JCODE_MERMAID_PICKER_PROBE=1`.
+///   `KCODE_MERMAID_PICKER_PROBE=1`.
 pub(super) fn decide_picker_init_mode(
     probe_override: Option<bool>,
     _env_protocol: Option<ProtocolType>,
@@ -211,7 +211,7 @@ pub(super) fn decide_picker_init_mode(
     }
 }
 
-/// Parse only the explicit `JCODE_MERMAID_PICKER_PROBE` override into a mode,
+/// Parse only the explicit `KCODE_MERMAID_PICKER_PROBE` override into a mode,
 /// ignoring env/multiplexer detection. `Some(true)` probes; unset or any other
 /// value keeps the historical fast default. Used for the force-on/off path and
 /// as a focused unit-test seam.
@@ -258,7 +258,7 @@ pub(super) fn infer_protocol_from_env(
         // Real iTerm2 renders jcode's inline images incorrectly (corrupted
         // scrollback / broken layout), so treat it as having no usable image
         // protocol and fall back to Mermaid source text. Set
-        // JCODE_ITERM2_IMAGES=1 to opt back in.
+        // KCODE_ITERM2_IMAGES=1 to opt back in.
         if iterm2_images_opt_in() {
             return Some(ProtocolType::Iterm2);
         }
@@ -269,7 +269,7 @@ pub(super) fn infer_protocol_from_env(
     // TERM=foot with no TERM_PROGRAM, so TERM is the signal. foot only
     // advertises DA1 attribute 4 when sixel is enabled at runtime
     // ([tweak].sixel=no) and compile time, so a disabled-sixel foot is still
-    // mis-detected here; JCODE_MERMAID_PICKER_PROBE=1 probes the real DA1 and
+    // mis-detected here; KCODE_MERMAID_PICKER_PROBE=1 probes the real DA1 and
     // overrides the protocol with the truthful answer.
     if term.starts_with("foot") || term_program.contains("foot") {
         return Some(ProtocolType::Sixel);
@@ -305,7 +305,7 @@ pub(super) fn real_iterm2_without_opt_in() -> bool {
 
 /// Whether the user explicitly opted iTerm2 image output back in.
 pub(super) fn iterm2_images_opt_in() -> bool {
-    std::env::var("JCODE_ITERM2_IMAGES")
+    std::env::var("KCODE_ITERM2_IMAGES")
         .ok()
         .as_deref()
         .and_then(parse_env_bool)
@@ -406,7 +406,7 @@ fn probe_picker() -> Picker {
 pub(crate) fn prewarm_svg_font_db_async() {
     SVG_FONT_DB_PREWARM_STARTED.get_or_init(|| {
         let _ = std::thread::Builder::new()
-            .name("jcode-mermaid-fontdb-prewarm".to_string())
+            .name("kcode-mermaid-fontdb-prewarm".to_string())
             .spawn(|| {
                 let _ = &*SVG_FONT_DB;
             });
@@ -415,7 +415,7 @@ pub(crate) fn prewarm_svg_font_db_async() {
 
 /// Initialize the global picker.
 /// By default jcode uses environment-based detection and never blocks startup
-/// on terminal capability responses. Set JCODE_MERMAID_PICKER_PROBE=1 to run an
+/// on terminal capability responses. Set KCODE_MERMAID_PICKER_PROBE=1 to run an
 /// authoritative stdio probe when a multiplexer masks the outer terminal, or
 /// =0 to explicitly retain the fast path. Cache eviction runs once before image
 /// rendering can begin so it cannot delete a file between materialization and
@@ -429,7 +429,7 @@ pub fn init_picker() {
             std::env::var("KITTY_WINDOW_ID").ok().as_deref(),
         );
         let multiplexer = detect_multiplexer_from_env();
-        let probe_override = std::env::var("JCODE_MERMAID_PICKER_PROBE")
+        let probe_override = std::env::var("KCODE_MERMAID_PICKER_PROBE")
             .ok()
             .as_deref()
             .and_then(parse_env_bool);
@@ -742,7 +742,7 @@ mod tests {
         use image::{ImageBuffer, Rgba};
 
         let dir = std::env::temp_dir().join(format!(
-            "jcode-external-image-{}-{:?}",
+            "kcode-external-image-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -787,7 +787,7 @@ mod tests {
     #[test]
     fn rediscovery_fails_when_the_external_image_file_is_gone() {
         let path = std::env::temp_dir().join(format!(
-            "jcode-missing-external-image-{}-{:?}.png",
+            "kcode-missing-external-image-{}-{:?}.png",
             std::process::id(),
             std::thread::current().id()
         ));

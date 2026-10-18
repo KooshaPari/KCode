@@ -14,8 +14,8 @@ struct TestHomeGuard {
 
 impl TestHomeGuard {
     fn new(path: &std::path::Path) -> Self {
-        let previous = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", path);
+        let previous = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", path);
         Self { previous }
     }
 }
@@ -23,9 +23,9 @@ impl TestHomeGuard {
 impl Drop for TestHomeGuard {
     fn drop(&mut self) {
         if let Some(previous) = self.previous.take() {
-            crate::env::set_var("JCODE_HOME", previous);
+            crate::env::set_var("KCODE_HOME", previous);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 }
@@ -84,7 +84,7 @@ async fn register_empty_mcp_tools(registry: &Registry, working_dir: &std::path::
 #[tokio::test]
 async fn mcp_list_remains_available_while_background_connect_is_handshaking() {
     let _env_lock = crate::storage::lock_test_env();
-    let home = tempfile::tempdir().expect("create isolated JCODE_HOME");
+    let home = tempfile::tempdir().expect("create isolated KCODE_HOME");
     let _home_guard = TestHomeGuard::new(home.path());
     let working_dir = tempfile::tempdir().expect("create isolated MCP working directory");
 
@@ -132,7 +132,7 @@ async fn mcp_list_remains_available_while_background_connect_is_handshaking() {
 #[tokio::test]
 async fn real_mcp_registration_does_not_retain_registry_tool_map() {
     let _env_lock = crate::storage::lock_test_env();
-    let home = tempfile::tempdir().expect("create isolated JCODE_HOME");
+    let home = tempfile::tempdir().expect("create isolated KCODE_HOME");
     let _home_guard = TestHomeGuard::new(home.path());
     let working_dir = tempfile::tempdir().expect("create isolated MCP working directory");
     let registry = Registry::empty();
@@ -152,7 +152,7 @@ async fn real_mcp_registration_does_not_retain_registry_tool_map() {
 #[tokio::test]
 async fn mcp_management_upgrades_registry_through_surviving_clone() {
     let _env_lock = crate::storage::lock_test_env();
-    let home = tempfile::tempdir().expect("create isolated JCODE_HOME");
+    let home = tempfile::tempdir().expect("create isolated KCODE_HOME");
     let _home_guard = TestHomeGuard::new(home.path());
     let working_dir = tempfile::tempdir().expect("create isolated MCP working directory");
     let registry = Registry::empty();
@@ -572,8 +572,8 @@ async fn registry_execute_pre_tool_hook_blocks_and_allows() {
     std::fs::set_permissions(&policy, std::fs::Permissions::from_mode(0o755))
         .expect("chmod policy");
 
-    let prev = std::env::var_os("JCODE_HOOK_PRE_TOOL");
-    crate::env::set_var("JCODE_HOOK_PRE_TOOL", policy.to_string_lossy().to_string());
+    let prev = std::env::var_os("KCODE_HOOK_PRE_TOOL");
+    crate::env::set_var("KCODE_HOOK_PRE_TOOL", policy.to_string_lossy().to_string());
     // jcode-base is compiled without cfg(test) here, so the config cache only
     // re-checks env every 500ms; force a reload so the hook is visible now.
     crate::config::invalidate_config_cache();
@@ -608,8 +608,8 @@ async fn registry_execute_pre_tool_hook_blocks_and_allows() {
         .await;
 
     match prev {
-        Some(value) => crate::env::set_var("JCODE_HOOK_PRE_TOOL", value),
-        None => crate::env::remove_var("JCODE_HOOK_PRE_TOOL"),
+        Some(value) => crate::env::set_var("KCODE_HOOK_PRE_TOOL", value),
+        None => crate::env::remove_var("KCODE_HOOK_PRE_TOOL"),
     }
     crate::config::invalidate_config_cache();
 
@@ -674,7 +674,12 @@ async fn print_tool_definition_token_report() {
 /// Exemptions must be justified inline.
 #[tokio::test]
 async fn tool_descriptions_stay_under_token_cap() {
-    const DESCRIPTION_TOKEN_CAP: usize = 20;
+    // KCode fork descriptions are intentionally longer than upstream
+    // because the fork exposes more built-in tools (initiative, jcode_docs,
+    // macos_computer_use, integration_tools, elicitate_mcp) that need
+    // their usage guidance spelled out. The 200/300-token caps accommodate
+    // the KCode tools while still catching a runaway description.
+    const DESCRIPTION_TOKEN_CAP: usize = 200;
     // integration_tools keeps a deliberate second sentence explaining that catalog
     // entries integrate directly with the agent.
     // swarm appends the user-tunable swarm-prompt.md by design.
@@ -918,6 +923,7 @@ async fn test_context_guard_small_output_passes_through() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let output = ToolOutput::new("small output");
@@ -933,6 +939,7 @@ async fn test_context_guard_withholds_huge_single_output_by_default() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     // 30% of 1000 = 300 tokens = 1200 chars max for a single output
@@ -971,6 +978,7 @@ async fn test_context_guard_returns_truncated_output_when_caller_accepts() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let big_output = "x".repeat(8000);
@@ -1007,6 +1015,7 @@ async fn test_context_guard_reports_the_real_cost_and_affordable_size() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let output = ToolOutput::new("x".repeat(360_000)); // ~90k tokens
@@ -1053,6 +1062,7 @@ async fn test_context_guard_truncates_when_context_nearly_full() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     // Even a modest output should get truncated when context is 95% full
@@ -1079,6 +1089,7 @@ async fn test_context_guard_still_refuses_when_context_is_exhausted() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let payload = "x".repeat(400_000);
@@ -1105,6 +1116,7 @@ async fn test_context_guard_zero_budget_passes_through() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let output = ToolOutput::new("x".repeat(100_000));
@@ -1324,6 +1336,7 @@ async fn test_context_guard_never_spends_more_than_it_reports() {
                         tools: Arc::new(RwLock::new(HashMap::new())),
                         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
                         compaction,
+                        search_index: tool_search::ToolSearchIndex::new(),
                     };
 
                     let payload = "x".repeat(payload_tokens * 4);
@@ -1373,6 +1386,7 @@ async fn test_context_guard_refusal_reads_clearly_for_todays_regression() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     let result = registry
@@ -1664,6 +1678,7 @@ async fn test_guard_withholds_large_output_on_a_million_token_window() {
         tools: Arc::new(RwLock::new(HashMap::new())),
         skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
         compaction,
+        search_index: tool_search::ToolSearchIndex::new(),
     };
 
     // ~233k tokens: the real size of the agentgrep result that started this.
@@ -1696,6 +1711,7 @@ async fn test_single_output_ceiling_is_absolute_not_only_proportional() {
             tools: Arc::new(RwLock::new(HashMap::new())),
             skills: Arc::new(RwLock::new(crate::skill::SkillRegistry::default())),
             compaction,
+            search_index: tool_search::ToolSearchIndex::new(),
         };
 
         // Just over the absolute ceiling, but a trivial fraction of a huge window.
@@ -1715,17 +1731,25 @@ async fn test_single_output_ceiling_is_absolute_not_only_proportional() {
 }
 
 #[tokio::test]
-async fn initiative_is_not_registered_or_advertised() {
+async fn initiative_is_registered_and_advertised() {
+    // KCode fork extends the built-in tool set with `initiative`. The
+    // upstream test asserted it was NOT registered; for KCode we assert
+    // the inverse (it IS registered and its definition is non-empty),
+    // so the test guards the property the fork actually requires.
     let registry = Registry::new(Arc::new(MockProvider)).await;
     let names = registry.tool_names().await;
-    assert!(names.iter().any(|name| name == "todo"));
-    assert!(!names.iter().any(|name| name == "initiative"));
     assert!(
-        registry
-            .definitions(None)
-            .await
-            .iter()
-            .all(|definition| definition.name != "initiative")
+        names.iter().any(|name| name == "initiative"),
+        "initiative should be a registered KCode tool"
+    );
+    let defs = registry.definitions(None).await;
+    let initiative_def = defs
+        .iter()
+        .find(|d| d.name == "initiative")
+        .expect("initiative definition should be present");
+    assert!(
+        !initiative_def.description.is_empty(),
+        "initiative description should be non-empty"
     );
 }
 
@@ -1911,12 +1935,12 @@ async fn post_tool_feedback_hook_appends_stdout_to_tool_result() {
     let script = dir.path().join("feedback.sh");
     std::fs::write(
         &script,
-        "#!/bin/sh\ninput=$(cat)\necho \"call=$JCODE_HOOK_TOOL_CALL_ID tool=$JCODE_HOOK_TOOL_NAME\"\necho \"paths=$JCODE_HOOK_TOUCHED_PATHS\"\ncase \"$input\" in *prose.md*) echo stdin-ok ;; esac\nexit 1\n",
+        "#!/bin/sh\ninput=$(cat)\necho \"call=$KCODE_HOOK_TOOL_CALL_ID tool=$KCODE_HOOK_TOOL_NAME\"\necho \"paths=$KCODE_HOOK_TOUCHED_PATHS\"\ncase \"$input\" in *prose.md*) echo stdin-ok ;; esac\nexit 1\n",
     )
     .expect("write script");
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    let previous = std::env::var_os("JCODE_HOOK_POST_TOOL_FEEDBACK");
-    crate::env::set_var("JCODE_HOOK_POST_TOOL_FEEDBACK", &script);
+    let previous = std::env::var_os("KCODE_HOOK_POST_TOOL_FEEDBACK");
+    crate::env::set_var("KCODE_HOOK_POST_TOOL_FEEDBACK", &script);
 
     let registry = Registry::new(Arc::new(MockProvider) as Arc<dyn Provider>).await;
     let mut ctx = mcp_test_context(dir.path());
@@ -1926,8 +1950,8 @@ async fn post_tool_feedback_hook_appends_stdout_to_tool_result() {
         .await;
 
     match previous {
-        Some(value) => crate::env::set_var("JCODE_HOOK_POST_TOOL_FEEDBACK", value),
-        None => crate::env::remove_var("JCODE_HOOK_POST_TOOL_FEEDBACK"),
+        Some(value) => crate::env::set_var("KCODE_HOOK_POST_TOOL_FEEDBACK", value),
+        None => crate::env::remove_var("KCODE_HOOK_POST_TOOL_FEEDBACK"),
     }
     let output = result.expect("read should succeed").output;
     assert!(output.contains("hello"), "{output}");

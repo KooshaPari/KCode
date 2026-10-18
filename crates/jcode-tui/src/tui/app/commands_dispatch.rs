@@ -82,6 +82,7 @@ pub(super) fn ssh_unsupported_command(input: &str) -> bool {
             | "/cache"
             | "/initiatives"
             | "/goals"
+            | "/goal"
             | "/dictate"
             | "/dictation"
             | "/voice"
@@ -113,6 +114,7 @@ pub(super) fn ssh_unsupported_command(input: &str) -> bool {
             | "/transfer"
             | "/desktop"
             | "/workspace"
+            | "/loop"
     )
 }
 
@@ -224,10 +226,12 @@ fn dispatch_single_local_command(app: &mut App, trimmed: &str) -> bool {
         || super::commands::handle_help_command(app, trimmed)
         || super::commands::handle_keys_command(app, trimmed)
         || super::commands::handle_ssh_command(app, trimmed)
-        // `/test`, `/mission`, `/goal`, and `/goals` are dispatched inside
-        // `handle_session_command`, so they need no separate entries here.
+        // `/test` and `/mission` are dispatched inside `handle_session_command`; `/goal`
+        // lives in commands_goal.rs and `/goals` is handled by `handle_goals_command`
+        // inside `handle_session_command`.
         || super::commands::handle_session_command(app, trimmed)
         || super::commands_desktop::handle_desktop_command(app, trimmed)
+        || super::commands_goal::handle_goal_command(app, trimmed)
         || super::commands::handle_dictation_command(app, trimmed)
         || super::commands::handle_config_command(app, trimmed)
         || super::commands_colors::handle_colors_command(app, trimmed)
@@ -241,6 +245,7 @@ fn dispatch_single_local_command(app: &mut App, trimmed: &str) -> bool {
         || super::productivity::handle_productivity_command(app, trimmed)
         || super::commands::handle_feedback_command(app, trimmed)
         || super::commands::handle_telemetry_command(app, trimmed)
+        || super::commands_loop::handle_loop_command(app, trimmed)
         || super::support::handle_support_command(app, trimmed)
         || super::state_ui::handle_info_command(app, trimmed)
         || super::auth::handle_auth_command(app, trimmed)
@@ -252,7 +257,7 @@ fn dispatch_single_local_command(app: &mut App, trimmed: &str) -> bool {
 /// tests never observe an SSH flag or another test's temporary home.
 #[cfg(test)]
 pub(super) fn ssh_test_runs_in_child(test_name: &str) -> bool {
-    if std::env::var("JCODE_SSH_UI_TEST").as_deref() == Ok(test_name) {
+    if std::env::var("KCODE_SSH_UI_TEST").as_deref() == Ok(test_name) {
         return false;
     }
     let home = tempfile::tempdir().expect("isolated SSH test home");
@@ -260,9 +265,9 @@ pub(super) fn ssh_test_runs_in_child(test_name: &str) -> bool {
         .arg(test_name)
         .arg("--test-threads=1")
         .arg("--nocapture")
-        .env("JCODE_SSH_UI_TEST", test_name)
-        .env("JCODE_SSH_REMOTE", "test-remote")
-        .env("JCODE_HOME", home.path())
+        .env("KCODE_SSH_UI_TEST", test_name)
+        .env("KCODE_SSH_REMOTE", "test-remote")
+        .env("KCODE_HOME", home.path())
         .output()
         .expect("run isolated SSH test");
     assert!(

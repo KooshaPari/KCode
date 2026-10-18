@@ -22,7 +22,7 @@ pub const DEFAULT_KEEP_RECENT_VERSIONS: usize = 5;
 const MIN_VERSION_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Override how many unreferenced versions to keep. `0` disables cleanup.
-pub const KEEP_VERSIONS_ENV: &str = "JCODE_KEEP_BUILD_VERSIONS";
+pub const KEEP_VERSIONS_ENV: &str = "KCODE_KEEP_BUILD_VERSIONS";
 
 const PRUNE_INTERVAL_SECS: u64 = 24 * 60 * 60;
 const PRUNE_MARKER: &str = "versions-prune.stamp";
@@ -223,7 +223,7 @@ mod tests {
     fn make_version(dir: &Path, name: &str, age: Duration) {
         let version = dir.join(name);
         fs::create_dir_all(&version).unwrap();
-        fs::write(version.join("jcode"), b"bin").unwrap();
+        fs::write(version.join("kcode"), b"bin").unwrap();
         File::open(&version)
             .and_then(|file| file.set_modified(SystemTime::now() - age))
             .unwrap();
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn parses_version_from_binary_path() {
         assert_eq!(
-            version_from_binary_path(Path::new("/h/.jcode/builds/versions/abc123/jcode")),
+            version_from_binary_path(Path::new("/h/.kcode/builds/versions/abc123/jcode")),
             Some("abc123".to_string())
         );
         assert_eq!(

@@ -91,9 +91,19 @@ pub(super) fn extract_input_shell_command(input: &str) -> Option<&str> {
 fn build_input_shell_command(command: &str) -> std::process::Command {
     #[cfg(windows)]
     {
-        let mut cmd = std::process::Command::new("cmd.exe");
-        cmd.arg("/C").arg(command);
-        cmd
+        use crate::terminal::shell::Shell;
+        match Shell::detect() {
+            Shell::PowerShell => {
+                let mut cmd = std::process::Command::new("pwsh.exe");
+                cmd.arg("-NoProfile").arg("-Command").arg(command);
+                cmd
+            }
+            _ => {
+                let mut cmd = std::process::Command::new("cmd.exe");
+                cmd.arg("/C").arg(command);
+                cmd
+            }
+        }
     }
 
     #[cfg(not(windows))]
@@ -2626,6 +2636,12 @@ pub(super) fn handle_modal_key(
         return Ok(true);
     }
 
+    // Elicitation overlay takes highest priority among modal overlays.
+    if app.elicit_overlay.is_some() {
+        app.handle_elicit_key(code, modifiers);
+        return Ok(true);
+    }
+
     if app.session_picker_overlay.is_some() {
         app.handle_session_picker_key(code, modifiers)?;
         return Ok(true);
@@ -3899,7 +3915,7 @@ impl App {
             // daemon-side `skill_manage reload_all` can update a different process.
             // On a slash miss, synchronously refresh from the active session working
             // directory before reporting Unknown skill so project-local skills such
-            // as .jcode/skills/optimization work immediately after reload/build.
+            // as .kcode/skills/optimization work immediately after reload/build.
             if skill.is_none() {
                 self.refresh_skills_snapshot();
                 skill = self.current_skills_snapshot().get(&skill_name).cloned();
@@ -3933,7 +3949,7 @@ impl App {
                             skill_name, install
                         ),
                         None => format!(
-                            "Skill /{} is endorsed but not installed (source: {}). Install it into ~/.jcode/skills/{}/SKILL.md.",
+                            "Skill /{} is endorsed but not installed (source: {}). Install it into ~/.kcode/skills/{}/SKILL.md.",
                             skill_name, endorsed.source, skill_name
                         ),
                     });

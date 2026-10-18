@@ -467,11 +467,11 @@ fn test_model_picker_remote_comtegra_model_uses_comtegra_route_not_copilot() {
 #[test]
 fn test_model_picker_remote_bedrock_model_has_bedrock_route_when_configured() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var("JCODE_HOME").ok();
+    let prev_home = std::env::var("KCODE_HOME").ok();
     let prev_key = std::env::var(crate::provider::bedrock::API_KEY_ENV).ok();
     let prev_region = std::env::var(crate::provider::bedrock::REGION_ENV).ok();
     let temp = tempfile::tempdir().expect("tempdir");
-    crate::env::set_var("JCODE_HOME", temp.path().display().to_string());
+    crate::env::set_var("KCODE_HOME", temp.path().display().to_string());
     crate::env::set_var(crate::provider::bedrock::API_KEY_ENV, "test-bedrock-key");
     crate::env::set_var(crate::provider::bedrock::REGION_ENV, "us-east-2");
     crate::auth::AuthStatus::invalidate_cache();
@@ -483,8 +483,8 @@ fn test_model_picker_remote_bedrock_model_has_bedrock_route_when_configured() {
     app.open_model_picker();
 
     match prev_home {
-        Some(value) => crate::env::set_var("JCODE_HOME", value),
-        None => crate::env::remove_var("JCODE_HOME"),
+        Some(value) => crate::env::set_var("KCODE_HOME", value),
+        None => crate::env::remove_var("KCODE_HOME"),
     }
     match prev_key {
         Some(value) => crate::env::set_var(crate::provider::bedrock::API_KEY_ENV, value),
@@ -519,9 +519,9 @@ fn test_model_picker_remote_bedrock_model_has_bedrock_route_when_configured() {
 #[test]
 fn test_model_picker_preserves_recommendation_priority_order() {
     let _env_guard = crate::storage::lock_test_env();
-    let _restore = EnvRestoreGuard::capture(["JCODE_HOME"]);
+    let _restore = EnvRestoreGuard::capture(["KCODE_HOME"]);
     let home = tempfile::tempdir().unwrap();
-    crate::env::set_var("JCODE_HOME", home.path());
+    crate::env::set_var("KCODE_HOME", home.path());
     let mut app = create_test_app();
     configure_test_remote_models_with_openai_recommendations(&mut app);
 

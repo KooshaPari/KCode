@@ -318,7 +318,7 @@ async fn send_ntfy(
 #[cfg(target_os = "macos")]
 const MACOS_NOTIFICATION_BROKER_APP_NAME: &str = "Jcode Notifications.app";
 #[cfg(target_os = "macos")]
-const MACOS_NOTIFICATION_BROKER_EXECUTABLE: &str = "jcode-notification-broker";
+const MACOS_NOTIFICATION_BROKER_EXECUTABLE: &str = "kcode-notification-broker";
 
 impl MacosNotificationOrigin {
     /// Capture the terminal route for the local client which owns this process.
@@ -418,7 +418,7 @@ fn controlling_tty() -> Option<String> {
 
 #[cfg(target_os = "macos")]
 fn macos_notification_broker_app_path() -> Option<std::path::PathBuf> {
-    if let Some(path) = std::env::var_os("JCODE_MACOS_NOTIFICATION_BROKER_APP") {
+    if let Some(path) = std::env::var_os("KCODE_MACOS_NOTIFICATION_BROKER_APP") {
         return Some(path.into());
     }
     let home = dirs::home_dir()?;
@@ -427,7 +427,7 @@ fn macos_notification_broker_app_path() -> Option<std::path::PathBuf> {
     // published it in ~/Applications; keep using that copy until the next
     // interactive launch migrates it.
     let current = home
-        .join(".jcode")
+        .join(".kcode")
         .join("notifications")
         .join("macos")
         .join(MACOS_NOTIFICATION_BROKER_APP_NAME);
@@ -442,11 +442,11 @@ fn macos_notification_broker_app_path() -> Option<std::path::PathBuf> {
 
 /// The durable inbox consumed by the bundled macOS broker.
 pub fn macos_notification_inbox_dir() -> Option<std::path::PathBuf> {
-    if let Some(path) = std::env::var_os("JCODE_MACOS_NOTIFICATION_INBOX") {
+    if let Some(path) = std::env::var_os("KCODE_MACOS_NOTIFICATION_INBOX") {
         return Some(path.into());
     }
     dirs::home_dir().map(|home| {
-        home.join(".jcode")
+        home.join(".kcode")
             .join("notifications")
             .join("macos")
             .join("inbox")
@@ -539,7 +539,7 @@ fn next_macos_notification_id() -> String {
         .unwrap_or_default()
         .as_nanos();
     format!(
-        "jcode-turn-{timestamp}-{}-{}",
+        "kcode-turn-{timestamp}-{}-{}",
         std::process::id(),
         SEQUENCE.fetch_add(1, Ordering::Relaxed)
     )
@@ -575,7 +575,7 @@ fn enqueue_macos_notification(
 
 fn reap_notification_child(mut child: std::process::Child) {
     let _ = std::thread::Builder::new()
-        .name("jcode-notification-child".to_string())
+        .name("kcode-notification-child".to_string())
         .spawn(move || {
             let _ = child.wait();
         });
@@ -1151,7 +1151,7 @@ mod tests {
     fn macos_envelope_roundtrip_preserves_origin_metadata() {
         let envelope = MacosNotificationEnvelope {
             schema_version: MACOS_NOTIFICATION_SCHEMA_VERSION,
-            notification_id: "jcode-turn-test".to_string(),
+            notification_id: "kcode-turn-test".to_string(),
             title: "jcode · done".to_string(),
             subtitle: Some("2/2 todos".to_string()),
             body: "Finished broker".to_string(),

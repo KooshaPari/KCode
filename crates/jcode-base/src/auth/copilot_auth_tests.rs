@@ -156,7 +156,7 @@ fn normalize_candidate_token_rejects_empty_and_unknown_values() {
 
 #[test]
 fn gh_cli_fallback_requires_explicit_opt_in() {
-    let key = "JCODE_COPILOT_ALLOW_GH_AUTH_TOKEN";
+    let key = "KCODE_COPILOT_ALLOW_GH_AUTH_TOKEN";
     let previous = std::env::var_os(key);
 
     crate::env::remove_var(key);
@@ -225,13 +225,13 @@ impl Drop for EnvRestore {
 #[test]
 fn save_github_token_creates_config_dir() -> Result<()> {
     let _guard = crate::storage::lock_test_env();
-    let _restore_jcode_home = EnvRestore::capture("JCODE_HOME");
+    let _restore_jcode_home = EnvRestore::capture("KCODE_HOME");
     let _restore_xdg = EnvRestore::capture("XDG_CONFIG_HOME");
     let dir = TempDir::new().map_err(|e| anyhow!(e))?;
 
-    // The XDG location is only used when JCODE_HOME is unset. Check that
+    // The XDG location is only used when KCODE_HOME is unset. Check that
     // resolution as a pure path computation, without writing anything.
-    crate::env::remove_var("JCODE_HOME");
+    crate::env::remove_var("KCODE_HOME");
     crate::env::set_var("XDG_CONFIG_HOME", dir.path().join("xdg"));
     assert_eq!(
         legacy_copilot_config_dir(),
@@ -239,10 +239,10 @@ fn save_github_token_creates_config_dir() -> Result<()> {
     );
 
     // Saving also records a trust entry in `<jcode_dir>/config.toml`. Only
-    // JCODE_HOME redirects that on every platform (on Windows the home dir
+    // KCODE_HOME redirects that on every platform (on Windows the home dir
     // ignores HOME), so the write happens entirely inside the tempdir.
-    let jcode_home = dir.path().join("jcode-home");
-    crate::env::set_var("JCODE_HOME", &jcode_home);
+    let jcode_home = dir.path().join("kcode-home");
+    crate::env::set_var("KCODE_HOME", &jcode_home);
 
     let result = save_github_token("gho_newtoken", "testuser");
     assert!(result.is_ok());
@@ -264,8 +264,8 @@ fn save_github_token_creates_config_dir() -> Result<()> {
 fn legacy_copilot_config_dir_uses_jcode_home_external_dir() -> Result<()> {
     let _guard = crate::storage::lock_test_env();
     let dir = TempDir::new().map_err(|e| anyhow!(e))?;
-    let prev = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", dir.path());
+    let prev = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", dir.path());
 
     let path = legacy_copilot_config_dir();
     assert_eq!(
@@ -277,9 +277,9 @@ fn legacy_copilot_config_dir_uses_jcode_home_external_dir() -> Result<()> {
     );
 
     if let Some(prev) = prev {
-        crate::env::set_var("JCODE_HOME", prev);
+        crate::env::set_var("KCODE_HOME", prev);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
     Ok(())
 }
@@ -288,10 +288,10 @@ fn legacy_copilot_config_dir_uses_jcode_home_external_dir() -> Result<()> {
 fn save_github_token_makes_future_loads_available() -> Result<()> {
     let _guard = crate::storage::lock_test_env();
     let dir = TempDir::new().map_err(|e| anyhow!(e))?;
-    let prev_jcode_home = std::env::var_os("JCODE_HOME");
+    let prev_jcode_home = std::env::var_os("KCODE_HOME");
     let prev_xdg_config_home = std::env::var_os("XDG_CONFIG_HOME");
 
-    crate::env::set_var("JCODE_HOME", dir.path());
+    crate::env::set_var("KCODE_HOME", dir.path());
     crate::env::remove_var("XDG_CONFIG_HOME");
 
     save_github_token("gho_persisted_token", "testuser")?;
@@ -306,9 +306,9 @@ fn save_github_token_makes_future_loads_available() -> Result<()> {
     assert_eq!(load_github_token()?, "gho_persisted_token");
 
     if let Some(prev) = prev_jcode_home {
-        crate::env::set_var("JCODE_HOME", prev);
+        crate::env::set_var("KCODE_HOME", prev);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 
     if let Some(prev) = prev_xdg_config_home {
@@ -647,12 +647,12 @@ fn normalize_github_host_key_accepts_apps_json_client_id_suffix() {
 
 #[test]
 fn live_verify_failure_record_blocks_auto_use() -> Result<()> {
-    // Lock the test env and isolate JCODE_HOME so the validation record we write
+    // Lock the test env and isolate KCODE_HOME so the validation record we write
     // does not touch the developer's real auth-validation.json.
     let _guard = crate::storage::lock_test_env();
     let dir = TempDir::new().map_err(|e| anyhow!(e))?;
-    let prev_jcode_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", dir.path());
+    let prev_jcode_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", dir.path());
 
     // Ensure no env token is present, otherwise the gate short-circuits to
     // "allowed" regardless of the saved record.
@@ -702,9 +702,9 @@ fn live_verify_failure_record_blocks_auto_use() -> Result<()> {
         }
     }
     if let Some(prev) = prev_jcode_home {
-        crate::env::set_var("JCODE_HOME", prev);
+        crate::env::set_var("KCODE_HOME", prev);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
     Ok(())
 }

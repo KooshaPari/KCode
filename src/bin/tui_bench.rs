@@ -1210,7 +1210,7 @@ fn make_text(len: usize) -> String {
 }
 
 fn main() -> Result<()> {
-    if std::env::var("JCODE_TUI_PROFILE").is_ok() {
+    if std::env::var("KCODE_TUI_PROFILE").is_ok() {
         jcode::logging::init();
         if let Some(path) = jcode::logging::log_path() {
             println!("profile_log: {}", path.display());

@@ -143,7 +143,7 @@ async fn resolve_spawn_working_dir(
 }
 
 /// Launch a headed window for `session_id`, exporting the given spawn context
-/// (`JCODE_SPAWN_KIND`, swarm/coordinator ids, ...) to spawn hooks and
+/// (`KCODE_SPAWN_KIND`, swarm/coordinator ids, ...) to spawn hooks and
 /// spawned terminals so external programs can reroute the window.
 fn spawn_visible_session_window_with_context(
     session_id: &str,
@@ -413,17 +413,17 @@ fn persist_headed_startup_message(session_id: &str, message: &str) {
 fn clear_headed_startup_message(session_id: &str) {
     if let Ok(jcode_dir) = crate::storage::jcode_dir() {
         let path = jcode_dir.join(format!("client-input-{}", session_id));
-        let _ = std::fs::remove_file(path);
+        let _ = crate::storage::remove_state_file(&path);
     }
 }
 
 fn cleanup_prepared_visible_spawn_session(session_id: &str) {
     clear_headed_startup_message(session_id);
     if let Ok(path) = crate::session::session_path(session_id) {
-        let _ = std::fs::remove_file(path);
+        let _ = crate::storage::remove_state_file(&path);
     }
     if let Ok(path) = crate::session::session_journal_path(session_id) {
-        let _ = std::fs::remove_file(path);
+        let _ = crate::storage::remove_state_file(&path);
     }
 }
 
@@ -671,10 +671,10 @@ pub(super) async fn spawn_swarm_agent(
             startup_message.as_deref(),
             |session_id, cwd, selfdev_requested, provider_key| {
                 // Tag the headed window as a swarm-agent spawn so spawn hooks
-                // and terminals can identify and reroute it (JCODE_SPAWN_*).
+                // and terminals can identify and reroute it (KCODE_SPAWN_*).
                 let context = crate::session_launch::SessionSpawnContext::kind("swarm-agent")
-                    .env("JCODE_SPAWN_SWARM_ID", swarm_id)
-                    .env("JCODE_SPAWN_COORDINATOR_SESSION_ID", req_session_id)
+                    .env("KCODE_SPAWN_SWARM_ID", swarm_id)
+                    .env("KCODE_SPAWN_COORDINATOR_SESSION_ID", req_session_id)
                     .with_client_terminal_env(client_terminal_env.clone());
                 spawn_visible_session_window_with_context(
                     session_id,

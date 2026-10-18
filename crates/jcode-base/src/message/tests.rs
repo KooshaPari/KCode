@@ -317,7 +317,7 @@ fn redact_secrets_redacts_env_style_assignments() {
 
 #[test]
 fn redact_secrets_redacts_runtime_key_assignment() {
-    let key_var = "JCODE_OPENAI_COMPAT_API_KEY_NAME";
+    let key_var = "KCODE_OPENAI_COMPAT_API_KEY_NAME";
     let prev = std::env::var(key_var).ok();
     crate::env::set_var(key_var, "GROQ_API_KEY");
 

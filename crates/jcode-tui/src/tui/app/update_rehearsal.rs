@@ -2,7 +2,7 @@
 //!
 //! Unlike `/update-sim` (which only replays UI states), this launches
 //! `scripts/update_rehearsal.py` in a new terminal. That script builds a
-//! throwaway `JCODE_HOME` on the previous version, serves the current build as
+//! throwaway `KCODE_HOME` on the previous version, serves the current build as
 //! a newer fake release from localhost, and starts jcode so the genuine
 //! check -> download -> install -> reload path runs end to end. Each run starts
 //! from a wiped sandbox, so the experience is repeatable.

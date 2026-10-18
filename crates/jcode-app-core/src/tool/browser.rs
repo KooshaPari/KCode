@@ -21,6 +21,12 @@ impl BrowserTool {
     }
 }
 
+impl Default for BrowserTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 fn browser_tool_description_text() -> &'static str {
     if browser_handoff_disabled() {
         return "Control the browser using direct actions. Check action='status' first; run setup only if not ready. Browser handoff is disabled for this process. Complete browser tasks with direct actions in the requested tab.";
@@ -31,7 +37,7 @@ fn browser_tool_description_text() -> &'static str {
 /// Opt-in process-local control for direct-only benchmark arms. Normal sessions
 /// retain the default handoff policy unless the switch is explicitly set to 1.
 fn browser_handoff_disabled() -> bool {
-    std::env::var("JCODE_BROWSER_HANDOFF_DISABLED").is_ok_and(|value| value == "1")
+    std::env::var("KCODE_BROWSER_HANDOFF_DISABLED").is_ok_and(|value| value == "1")
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -126,6 +132,8 @@ struct ScrollTo {
     y: Option<f64>,
 }
 
+// async_trait generates redundant must_use attributes on boxed Future methods.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 trait BrowserProvider: Send + Sync {
     fn id(&self) -> &'static str;
@@ -393,7 +401,7 @@ impl Tool for BrowserTool {
         let params: BrowserInput = serde_json::from_value(input)?;
         if params.action == "handoff" && browser_handoff_disabled() {
             anyhow::bail!(
-                "Browser handoff is disabled by JCODE_BROWSER_HANDOFF_DISABLED=1. Use direct browser actions instead."
+                "Browser handoff is disabled by KCODE_BROWSER_HANDOFF_DISABLED=1. Use direct browser actions instead."
             );
         }
         let provider = resolve_provider(params.browser.as_deref())?;
@@ -1113,7 +1121,7 @@ fn temp_screenshot_path() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0);
-    std::env::temp_dir().join(format!("jcode-browser-{}.png", ts))
+    std::env::temp_dir().join(format!("kcode-browser-{}.png", ts))
 }
 
 fn render_browser_output(action: &str, title: String, result: Value) -> ToolOutput {

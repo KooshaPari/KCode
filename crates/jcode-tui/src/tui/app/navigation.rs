@@ -56,7 +56,7 @@ impl MouseScrollTraceState {
 }
 
 fn tui_mouse_scroll_trace_enabled() -> bool {
-    std::env::var_os("JCODE_TUI_SCROLL_TRACE").is_some()
+    std::env::var_os("KCODE_TUI_SCROLL_TRACE").is_some()
 }
 
 fn is_mouse_scroll_kind(kind: MouseEventKind) -> bool {

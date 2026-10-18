@@ -9,9 +9,9 @@ use reqwest::{Client, Response, Url};
 use serde_json::{Map, Value, json};
 use std::time::Duration;
 
-const PROVIDER_ENV: &str = "JCODE_MEMORY_JEV_PROVIDER";
-const BROWSER_PROVIDER_ENV: &str = "JCODE_BROWSER_JEV_PROVIDER";
-const VOICE_PROVIDER_ENV: &str = "JCODE_VOICE_JEV_PROVIDER";
+const PROVIDER_ENV: &str = "KCODE_MEMORY_JEV_PROVIDER";
+const BROWSER_PROVIDER_ENV: &str = "KCODE_BROWSER_JEV_PROVIDER";
+const VOICE_PROVIDER_ENV: &str = "KCODE_VOICE_JEV_PROVIDER";
 const MAX_REQUEST_BYTES: usize = 80 * 1024;
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 const MAX_ME_BYTES: usize = 16 * 1024;
@@ -108,8 +108,8 @@ impl JevProvider {
             Self::TypeSafe => ("TYPESAFE_API_KEY", "typesafe.env"),
             Self::Aimlapi => ("AIMLAPI_API_KEY", "aimlapi.env"),
             Self::Jcode => (
-                crate::subscription_catalog::JCODE_API_KEY_ENV,
-                crate::subscription_catalog::JCODE_ENV_FILE,
+                crate::subscription_catalog::KCODE_API_KEY_ENV,
+                crate::subscription_catalog::KCODE_ENV_FILE,
             ),
         }
     }
@@ -172,7 +172,7 @@ impl JevClient {
 
     /// Voice uses included Jcode access (whose gateway uses Typesafe directly),
     /// then Typesafe BYOK when no Jcode credential exists. Other provider keys and
-    /// memory/browser configuration are ignored. JCODE_VOICE_JEV_PROVIDER may
+    /// memory/browser configuration are ignored. KCODE_VOICE_JEV_PROVIDER may
     /// explicitly select typesafe or jcode. Evaluation never changes accounts.
     pub fn for_voice() -> Result<Self> {
         Self::for_purpose(JevPurpose::Voice)
@@ -774,11 +774,11 @@ mod tests {
             "typesafe"
         );
         for (available, expected) in [
-            ("JCODE_API_KEY", JevProvider::Jcode),
+            ("KCODE_API_KEY", JevProvider::Jcode),
             ("TYPESAFE_API_KEY", JevProvider::TypeSafe),
         ] {
             let (provider, _) = resolve_voice_with(&selector, |env, _| {
-                assert!(matches!(env, "JCODE_API_KEY" | "TYPESAFE_API_KEY"));
+                assert!(matches!(env, "KCODE_API_KEY" | "TYPESAFE_API_KEY"));
                 (env == available).then(|| "test-key".into())
             })
             .unwrap();
@@ -803,7 +803,7 @@ mod tests {
         );
         for selector in ["auto", "typesafe", "jcode"] {
             let error = resolve_voice_with(selector, |env, _| {
-                assert!(matches!(env, "JCODE_API_KEY" | "TYPESAFE_API_KEY"));
+                assert!(matches!(env, "KCODE_API_KEY" | "TYPESAFE_API_KEY"));
                 // Other credentials cannot make this route available.
                 (env == "OPENROUTER_API_KEY" || env == "AIMLAPI_API_KEY")
                     .then(|| "other-account-key".into())
@@ -960,8 +960,8 @@ mod tests {
             (
                 "jcode",
                 JevProvider::Jcode,
-                "JCODE_API_KEY",
-                "jcode-subscription.env",
+                "KCODE_API_KEY",
+                "kcode-subscription.env",
                 "https://api.jcode.sh/v1/decisions",
                 "typesafe/jev-1.13",
             ),
@@ -1006,10 +1006,10 @@ mod tests {
             "OPENROUTER_API_KEY",
             "TYPESAFE_API_KEY",
             "AIMLAPI_API_KEY",
-            "JCODE_API_KEY",
+            "KCODE_API_KEY",
         ] {
             let (provider, _) = resolve_with("auto", |env, _| {
-                assert!(!env.starts_with("JCODE_OPENROUTER"));
+                assert!(!env.starts_with("KCODE_OPENROUTER"));
                 (env == available).then(|| "test-secret".into())
             })
             .unwrap();
@@ -1023,7 +1023,7 @@ mod tests {
         );
         // Typesafe direct wins over resellers of the same model.
         assert_eq!(
-            resolve_with("auto", |env, _| (env != "JCODE_API_KEY")
+            resolve_with("auto", |env, _| (env != "KCODE_API_KEY")
                 .then(|| "k".into()))
             .unwrap()
             .0,

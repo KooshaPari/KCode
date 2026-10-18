@@ -20,7 +20,7 @@ const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
 /// Defaults to `https://api.openai.com/v1`, but honors a user override so
 /// the native `openai-api` provider can target a local/proxied Responses
 /// API endpoint (issue #343). Checked in order:
-/// `JCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
+/// `KCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
 ///
 /// The override must be an absolute `http(s)://` URL; anything else is
 /// logged and ignored so a malformed value never silently breaks requests.
@@ -28,7 +28,7 @@ const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
 /// so a trailing `/responses` is trimmed to avoid `.../responses/responses`.
 pub fn resolve_api_base() -> String {
     const OVERRIDE_VARS: [&str; 3] = [
-        "JCODE_OPENAI_API_BASE",
+        "KCODE_OPENAI_API_BASE",
         "OPENAI_BASE_URL",
         "OPENAI_API_BASE",
     ];
@@ -199,7 +199,7 @@ pub fn normalize_prompt_cache_retention(value: &str) -> Option<&str> {
 }
 
 pub fn prompt_cache_retention_from_env() -> Option<String> {
-    let raw = std::env::var("JCODE_OPENAI_PROMPT_CACHE_RETENTION").ok()?;
+    let raw = std::env::var("KCODE_OPENAI_PROMPT_CACHE_RETENTION").ok()?;
     normalize_prompt_cache_retention(&raw).map(str::to_owned)
 }
 
@@ -305,7 +305,7 @@ mod cache_tests {
     #[test]
     fn cache_ttl_provider_routes_and_environment_override() {
         let _guard = crate::storage::lock_test_env();
-        let key = "JCODE_OPENAI_PROMPT_CACHE_RETENTION";
+        let key = "KCODE_OPENAI_PROMPT_CACHE_RETENTION";
         let saved = std::env::var_os(key);
         // Restore even on assertion failure so other provider tests are isolated.
         struct RestoreEnv(&'static str, Option<std::ffi::OsString>);

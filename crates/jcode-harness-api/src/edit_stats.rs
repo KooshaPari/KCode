@@ -29,12 +29,12 @@ fn valid_id(id: &str) -> bool {
 }
 
 fn sessions_dir() -> Option<PathBuf> {
-    let home = std::env::var_os("JCODE_HOME")
+    let home = std::env::var_os("KCODE_HOME")
         .map(PathBuf::from)
         .or_else(|| {
             std::env::var_os("HOME")
                 .or_else(|| std::env::var_os("USERPROFILE"))
-                .map(|home| PathBuf::from(home).join(".jcode"))
+                .map(|home| PathBuf::from(home).join(".kcode"))
         })?;
     Some(home.join("sessions"))
 }
@@ -267,7 +267,7 @@ struct Cache {
 static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(|| Mutex::new(Cache::default()));
 
 /// Opt-in enrichment for a LOCAL daemon, including older running daemons.
-/// Never call this for remote sessions. Uses JCODE_HOME or ~/.jcode. Exact
+/// Never call this for remote sessions. Uses KCODE_HOME or ~/.kcode. Exact
 /// sidecars are cheap and read immediately. Legacy estimates load in background
 /// (one background worker, 32 MiB per session, 512 queued/cached entries), so
 /// callers should invoke this on periodic refresh. Missing, malformed, oversized
@@ -351,7 +351,7 @@ mod tests {
         fn new() -> Self {
             static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
             let path = std::env::temp_dir().join(format!(
-                "jcode-edit-stats-{}-{}",
+                "kcode-edit-stats-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             ));

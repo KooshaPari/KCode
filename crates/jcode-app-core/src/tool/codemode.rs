@@ -1,7 +1,7 @@
 //! Opt-in `codemode` tool: run model-written JavaScript in an embedded QuickJS
 //! sandbox that can call any tool available to the session.
 //!
-//! Enabled with `[tools] codemode = true` (or `JCODE_CODEMODE=1`). See
+//! Enabled with `[tools] codemode = true` (or `KCODE_CODEMODE=1`). See
 //! `jcode-codemode` for the sandbox itself. This module is the harness side:
 //! it lists the session's tools, routes calls through [`Registry::execute`]
 //! (so session policy, hooks, and MCP routing all apply), and persists the

@@ -971,12 +971,12 @@ fn test_top_level_command_suggestions_include_project_local_skills() {
     let mut app = create_test_app();
 
     // Hermetic project-local skill: the suggestion list must surface skills
-    // found under <working_dir>/.jcode/skills, independent of the skills
+    // found under <working_dir>/.kcode/skills, independent of the skills
     // installed on the machine running the tests.
     let temp = tempfile::tempdir().expect("tempdir");
     let skill_dir = temp
         .path()
-        .join(".jcode")
+        .join(".kcode")
         .join("skills")
         .join("optimization");
     std::fs::create_dir_all(&skill_dir).expect("create skill dir");
@@ -1219,8 +1219,8 @@ fn test_goals_show_suggestions_include_goal_ids() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("repo");
     std::fs::create_dir_all(&project).expect("project dir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let goal = crate::goal::create_goal(
         crate::goal::GoalCreateInput {
@@ -1243,9 +1243,9 @@ fn test_goals_show_suggestions_include_goal_ids() {
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -1441,7 +1441,7 @@ fn test_swarm_prompt_command_is_discoverable_in_suggestions_and_help() {
         .command_help("swarm-prompt")
         .expect("/swarm-prompt should have detailed help");
     assert!(help.contains("/swarm-prompt"));
-    assert!(help.contains(".jcode/swarm-prompt.md"));
+    assert!(help.contains(".kcode/swarm-prompt.md"));
     assert!(help.contains("Restart or reload Jcode"));
 }
 

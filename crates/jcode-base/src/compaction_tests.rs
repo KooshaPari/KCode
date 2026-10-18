@@ -1144,16 +1144,16 @@ fn max_context_tokens_applies_at_construction_and_reloads_before_requests() {
     impl Drop for RestoreHome {
         fn drop(&mut self) {
             if let Some(home) = &self.0 {
-                crate::env::set_var("JCODE_HOME", home);
+                crate::env::set_var("KCODE_HOME", home);
             } else {
-                crate::env::remove_var("JCODE_HOME");
+                crate::env::remove_var("KCODE_HOME");
             }
             crate::config::Config::invalidate_cache();
         }
     }
     let home = tempfile::tempdir().unwrap();
-    let _restore = RestoreHome(std::env::var_os("JCODE_HOME"));
-    crate::env::set_var("JCODE_HOME", home.path());
+    let _restore = RestoreHome(std::env::var_os("KCODE_HOME"));
+    crate::env::set_var("KCODE_HOME", home.path());
     let mut cfg = crate::config::Config::default();
     cfg.compaction.max_context_tokens = 50_000;
     cfg.save().unwrap();

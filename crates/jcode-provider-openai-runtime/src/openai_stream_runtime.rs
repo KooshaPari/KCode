@@ -267,7 +267,7 @@ pub(super) async fn stream_response(
     // connection (or a provider that never emits) would hang forever; with a
     // hardcoded short value, slow reasoning models that think silently for
     // minutes get cancelled prematurely. Resolved from
-    // `[provider] stream_idle_timeout_secs` / `JCODE_STREAM_IDLE_TIMEOUT_SECS`
+    // `[provider] stream_idle_timeout_secs` / `KCODE_STREAM_IDLE_TIMEOUT_SECS`
     // (issue #434).
     use futures::StreamExt;
     loop {

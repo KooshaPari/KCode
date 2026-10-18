@@ -7,7 +7,7 @@ use std::{
 pub(super) static TEST_DELIVERY_MODES: Mutex<Vec<DeliveryMode>> = Mutex::new(Vec::new());
 
 // All of these tests mutate process-global state: the env-var opt-out tests
-// flip `JCODE_NO_TELEMETRY` / `DO_NOT_TRACK`, while the session tests drive the
+// flip `KCODE_NO_TELEMETRY` / `DO_NOT_TRACK`, while the session tests drive the
 // global `SESSION_STATE`. They must be serialized against *each other* with a
 // single shared lock. Using two separate locks previously let an env test
 // disable telemetry (`is_enabled() == false`) while a session test was calling
@@ -25,8 +25,8 @@ struct TestEnvironment {
 
 impl Drop for TestEnvironment {
     fn drop(&mut self) {
-        restore_env_var("JCODE_HOME", self.previous_home.take());
-        restore_env_var("JCODE_NO_TELEMETRY", self.previous_no_telemetry.take());
+        restore_env_var("KCODE_HOME", self.previous_home.take());
+        restore_env_var("KCODE_NO_TELEMETRY", self.previous_no_telemetry.take());
         restore_env_var("DO_NOT_TRACK", self.previous_do_not_track.take());
     }
 }
@@ -46,11 +46,11 @@ fn global_test_lock() -> TestEnvironment {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let home = tempfile::tempdir().expect("create isolated telemetry test home");
-    let previous_home = std::env::var_os("JCODE_HOME");
-    let previous_no_telemetry = std::env::var_os("JCODE_NO_TELEMETRY");
+    let previous_home = std::env::var_os("KCODE_HOME");
+    let previous_no_telemetry = std::env::var_os("KCODE_NO_TELEMETRY");
     let previous_do_not_track = std::env::var_os("DO_NOT_TRACK");
-    jcode_core::env::set_var("JCODE_HOME", home.path());
-    jcode_core::env::remove_var("JCODE_NO_TELEMETRY");
+    jcode_core::env::set_var("KCODE_HOME", home.path());
+    jcode_core::env::remove_var("KCODE_NO_TELEMETRY");
     jcode_core::env::remove_var("DO_NOT_TRACK");
 
     TestEnvironment {
@@ -157,9 +157,9 @@ fn lock_telemetry_test_state() -> TestEnvironment {
 #[test]
 fn test_opt_out_env_var() {
     let _guard = lock_test_env();
-    jcode_core::env::set_var("JCODE_NO_TELEMETRY", "1");
+    jcode_core::env::set_var("KCODE_NO_TELEMETRY", "1");
     assert!(!is_enabled());
-    jcode_core::env::remove_var("JCODE_NO_TELEMETRY");
+    jcode_core::env::remove_var("KCODE_NO_TELEMETRY");
 }
 
 #[test]
@@ -174,7 +174,7 @@ fn test_do_not_track() {
 fn false_opt_out_values_keep_telemetry_enabled() {
     let _guard = lock_test_env();
     for value in ["", "0", "false", "no", "off"] {
-        jcode_core::env::set_var("JCODE_NO_TELEMETRY", value);
+        jcode_core::env::set_var("KCODE_NO_TELEMETRY", value);
         jcode_core::env::set_var("DO_NOT_TRACK", value);
         assert!(is_enabled(), "{value:?} should not opt out");
     }
@@ -278,7 +278,7 @@ fn test_is_ci_detects_ci_env() {
     let _guard = lock_test_env();
     // Clear any inherited CI markers so the baseline is deterministic.
     for key in [
-        "JCODE_CI",
+        "KCODE_CI",
         "CI",
         "CONTINUOUS_INTEGRATION",
         "BUILD_NUMBER",
@@ -296,7 +296,7 @@ fn test_is_ci_detects_ci_env() {
         "WOODPECKER",
         "BITBUCKET_BUILD_NUMBER",
         "NEXTEST",
-        "JCODE_E2E_BIN",
+        "KCODE_E2E_BIN",
     ] {
         jcode_core::env::remove_var(key);
     }
@@ -312,26 +312,26 @@ fn test_is_ci_detects_ci_env() {
     jcode_core::env::remove_var("CI");
     assert!(!is_ci());
 
-    jcode_core::env::set_var("JCODE_CI", "1");
-    assert!(is_ci(), "explicit JCODE_CI=1 should mark any runtime as CI");
-    jcode_core::env::remove_var("JCODE_CI");
+    jcode_core::env::set_var("KCODE_CI", "1");
+    assert!(is_ci(), "explicit KCODE_CI=1 should mark any runtime as CI");
+    jcode_core::env::remove_var("KCODE_CI");
 
     jcode_core::env::set_var("CI", "true");
-    jcode_core::env::set_var("JCODE_CI", "0");
+    jcode_core::env::set_var("KCODE_CI", "0");
     assert!(
         !is_ci(),
-        "explicit JCODE_CI=0 should override inherited provider markers"
+        "explicit KCODE_CI=0 should override inherited provider markers"
     );
-    jcode_core::env::remove_var("JCODE_CI");
+    jcode_core::env::remove_var("KCODE_CI");
     jcode_core::env::remove_var("CI");
 
     jcode_core::env::set_var("CI", "true");
-    jcode_core::env::set_var("JCODE_CI", "invalid");
+    jcode_core::env::set_var("KCODE_CI", "invalid");
     assert!(
         is_ci(),
         "invalid explicit values should fall back to provider detection"
     );
-    jcode_core::env::remove_var("JCODE_CI");
+    jcode_core::env::remove_var("KCODE_CI");
     jcode_core::env::remove_var("CI");
 
     // Vendor-specific markers count on their own: several providers never set
@@ -847,7 +847,7 @@ fn usage_report_falls_back_to_global_session_and_skips_zero_usage() {
 fn usage_report_respects_opt_out() {
     let _guard = lock_telemetry_test_state();
     TEST_EMITTED_PAYLOADS.lock().unwrap().clear();
-    jcode_core::env::set_var("JCODE_NO_TELEMETRY", "1");
+    jcode_core::env::set_var("KCODE_NO_TELEMETRY", "1");
     record_provider_usage(
         Some("s"),
         "openai",
@@ -860,7 +860,7 @@ fn usage_report_respects_opt_out() {
             cache_creation_input_tokens: None,
         },
     );
-    jcode_core::env::remove_var("JCODE_NO_TELEMETRY");
+    jcode_core::env::remove_var("KCODE_NO_TELEMETRY");
     assert!(
         TEST_EMITTED_PAYLOADS
             .lock()
@@ -995,9 +995,9 @@ fn test_onboarding_step_milestone_key_includes_provider_and_method() {
 #[test]
 fn test_install_marker_tracks_current_telemetry_id() {
     let _guard = lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    jcode_core::env::set_var("JCODE_HOME", temp.path());
+    jcode_core::env::set_var("KCODE_HOME", temp.path());
 
     assert!(!install_recorded_for_id("id-a"));
     mark_install_recorded("id-a");
@@ -1005,18 +1005,18 @@ fn test_install_marker_tracks_current_telemetry_id() {
     assert!(!install_recorded_for_id("id-b"));
 
     if let Some(prev_home) = prev_home {
-        jcode_core::env::set_var("JCODE_HOME", prev_home);
+        jcode_core::env::set_var("KCODE_HOME", prev_home);
     } else {
-        jcode_core::env::remove_var("JCODE_HOME");
+        jcode_core::env::remove_var("KCODE_HOME");
     }
 }
 
 #[test]
 fn test_install_conversion_id_is_validated_and_consumed() {
     let _guard = lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    jcode_core::env::set_var("JCODE_HOME", temp.path());
+    jcode_core::env::set_var("KCODE_HOME", temp.path());
 
     let path = install_conversion_id_path().expect("conversion path");
     write_private_file(&path, "11111111-2222-4333-8444-555555555555\n");
@@ -1037,18 +1037,18 @@ fn test_install_conversion_id_is_validated_and_consumed() {
     ));
 
     if let Some(prev_home) = prev_home {
-        jcode_core::env::set_var("JCODE_HOME", prev_home);
+        jcode_core::env::set_var("KCODE_HOME", prev_home);
     } else {
-        jcode_core::env::remove_var("JCODE_HOME");
+        jcode_core::env::remove_var("KCODE_HOME");
     }
 }
 
 #[test]
 fn test_attributed_install_bypasses_existing_install_marker() {
     let _guard = lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    jcode_core::env::set_var("JCODE_HOME", temp.path());
+    jcode_core::env::set_var("KCODE_HOME", temp.path());
 
     let id = get_or_create_id().expect("telemetry id");
     mark_install_recorded(&id);
@@ -1064,30 +1064,30 @@ fn test_attributed_install_bypasses_existing_install_marker() {
     assert!(should_record_install_for_id(&id, conversion_id.as_deref()));
 
     if let Some(prev_home) = prev_home {
-        jcode_core::env::set_var("JCODE_HOME", prev_home);
+        jcode_core::env::set_var("KCODE_HOME", prev_home);
     } else {
-        jcode_core::env::remove_var("JCODE_HOME");
+        jcode_core::env::remove_var("KCODE_HOME");
     }
 }
 
 #[test]
 fn test_install_conversion_id_is_removed_when_telemetry_is_disabled() {
     let _guard = lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    jcode_core::env::set_var("JCODE_HOME", temp.path());
+    jcode_core::env::set_var("KCODE_HOME", temp.path());
     let path = install_conversion_id_path().expect("conversion path");
     write_private_file(&path, "11111111-2222-4333-8444-555555555555\n");
 
-    jcode_core::env::set_var("JCODE_NO_TELEMETRY", "1");
+    jcode_core::env::set_var("KCODE_NO_TELEMETRY", "1");
     record_install_if_first_run();
-    jcode_core::env::remove_var("JCODE_NO_TELEMETRY");
+    jcode_core::env::remove_var("KCODE_NO_TELEMETRY");
     assert!(!path.exists());
 
     if let Some(prev_home) = prev_home {
-        jcode_core::env::set_var("JCODE_HOME", prev_home);
+        jcode_core::env::set_var("KCODE_HOME", prev_home);
     } else {
-        jcode_core::env::remove_var("JCODE_HOME");
+        jcode_core::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -1274,7 +1274,7 @@ fn todo_telemetry_opt_out_emits_nothing() {
     let _guard = lock_telemetry_test_state();
     *SESSION_STATE.lock().unwrap() = None;
     TEST_EMITTED_PAYLOADS.lock().unwrap().clear();
-    jcode_core::env::set_var("JCODE_NO_TELEMETRY", "1");
+    jcode_core::env::set_var("KCODE_NO_TELEMETRY", "1");
 
     begin_session("private-provider", "private-model");
     record_todo_update(TodoTelemetryUpdate {
@@ -1287,7 +1287,7 @@ fn todo_telemetry_opt_out_emits_nothing() {
     let correlation = current_session_correlation_id();
     let emitted = TEST_EMITTED_PAYLOADS.lock().unwrap().clone();
 
-    jcode_core::env::remove_var("JCODE_NO_TELEMETRY");
+    jcode_core::env::remove_var("KCODE_NO_TELEMETRY");
     assert!(SESSION_STATE.lock().unwrap().is_none());
     assert!(correlation.is_none());
     assert!(emitted.is_empty(), "opt-out emitted payloads: {emitted:?}");
@@ -1300,7 +1300,7 @@ fn todo_telemetry_opt_out_emits_nothing() {
 #[test]
 fn test_begin_session_closes_superseded_session() {
     let _guard = lock_telemetry_test_state();
-    jcode_core::env::set_var("JCODE_TELEMETRY_DISABLED", "1");
+    jcode_core::env::set_var("KCODE_TELEMETRY_DISABLED", "1");
 
     begin_session("prov-a", "model-a");
     let first_id = SESSION_STATE
@@ -1325,7 +1325,7 @@ fn test_begin_session_closes_superseded_session() {
     );
     drop(second);
 
-    jcode_core::env::remove_var("JCODE_TELEMETRY_DISABLED");
+    jcode_core::env::remove_var("KCODE_TELEMETRY_DISABLED");
 }
 
 #[test]
@@ -1481,7 +1481,7 @@ fn concurrency_guard_emits_versioned_runtime_events_without_counting_legacy_tui_
 fn concurrency_guard_opt_out_is_inert_and_opt_out_after_start_still_releases_ownership() {
     let _guard = lock_telemetry_test_state();
     TEST_EMITTED_PAYLOADS.lock().unwrap().clear();
-    jcode_core::env::set_var("JCODE_NO_TELEMETRY", "1");
+    jcode_core::env::set_var("KCODE_NO_TELEMETRY", "1");
     let mut disabled = begin_concurrency_session("disabled-session", None);
     assert!(!disabled.is_active());
     assert_eq!(disabled.session_id(), "disabled-session");
@@ -1493,7 +1493,7 @@ fn concurrency_guard_opt_out_is_inert_and_opt_out_after_start_still_releases_own
             .exists()
     );
     assert!(TEST_EMITTED_PAYLOADS.lock().unwrap().is_empty());
-    jcode_core::env::remove_var("JCODE_NO_TELEMETRY");
+    jcode_core::env::remove_var("KCODE_NO_TELEMETRY");
     let mut active = begin_concurrency_session("active", None);
     jcode_core::env::set_var("DO_NOT_TRACK", "1");
     active.finish();

@@ -131,12 +131,12 @@ struct Environment {
 impl Environment {
     fn new() -> Self {
         let sandbox = crate::auth::test_sandbox::AuthTestSandbox::new().unwrap();
-        let saved = ["JCODE_API_KEY", "JCODE_API_BASE"]
+        let saved = ["KCODE_API_KEY", "KCODE_API_BASE"]
             .into_iter()
             .map(|key| (key, std::env::var_os(key)))
             .collect();
-        crate::env::remove_var("JCODE_API_KEY");
-        crate::env::remove_var("JCODE_API_BASE");
+        crate::env::remove_var("KCODE_API_KEY");
+        crate::env::remove_var("KCODE_API_BASE");
         Self {
             saved,
             _sandbox: sandbox,
@@ -144,8 +144,8 @@ impl Environment {
     }
 
     fn configure(&self, base: &str) {
-        crate::env::set_var("JCODE_API_KEY", KEY);
-        crate::env::set_var("JCODE_API_BASE", base);
+        crate::env::set_var("KCODE_API_KEY", KEY);
+        crate::env::set_var("KCODE_API_BASE", base);
     }
 }
 

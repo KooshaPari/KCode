@@ -28,6 +28,8 @@ pub use jcode_overnight_core::{
     task_card_validated, task_status_bucket,
 };
 
+use crate::agent::permission_bubble::create_forked_child_messages;
+
 const RESOURCE_SAMPLE_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const LONG_TURN_NOTICE_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
@@ -52,7 +54,7 @@ pub struct OvernightStartOptions {
     pub use_current_session: bool,
 }
 
-pub fn start_overnight_run(options: OvernightStartOptions) -> Result<OvernightLaunch> {
+pub fn start_overnight_run(mut options: OvernightStartOptions) -> Result<OvernightLaunch> {
     let run_id = crate::id::new_id("overnight");
     let started_at = Utc::now();
     let duration = ChronoDuration::minutes(options.duration.minutes as i64);
@@ -75,7 +77,7 @@ pub fn start_overnight_run(options: OvernightStartOptions) -> Result<OvernightLa
     let mut child = if options.use_current_session {
         options.parent_session.clone()
     } else {
-        create_coordinator_session(&options.parent_session, &options.mission)?
+        create_coordinator_session(&mut options.parent_session, &options.mission)?
     };
     if let Some(working_dir) = options.working_dir.as_ref() {
         child.working_dir = Some(working_dir.to_string_lossy().to_string());
@@ -167,13 +169,25 @@ pub fn start_overnight_run(options: OvernightStartOptions) -> Result<OvernightLa
     })
 }
 
-fn create_coordinator_session(parent: &Session, mission: &Option<String>) -> Result<Session> {
+fn create_coordinator_session(parent: &mut Session, mission: &Option<String>) -> Result<Session> {
+    // Check fork depth before creating child session.
+    // The parent session carries fork depth state that persists across saves.
+    let fork_id = format!("overnight-{}", parent.id);
+    let parent_messages = parent.messages.clone();
+    let fork_result = create_forked_child_messages(&parent_messages, &fork_id, parent);
+    if fork_result.denied {
+        anyhow::bail!(
+            "Fork depth exceeded: cannot create coordinator child for parent {}",
+            parent.id
+        );
+    }
+
     let title = Some(match mission {
         Some(mission) => format!("Overnight: {}", crate::util::truncate_str(mission, 48)),
         None => "Overnight coordinator".to_string(),
     });
     let mut child = Session::create(Some(parent.id.clone()), title);
-    child.replace_messages(parent.messages.clone());
+    child.replace_messages(fork_result.messages);
     child.compaction = parent.compaction.clone();
     child.provider_key = parent.provider_key.clone();
     child.route_api_method = parent.route_api_method.clone();

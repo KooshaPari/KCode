@@ -865,7 +865,7 @@ fn login_openai_compatible_flow(
                     )
                 })?;
             crate::provider_catalog::save_env_value_to_env_file(
-                "JCODE_OPENAI_COMPAT_API_BASE",
+                "KCODE_OPENAI_COMPAT_API_BASE",
                 crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
                 Some(&normalized),
             )?;
@@ -882,7 +882,7 @@ fn login_openai_compatible_flow(
                 anyhow::bail!("Invalid API key environment variable name: {}", api_key_env);
             }
             crate::provider_catalog::save_env_value_to_env_file(
-                "JCODE_OPENAI_COMPAT_API_KEY_NAME",
+                "KCODE_OPENAI_COMPAT_API_KEY_NAME",
                 crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
                 Some(api_key_env),
             )?;
@@ -896,7 +896,7 @@ fn login_openai_compatible_flow(
         };
         if !default_model_input.is_empty() {
             crate::provider_catalog::save_env_value_to_env_file(
-                "JCODE_OPENAI_COMPAT_DEFAULT_MODEL",
+                "KCODE_OPENAI_COMPAT_DEFAULT_MODEL",
                 crate::provider_catalog::OPENAI_COMPAT_PROFILE.env_file,
                 Some(&default_model_input),
             )?;

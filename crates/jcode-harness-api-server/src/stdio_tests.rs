@@ -6,7 +6,7 @@ use tokio::io::{AsyncWriteExt, BufReader};
 #[tokio::test(flavor = "multi_thread")]
 async fn stdio_stream_handshake_ping_and_eof_release_daemon_connection() {
     let root = std::env::temp_dir().join(format!(
-        "jcode-stdio-test-{}-{}",
+        "kcode-stdio-test-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -89,7 +89,7 @@ async fn session_tools_negotiation_and_stream_translation() {
     use serde_json::json;
     for supported in [false, true] {
         let root = std::env::temp_dir().join(format!(
-            "jcode-tools-{}-{}-{supported}",
+            "kcode-tools-{}-{}-{supported}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

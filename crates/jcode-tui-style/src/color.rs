@@ -54,10 +54,10 @@ pub fn pin_truecolor_for_tests() {
 /// (Ghostty / iTerm2 / kitty / WezTerm / Alacritty) are unaffected and keep
 /// full truecolor.
 ///
-/// Overridable with `JCODE_GLYPH_SAFE_MODE=on|off` (shared with the perf
+/// Overridable with `KCODE_GLYPH_SAFE_MODE=on|off` (shared with the perf
 /// policy) so users can force or disable the compatibility behavior.
 fn fragile_glyph_cache_terminal() -> bool {
-    if let Ok(raw) = std::env::var("JCODE_GLYPH_SAFE_MODE") {
+    if let Ok(raw) = std::env::var("KCODE_GLYPH_SAFE_MODE") {
         match raw.trim().to_ascii_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => return true,
             "0" | "false" | "no" | "off" => return false,
@@ -502,7 +502,7 @@ mod tests {
         // The explicit off override must win even on a macOS fragile terminal.
         temp_env_scope(
             &[
-                ("JCODE_GLYPH_SAFE_MODE", Some("off")),
+                ("KCODE_GLYPH_SAFE_MODE", Some("off")),
                 ("TERM_PROGRAM", Some("vscode")),
             ],
             || {
@@ -513,7 +513,7 @@ mod tests {
 
     #[test]
     fn test_fragile_terminal_override_on_forces_quantize() {
-        temp_env_scope(&[("JCODE_GLYPH_SAFE_MODE", Some("on"))], || {
+        temp_env_scope(&[("KCODE_GLYPH_SAFE_MODE", Some("on"))], || {
             assert!(fragile_glyph_cache_terminal());
         });
     }
@@ -525,14 +525,14 @@ mod tests {
     fn test_detect_color_capability_downgrades_on_fragile_override() {
         temp_env_scope(
             &[
-                ("JCODE_GLYPH_SAFE_MODE", Some("on")),
+                ("KCODE_GLYPH_SAFE_MODE", Some("on")),
                 ("COLORTERM", Some("truecolor")),
             ],
             || assert_eq!(detect_color_capability(), ColorCapability::Color256),
         );
         temp_env_scope(
             &[
-                ("JCODE_GLYPH_SAFE_MODE", Some("off")),
+                ("KCODE_GLYPH_SAFE_MODE", Some("off")),
                 ("COLORTERM", Some("truecolor")),
             ],
             || assert_eq!(detect_color_capability(), ColorCapability::TrueColor),
@@ -579,21 +579,21 @@ mod tests {
     fn test_fragile_terminal_detects_vscode_and_apple_terminal() {
         temp_env_scope(
             &[
-                ("JCODE_GLYPH_SAFE_MODE", None),
+                ("KCODE_GLYPH_SAFE_MODE", None),
                 ("TERM_PROGRAM", Some("vscode")),
             ],
             || assert!(fragile_glyph_cache_terminal()),
         );
         temp_env_scope(
             &[
-                ("JCODE_GLYPH_SAFE_MODE", None),
+                ("KCODE_GLYPH_SAFE_MODE", None),
                 ("TERM_PROGRAM", Some("Apple_Terminal")),
             ],
             || assert!(fragile_glyph_cache_terminal()),
         );
         temp_env_scope(
             &[
-                ("JCODE_GLYPH_SAFE_MODE", None),
+                ("KCODE_GLYPH_SAFE_MODE", None),
                 ("TERM_PROGRAM", Some("ghostty")),
             ],
             || assert!(!fragile_glyph_cache_terminal()),

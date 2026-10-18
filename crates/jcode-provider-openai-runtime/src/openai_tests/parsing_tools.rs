@@ -319,7 +319,7 @@ fn test_parse_openai_response_image_generation_saves_metadata_and_emits_event() 
     let _lock = jcode_base::storage::lock_test_env();
     let original_dir = std::env::current_dir().expect("current dir");
     let temp = tempfile::Builder::new()
-        .prefix("jcode-openai-image-test-")
+        .prefix("kcode-openai-image-test-")
         .tempdir()
         .expect("tempdir");
     std::env::set_current_dir(temp.path()).expect("set temp cwd");

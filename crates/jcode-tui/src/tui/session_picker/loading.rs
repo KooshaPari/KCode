@@ -27,7 +27,7 @@ use super::{ResumeTarget, SessionSource};
 const TRANSCRIPT_SEARCH_CHUNK_BYTES: usize = 64 * 1024;
 
 fn session_scan_limit() -> usize {
-    std::env::var("JCODE_SESSION_PICKER_MAX_SESSIONS")
+    std::env::var("KCODE_SESSION_PICKER_MAX_SESSIONS")
         .ok()
         .and_then(|raw| raw.trim().parse::<usize>().ok())
         .map(|n| n.clamp(MIN_SESSION_SCAN_LIMIT, MAX_SESSION_SCAN_LIMIT))
@@ -44,7 +44,7 @@ fn session_candidate_window(scan_limit: usize) -> usize {
 ///
 /// On by default (they can be resumed or imported), but it clutters the picker
 /// for users who only ever want jcode's own sessions, so `[display]
-/// external_sessions = false` (or `JCODE_EXTERNAL_SESSIONS=0`) opts out
+/// external_sessions = false` (or `KCODE_EXTERNAL_SESSIONS=0`) opts out
 /// (issue #674). Checked before spawning the scan threads so opting out also
 /// skips the filesystem work.
 fn include_external_sessions() -> bool {
@@ -52,7 +52,7 @@ fn include_external_sessions() -> bool {
 }
 
 fn include_old_saved_sessions_on_initial_load() -> bool {
-    std::env::var("JCODE_SESSION_PICKER_INCLUDE_OLD_SAVED")
+    std::env::var("KCODE_SESSION_PICKER_INCLUDE_OLD_SAVED")
         .ok()
         .is_some_and(|raw| matches!(raw.trim(), "1" | "true" | "TRUE" | "yes" | "YES"))
 }

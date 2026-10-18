@@ -143,7 +143,7 @@ impl AuthTestTarget {
             Self::Cursor => Ok(vec![
                 dirs::config_dir()
                     .ok_or_else(|| anyhow::anyhow!("No config directory found"))?
-                    .join("jcode")
+                    .join("kcode")
                     .join("cursor.env")
                     .display()
                     .to_string(),

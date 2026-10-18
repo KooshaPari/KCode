@@ -41,7 +41,7 @@ fn telemetry_pill_opens_settings_page_and_commits_choice() {
             assert!(crate::telemetry::content_sharing_enabled());
         }
         let no_telemetry_marker = std::path::Path::new(
-            &std::env::var_os("JCODE_HOME").expect("temporary JCODE_HOME"),
+            &std::env::var_os("KCODE_HOME").expect("temporary KCODE_HOME"),
         )
         .join("no_telemetry");
         assert!(
@@ -102,13 +102,13 @@ fn telemetry_page_send_nothing_disables_telemetry_and_esc_goes_back() {
         // inherited opt-out env, then force opt-out only for the commit action:
         // telemetry-core sees delivery blocked by env while still writing the
         // no_telemetry marker that this test verifies after the guard drops.
-        let delivery_block = EnvRestoreGuard::set("JCODE_NO_TELEMETRY", "1");
+        let delivery_block = EnvRestoreGuard::set("KCODE_NO_TELEMETRY", "1");
         assert!(app.handle_onboarding_continue_prompt_key(KeyCode::Enter));
         drop(delivery_block);
         assert!(!crate::telemetry::is_enabled());
         assert!(!crate::telemetry::content_sharing_enabled());
         let no_telemetry_marker = std::path::Path::new(
-            &std::env::var_os("JCODE_HOME").expect("temporary JCODE_HOME"),
+            &std::env::var_os("KCODE_HOME").expect("temporary KCODE_HOME"),
         )
         .join("no_telemetry");
         assert!(

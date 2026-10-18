@@ -492,7 +492,7 @@ mod tests {
         let (recording, mut rx) = start_pcm(
             Arc::new(AtomicBool::new(false)),
             vec![
-                RecorderCommand::new("jcode-definitely-missing-recorder", &[]),
+                RecorderCommand::new("kcode-definitely-missing-recorder", &[]),
                 shell("exit 3"),
                 shell("printf '\\002\\000\\002\\000'; sleep 5"),
             ],

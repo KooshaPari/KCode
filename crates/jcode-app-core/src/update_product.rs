@@ -1,15 +1,17 @@
-//! KCode must not install through the inherited jcode updater.
-//!
-//! Changing the release repository alone is insufficient: the installer still
-//! resolves jcode's build directories and launcher. Keep both automatic and
-//! explicit updates disabled until the complete install path is product scoped.
+//! KCode has no maintained release channel compatible with this branch.
+//! Disable both automatic and explicit self-updates, independently of semver,
+//! environment overrides, or whether this executable is renamed.
 
-pub(super) const UPDATE_REPO: &str = "KooshaPari/KCode";
+pub(super) const SELF_UPDATE_ENABLED: bool = false;
 
-pub(super) fn ensure_update_allowed() -> Result<(), &'static str> {
-    Err(
-        "KCode self-update is disabled: the inherited installer targets jcode's build directories and launcher. Install KCode separately; the installed jcode will not be modified.",
-    )
+pub(super) fn require_update_channel() -> anyhow::Result<()> {
+    if !SELF_UPDATE_ENABLED {
+        anyhow::bail!(
+            "KCode self-update is disabled: install a verified KCode build from \
+             KooshaPari/KCode; jcode releases and install paths are never used"
+        );
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -17,16 +19,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn kcode_never_uses_the_jcode_release_repository() {
-        assert_eq!(UPDATE_REPO, "KooshaPari/KCode");
-    }
-
-    #[test]
-    fn inherited_installer_fails_closed_even_without_a_fork_version_suffix() {
-        // Product identity cannot depend on a renamed executable or semver
-        // suffix: source builds of this fork can still carry a plain version.
-        let error = ensure_update_allowed().unwrap_err();
-        assert!(error.contains("KCode self-update is disabled"));
-        assert!(error.contains("jcode's build directories and launcher"));
+    fn kcode_self_update_is_disabled_even_without_a_fork_version_suffix() {
+        assert!(!SELF_UPDATE_ENABLED);
+        assert!(
+            require_update_channel()
+                .unwrap_err()
+                .to_string()
+                .contains("KCode self-update is disabled")
+        );
     }
 }

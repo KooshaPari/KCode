@@ -106,7 +106,7 @@ pub fn recent_external_transcripts_in(home: &Path, limit: usize) -> Vec<Transcri
         (Format::Codex, home.join(".codex/sessions"), "jsonl"),
         (Format::Cursor, home.join(".cursor/projects"), "jsonl"),
         (Format::Pi, home.join(".pi/agent/sessions"), "jsonl"),
-        (Format::Jcode, home.join(".jcode/sessions"), "json"),
+        (Format::Jcode, home.join(".kcode/sessions"), "json"),
     ] {
         let mut candidates: Vec<(u64, std::time::SystemTime, std::path::PathBuf)> = Vec::new();
         for path in collect_recent_files_recursive(&dir, extension, SCAN_FILES) {
@@ -811,7 +811,7 @@ mod tests {
     #[test]
     fn jcode_sessions_replay_and_skip_debug_children_and_context() {
         let home = tempfile::tempdir().unwrap();
-        let dir = home.path().join(".jcode/sessions");
+        let dir = home.path().join(".kcode/sessions");
         jcode_session(&dir, "session_a", 3, serde_json::json!({}));
         // Longer, but debug and subagent sessions never replay.
         jcode_session(
@@ -846,7 +846,7 @@ mod tests {
     fn the_longest_session_wins_over_the_newest_across_harnesses() {
         let home = tempfile::tempdir().unwrap();
         jcode_session(
-            &home.path().join(".jcode/sessions"),
+            &home.path().join(".kcode/sessions"),
             "session_long",
             30,
             serde_json::json!({}),
@@ -875,7 +875,7 @@ mod tests {
     #[test]
     fn showcase_spans_harnesses_before_repeating_one() {
         let home = tempfile::tempdir().unwrap();
-        let sessions = home.path().join(".jcode/sessions");
+        let sessions = home.path().join(".kcode/sessions");
         jcode_session(&sessions, "session_long", 30, serde_json::json!({}));
         jcode_session(&sessions, "session_mid", 20, serde_json::json!({}));
         let mut lines = Vec::new();

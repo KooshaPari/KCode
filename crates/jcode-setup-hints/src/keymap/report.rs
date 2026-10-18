@@ -23,16 +23,20 @@ pub fn render_report(cfg: &KeybindingsConfig, snapshot: &KeymapSnapshot) -> Stri
     ));
     out.push_str(&format!("OS: {}\n", snapshot.os));
 
-    let term_count = snapshot.from_source(KeySource::Terminal).count();
-    let sys_count = snapshot.from_source(KeySource::MacosSystem).count();
-    let app_count = snapshot.from_source(KeySource::ExternalApp).count();
+    let term_count = snapshot.bindings_from_source(KeySource::Terminal).count();
+    let sys_count = snapshot
+        .bindings_from_source(KeySource::MacosSystem)
+        .count();
+    let app_count = snapshot
+        .bindings_from_source(KeySource::ExternalApp)
+        .count();
     out.push_str(&format!(
         "Discovered bindings: {term_count} terminal, {sys_count} macOS system, {app_count} app\n",
     ));
 
     if app_count > 0 {
         let mut tools: Vec<&str> = snapshot
-            .from_source(KeySource::ExternalApp)
+            .bindings_from_source(KeySource::ExternalApp)
             .map(|b| b.tool.as_str())
             .filter(|t| !t.is_empty())
             .collect::<std::collections::BTreeSet<_>>()
@@ -70,7 +74,7 @@ pub fn render_report(cfg: &KeybindingsConfig, snapshot: &KeymapSnapshot) -> Stri
         out.push_str(
             "These keys may be captured by your terminal, macOS, or another app (window\n\
              manager, launcher) before jcode sees them.\n\
-             To fix: rebind the jcode action in ~/.jcode/config.toml under [keybindings],\n\
+             To fix: rebind the jcode action in ~/.kcode/config.toml under [keybindings],\n\
              or change the conflicting shortcut in the other app's settings.\n",
         );
     }

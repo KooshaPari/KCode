@@ -284,7 +284,7 @@ fn test_reload_progress_coalesces_into_single_message() {
     app.handle_server_event(
         crate::protocol::ServerEvent::ReloadProgress {
             step: "init".to_string(),
-            message: "🔄 Starting hot-reload...".to_string(),
+            message: "⟳ Starting hot-reload...".to_string(),
             success: None,
             output: None,
         },
@@ -306,7 +306,7 @@ fn test_reload_progress_coalesces_into_single_message() {
     assert_eq!(reload_msg.title.as_deref(), Some("Reload"));
     assert_eq!(
         reload_msg.content,
-        "🔄 Server reload initiated...\n[init] 🔄 Starting hot-reload...\n[verify] ✓ Binary verified\n  size=68.4MB\n"
+        "⟳ Server reload initiated...\n[init] ⟳ Starting hot-reload...\n[verify] ✓ Binary verified\n  size=68.4MB\n"
     );
 }
 

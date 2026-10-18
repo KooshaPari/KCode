@@ -103,8 +103,8 @@ fn merge_cursor_models_deduplicates_dynamic_entries() {
 fn available_models_display_seeds_from_persisted_catalog() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    jcode_base::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    jcode_base::env::set_var("KCODE_HOME", temp.path());
 
     let path = CursorCliProvider::persisted_catalog_path().expect("catalog path");
     jcode_base::storage::write_json(
@@ -124,9 +124,9 @@ fn available_models_display_seeds_from_persisted_catalog() {
     );
 
     if let Some(prev_home) = prev_home {
-        jcode_base::env::set_var("JCODE_HOME", prev_home);
+        jcode_base::env::set_var("KCODE_HOME", prev_home);
     } else {
-        jcode_base::env::remove_var("JCODE_HOME");
+        jcode_base::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -1020,7 +1020,7 @@ fn test_outbound_tool_result_secret_redaction() {
 /// decode it as `Unknown` and never answer, so the turn stalled on heartbeats.
 #[test]
 fn mcp_state_request_decodes_and_reports_bridge_tools_ready() {
-    let mut state_args = wire::field_str(1, wire::JCODE_TOOL_PROVIDER);
+    let mut state_args = wire::field_str(1, wire::KCODE_TOOL_PROVIDER);
     state_args.extend(wire::field_varint(2, 0));
     let mut exec = wire::field_varint(1, 7);
     exec.extend(wire::field_str(15, "exec-state"));
@@ -1031,7 +1031,7 @@ fn mcp_state_request_decodes_and_reports_bridge_tools_ready() {
         wire::ExecServerMessageVariant::McpState(args) => args,
         other => panic!("expected McpState, got {other:?}"),
     };
-    assert_eq!(args.server_identifiers, vec![wire::JCODE_TOOL_PROVIDER]);
+    assert_eq!(args.server_identifiers, vec![wire::KCODE_TOOL_PROVIDER]);
     assert!(!args.kick_only);
 
     let tools = vec![jcode_message_types::ToolDefinition {
@@ -1062,7 +1062,7 @@ fn mcp_state_request_decodes_and_reports_bridge_tools_ready() {
         .iter()
         .find(|f| f.field == 2)
         .map(|f| std::str::from_utf8(f.data).unwrap());
-    assert_eq!(ident, Some(wire::JCODE_TOOL_PROVIDER));
+    assert_eq!(ident, Some(wire::KCODE_TOOL_PROVIDER));
     let tool_defs: Vec<_> = server_fields.iter().filter(|f| f.field == 5).collect();
     assert_eq!(tool_defs.len(), 1, "bridged tools are listed on the server");
     let tool_name = wire::iter_fields(tool_defs[0].data)
@@ -1076,7 +1076,7 @@ fn mcp_state_request_decodes_and_reports_bridge_tools_ready() {
 /// unanswered mcp_state did, so each must decode and get a reply.
 #[test]
 fn allowlist_prechecks_decode_and_reply_on_matching_field() {
-    let mut mcp = wire::field_str(1, wire::JCODE_TOOL_PROVIDER);
+    let mut mcp = wire::field_str(1, wire::KCODE_TOOL_PROVIDER);
     mcp.extend(wire::field_str(2, "cc_list_pages"));
     let mut exec = wire::field_varint(1, 9);
     exec.extend(wire::field_ld(42, &mcp));
@@ -1084,7 +1084,7 @@ fn allowlist_prechecks_decode_and_reply_on_matching_field() {
         wire::ExecServerMessageVariant::McpAllowlistPrecheck {
             provider_identifier,
         } => {
-            assert_eq!(provider_identifier, wire::JCODE_TOOL_PROVIDER)
+            assert_eq!(provider_identifier, wire::KCODE_TOOL_PROVIDER)
         }
         other => panic!("expected McpAllowlistPrecheck, got {other:?}"),
     }

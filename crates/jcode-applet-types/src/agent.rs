@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub const APPLET_ID: &str = "jcode.agent";
 
 /// MIME type of an MCP resource whose text is a native applet [`crate::Document`].
-pub const JCODE_APPLET_MIME: &str = "application/vnd.jcode.applet+json";
+pub const KCODE_APPLET_MIME: &str = "application/vnd.jcode.applet+json";
 
 /// Manifest shared by every agent-mounted instance.
 pub fn manifest() -> Manifest {

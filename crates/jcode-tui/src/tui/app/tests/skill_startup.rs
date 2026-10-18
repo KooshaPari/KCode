@@ -18,9 +18,9 @@ fn with_skill_startup_home(f: impl FnOnce(&std::path::Path)) {
         [
             "HOME",
             "USERPROFILE",
-            "JCODE_HOME",
-            "JCODE_SSH_REMOTE",
-            "JCODE_RELOAD_FAST_START",
+            "KCODE_HOME",
+            "KCODE_SSH_REMOTE",
+            "KCODE_RELOAD_FAST_START",
         ]
         .into_iter()
         .map(|key| (key, std::env::var_os(key)))
@@ -28,13 +28,13 @@ fn with_skill_startup_home(f: impl FnOnce(&std::path::Path)) {
     );
     crate::env::set_var("HOME", home.path());
     crate::env::set_var("USERPROFILE", home.path());
-    crate::env::set_var("JCODE_HOME", home.path().join(".jcode"));
-    crate::env::remove_var("JCODE_SSH_REMOTE");
-    crate::env::remove_var("JCODE_RELOAD_FAST_START");
+    crate::env::set_var("KCODE_HOME", home.path().join(".kcode"));
+    crate::env::remove_var("KCODE_SSH_REMOTE");
+    crate::env::remove_var("KCODE_RELOAD_FAST_START");
     crate::config::invalidate_config_cache();
-    // JCODE_HOME redirects global home-relative files into its external sandbox.
+    // KCODE_HOME redirects global home-relative files into its external sandbox.
     // Exercise the same .agents/skills lookup as a normal unsandboxed home.
-    f(&home.path().join(".jcode/external"));
+    f(&home.path().join(".kcode/external"));
 }
 
 fn write_startup_skill(root: &std::path::Path, name: &str) {
@@ -122,7 +122,7 @@ fn skill_startup_minimal_clients_keep_project_overlays_separate() {
 fn skill_startup_ssh_history_replaces_warmed_empty_candidates_without_local_skills() {
     with_skill_startup_home(|home| {
         write_startup_skill(home, "startup-local-secret");
-        crate::env::set_var("JCODE_SSH_REMOTE", "fixture-host");
+        crate::env::set_var("KCODE_SSH_REMOTE", "fixture-host");
         let mut app = App::new_for_remote_with_options(None, false);
         assert!(startup_skill_commands(&mut app, "/").is_empty());
         assert!(crate::tui::TuiState::available_skills(&app).is_empty());

@@ -557,9 +557,9 @@ fn onboarding_import_happy_path_images() {
     use crate::external_auth::ExternalAuthReviewCandidate;
     use crate::tui::app::onboarding_flow::{ImportReview, SummaryPill};
 
-    let output_dir = std::env::var_os("JCODE_ONBOARDING_SCREENSHOT_DIR")
+    let output_dir = std::env::var_os("KCODE_ONBOARDING_SCREENSHOT_DIR")
         .map(std::path::PathBuf::from)
-        .expect("JCODE_ONBOARDING_SCREENSHOT_DIR must be set");
+        .expect("KCODE_ONBOARDING_SCREENSHOT_DIR must be set");
     std::fs::create_dir_all(&output_dir).unwrap();
 
     let width = 110;

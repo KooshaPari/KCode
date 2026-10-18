@@ -261,7 +261,7 @@ pub fn write_current_dev_binary_source_metadata(
 fn read_binary_version_report(binary: &Path) -> Result<BinaryVersionReport> {
     let output = Command::new(binary)
         .args(["version", "--json"])
-        .env("JCODE_NON_INTERACTIVE", "1")
+        .env("KCODE_NON_INTERACTIVE", "1")
         .output()?;
 
     if !output.status.success() {
@@ -557,20 +557,20 @@ pub fn smoke_test_server_binary(binary: &Path) -> Result<()> {
     let temp = tempfile::tempdir()?;
     let runtime_dir = temp.path().join("runtime");
     storage::ensure_dir(&runtime_dir)?;
-    let socket_path = temp.path().join("jcode-smoke.sock");
-    let stderr_path = temp.path().join("jcode-smoke.stderr.log");
+    let socket_path = temp.path().join("kcode-smoke.sock");
+    let stderr_path = temp.path().join("kcode-smoke.stderr.log");
     let stderr = File::create(&stderr_path)?;
 
     let mut child = Command::new(binary)
         .arg("serve")
         .arg("--socket")
         .arg(&socket_path)
-        .env("JCODE_NON_INTERACTIVE", "1")
-        .env("JCODE_RUNTIME_DIR", &runtime_dir)
-        .env("JCODE_GATEWAY_ENABLED", "0")
-        .env("JCODE_TEMP_SERVER", "1")
-        .env("JCODE_SERVER_OWNER_PID", std::process::id().to_string())
-        .env("JCODE_TEMP_SERVER_IDLE_SECS", "300")
+        .env("KCODE_NON_INTERACTIVE", "1")
+        .env("KCODE_RUNTIME_DIR", &runtime_dir)
+        .env("KCODE_GATEWAY_ENABLED", "0")
+        .env("KCODE_TEMP_SERVER", "1")
+        .env("KCODE_SERVER_OWNER_PID", std::process::id().to_string())
+        .env("KCODE_TEMP_SERVER_IDLE_SECS", "300")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::from(stderr))

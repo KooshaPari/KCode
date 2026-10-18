@@ -21,17 +21,22 @@ use jcode_provider_antigravity_runtime::AntigravityProvider;
 /// Resolve the per-request timeout for an OpenAI-compatible smoke probe.
 ///
 /// Defaults to `default_secs` (the historical hard-coded values), but callers can
-/// raise it via `JCODE_LIVE_SMOKE_TIMEOUT_SECS` for slow reasoning models (e.g.
+/// raise it via `KCODE_LIVE_SMOKE_TIMEOUT_SECS` for slow reasoning models (e.g.
 /// NVIDIA's 550B Nemotron Ultra, which emits long hidden reasoning and can take
 /// well over a minute to return a single completion). The override applies a floor
 /// so it can only extend, never shorten, the built-in deadline.
 fn smoke_timeout(default_secs: u64) -> std::time::Duration {
-    let secs = std::env::var("JCODE_LIVE_SMOKE_TIMEOUT_SECS")
+    let secs = std::env::var("KCODE_LIVE_SMOKE_TIMEOUT_SECS")
         .ok()
         .and_then(|raw| raw.trim().parse::<u64>().ok())
         .map(|override_secs| override_secs.max(default_secs))
         .unwrap_or(default_secs);
     std::time::Duration::from_secs(secs)
+}
+
+fn is_opencode_api_base(api_base: &str) -> bool {
+    let lower = api_base.to_ascii_lowercase();
+    lower.contains("opencode.ai")
 }
 
 /// Apply the right auth headers for a resolved OpenAI-compatible profile.
@@ -46,11 +51,18 @@ fn apply_provider_auth(
     resolved: &ResolvedOpenAiCompatibleProfile,
     api_key: &str,
 ) -> reqwest::RequestBuilder {
-    jcode_base::provider_catalog::apply_openai_compatible_catalog_auth(
+    let req = jcode_base::provider_catalog::apply_openai_compatible_catalog_auth(
         request,
         &resolved.api_base,
         api_key,
-    )
+    );
+    // OpenCode Go/Zen require a stable per-conversation x-opencode-session
+    // header. Use a fixed session ID for smoke tests (uniqueness not needed).
+    if is_opencode_api_base(&resolved.api_base) {
+        req.header("x-opencode-session", "doctor-smoke-test")
+    } else {
+        req
+    }
 }
 
 /// Set an output-token cap on a chat-completions body using the parameter name
@@ -156,6 +168,24 @@ fn normalize_openai_compatible_model_id(
     model.to_string()
 }
 
+/// Models that require the Responses API endpoint (`/responses`) instead of
+/// `/chat/completions` when served through OpenCode Go. These models reject
+/// chat-completions format with `input_text is not valid on assistant messages`.
+const OPENCODE_GO_RESPONSES_MODELS: &[&str] = &[
+    "grok-4.6",
+    "gpt-5.6-luna",
+    "muse-spark-1.3-contributor",
+    "muse-spark-1.2-contributor",
+];
+
+fn needs_responses_api(model: &str, api_base: &str) -> bool {
+    let lower = api_base.to_ascii_lowercase();
+    if !lower.contains("opencode.ai") {
+        return false;
+    }
+    OPENCODE_GO_RESPONSES_MODELS.contains(&model)
+}
+
 pub async fn run_live_openai_compatible_smoke(
     profile: OpenAiCompatibleProfile,
     api_key: &str,
@@ -163,17 +193,31 @@ pub async fn run_live_openai_compatible_smoke(
 ) -> anyhow::Result<jcode_base::live_tests::LiveVerificationStage> {
     let started = std::time::Instant::now();
     let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
-    let url = format!(
-        "{}/chat/completions",
-        resolved.api_base.trim_end_matches('/')
-    );
-    let body = serde_json::json!({
-        "model": model,
-        "messages": [
-            {"role": "user", "content": "Reply with exactly AUTH_TEST_OK and nothing else."}
-        ],
-        "stream": false
-    });
+    let use_responses = needs_responses_api(model, &resolved.api_base);
+    let (url, body) = if use_responses {
+        let url = format!("{}/responses", resolved.api_base.trim_end_matches('/'));
+        let body = serde_json::json!({
+            "model": model,
+            "input": [
+                {"role": "user", "content": "Reply with exactly AUTH_TEST_OK and nothing else."}
+            ],
+            "stream": false
+        });
+        (url, body)
+    } else {
+        let url = format!(
+            "{}/chat/completions",
+            resolved.api_base.trim_end_matches('/')
+        );
+        let body = serde_json::json!({
+            "model": model,
+            "messages": [
+                {"role": "user", "content": "Reply with exactly AUTH_TEST_OK and nothing else."}
+            ],
+            "stream": false
+        });
+        (url, body)
+    };
     let request = jcode_base::provider::shared_http_client()
         .post(&url)
         .json(&body);
@@ -193,14 +237,27 @@ pub async fn run_live_openai_compatible_smoke(
     );
     let parsed: serde_json::Value = serde_json::from_str(&text)
         .with_context(|| format!("parse live {} smoke response", resolved.display_name))?;
-    let content = parsed
-        .get("choices")
-        .and_then(|choices| choices.get(0))
-        .and_then(|choice| choice.get("message"))
-        .and_then(|message| message.get("content"))
-        .and_then(|content| content.as_str())
-        .unwrap_or_default()
-        .trim();
+    // Responses API returns output[0].content[0].text; chat completions returns choices[0].message.content
+    let content = if use_responses {
+        parsed
+            .get("output")
+            .and_then(|o| o.get(0))
+            .and_then(|item| item.get("content"))
+            .and_then(|c| c.get(0))
+            .and_then(|part| part.get("text"))
+            .and_then(|t| t.as_str())
+            .unwrap_or_default()
+            .trim()
+    } else {
+        parsed
+            .get("choices")
+            .and_then(|choices| choices.get(0))
+            .and_then(|choice| choice.get("message"))
+            .and_then(|message| message.get("content"))
+            .and_then(|content| content.as_str())
+            .unwrap_or_default()
+            .trim()
+    };
     ensure!(
         content.contains("AUTH_TEST_OK"),
         "{} live smoke returned unexpected content: {:?}",

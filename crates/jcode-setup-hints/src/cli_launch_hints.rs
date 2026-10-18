@@ -281,9 +281,9 @@ fn trusted_jcode_executable() -> Result<PathBuf> {
     {
         if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
             let launcher = PathBuf::from(local_app_data)
-                .join("jcode")
+                .join("kcode")
                 .join("bin")
-                .join("jcode.exe");
+                .join("kcode.exe");
             if launcher.is_file() {
                 return Ok(launcher);
             }
@@ -293,7 +293,7 @@ fn trusted_jcode_executable() -> Result<PathBuf> {
     #[cfg(not(windows))]
     {
         if let Some(home) = dirs::home_dir() {
-            let launcher = home.join(".local").join("bin").join("jcode");
+            let launcher = home.join(".local").join("bin").join("kcode");
             if launcher.is_file() {
                 return Ok(launcher);
             }
@@ -319,7 +319,7 @@ fn quote_hook_executable(path: &Path) -> String {
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 fn reap_notification_child(mut child: std::process::Child) {
     let _ = std::thread::Builder::new()
-        .name("jcode-notification-child".to_string())
+        .name("kcode-notification-child".to_string())
         .spawn(move || {
             let _ = child.wait();
         });

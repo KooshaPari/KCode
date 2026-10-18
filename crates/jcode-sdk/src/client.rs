@@ -27,6 +27,11 @@ use std::sync::mpsc::{
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
+/// One active subscription: id, optional session-id filter, and the sink that
+/// receives matched events. Aliased so the `subscribers` field type stays readable
+/// (`clippy::type_complexity`).
+type SubscriberList = Vec<(u64, Option<String>, Sender<ApiEvent>)>;
+
 /// How a client reaches the harness.
 pub struct ConnectOptions {
     /// Defaults to the resolved harness API socket path.
@@ -46,7 +51,7 @@ impl Default for ConnectOptions {
     fn default() -> Self {
         Self {
             socket_path: None,
-            client_name: concat!("jcode-sdk-rs/", env!("CARGO_PKG_VERSION")).to_string(),
+            client_name: concat!("kcode-sdk-rs/", env!("CARGO_PKG_VERSION")).to_string(),
             request_timeout: Some(Duration::from_secs(30)),
             ensure_runtime: true,
         }
@@ -329,7 +334,7 @@ struct Inner {
     /// Requests waiting for their `reply_to` frame.
     pending: Mutex<HashMap<u64, Sender<ServerFrame>>>,
     /// Live subscriptions: (id, session filter, sink).
-    subscribers: Mutex<Vec<Subscriber>>,
+    subscribers: Mutex<SubscriberList>,
     next_id: AtomicU64,
     next_sub: AtomicU64,
     closed: AtomicBool,
@@ -352,7 +357,7 @@ pub struct JcodeClient {
     instance: Option<Arc<LaunchedInstance>>,
     /// State directory of the private instance this client owns, if any.
     pub instance_home: Option<std::path::PathBuf>,
-    /// Server identity from the handshake, e.g. "jcode-harness-api-bridge/0.1.0".
+    /// Server identity from the handshake, e.g. "kcode-harness-api-bridge/0.1.0".
     pub server: String,
     /// Capability strings advertised by the server.
     pub capabilities: Vec<String>,
@@ -1752,6 +1757,7 @@ fn start_global_child(parent: &JcodeClient, control: &Arc<GlobalEventControl>, s
 }
 
 /// The reader thread: correlates replies, fans stream events out.
+#[allow(clippy::while_let_loop)]
 fn spawn_reader(inner: Arc<Inner>, mut reader: Box<dyn BufRead + Send>) {
     std::thread::spawn(move || {
         while let Ok(frame) = read_frame::<_, ServerFrame>(&mut reader) {

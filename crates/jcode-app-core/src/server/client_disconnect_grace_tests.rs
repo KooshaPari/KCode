@@ -36,8 +36,8 @@ struct Home {
 impl Home {
     fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
-        let previous = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", dir.path());
+        let previous = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", dir.path());
         Self {
             _dir: dir,
             previous,
@@ -47,8 +47,8 @@ impl Home {
 impl Drop for Home {
     fn drop(&mut self) {
         match self.previous.take() {
-            Some(value) => crate::env::set_var("JCODE_HOME", value),
-            None => crate::env::remove_var("JCODE_HOME"),
+            Some(value) => crate::env::set_var("KCODE_HOME", value),
+            None => crate::env::remove_var("KCODE_HOME"),
         }
     }
 }

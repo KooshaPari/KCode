@@ -153,7 +153,7 @@ fn test_show_accounts_includes_masked_email_column() {
         let status = if account.expires > now_ms {
             "✓ valid"
         } else {
-            "⚠ expired"
+            "▲ expired"
         };
         let email = account
             .email
@@ -497,7 +497,7 @@ fn test_account_command_uses_fast_auth_snapshot_without_running_cursor_status() 
     use std::os::unix::fs::PermissionsExt;
 
     with_temp_jcode_home(|| {
-        let prev_cursor_cli_path = std::env::var_os("JCODE_CURSOR_CLI_PATH");
+        let prev_cursor_cli_path = std::env::var_os("KCODE_CURSOR_CLI_PATH");
         let temp = tempfile::TempDir::new().expect("create temp dir");
         let marker = temp.path().join("cursor-status-ran");
         let script = temp.path().join("cursor-agent-mock");
@@ -515,7 +515,7 @@ fn test_account_command_uses_fast_auth_snapshot_without_running_cursor_status() 
 
         let mut app = create_test_app();
 
-        crate::env::set_var("JCODE_CURSOR_CLI_PATH", &script);
+        crate::env::set_var("KCODE_CURSOR_CLI_PATH", &script);
         crate::auth::AuthStatus::invalidate_cache();
         let _ = std::fs::remove_file(&marker);
 
@@ -529,8 +529,8 @@ fn test_account_command_uses_fast_auth_snapshot_without_running_cursor_status() 
         );
 
         match prev_cursor_cli_path {
-            Some(value) => crate::env::set_var("JCODE_CURSOR_CLI_PATH", value),
-            None => crate::env::remove_var("JCODE_CURSOR_CLI_PATH"),
+            Some(value) => crate::env::set_var("KCODE_CURSOR_CLI_PATH", value),
+            None => crate::env::remove_var("KCODE_CURSOR_CLI_PATH"),
         }
         crate::auth::AuthStatus::invalidate_cache();
     });

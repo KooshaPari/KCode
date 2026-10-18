@@ -2,7 +2,7 @@
 //! installed into it (Firefox, Chromium-family browsers, or Safari).
 //!
 //! Resolution order:
-//! 1. `JCODE_BROWSER` environment variable
+//! 1. `KCODE_BROWSER` environment variable
 //! 2. The browser a previous `jcode browser setup` was completed for
 //! 3. The operating system's default web browser, when supported
 //! 4. The first supported browser that is installed
@@ -46,7 +46,7 @@ impl DetectionSource {
     pub fn describe(&self) -> &'static str {
         match self {
             DetectionSource::Requested => "requested explicitly",
-            DetectionSource::EnvOverride => "set by JCODE_BROWSER",
+            DetectionSource::EnvOverride => "set by KCODE_BROWSER",
             DetectionSource::SavedPreference => "configured by a previous `jcode browser setup`",
             DetectionSource::SystemDefault => "your default browser",
             DetectionSource::Installed => "installed (your default browser is not supported)",
@@ -302,7 +302,7 @@ impl BrowserKind {
                 BrowserKind::Firefox => vec![data.join("Mozilla").join("NativeMessagingHosts")],
                 BrowserKind::Safari => Vec::new(),
                 other => vec![
-                    data.join("jcode")
+                    data.join("kcode")
                         .join("NativeMessagingHosts")
                         .join(other.id()),
                 ],

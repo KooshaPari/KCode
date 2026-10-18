@@ -307,8 +307,8 @@ async fn invalid_threshold_or_large_query_is_fail_closed() {
 fn manager_scope_active_filter_and_storage_failures() {
     let _guard = crate::storage::lock_test_env();
     let home = tempfile::tempdir().unwrap();
-    let old = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", home.path());
+    let old = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", home.path());
     let result = std::panic::catch_unwind(|| {
         let manager = MemoryManager::new_test().with_skills(false);
         let mut project = MemoryGraph::new();
@@ -343,8 +343,8 @@ fn manager_scope_active_filter_and_storage_failures() {
         assert!(collect_scoped(&manager, MemoryScope::Project).is_ok());
     });
     match old {
-        Some(value) => crate::env::set_var("JCODE_HOME", value),
-        None => crate::env::remove_var("JCODE_HOME"),
+        Some(value) => crate::env::set_var("KCODE_HOME", value),
+        None => crate::env::remove_var("KCODE_HOME"),
     }
     if let Err(error) = result {
         std::panic::resume_unwind(error);
@@ -417,11 +417,11 @@ async fn only_oversize_or_inactive_entries_do_not_send_requests() {
 /// Explicit live acceptance gate. Never reads a MemoryManager or user memory
 /// store. Opting in without credentials is a failure, not a successful skip.
 #[tokio::test]
-#[ignore = "requires JCODE_MEMORY_JEV_LIVE_TEST=1 and live Jev credentials"]
+#[ignore = "requires KCODE_MEMORY_JEV_LIVE_TEST=1 and live Jev credentials"]
 async fn live_synthetic_relevance_acceptance() -> Result<()> {
     ensure!(
-        std::env::var("JCODE_MEMORY_JEV_LIVE_TEST").as_deref() == Ok("1"),
-        "Live Jev acceptance not run: set JCODE_MEMORY_JEV_LIVE_TEST=1 explicitly"
+        std::env::var("KCODE_MEMORY_JEV_LIVE_TEST").as_deref() == Ok("1"),
+        "Live Jev acceptance not run: set KCODE_MEMORY_JEV_LIVE_TEST=1 explicitly"
     );
     ensure!(
         crate::config::config().agents.memory_jev_threshold == 0.8,

@@ -299,6 +299,7 @@ impl Agent {
         self.session.provider_session_id = None;
         self.cache_tracker.reset();
         self.kv_cache_monitor.reset();
+        self.cache_vectors.reset();
         self.locked_tools = None;
         self.reset_tool_output_tracking();
         self.persist_session_best_effort("conversation rewind");
@@ -318,6 +319,7 @@ impl Agent {
         self.session.updated_at = chrono::Utc::now();
         self.cache_tracker.reset();
         self.kv_cache_monitor.reset();
+        self.cache_vectors.reset();
         self.locked_tools = None;
         self.reset_tool_output_tracking();
         self.persist_session_best_effort("conversation rewind undo");
@@ -332,6 +334,7 @@ impl Agent {
             self.locked_tools = None;
             self.cache_tracker.reset();
             self.kv_cache_monitor.reset();
+            self.cache_vectors.reset();
         }
         // Allow the late-MCP-registration recheck to fire once for the next
         // snapshot (e.g. after an explicit `mcp` reload).
@@ -528,6 +531,7 @@ impl Agent {
                 self.locked_tools = None;
                 self.cache_tracker.reset();
                 self.kv_cache_monitor.reset();
+                self.cache_vectors.reset();
             } else {
                 // No MCP tools have appeared. They may still be connecting, so
                 // leave the guard unset and re-check on the next turn. Once they
@@ -1125,13 +1129,16 @@ impl Agent {
                     self.session.provider_key.as_deref(),
                     self.session.route_api_method.as_deref(),
                 );
-            if let Err(e) =
+            if let Err(_e) =
                 crate::provider::set_model_with_auth_refresh(self.provider.as_ref(), &model_request)
             {
-                logging::error(&format!(
-                    "Failed to restore session model '{}' via '{}': {}",
-                    model, model_request, e
+                let fallback = self.provider_model();
+                logging::warn(&format!(
+                    "Saved session model '{}' not available, falling back to provider default '{}'",
+                    model, fallback
                 ));
+                self.session.model = Some(fallback);
+                self.persist_session_best_effort("model fallback");
             } else {
                 self.reconcile_explicit_provider_pin_route();
             }

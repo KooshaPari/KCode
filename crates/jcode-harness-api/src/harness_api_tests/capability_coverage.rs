@@ -28,7 +28,7 @@ enum Disposition {
     ClientInternal,
     /// A real gap. Worth exposing, not yet done. Every entry needs a reason
     /// that says what a client cannot build without it.
-    #[allow(dead_code)] // Empty today; the ledger keeps the slot for future gaps.
+    #[allow(dead_code)] // Ledger variant kept for future use; not constructed today.
     Gap(&'static str),
 }
 
@@ -86,11 +86,8 @@ const LEDGER: &[(&str, Disposition)] = &[
 /// Requests the reference clients (TUI) send to the daemon.
 fn reference_client_requests() -> BTreeSet<String> {
     let mut found = BTreeSet::new();
-    {
-        let dir = "../jcode-tui/src";
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(dir);
-        collect_requests(&root, &mut found);
-    }
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../jcode-tui/src");
+    collect_requests(&root, &mut found);
     // covered by construction and would otherwise pollute the diff.
     for api_only in [
         "CreateSession",
@@ -209,8 +206,8 @@ fn capability_report() {
 /// The SDK mirrors jcode's external credential locations by hand, so a new one
 /// added in Rust must also be inherited by launched instances.
 ///
-/// `JCODE_HOME` redirects every `user_home_path` lookup into
-/// `$JCODE_HOME/external/`, which is what makes an instance private. The cost
+/// `KCODE_HOME` redirects every `user_home_path` lookup into
+/// `$KCODE_HOME/external/`, which is what makes an instance private. The cost
 /// is that an instance only sees another CLI's credentials if the SDK links
 /// that directory in. Miss one and inheritance silently half-works: the
 /// instance starts fine and fails on the first turn with an auth error, which
@@ -258,7 +255,7 @@ fn sdk_covers(sdk: &str, path: &str) -> bool {
 /// Home-relative paths jcode reads other tools' credentials from.
 ///
 /// Read out of the source so the list cannot drift: `user_home_path` is the
-/// single funnel for "a file in the user's home that JCODE_HOME sandboxes".
+/// single funnel for "a file in the user's home that KCODE_HOME sandboxes".
 fn external_credential_paths() -> Vec<String> {
     const CREDENTIAL_HINTS: [&str; 5] = ["auth", "credential", "oauth", "hosts.json", "apps.json"];
     let mut found = Vec::new();

@@ -54,6 +54,12 @@ impl MemoryTool {
     }
 }
 
+impl Default for MemoryTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct MemoryInput {
     action: String,
@@ -511,18 +517,18 @@ mod tests {
     impl OfflineEnv {
         fn new(home: &std::path::Path) -> Self {
             let keys = [
-                "JCODE_HOME",
+                "KCODE_HOME",
                 "OPENROUTER_API_KEY",
-                "JCODE_API_KEY",
+                "KCODE_API_KEY",
                 "TYPESAFE_API_KEY",
                 "AIMLAPI_API_KEY",
-                "JCODE_MEMORY_JEV_PROVIDER",
+                "KCODE_MEMORY_JEV_PROVIDER",
             ];
             let previous = keys
                 .into_iter()
                 .map(|key| (key, std::env::var_os(key)))
                 .collect();
-            crate::env::set_var("JCODE_HOME", home);
+            crate::env::set_var("KCODE_HOME", home);
             for key in &keys[1..] {
                 crate::env::remove_var(key);
             }
@@ -690,8 +696,8 @@ mod tests {
         let _guard = crate::storage::lock_test_env();
         let home = tempfile::tempdir().expect("home");
         let project = tempfile::tempdir().expect("project");
-        let prev_home = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", home.path());
+        let prev_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", home.path());
 
         let tool = MemoryTool::new();
         let remember = tool
@@ -721,9 +727,9 @@ mod tests {
         );
 
         if let Some(prev_home) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev_home);
+            crate::env::set_var("KCODE_HOME", prev_home);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 
@@ -744,8 +750,8 @@ mod tests {
         let _guard = crate::storage::lock_test_env();
         let home = tempfile::tempdir().expect("home");
         let project = tempfile::tempdir().expect("project");
-        let prev_home = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", home.path());
+        let prev_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", home.path());
 
         // The session that spawns a worker records something project-scoped.
         let spawner = MemoryTool::new();
@@ -794,9 +800,9 @@ mod tests {
         );
 
         if let Some(prev_home) = prev_home {
-            crate::env::set_var("JCODE_HOME", prev_home);
+            crate::env::set_var("KCODE_HOME", prev_home);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 }

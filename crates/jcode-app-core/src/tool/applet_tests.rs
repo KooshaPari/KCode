@@ -20,15 +20,15 @@ struct Home(
 impl Drop for Home {
     fn drop(&mut self) {
         match &self.0 {
-            Some(v) => crate::env::set_var("JCODE_HOME", v),
-            None => crate::env::remove_var("JCODE_HOME"),
+            Some(v) => crate::env::set_var("KCODE_HOME", v),
+            None => crate::env::remove_var("KCODE_HOME"),
         }
     }
 }
 fn temp_home() -> Home {
     let temp = tempfile::tempdir().unwrap();
-    let old = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let old = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
     Home(old, temp)
 }
 

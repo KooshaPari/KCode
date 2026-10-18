@@ -5,7 +5,7 @@
 //! cargo run -p jcode-base --no-default-features --example nari_pcm -- --live sample.pcm
 //!
 //! Uses NARI_API_KEY or the existing private nari.env configuration. For isolated
-//! acceptance, set JCODE_HOME and JCODE_RUNTIME_DIR to a scratch directory and
+//! acceptance, set KCODE_HOME and KCODE_RUNTIME_DIR to a scratch directory and
 //! configure NARI_API_KEY through your normal secret delivery mechanism.
 use jcode_base::voice::{NariEvent, NariSession, VoiceError, nari_api_key, nari_pcm_channel};
 use std::{

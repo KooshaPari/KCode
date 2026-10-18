@@ -40,7 +40,7 @@ const OAUTH_BETA_HEADERS: &str = "oauth-2025-04-20,claude-code-20250219";
 
 /// Claude Code identity block required for OAuth direct API access
 const CLAUDE_CODE_IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
-const CLAUDE_CODE_JCODE_NOTICE: &str = "You are jcode, powered by Claude Code. You are a third-party CLI, not the official Claude Code CLI.";
+const CLAUDE_CODE_KCODE_NOTICE: &str = "You are jcode, powered by Claude Code. You are a third-party CLI, not the official Claude Code CLI.";
 
 /// Maximum tokens for sidecar responses (keep small for speed/cost)
 const DEFAULT_MAX_TOKENS: u32 = 1024;
@@ -1097,7 +1097,7 @@ fn build_claude_system_param(system: &str) -> Option<ClaudeApiSystem<'_>> {
     });
     blocks.push(ClaudeApiSystemBlock {
         block_type: "text",
-        text: CLAUDE_CODE_JCODE_NOTICE,
+        text: CLAUDE_CODE_KCODE_NOTICE,
     });
     if !system.is_empty() {
         blocks.push(ClaudeApiSystemBlock {
@@ -1297,7 +1297,7 @@ mod tests {
         // Make backend selection deterministic by isolating credentials.
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("create temp jcode home");
-        let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+        let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         let _openai = EnvVarGuard::unset("OPENAI_API_KEY");
 
         codex::upsert_account_from_tokens("openai-1", "sk-test-key-123", "", None, None)
@@ -1324,7 +1324,7 @@ mod tests {
     fn test_chatgpt_oauth_uses_luna_with_no_reasoning_when_available() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("create temp jcode home");
-        let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+        let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         codex::set_active_account_override(Some("openai-1".to_string()));
         crate::provider::clear_all_model_unavailability_for_account();
         crate::provider::populate_account_models(vec![
@@ -1343,7 +1343,7 @@ mod tests {
     fn test_chatgpt_oauth_falls_back_to_gpt_5_4_low_when_luna_unavailable() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("create temp jcode home");
-        let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+        let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         codex::set_active_account_override(Some("openai-1".to_string()));
         crate::provider::clear_all_model_unavailability_for_account();
         crate::provider::populate_account_models(vec![
@@ -1442,7 +1442,7 @@ mod tests {
     fn sidecar_uses_active_provider_when_no_oauth_creds() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("create temp jcode home");
-        let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+        let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         let _openai = EnvVarGuard::unset("OPENAI_API_KEY");
 
         // Simulate running on a non-OpenAI/Claude provider (e.g. Gemini).
@@ -1472,7 +1472,7 @@ mod tests {
     fn provider_sidecar_keeps_the_route_selected_at_construction() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("create temp jcode home");
-        let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+        let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         let _openai = EnvVarGuard::unset("OPENAI_API_KEY");
 
         crate::provider::set_active_provider(std::sync::Arc::new(StubProvider {
@@ -1508,7 +1508,7 @@ mod tests {
     fn sidecar_provider_path_works_for_all_providers() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("create temp jcode home");
-        let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+        let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         let _openai = EnvVarGuard::unset("OPENAI_API_KEY");
 
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -1589,14 +1589,14 @@ mod tests {
     fn test_anthropic_sidecar_prefers_api_key_respects_pinned_mode() {
         // Pinning the runtime to API-key mode must make the sidecar prefer the key.
         let _g =
-            EnvVarGuard::set_path("JCODE_RUNTIME_PROVIDER", std::path::Path::new("claude-api"));
+            EnvVarGuard::set_path("KCODE_RUNTIME_PROVIDER", std::path::Path::new("claude-api"));
         assert!(
             anthropic_sidecar_prefers_api_key(),
             "claude-api runtime => prefer API key"
         );
 
         // Pinning to OAuth mode must NOT prefer the key.
-        let _g2 = EnvVarGuard::set_path("JCODE_RUNTIME_PROVIDER", std::path::Path::new("claude"));
+        let _g2 = EnvVarGuard::set_path("KCODE_RUNTIME_PROVIDER", std::path::Path::new("claude"));
         assert!(
             !anthropic_sidecar_prefers_api_key(),
             "claude (oauth) runtime => do not force API key"

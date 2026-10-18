@@ -27,7 +27,7 @@ fn main() -> anyhow::Result<()> {
                 return Ok(());
             }
             "-V" | "--version" => {
-                println!("jcode-harness-api-bridge {}", env!("CARGO_PKG_VERSION"));
+                println!("kcode-harness-api-bridge {}", env!("CARGO_PKG_VERSION"));
                 return Ok(());
             }
             other => anyhow::bail!("unknown option {other}; see --help"),

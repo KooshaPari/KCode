@@ -83,7 +83,7 @@ fn installed_cli_build_id() -> Option<String> {
 }
 
 pub(crate) fn cli_client_version() -> String {
-    if let Some(version) = std::env::var("JCODE_CURSOR_CLI_VERSION")
+    if let Some(version) = std::env::var("KCODE_CURSOR_CLI_VERSION")
         .ok()
         .map(|raw| raw.trim().to_string())
         .filter(|raw| !raw.is_empty())
@@ -196,11 +196,11 @@ fn agent_host_from_cursor_cli_config() -> Option<String> {
 }
 
 /// Resolve the Cursor agent host, in precedence order:
-/// 1. `JCODE_CURSOR_AGENT_HOST` / `CURSOR_AGENT_HOST` (explicit override)
+/// 1. `KCODE_CURSOR_AGENT_HOST` / `CURSOR_AGENT_HOST` (explicit override)
 /// 2. `~/.cursor/cli-config.json` regional endpoint cached by `cursor-agent`
 /// 3. the `global` host, as a last-resort fallback
 pub(crate) fn agent_host() -> String {
-    for var in ["JCODE_CURSOR_AGENT_HOST", "CURSOR_AGENT_HOST"] {
+    for var in ["KCODE_CURSOR_AGENT_HOST", "CURSOR_AGENT_HOST"] {
         if let Ok(raw) = std::env::var(var) {
             // Normalize overrides too. These get copied straight out of
             // `cli-config.json` or a browser, so `https://host/path` and
@@ -1391,7 +1391,7 @@ pub async fn run_agent_turn(
                     ExecServerMessageVariant::McpAllowlistPrecheck {
                         provider_identifier,
                     } => {
-                        let allowlisted = provider_identifier == crate::wire::JCODE_TOOL_PROVIDER;
+                        let allowlisted = provider_identifier == crate::wire::KCODE_TOOL_PROVIDER;
                         stream_debug(format_args!(
                             "mcp allowlist precheck provider={provider_identifier} allowlisted={allowlisted}"
                         ));
@@ -1733,24 +1733,24 @@ mod tests {
         // Serialized against other env-mutating tests in this module by the
         // shared lock in jcode-base.
         let _guard = jcode_base::storage::lock_test_env();
-        let prev = std::env::var_os("JCODE_CURSOR_AGENT_HOST");
+        let prev = std::env::var_os("KCODE_CURSOR_AGENT_HOST");
 
         jcode_base::env::set_var(
-            "JCODE_CURSOR_AGENT_HOST",
+            "KCODE_CURSOR_AGENT_HOST",
             "https://agentn.us.api5.cursor.sh/agent.v1.AgentService/Run",
         );
         assert_eq!(agent_host(), "agentn.us.api5.cursor.sh");
 
-        jcode_base::env::set_var("JCODE_CURSOR_AGENT_HOST", "agentn.eu.api5.cursor.sh:443");
+        jcode_base::env::set_var("KCODE_CURSOR_AGENT_HOST", "agentn.eu.api5.cursor.sh:443");
         assert_eq!(agent_host(), "agentn.eu.api5.cursor.sh");
 
         // A blank override must not win; it falls through to the next source.
-        jcode_base::env::set_var("JCODE_CURSOR_AGENT_HOST", "   ");
+        jcode_base::env::set_var("KCODE_CURSOR_AGENT_HOST", "   ");
         assert_ne!(agent_host(), "   ");
 
         match prev {
-            Some(value) => jcode_base::env::set_var("JCODE_CURSOR_AGENT_HOST", value),
-            None => jcode_base::env::remove_var("JCODE_CURSOR_AGENT_HOST"),
+            Some(value) => jcode_base::env::set_var("KCODE_CURSOR_AGENT_HOST", value),
+            None => jcode_base::env::remove_var("KCODE_CURSOR_AGENT_HOST"),
         }
     }
 

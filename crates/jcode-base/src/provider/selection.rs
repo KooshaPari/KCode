@@ -53,7 +53,7 @@ impl MultiProvider {
     }
 
     pub(super) fn initial_provider_from_env() -> Option<ActiveProvider> {
-        let explicit = std::env::var("JCODE_INITIAL_PROVIDER_EXPLICIT")
+        let explicit = std::env::var("KCODE_INITIAL_PROVIDER_EXPLICIT")
             .ok()
             .is_some_and(|value| {
                 matches!(
@@ -65,7 +65,7 @@ impl MultiProvider {
             return None;
         }
 
-        std::env::var("JCODE_ACTIVE_PROVIDER")
+        std::env::var("KCODE_ACTIVE_PROVIDER")
             .ok()
             .and_then(|value| Self::parse_provider_hint(&value))
     }

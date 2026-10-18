@@ -15,7 +15,7 @@
 //!   active plan, so no elevation is needed.
 //!
 //! Because these settings outlive the process, the original values are saved to
-//! `~/.jcode/lid_override.json` *before* anything is changed. That file is the
+//! `~/.kcode/lid_override.json` *before* anything is changed. That file is the
 //! crash-recovery journal: if the owning process dies (crash, `kill -9`, power
 //! loss) the next jcode process that sees a journal with a dead owner restores
 //! the saved values. The daemon checks this on every reconcile tick, so a stale
@@ -88,7 +88,7 @@ impl LidOverride {
     pub fn for_current_platform() -> Option<Self> {
         let backend = platform_backend()?;
         let journal_path = crate::storage::jcode_dir().ok()?.join(JOURNAL_FILE);
-        // A sandboxed JCODE_HOME (tests, isolated profiles) must never touch
+        // A sandboxed KCODE_HOME (tests, isolated profiles) must never touch
         // machine-wide power settings.
         if crate::storage::running_with_sandboxed_home() {
             return None;

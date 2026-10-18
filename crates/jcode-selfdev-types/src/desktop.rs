@@ -13,7 +13,7 @@ pub fn desktop_repo_root(path: &Path) -> Option<PathBuf> {
         }
         let manifest = std::fs::read_to_string(ancestor.join("Cargo.toml")).ok()?;
         let manifest: toml::Value = toml::from_str(&manifest).ok()?;
-        (manifest.get("package")?.get("name")?.as_str()? == "jcode-desktop")
+        (manifest.get("package")?.get("name")?.as_str()? == "kcode-desktop")
             .then(|| ancestor.to_path_buf())
     })
 }

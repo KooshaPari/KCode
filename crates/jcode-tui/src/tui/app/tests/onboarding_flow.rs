@@ -118,8 +118,8 @@ fn direct_api_key_login_does_not_advertise_a_static_model_default() {
 #[test]
 fn onboarding_strongest_model_only_runs_without_explicit_defaults() {
     with_temp_jcode_home(|| {
-        let previous_explicit = std::env::var_os("JCODE_INITIAL_PROVIDER_EXPLICIT");
-        crate::env::remove_var("JCODE_INITIAL_PROVIDER_EXPLICIT");
+        let previous_explicit = std::env::var_os("KCODE_INITIAL_PROVIDER_EXPLICIT");
+        crate::env::remove_var("KCODE_INITIAL_PROVIDER_EXPLICIT");
 
         let mut app = onboarding_test_app();
         assert!(app.onboarding_should_prefer_strongest_model());
@@ -136,7 +136,7 @@ fn onboarding_strongest_model_only_runs_without_explicit_defaults() {
 
         config.provider.default_provider = None;
         config.save().expect("clear explicit defaults");
-        crate::env::set_var("JCODE_INITIAL_PROVIDER_EXPLICIT", "1");
+        crate::env::set_var("KCODE_INITIAL_PROVIDER_EXPLICIT", "1");
         assert!(!app.onboarding_should_prefer_strongest_model());
 
         app.onboarding_auto_model_selection_active
@@ -149,9 +149,9 @@ fn onboarding_strongest_model_only_runs_without_explicit_defaults() {
         );
 
         if let Some(value) = previous_explicit {
-            crate::env::set_var("JCODE_INITIAL_PROVIDER_EXPLICIT", value);
+            crate::env::set_var("KCODE_INITIAL_PROVIDER_EXPLICIT", value);
         } else {
-            crate::env::remove_var("JCODE_INITIAL_PROVIDER_EXPLICIT");
+            crate::env::remove_var("KCODE_INITIAL_PROVIDER_EXPLICIT");
         }
     });
 }
@@ -546,7 +546,7 @@ fn openrouter_key_typed_through_full_key_path_does_not_reopen_picker() {
         assert!(app.input.is_empty(), "input buffer should clear after submit");
 
         // Crucially: the key must actually be *persisted*, not just "not loop".
-        // It is written to $JCODE_HOME/config/jcode/openrouter.env, which is
+        // It is written to $KCODE_HOME/config/jcode/openrouter.env, which is
         // where the provider resolves it from at request time. It must not be
         // copied into the process env, where it would shadow later edits of the
         // file and leak into child processes (#1386).

@@ -63,7 +63,7 @@ const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_URL_OAUTH: &str = "https://api.anthropic.com/v1/messages?beta=true";
 
 fn direct_api_url() -> String {
-    let base = std::env::var("JCODE_ANTHROPIC_API_BASE")
+    let base = std::env::var("KCODE_ANTHROPIC_API_BASE")
         .ok()
         .or_else(|| std::env::var("ANTHROPIC_BASE_URL").ok())
         .map(|value| value.trim().trim_end_matches('/').to_string())
@@ -76,14 +76,14 @@ fn direct_api_url() -> String {
 }
 
 fn configured_direct_headers() -> Result<HeaderMap> {
-    let Some(raw) = std::env::var("JCODE_ANTHROPIC_HEADERS")
+    let Some(raw) = std::env::var("KCODE_ANTHROPIC_HEADERS")
         .ok()
         .filter(|value| !value.trim().is_empty())
     else {
         return Ok(HeaderMap::new());
     };
     let headers: std::collections::BTreeMap<String, String> = serde_json::from_str(&raw)
-        .context("JCODE_ANTHROPIC_HEADERS must be a JSON object of string values")?;
+        .context("KCODE_ANTHROPIC_HEADERS must be a JSON object of string values")?;
     let mut result = HeaderMap::new();
     for (name, value) in headers {
         let name = HeaderName::from_bytes(name.as_bytes())
@@ -96,7 +96,7 @@ fn configured_direct_headers() -> Result<HeaderMap> {
 }
 
 fn direct_auth_mode() -> String {
-    std::env::var("JCODE_ANTHROPIC_AUTH")
+    std::env::var("KCODE_ANTHROPIC_AUTH")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| {
@@ -127,14 +127,14 @@ impl DirectTransportConfig {
             api_url: direct_api_url(),
             headers: configured_direct_headers().map_err(|err| format!("{err:#}")),
             auth_mode: direct_auth_mode(),
-            auth_header: std::env::var("JCODE_ANTHROPIC_AUTH_HEADER")
+            auth_header: std::env::var("KCODE_ANTHROPIC_AUTH_HEADER")
                 .unwrap_or_else(|_| "x-api-key".to_string()),
         }
     }
 }
 
 fn active_anthropic_profile_models() -> Option<Vec<String>> {
-    let Ok(profile_name) = std::env::var("JCODE_NAMED_PROVIDER_PROFILE") else {
+    let Ok(profile_name) = std::env::var("KCODE_NAMED_PROVIDER_PROFILE") else {
         return None;
     };
     let profile = jcode_base::config::config().providers.get(&profile_name)?;
@@ -470,7 +470,7 @@ pub struct AnthropicProvider {
     /// Cached OAuth credentials (None if using API key)
     credentials: Arc<RwLock<Option<CachedCredentials>>>,
     credential_mode: Arc<RwLock<AnthropicCredentialMode>>,
-    /// Explicit `JCODE_ANTHROPIC_MAX_TOKENS` override. When unset, the output
+    /// Explicit `KCODE_ANTHROPIC_MAX_TOKENS` override. When unset, the output
     /// budget is derived per model so newer generations are not clamped to the
     /// legacy 32K default.
     max_tokens_override: Option<u32>,
@@ -553,9 +553,9 @@ impl AnthropicProvider {
     /// The `claude` login provider is specifically the OAuth/subscription path,
     /// while `claude-api` is the API-key path. The doctor must test the path
     /// implied by the provider id under test, regardless of what
-    /// `JCODE_RUNTIME_PROVIDER` happens to be in the current process (e.g. a
+    /// `KCODE_RUNTIME_PROVIDER` happens to be in the current process (e.g. a
     /// self-dev session may have it set to `claude-api`). This also updates
-    /// `JCODE_RUNTIME_PROVIDER` so any provider instances the probes build
+    /// `KCODE_RUNTIME_PROVIDER` so any provider instances the probes build
     /// afterwards inherit the same mode. Errors if the requested credential is
     /// not available, so the doctor can record a clear AUTH failure.
     pub fn pin_credential_mode_for_doctor(&self, oauth: bool) -> Result<()> {
@@ -624,7 +624,7 @@ impl AnthropicProvider {
     }
 
     pub fn new() -> Self {
-        let model = std::env::var("JCODE_ANTHROPIC_MODEL").unwrap_or_else(|_| {
+        let model = std::env::var("KCODE_ANTHROPIC_MODEL").unwrap_or_else(|_| {
             if Self::is_usage_exhausted() {
                 "claude-sonnet-4-6".to_string()
             } else {
@@ -639,7 +639,7 @@ impl AnthropicProvider {
             })
         });
 
-        let max_tokens_override = std::env::var("JCODE_ANTHROPIC_MAX_TOKENS")
+        let max_tokens_override = std::env::var("KCODE_ANTHROPIC_MAX_TOKENS")
             .ok()
             .and_then(|v| v.trim().parse::<u32>().ok());
         let reasoning_effort = jcode_base::config::config()
@@ -650,7 +650,7 @@ impl AnthropicProvider {
             .map(|effort| Self::store_effort_for_model(&model, &effort));
 
         let direct_transport = DirectTransportConfig::from_env();
-        let profile_api_key = std::env::var_os("JCODE_ANTHROPIC_API_BASE")
+        let profile_api_key = std::env::var_os("KCODE_ANTHROPIC_API_BASE")
             .map(|_| load_anthropic_api_key().map_err(|err| format!("{err:#}")));
         let profile_models = active_anthropic_profile_models();
 
@@ -1134,7 +1134,7 @@ impl AnthropicProvider {
         // method that requests will actually use, instead of inferring it from
         // credential presence. `Auto` leaves the existing identity untouched.
         if let Some(route) = mode.auth_route(jcode_provider_core::DualAuthProvider::Anthropic) {
-            jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
+            jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
         }
         // Drop any cached auth snapshot so surfaces that still consult the cheap
         // cached probe (auto-mode resolution, usage availability, account labels)
@@ -1599,7 +1599,7 @@ impl Provider for AnthropicProvider {
 
     fn supports_deferred_tools(&self) -> bool {
         // Deferred loading and `tool_reference` are first-party Messages API
-        // features. Custom gateways (JCODE_ANTHROPIC_API_URL) may proxy a
+        // features. Custom gateways (KCODE_ANTHROPIC_API_URL) may proxy a
         // different backend that rejects the fields, so keep them eager there.
         self.direct_transport.api_url == API_URL
     }
@@ -2082,7 +2082,7 @@ async fn stream_response(
 ) -> Result<()> {
     use jcode_message_types::ConnectionPhase;
     let requested_model_base = strip_1m_suffix(&request.model).to_ascii_lowercase();
-    if std::env::var("JCODE_ANTHROPIC_DEBUG")
+    if std::env::var("KCODE_ANTHROPIC_DEBUG")
         .map(|v| v == "1")
         .unwrap_or(false)
         && let Ok(json) = serde_json::to_string_pretty(&request)
@@ -2159,11 +2159,11 @@ async fn stream_response(
             "bearer" => req.header("Authorization", format!("Bearer {token}")),
             "header" => {
                 let header = HeaderName::from_bytes(direct_transport.auth_header.trim().as_bytes())
-                    .context("invalid JCODE_ANTHROPIC_AUTH_HEADER")?;
+                    .context("invalid KCODE_ANTHROPIC_AUTH_HEADER")?;
                 req.header(header, &token)
             }
             value => anyhow::bail!(
-                "invalid JCODE_ANTHROPIC_AUTH value '{value}' (expected bearer, header, or none)"
+                "invalid KCODE_ANTHROPIC_AUTH value '{value}' (expected bearer, header, or none)"
             ),
         };
         req = req.header("anthropic-beta", beta_header);
@@ -2208,7 +2208,7 @@ async fn stream_response(
     };
 
     // Idle timeout between streamed chunks. Configurable via
-    // `[provider] stream_idle_timeout_secs` / `JCODE_STREAM_IDLE_TIMEOUT_SECS`
+    // `[provider] stream_idle_timeout_secs` / `KCODE_STREAM_IDLE_TIMEOUT_SECS`
     // so slow reasoning models don't trip a premature timeout (issue #434).
     loop {
         let chunk = match tokio::time::timeout(stream_idle_timeout, stream.next()).await {
@@ -2585,10 +2585,10 @@ fn process_sse_event(
             if let Ok(parsed) = serde_json::from_str::<MessageStartEvent>(&event.data) {
                 // The server echoes the model that actually served the request.
                 // Log it so we can confirm there was no silent server-side
-                // substitution (and surface it under JCODE_LOG_SERVED_MODEL).
+                // substitution (and surface it under KCODE_LOG_SERVED_MODEL).
                 if let Some(served) = parsed.message.model.as_deref() {
                     jcode_base::logging::info(&format!("Anthropic served model={}", served));
-                    if std::env::var("JCODE_LOG_SERVED_MODEL").is_ok() {
+                    if std::env::var("KCODE_LOG_SERVED_MODEL").is_ok() {
                         eprintln!("[anthropic] served model={served}");
                     }
                     // Anthropic can silently alias an unavailable/retired model
@@ -2624,7 +2624,7 @@ fn process_sse_event(
                             "Anthropic granted service_tier={}",
                             tier
                         ));
-                        if std::env::var("JCODE_LOG_SERVICE_TIER").is_ok() {
+                        if std::env::var("KCODE_LOG_SERVICE_TIER").is_ok() {
                             eprintln!("[anthropic] granted service_tier={tier}");
                         }
                     }

@@ -16,7 +16,7 @@
 //! - Provider routing: Ranks providers using OpenRouter's endpoint API data (throughput, uptime, cost, cache support)
 //! - Provider pinning: Pins to a provider per-session for cache locality; refreshes pin on cache hits
 //! - Cache support: Automatically injects cache breakpoints when provider supports caching
-//! - Manual pinning: Set JCODE_OPENROUTER_PROVIDER or use model@Provider syntax
+//! - Manual pinning: Set KCODE_OPENROUTER_PROVIDER or use model@Provider syntax
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -61,7 +61,7 @@ const RETRY_BASE_DELAY_MS: u64 = 1000;
 const DEFAULT_API_BASE: &str = "https://openrouter.ai/api/v1";
 const DEFAULT_API_KEY_NAME: &str = "OPENROUTER_API_KEY";
 const DEFAULT_ENV_FILE: &str = "openrouter.env";
-const OPENROUTER_TRANSPORT_STATE_ENV: &str = "JCODE_OPENROUTER_TRANSPORT_STATE";
+const OPENROUTER_TRANSPORT_STATE_ENV: &str = "KCODE_OPENROUTER_TRANSPORT_STATE";
 
 /// Default model (Claude Sonnet via OpenRouter). Placeholder only: once the
 /// live catalog loads, [`OpenRouterProvider::promote_placeholder_default_model`]
@@ -96,10 +96,10 @@ const MAX_BACKGROUND_ENDPOINT_REFRESHES: usize = 8;
 
 fn explicit_openrouter_runtime_configured() -> bool {
     [
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
     ]
     .iter()
     .any(|var| std::env::var_os(var).is_some())
@@ -141,7 +141,7 @@ fn autodetected_openai_compatible_profile()
 }
 
 fn configured_api_base() -> String {
-    let raw = std::env::var("JCODE_OPENROUTER_API_BASE")
+    let raw = std::env::var("KCODE_OPENROUTER_API_BASE")
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
@@ -149,7 +149,7 @@ fn configured_api_base() -> String {
         .unwrap_or_else(|| DEFAULT_API_BASE.to_string());
     normalize_api_base(&raw).unwrap_or_else(|| {
         jcode_base::logging::warn(&format!(
-            "Ignoring invalid JCODE_OPENROUTER_API_BASE '{}'; using {}",
+            "Ignoring invalid KCODE_OPENROUTER_API_BASE '{}'; using {}",
             raw, DEFAULT_API_BASE
         ));
         DEFAULT_API_BASE.to_string()
@@ -157,7 +157,7 @@ fn configured_api_base() -> String {
 }
 
 fn configured_api_key_name() -> String {
-    let raw = std::env::var("JCODE_OPENROUTER_API_KEY_NAME")
+    let raw = std::env::var("KCODE_OPENROUTER_API_KEY_NAME")
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
@@ -167,7 +167,7 @@ fn configured_api_key_name() -> String {
         raw
     } else {
         jcode_base::logging::warn(&format!(
-            "Ignoring invalid JCODE_OPENROUTER_API_KEY_NAME '{}'; using {}",
+            "Ignoring invalid KCODE_OPENROUTER_API_KEY_NAME '{}'; using {}",
             raw, DEFAULT_API_KEY_NAME
         ));
         DEFAULT_API_KEY_NAME.to_string()
@@ -175,7 +175,7 @@ fn configured_api_key_name() -> String {
 }
 
 fn configured_env_file_name() -> String {
-    let raw = std::env::var("JCODE_OPENROUTER_ENV_FILE")
+    let raw = std::env::var("KCODE_OPENROUTER_ENV_FILE")
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
@@ -185,7 +185,7 @@ fn configured_env_file_name() -> String {
         raw
     } else {
         jcode_base::logging::warn(&format!(
-            "Ignoring invalid JCODE_OPENROUTER_ENV_FILE '{}'; using {}",
+            "Ignoring invalid KCODE_OPENROUTER_ENV_FILE '{}'; using {}",
             raw, DEFAULT_ENV_FILE
         ));
         DEFAULT_ENV_FILE.to_string()
@@ -220,12 +220,12 @@ fn parse_env_bool(value: &str) -> Option<bool> {
 }
 
 fn provider_features_enabled(api_base: &str) -> bool {
-    if let Ok(raw) = std::env::var("JCODE_OPENROUTER_PROVIDER_FEATURES") {
+    if let Ok(raw) = std::env::var("KCODE_OPENROUTER_PROVIDER_FEATURES") {
         if let Some(value) = parse_env_bool(&raw) {
             return value;
         }
         jcode_base::logging::warn(&format!(
-            "Ignoring invalid JCODE_OPENROUTER_PROVIDER_FEATURES '{}'; expected true/false",
+            "Ignoring invalid KCODE_OPENROUTER_PROVIDER_FEATURES '{}'; expected true/false",
             raw
         ));
     }
@@ -233,12 +233,12 @@ fn provider_features_enabled(api_base: &str) -> bool {
 }
 
 fn model_catalog_enabled() -> bool {
-    if let Ok(raw) = std::env::var("JCODE_OPENROUTER_MODEL_CATALOG") {
+    if let Ok(raw) = std::env::var("KCODE_OPENROUTER_MODEL_CATALOG") {
         if let Some(value) = parse_env_bool(&raw) {
             return value;
         }
         jcode_base::logging::warn(&format!(
-            "Ignoring invalid JCODE_OPENROUTER_MODEL_CATALOG '{}'; expected true/false",
+            "Ignoring invalid KCODE_OPENROUTER_MODEL_CATALOG '{}'; expected true/false",
             raw
         ));
     }
@@ -252,7 +252,7 @@ enum AuthHeaderMode {
 }
 
 fn configured_auth_header_mode() -> AuthHeaderMode {
-    let Some(raw) = std::env::var("JCODE_OPENROUTER_AUTH_HEADER")
+    let Some(raw) = std::env::var("KCODE_OPENROUTER_AUTH_HEADER")
         .ok()
         .map(|v| v.trim().to_ascii_lowercase())
         .filter(|v| !v.is_empty())
@@ -265,7 +265,7 @@ fn configured_auth_header_mode() -> AuthHeaderMode {
         "api-key" | "apikey" => AuthHeaderMode::ApiKey,
         other => {
             jcode_base::logging::warn(&format!(
-                "Ignoring invalid JCODE_OPENROUTER_AUTH_HEADER '{}'; expected authorization-bearer or api-key",
+                "Ignoring invalid KCODE_OPENROUTER_AUTH_HEADER '{}'; expected authorization-bearer or api-key",
                 other
             ));
             AuthHeaderMode::AuthorizationBearer
@@ -274,14 +274,14 @@ fn configured_auth_header_mode() -> AuthHeaderMode {
 }
 
 fn configured_auth_header_name() -> HeaderName {
-    let raw = std::env::var("JCODE_OPENROUTER_AUTH_HEADER_NAME")
+    let raw = std::env::var("KCODE_OPENROUTER_AUTH_HEADER_NAME")
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| "api-key".to_string());
     HeaderName::from_bytes(raw.as_bytes()).unwrap_or_else(|_| {
         jcode_base::logging::warn(&format!(
-            "Ignoring invalid JCODE_OPENROUTER_AUTH_HEADER_NAME '{}'; using api-key",
+            "Ignoring invalid KCODE_OPENROUTER_AUTH_HEADER_NAME '{}'; using api-key",
             raw
         ));
         HeaderName::from_static("api-key")
@@ -289,14 +289,14 @@ fn configured_auth_header_name() -> HeaderName {
 }
 
 fn configured_dynamic_bearer_provider() -> Option<String> {
-    std::env::var("JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER")
+    std::env::var("KCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER")
         .ok()
         .map(|v| v.trim().to_ascii_lowercase())
         .filter(|v| !v.is_empty())
 }
 
 fn configured_allow_no_auth() -> bool {
-    std::env::var("JCODE_OPENROUTER_ALLOW_NO_AUTH")
+    std::env::var("KCODE_OPENROUTER_ALLOW_NO_AUTH")
         .ok()
         .and_then(|raw| parse_env_bool(&raw))
         .or_else(|| {
@@ -349,7 +349,7 @@ impl OpenRouterTransportState {
         }
 
         if Self::runtime_provider_is_direct_compatible(runtime_provider.as_deref())
-            || std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_some()
+            || std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_some()
         {
             return Self::DirectApiKey;
         }
@@ -703,6 +703,10 @@ pub fn maybe_schedule_openai_compatible_profile_catalog_refresh(
     }
 
     let Some(api_base) = normalize_api_base(&resolved.api_base) else {
+        jcode_base::logging::info(&format!(
+            "Skipping {} catalog refresh ({}): api_base '{}' failed to normalize",
+            resolved.display_name, context, resolved.api_base
+        ));
         finish_profile_catalog_refresh(&resolved.id);
         return false;
     };
@@ -718,11 +722,19 @@ pub fn maybe_schedule_openai_compatible_profile_catalog_refresh(
             label: "local endpoint (no auth)".to_string(),
         }
     } else {
+        jcode_base::logging::info(&format!(
+            "Skipping {} catalog refresh ({}): {} not configured",
+            resolved.display_name, context, resolved.api_key_env
+        ));
         finish_profile_catalog_refresh(&resolved.id);
         return false;
     };
 
     let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        jcode_base::logging::info(&format!(
+            "Skipping {} catalog refresh ({}): no tokio runtime available",
+            resolved.display_name, context
+        ));
         finish_profile_catalog_refresh(&resolved.id);
         return false;
     };
@@ -789,9 +801,9 @@ pub fn maybe_schedule_openai_compatible_profile_catalog_refresh(
 pub fn maybe_schedule_standard_openrouter_catalog_refresh(context: &'static str) -> bool {
     // This always targets canonical openrouter.ai with OPENROUTER_API_KEY and
     // writes to the dedicated `openrouter` cache namespace. It must run even
-    // when JCODE_OPENROUTER_* env vars are set by an active named profile
+    // when KCODE_OPENROUTER_* env vars are set by an active named profile
     // (e.g. NVIDIA NIM via `[providers.mynvidia]`, which sets
-    // JCODE_OPENROUTER_API_BASE to the NVIDIA endpoint): that profile owns the
+    // KCODE_OPENROUTER_API_BASE to the NVIDIA endpoint): that profile owns the
     // shared slot and points the live runtime elsewhere, but standard
     // OpenRouter's catalog still needs its own refresh so `/model` can list it
     // (issue #292). Hence we deliberately ignore the shared-slot runtime env.
@@ -904,7 +916,7 @@ pub struct OpenRouterProvider {
     /// Extra top-level JSON object fields merged into every chat/completions
     /// request body (e.g. NVIDIA NIM DeepSeek-V4 `chat_template_kwargs`).
     /// Resolved once at construction from named-profile config or the
-    /// `JCODE_OPENAI_EXTRA_BODY` env/env-file value.
+    /// `KCODE_OPENAI_EXTRA_BODY` env/env-file value.
     extra_body: Option<serde_json::Map<String, Value>>,
     static_models: Vec<String>,
     static_context_limits: HashMap<String, usize>,
@@ -1192,7 +1204,7 @@ impl OpenRouterProvider {
     }
 
     fn configured_max_tokens(_profile_id: Option<&str>) -> Option<u32> {
-        if let Ok(raw) = std::env::var("JCODE_OPENROUTER_MAX_TOKENS") {
+        if let Ok(raw) = std::env::var("KCODE_OPENROUTER_MAX_TOKENS") {
             let trimmed = raw.trim();
             if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") {
                 return None;
@@ -1201,7 +1213,7 @@ impl OpenRouterProvider {
                 Ok(0) => return None,
                 Ok(value) => return Some(value),
                 Err(_) => jcode_base::logging::warn(&format!(
-                    "Ignoring invalid JCODE_OPENROUTER_MAX_TOKENS '{}'; expected a positive integer or auto",
+                    "Ignoring invalid KCODE_OPENROUTER_MAX_TOKENS '{}'; expected a positive integer or auto",
                     raw
                 )),
             }
@@ -1215,7 +1227,7 @@ impl OpenRouterProvider {
     ///
     /// Sources, in precedence order (later overrides earlier):
     /// 1. An optional named-profile `extra_body` config object.
-    /// 2. The `JCODE_OPENAI_EXTRA_BODY` env var (or the same key inside the
+    /// 2. The `KCODE_OPENAI_EXTRA_BODY` env var (or the same key inside the
     ///    profile's `.env` file), parsed as a JSON object string.
     ///
     /// This lets users inject non-standard parameters that some backends
@@ -1244,7 +1256,7 @@ impl OpenRouterProvider {
             }
         }
 
-        if let Some(raw) = load_env_value_from_env_or_config("JCODE_OPENAI_EXTRA_BODY", env_file) {
+        if let Some(raw) = load_env_value_from_env_or_config("KCODE_OPENAI_EXTRA_BODY", env_file) {
             match serde_json::from_str::<Value>(&raw) {
                 Ok(Value::Object(object)) => {
                     for (key, val) in object {
@@ -1252,10 +1264,10 @@ impl OpenRouterProvider {
                     }
                 }
                 Ok(_) => jcode_base::logging::warn(
-                    "Ignoring JCODE_OPENAI_EXTRA_BODY: expected a JSON object string, e.g. {\"chat_template_kwargs\":{\"thinking\":true}}",
+                    "Ignoring KCODE_OPENAI_EXTRA_BODY: expected a JSON object string, e.g. {\"chat_template_kwargs\":{\"thinking\":true}}",
                 ),
                 Err(err) => jcode_base::logging::warn(&format!(
-                    "Ignoring invalid JCODE_OPENAI_EXTRA_BODY JSON: {err}"
+                    "Ignoring invalid KCODE_OPENAI_EXTRA_BODY JSON: {err}"
                 )),
             }
         }
@@ -1279,7 +1291,7 @@ impl OpenRouterProvider {
     /// (e.g. NVIDIA NIM) even though `name()` is fixed at `"openrouter"`.
     pub fn runtime_display_name(&self) -> String {
         if self.is_jcode_subscription_runtime() {
-            return jcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string();
+            return jcode_base::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string();
         }
 
         // Direct OpenAI-compatible profile (NVIDIA NIM, DeepSeek, Z.AI, ...).
@@ -1302,7 +1314,7 @@ impl OpenRouterProvider {
             {
                 return profile.display_name.to_string();
             }
-            if std::env::var("JCODE_RUNTIME_PROVIDER")
+            if std::env::var("KCODE_RUNTIME_PROVIDER")
                 .ok()
                 .is_some_and(|value| value.trim().eq_ignore_ascii_case("azure-openai"))
             {
@@ -1323,8 +1335,8 @@ impl OpenRouterProvider {
 
         if self.is_jcode_subscription_runtime() {
             return Some((
-                jcode_base::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME.to_string(),
-                jcode_base::subscription_catalog::JCODE_ROUTE_API_METHOD.to_string(),
+                jcode_base::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME.to_string(),
+                jcode_base::subscription_catalog::KCODE_ROUTE_API_METHOD.to_string(),
                 self.api_base.clone(),
             ));
         }
@@ -1348,18 +1360,18 @@ impl OpenRouterProvider {
     }
 
     /// The account/device flow exchanges its one-time browser approval for a
-    /// scoped `JCODE_API_KEY`, then routes through the OpenAI-compatible
+    /// scoped `KCODE_API_KEY`, then routes through the OpenAI-compatible
     /// transport slot. Keep that implementation detail out of model-picker
     /// labels: the captured auth label is per-instance and remains stable even
     /// if another provider changes the process environment later.
     fn is_jcode_subscription_runtime(&self) -> bool {
         !self.supports_provider_features
             && self.api_base.trim_end_matches('/')
-                == jcode_base::subscription_catalog::DEFAULT_JCODE_API_BASE.trim_end_matches('/')
+                == jcode_base::subscription_catalog::DEFAULT_KCODE_API_BASE.trim_end_matches('/')
             && (self.auth)()
                 .map(|auth| {
                     auth.label()
-                        .eq_ignore_ascii_case(jcode_base::subscription_catalog::JCODE_API_KEY_ENV)
+                        .eq_ignore_ascii_case(jcode_base::subscription_catalog::KCODE_API_KEY_ENV)
                 })
                 .unwrap_or(false)
     }
@@ -1373,7 +1385,7 @@ impl OpenRouterProvider {
         // in several CLI/TUI paths, so make sure their cache namespace is active
         // before any model-cache reads/writes happen. Without this, a custom
         // endpoint can accidentally display the default OpenRouter catalog.
-        jcode_base::env::set_var("JCODE_OPENROUTER_CACHE_NAMESPACE", profile_name);
+        jcode_base::env::set_var("KCODE_OPENROUTER_CACHE_NAMESPACE", profile_name);
         let api_base = normalize_api_base(&profile.base_url).ok_or_else(|| {
             anyhow::anyhow!("Provider profile '{}' has invalid base_url", profile_name)
         })?;
@@ -1589,7 +1601,7 @@ impl OpenRouterProvider {
     /// Parse thinking override from env. Values: "enabled"/"disabled"/"auto".
     /// Returns Some(true)=force enable, Some(false)=force disable, None=auto.
     fn thinking_override() -> Option<bool> {
-        let raw = std::env::var("JCODE_OPENROUTER_THINKING").ok()?;
+        let raw = std::env::var("KCODE_OPENROUTER_THINKING").ok()?;
         let value = raw.trim().to_lowercase();
         match value.as_str() {
             "enabled" | "enable" | "on" | "true" | "1" => Some(true),
@@ -1597,7 +1609,7 @@ impl OpenRouterProvider {
             "auto" | "" => None,
             other => {
                 jcode_base::logging::info(&format!(
-                    "Warning: Unsupported JCODE_OPENROUTER_THINKING '{}'; expected enabled/disabled/auto",
+                    "Warning: Unsupported KCODE_OPENROUTER_THINKING '{}'; expected enabled/disabled/auto",
                     other
                 ));
                 None
@@ -1627,7 +1639,7 @@ impl OpenRouterProvider {
         let send_openrouter_headers = supports_provider_features;
         let auth: AuthResolver = Arc::new(Self::resolve_auth);
         auth()?;
-        let profile_id = std::env::var("JCODE_OPENROUTER_CACHE_NAMESPACE")
+        let profile_id = std::env::var("KCODE_OPENROUTER_CACHE_NAMESPACE")
             .ok()
             .map(|value| value.trim().to_ascii_lowercase())
             .filter(|value| !value.is_empty())
@@ -1645,7 +1657,7 @@ impl OpenRouterProvider {
             .and_then(openai_compatible_profile_by_id)
             .map(openai_compatible_profile_static_context_limits)
             .unwrap_or_default();
-        let static_models = std::env::var("JCODE_OPENROUTER_STATIC_MODELS")
+        let static_models = std::env::var("KCODE_OPENROUTER_STATIC_MODELS")
             .ok()
             .map(|raw| {
                 raw.lines()
@@ -1662,13 +1674,13 @@ impl OpenRouterProvider {
                     .unwrap_or_default()
             });
 
-        if std::env::var_os("JCODE_OPENROUTER_CACHE_NAMESPACE").is_none()
+        if std::env::var_os("KCODE_OPENROUTER_CACHE_NAMESPACE").is_none()
             && let Some(profile) = autodetected_profile.as_ref()
         {
-            jcode_base::env::set_var("JCODE_OPENROUTER_CACHE_NAMESPACE", &profile.id);
+            jcode_base::env::set_var("KCODE_OPENROUTER_CACHE_NAMESPACE", &profile.id);
         }
 
-        let model = std::env::var("JCODE_OPENROUTER_MODEL")
+        let model = std::env::var("KCODE_OPENROUTER_MODEL")
             .ok()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
@@ -2565,7 +2577,7 @@ impl OpenRouterProvider {
                     }
                 }
                 other => anyhow::bail!(
-                    "Unsupported JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER '{}'.",
+                    "Unsupported KCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER '{}'.",
                     other
                 ),
             };
@@ -2628,7 +2640,7 @@ impl OpenRouterProvider {
     pub(crate) fn promote_placeholder_default_model(&self, catalog: &[ModelInfo]) {
         if !self.supports_provider_features
             || self.profile_id.is_some()
-            || std::env::var_os("JCODE_OPENROUTER_MODEL").is_some()
+            || std::env::var_os("KCODE_OPENROUTER_MODEL").is_some()
         {
             return;
         }

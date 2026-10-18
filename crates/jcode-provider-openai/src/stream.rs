@@ -854,7 +854,7 @@ fn handle_openai_image_generation_item(
         .unwrap_or_default();
     let dir = std::env::current_dir()
         .unwrap_or_else(|_| std::env::temp_dir())
-        .join(".jcode")
+        .join(".kcode")
         .join("generated-images");
     if let Err(err) = std::fs::create_dir_all(&dir) {
         jcode_logging::warn(&format!(

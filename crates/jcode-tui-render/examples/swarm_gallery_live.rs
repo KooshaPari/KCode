@@ -111,6 +111,10 @@ fn workers_to_members(workers: &[MockWorker]) -> Vec<GalleryMember> {
                 auth_method: None,
                 effort: None,
                 elapsed_secs: Some(w.age_secs()),
+                input_tokens: None,
+                output_tokens: None,
+                queue_depth: None,
+                cost_cents: None,
             }
         })
         .collect()
@@ -225,7 +229,7 @@ fn render_gallery_lines(
 ) -> Vec<Line<'static>> {
     // Delegate to the exact same shared renderer the live TUI uses; only the
     // member data (built from mock workers) differs.
-    render_gallery(&workers_to_members(workers), width, max_height)
+    render_gallery(&workers_to_members(workers), width, max_height, None)
 }
 
 fn draw(f: &mut Frame, workers: &[MockWorker], max_pct: usize, paused: bool) {

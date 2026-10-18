@@ -6,7 +6,7 @@
 //! - Linux: create a .desktop launcher file.
 //!
 //! Each nudge can be dismissed permanently with "Don't ask again".
-//! State is persisted in `~/.jcode/setup_hints.json`.
+//! State is persisted in `~/.kcode/setup_hints.json`.
 
 // Several launch-hotkey helpers are gated `#[cfg(any(test, target_os = "macos"))]`
 // because the unit tests exercise the macOS launch-hotkey notice logic on every
@@ -305,7 +305,7 @@ fn mac_hotkey_plan_file() -> Result<PathBuf> {
     Ok(mac_hotkey_support_dir()?.join("plan.json"))
 }
 
-/// Load the `[launch_hotkeys]` table from `~/.jcode/config.toml`.
+/// Load the `[launch_hotkeys]` table from `~/.kcode/config.toml`.
 ///
 /// Returns the default (empty -> built-in 3 hotkeys) when the file is missing or
 /// the section is absent. Best-effort: a malformed config falls back to default
@@ -414,7 +414,7 @@ fn mac_hotkey_launch_agent_path() -> Result<PathBuf> {
     Ok(home
         .join("Library")
         .join("LaunchAgents")
-        .join("com.jcode.hotkey.plist"))
+        .join("com.kcode.hotkey.plist"))
 }
 
 #[cfg(any(test, target_os = "macos"))]
@@ -430,7 +430,7 @@ fn mac_hotkey_launch_agent_plist(
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.jcode.hotkey</string>
+    <string>com.kcode.hotkey</string>
     <key>ProgramArguments</key>
     <array>
         <string>{exe}</string>
@@ -449,7 +449,7 @@ fn mac_hotkey_launch_agent_plist(
     <string>{stderr_path}</string>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>JCODE_PREFERRED_TERMINAL</key>
+        <key>KCODE_PREFERRED_TERMINAL</key>
         <string>{terminal}</string>
     </dict>
 </dict>
@@ -1088,7 +1088,7 @@ fn run_macos_hotkey_listener() -> Result<()> {
             let command = TerminalCommand::new(&exe_path, args)
                 .fresh_spawn()
                 .kind("hotkey")
-                .spawn_env("JCODE_SPAWN_LABEL", launch.label.clone());
+                .spawn_env("KCODE_SPAWN_LABEL", launch.label.clone());
             match spawn_command_in_new_terminal_with(&command, &cwd, |cmd| cmd.spawn().map(|_| ()))
             {
                 Ok(true) => {}
@@ -1549,10 +1549,10 @@ fn linux_hotkeys_installed(comp: linux_env::LinuxCompositor) -> bool {
     match comp {
         LinuxCompositor::Gnome => gnome_keybinding_list().contains("/jcode-launch-"),
         LinuxCompositor::Cinnamon => {
-            dconf_read("/org/cinnamon/desktop/keybindings/custom-list").contains("jcode-launch-")
+            dconf_read("/org/cinnamon/desktop/keybindings/custom-list").contains("kcode-launch-")
         }
         LinuxCompositor::Mate => {
-            dconf_list("/org/mate/desktop/keybindings/").contains("jcode-launch-")
+            dconf_list("/org/mate/desktop/keybindings/").contains("kcode-launch-")
         }
         LinuxCompositor::Xfce => xfce_shortcut_commands_text().contains("/launch_jcode_"),
         LinuxCompositor::Kde => kde_globalshortcutsrc_path()
@@ -1747,7 +1747,7 @@ fn install_niri_launch_hotkeys() -> Result<bool> {
 
 /// Install (or refresh) the launch-hotkey binds for a flat `#`-commented
 /// compositor config (Hyprland/omarchy, sway, i3). Bind lines execute launch
-/// scripts written under `~/.jcode/hotkey/`, so the config never embeds shell
+/// scripts written under `~/.kcode/hotkey/`, so the config never embeds shell
 /// one-liners. Writes a timestamped backup before modifying; no-op when the
 /// managed block already matches. Returns `Ok(true)` if the config changed.
 #[cfg(target_os = "linux")]
@@ -2104,7 +2104,7 @@ fn install_kde_launch_hotkeys() -> Result<bool> {
 }
 
 /// Write one executable launch script per resolved hotkey to
-/// `~/.jcode/hotkey/` and return the chord -> script binds. The scripts `cd`
+/// `~/.kcode/hotkey/` and return the chord -> script binds. The scripts `cd`
 /// into the target (with `$HOME` fallback for stale/dynamic dirs) and exec the
 /// user's terminal running jcode, so compositor bind lines stay trivial.
 #[cfg(target_os = "linux")]
@@ -2163,7 +2163,7 @@ fn backup_compositor_config(config_path: &std::path::Path) {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "config".to_string());
-    let backup = config_path.with_file_name(format!("{file_name}.bak-jcode-hotkeys-{ts}"));
+    let backup = config_path.with_file_name(format!("{file_name}.bak-kcode-hotkeys-{ts}"));
     if let Err(err) = std::fs::copy(config_path, &backup) {
         jcode_logging::warn(&format!(
             "failed to back up compositor config before hotkey install: {err}"
@@ -2380,9 +2380,9 @@ pub(crate) fn keymap_conflict_hint_for(
 /// (macOS VS Code integrated terminal / Apple Terminal). Mirrors the detection
 /// in `jcode-tui-style`'s color module and `jcode-app-core::perf` so the
 /// disclosure fires exactly when the behavior is active. Overridable with
-/// `JCODE_GLYPH_SAFE_MODE=on|off`.
+/// `KCODE_GLYPH_SAFE_MODE=on|off`.
 fn glyph_safe_mode_active() -> bool {
-    if let Ok(raw) = std::env::var("JCODE_GLYPH_SAFE_MODE") {
+    if let Ok(raw) = std::env::var("KCODE_GLYPH_SAFE_MODE") {
         match raw.trim().to_ascii_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => return true,
             "0" | "false" | "no" | "off" => return false,
@@ -2433,7 +2433,7 @@ pub(crate) fn glyph_safe_notice_for(
 its glyph cache under jcode's full-color animations, rendering letters as boxes. \
 jcode automatically quantizes colors to the 256-palette here to keep text readable; \
 the only tradeoff is slightly reduced color fidelity. Animations still run. \
-For full color, use Ghostty, iTerm2, kitty, or WezTerm, or set JCODE_GLYPH_SAFE_MODE=off."
+For full color, use Ghostty, iTerm2, kitty, or WezTerm, or set KCODE_GLYPH_SAFE_MODE=off."
         .to_string();
     (
         Some(StartupHints::with_status_and_display(
@@ -2486,7 +2486,7 @@ pub fn run_setup_launcher() -> Result<()> {
         eprintln!();
         match create_windows_desktop_shortcut(&mut state) {
             Ok(()) => {
-                eprintln!("  \x1b[32m✓\x1b[0m Created desktop shortcut: jcode.lnk");
+                eprintln!("  \x1b[32m✓\x1b[0m Created desktop shortcut: kcode.lnk");
                 return Ok(());
             }
             Err(e) => {

@@ -15,7 +15,7 @@ WRAPPER = REPO / "scripts/dev_cargo.sh"
 
 class CargoWorkingDirectoryTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(dir=os.environ.get("JCODE_SCRATCH_DIR"))
+        self.tmp = tempfile.TemporaryDirectory(dir=os.environ.get("KCODE_SCRATCH_DIR"))
         self.addCleanup(self.tmp.cleanup)
         self.project = Path(self.tmp.name) / "other rust project"
         (self.project / "src").mkdir(parents=True)
@@ -23,7 +23,7 @@ class CargoWorkingDirectoryTests(unittest.TestCase):
             '[package]\nname = "cwd_probe"\nversion = "0.1.0"\nedition = "2021"\n'
         )
         (self.project / "src/lib.rs").write_text("")
-        self.env = dict(os.environ, JCODE_RUST_ACTION_LOG="0")
+        self.env = dict(os.environ, KCODE_RUST_ACTION_LOG="0")
         self.env.pop("CARGO_MANIFEST_DIR", None)
 
     def metadata(self, cwd, *, child_shell=False):
@@ -33,10 +33,10 @@ class CargoWorkingDirectoryTests(unittest.TestCase):
             # inheritance by a child shell.
             args = ["bash", "-c", '''
                 cargo() {
-                    if [[ "${JCODE_IN_DEV_CARGO:-0}" == "1" ]]; then
+                    if [[ "${KCODE_IN_DEV_CARGO:-0}" == "1" ]]; then
                         command cargo "$@"
                     else
-                        JCODE_IN_DEV_CARGO=1 "$JCODE_DEV_CARGO_SCRIPT" "$@"
+                        KCODE_IN_DEV_CARGO=1 "$KCODE_DEV_CARGO_SCRIPT" "$@"
                     fi
                 }
                 export -f cargo
@@ -46,7 +46,7 @@ class CargoWorkingDirectoryTests(unittest.TestCase):
             cwd = REPO
         result = subprocess.run(
             args, cwd=cwd,
-            env=dict(self.env, JCODE_DEV_CARGO_SCRIPT=str(WRAPPER)),
+            env=dict(self.env, KCODE_DEV_CARGO_SCRIPT=str(WRAPPER)),
             capture_output=True, text=True, timeout=60, check=True,
         )
         return json.loads(result.stdout)

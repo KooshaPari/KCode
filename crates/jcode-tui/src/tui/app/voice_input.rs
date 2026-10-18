@@ -139,7 +139,7 @@ impl App {
         let Some(key) = voice::nari_api_key() else {
             self.push_display_message(DisplayMessage::error(
                 "Voice input needs a Nari API key. Set `NARI_API_KEY`, or add \
-                 `NARI_API_KEY=...` to `~/.config/jcode/nari.env`."
+                 `NARI_API_KEY=...` to `~/.config/kcode/nari.env`."
                     .to_string(),
             ));
             self.set_status_notice("Voice input not configured");
@@ -154,7 +154,7 @@ impl App {
                 "Voice input found no microphone recorder. Install one of \
                  `pw-record` (PipeWire), `parecord` (PulseAudio), `arecord` \
                  (ALSA), `rec` (SoX), or `ffmpeg`, or set `[dictation] recorder` \
-                 in `~/.jcode/config.toml`."
+                 in `~/.kcode/config.toml`."
                     .to_string(),
             ));
             self.set_status_notice("No microphone recorder found");

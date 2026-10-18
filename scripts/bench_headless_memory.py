@@ -86,21 +86,21 @@ def run_jcode(sessions: int, turns: int, cwd: str, model: str, memory: bool) -> 
     run = Path(temp_root) / "run"
     home.mkdir()
     run.mkdir()
-    real = Path.home() / ".jcode"
+    real = Path.home() / ".kcode"
     for name in ("auth.json", "anthropic-auth.json", "openai-auth.json", "config.toml", "models"):
         if (real / name).exists():
             (home / name).symlink_to(real / name)
     env = os.environ.copy()
     env.update(
         {
-            "JCODE_HOME": str(home),
-            "JCODE_RUNTIME_DIR": str(run),
-            "JCODE_TEMP_SERVER": "1",
-            "JCODE_SERVER_OWNER_PID": str(os.getpid()),
-            "JCODE_NO_TELEMETRY": "1",
-            "JCODE_DEBUG_CONTROL": "1",
-            "JCODE_MEMORY_ENABLED": "1" if memory else "0",
-            "JCODE_EMBEDDING_IDLE_UNLOAD_SECS": "86400",
+            "KCODE_HOME": str(home),
+            "KCODE_RUNTIME_DIR": str(run),
+            "KCODE_TEMP_SERVER": "1",
+            "KCODE_SERVER_OWNER_PID": str(os.getpid()),
+            "KCODE_NO_TELEMETRY": "1",
+            "KCODE_DEBUG_CONTROL": "1",
+            "KCODE_MEMORY_ENABLED": "1" if memory else "0",
+            "KCODE_EMBEDDING_IDLE_UNLOAD_SECS": "86400",
         }
     )
     main_sock = str(run / "bench.sock")

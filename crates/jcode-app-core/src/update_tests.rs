@@ -15,7 +15,7 @@ fn test_version_is_newer() {
 #[test]
 fn test_asset_name() {
     let name = get_asset_name();
-    assert!(name.starts_with("jcode-"));
+    assert!(name.starts_with("kcode-"));
 }
 
 #[test]
@@ -50,11 +50,11 @@ fn test_parse_sha256sums_accepts_standard_and_binary_lines() {
     );
     let parsed = parse_sha256sums(&contents).unwrap();
     assert_eq!(
-        parsed.get("jcode-linux-x86_64.tar.gz").map(String::as_str),
+        parsed.get("kcode-linux-x86_64.tar.gz").map(String::as_str),
         Some(digest_a.as_str())
     );
     assert_eq!(
-        parsed.get("jcode-windows-x86_64.exe").map(String::as_str),
+        parsed.get("kcode-windows-x86_64.exe").map(String::as_str),
         Some(digest_b_lower.as_str())
     );
 }
@@ -64,14 +64,14 @@ fn test_verify_asset_checksum_text_accepts_matching_digest() {
     let bytes = b"hello update";
     let digest = format!("{:x}", Sha256::digest(bytes));
     let contents = format!("{}  jcode-linux-x86_64.tar.gz\n", digest);
-    verify_asset_checksum_text(&contents, "jcode-linux-x86_64.tar.gz", bytes).unwrap();
+    verify_asset_checksum_text(&contents, "kcode-linux-x86_64.tar.gz", bytes).unwrap();
 }
 
 #[test]
 fn test_verify_asset_checksum_text_rejects_mismatch() {
     let wrong = "0".repeat(64);
     let contents = format!("{}  jcode-linux-x86_64.tar.gz\n", wrong);
-    let err = verify_asset_checksum_text(&contents, "jcode-linux-x86_64.tar.gz", b"actual")
+    let err = verify_asset_checksum_text(&contents, "kcode-linux-x86_64.tar.gz", b"actual")
         .unwrap_err()
         .to_string();
     assert!(err.contains("Checksum mismatch"));
@@ -81,7 +81,7 @@ fn test_verify_asset_checksum_text_rejects_mismatch() {
 fn test_verify_asset_checksum_text_requires_asset_entry() {
     let digest = "1".repeat(64);
     let contents = format!("{}  other-asset.tar.gz\n", digest);
-    let err = verify_asset_checksum_text(&contents, "jcode-linux-x86_64.tar.gz", b"actual")
+    let err = verify_asset_checksum_text(&contents, "kcode-linux-x86_64.tar.gz", b"actual")
         .unwrap_err()
         .to_string();
     assert!(err.contains("does not list"));
@@ -155,7 +155,7 @@ fn git_managed_auto_update_skip_logs_actionable_explanation() {
     std::fs::create_dir_all(managed_root.join(".git")).expect("create git marker");
     std::fs::create_dir_all(&bin_dir).expect("create bin directory");
 
-    let executable = bin_dir.join("jcode");
+    let executable = bin_dir.join("kcode");
     let mut logged = Vec::new();
     assert!(!should_auto_update_with(
         false,

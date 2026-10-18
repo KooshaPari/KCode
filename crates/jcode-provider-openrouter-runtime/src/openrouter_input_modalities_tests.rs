@@ -151,8 +151,8 @@ fn flat_input_modalities_are_parsed() {
 fn cold_start_uses_the_persisted_catalog_for_image_support() {
     let _lock = ENV_LOCK.lock();
     let temp = tempfile::tempdir().expect("temp jcode home");
-    let _home = EnvVarGuard::set("JCODE_HOME", temp.path().to_str().expect("utf8 path"));
-    let _namespace = EnvVarGuard::remove("JCODE_OPENROUTER_CACHE_NAMESPACE");
+    let _home = EnvVarGuard::set("KCODE_HOME", temp.path().to_str().expect("utf8 path"));
+    let _namespace = EnvVarGuard::remove("KCODE_OPENROUTER_CACHE_NAMESPACE");
     let _key = EnvVarGuard::set("TEST_COLD_START_KEY", "test-key");
 
     let api_base = "https://coldstart.models.test/v1";

@@ -1,5 +1,6 @@
 pub mod account_picker;
 pub(crate) mod app;
+pub(crate) mod elicitation_types;
 
 #[derive(Clone)]
 pub struct ContextSnapshot {
@@ -25,6 +26,14 @@ pub struct BackgroundTaskRow {
     /// When a successful task stopped being actionable. Running and failed
     /// tasks remain visible until their state changes or the session closes.
     pub completed_at: Option<std::time::Instant>,
+}
+
+/// Aggregated swarm dispatch statistics for the status bar.
+#[derive(Debug, Clone, Default)]
+pub struct SwarmStats {
+    pub active: u32,
+    pub completed: u32,
+    pub failed: u32,
 }
 
 pub mod backend;
@@ -64,6 +73,7 @@ mod remote_diff;
 pub mod screenshot;
 pub(crate) mod session_facts;
 pub mod session_picker;
+mod status_bar;
 mod stream_buffer;
 pub mod terminal_setup;
 pub mod test_harness;
@@ -112,19 +122,22 @@ pub use jcode_tui_messages::DisplayMessage;
 fn keyboard_enhancement_flags() -> crossterm::event::KeyboardEnhancementFlags {
     use crossterm::event::KeyboardEnhancementFlags;
 
+    if std::env::var_os("KCODE_DISABLE_KITTY_KEYBOARD").is_some() {
+        return KeyboardEnhancementFlags::empty();
+    }
+    // Only disambiguate escape codes. REPORT_EVENT_TYPES makes terminals emit
+    // press AND release events; hosts that half-support the kitty protocol
+    // (herdr/conpty panes) leak releases into the prompt as "[<code>;1:3u".
     KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-        | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-        | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
 }
 
 /// Request Kitty keyboard reporting and tmux's extended-key mode.
 ///
-/// Intentionally avoid REPORT_ALL_KEYS_AS_ESCAPE_CODES for now. When that flag is enabled,
-/// terminals such as kitty/Alacritty/Warp can report printable keys as a base key plus
-/// modifiers instead of the final text produced by the active keyboard layout. Crossterm does
-/// not yet expose kitty's associated text / alternate key data, so we cannot safely reconstruct
-/// shifted symbols for every keyboard layout. Prefer the terminal-delivered printable character
-/// and only synthesize ASCII letter casing in the input fallback.
+/// Avoids REPORT_ALL_KEYS_AS_ESCAPE_CODES: with it, kitty/Alacritty/Warp report
+/// printable keys as base key plus modifiers instead of the text the active
+/// layout produces, and crossterm cannot reconstruct shifted symbols for every
+/// layout. Prefer the terminal-delivered character and only synthesize ASCII
+/// letter casing in the input fallback.
 ///
 /// On Windows, keep native console key records: Crossterm has no CSI-u decoder
 /// there. Focus/resume must follow the same policy even if the config enables it.
@@ -375,9 +388,9 @@ pub(crate) fn hash_rendered_image_anchor(
 }
 
 /// Hash every field that affects inline image rendering. The production App
-/// memoizes this signature until its image set changes, so exact payload hashing
-/// happens on image updates rather than during scrolling. Correctness matters
-/// here: sampling can miss a same-length change and reuse a stale prepared frame.
+/// memoizes this until its image set changes, so exact hashing happens on
+/// updates rather than during scrolling. Sampling could miss a same-length
+/// change and reuse a stale prepared frame, so hash every field.
 pub(crate) fn hash_rendered_image_signature_fields(
     image: &crate::session::RenderedImage,
     hasher: &mut impl std::hash::Hasher,
@@ -392,12 +405,11 @@ pub(crate) fn hash_rendered_image_signature_fields(
 
 /// Trait for TUI state consumed by the shared renderer.
 ///
-/// This is a wide (114-method) presentation interface: the read-only surface the
-/// renderer needs from `App`. The methods are grouped into the domain sections
-/// below (transcript, input, scroll, stream/status, provider, session/server,
+/// A wide (114-method) presentation interface: the read-only surface the
+/// renderer needs from `App`, grouped into the domain sections below
+/// (transcript, input, scroll, stream/status, provider, session/server,
 /// workspace, diagram pane, diff pane, side panel, inline, overlay, copy
-/// selection, onboarding, misc). See `docs/TUISTATE_TRAIT_DECOMPOSITION.md` for
-/// the incremental plan to split these into composable sub-traits.
+/// selection, onboarding, misc). See `docs/TUISTATE_TRAIT_DECOMPOSITION.md`.
 pub trait TuiState {
     // ---- Transcript ----
     fn display_messages(&self) -> &[DisplayMessage];
@@ -499,9 +511,9 @@ pub trait TuiState {
     fn available_skills(&self) -> Vec<String>;
     /// Authoritative active credential (OAuth vs API key) for a dual-auth
     /// provider, as resolved from the live provider / remote server rather than
-    /// from the `JCODE_RUNTIME_PROVIDER` env var. The header must prefer this
+    /// from the `KCODE_RUNTIME_PROVIDER` env var. The header must prefer this
     /// over its own env-based heuristic: the TUI client process often does not
-    /// inherit `JCODE_RUNTIME_PROVIDER` (it is set inside the agent/server
+    /// inherit `KCODE_RUNTIME_PROVIDER` (it is set inside the agent/server
     /// process), so the env heuristic silently falls back to "auto prefers
     /// OAuth" and the header claimed OAuth while the info widget correctly
     /// reported an API key. Returns `None` when the credential cannot be
@@ -676,6 +688,11 @@ pub trait TuiState {
     fn inline_swarm_gallery_active(&self) -> bool {
         false
     }
+    /// Aggregated swarm dispatch statistics (active/completed/failed) for the
+    /// status bar. Default returns zeroed stats for states that don't track swarm.
+    fn swarm_stats(&self) -> SwarmStats {
+        SwarmStats::default()
+    }
     /// Members to render in the inline swarm gallery band.
     fn inline_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
         Vec::new()
@@ -699,6 +716,37 @@ pub trait TuiState {
     /// Whether the live swarm page currently replaces the transcript viewport.
     fn swarm_panel_full_page(&self) -> bool {
         false
+    }
+    /// Whether the swarm panel filter input is active (user pressed `/`).
+    fn swarm_filter_active(&self) -> bool {
+        false
+    }
+    /// The current filter query typed into the swarm panel.
+    fn swarm_filter_query(&self) -> &str {
+        ""
+    }
+    /// Whether the swarm panel rename input is active (user pressed `r`).
+    fn swarm_rename_active(&self) -> bool {
+        false
+    }
+    /// The current rename buffer typed into the swarm panel.
+    fn swarm_rename_buffer(&self) -> &str {
+        ""
+    }
+    /// Indices of agents selected for batch operations (multi-select via Space).
+    fn swarm_selected_set(&self) -> &std::collections::HashSet<usize> {
+        // Return a static empty set as default; overridden by App impl.
+        // Using a const/static would require lazy_static; the caller never
+        // calls this on the trait default so a leaked empty set is fine.
+        Box::leak(Box::new(std::collections::HashSet::new()))
+    }
+    /// Whether batch mode is active (Shift+Tab toggle).
+    fn is_swarm_batch_mode(&self) -> bool {
+        false
+    }
+    /// Members filtered by the current swarm filter query.
+    fn filtered_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
+        self.inline_swarm_members()
     }
 
     // ---- Workspace ----
@@ -820,6 +868,10 @@ pub trait TuiState {
     fn account_picker_overlay(&self) -> Option<&std::cell::RefCell<account_picker::AccountPicker>>;
     /// Usage overlay for /usage command
     fn usage_overlay(&self) -> Option<&std::cell::RefCell<usage_overlay::UsageOverlay>>;
+    /// Elicitation overlay for structured agent-to-user input
+    fn elicit_overlay(&self) -> Option<&elicitation_types::ElicitOverlayState> {
+        None
+    }
     /// Working directory for this session
     // ---- Misc ----
     fn working_dir(&self) -> Option<String>;
@@ -1013,142 +1065,10 @@ impl CacheTtlInfo {
 /// cache-retention policy); re-exported here for existing tui call sites.
 pub use crate::provider::{cache_ttl_for_provider, cache_ttl_for_provider_model};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum KvCacheProblemKind {
-    /// The provider explicitly reported new cache creation on a turn where we expected
-    /// an already-warm cache to be read instead.
-    UnexpectedCacheCreation,
-    /// The provider explicitly reported zero cached input tokens on a turn where this
-    /// provider family should report cached tokens for a warm, cacheable conversation.
-    ExpectedCacheReadMissing,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct KvCacheProblem {
-    pub kind: KvCacheProblemKind,
-    pub affected_tokens: Option<u64>,
-}
-
-impl KvCacheProblem {
-    pub(crate) fn log_reason(self) -> &'static str {
-        match self.kind {
-            KvCacheProblemKind::UnexpectedCacheCreation => "unexpected_cache_creation",
-            KvCacheProblemKind::ExpectedCacheReadMissing => "expected_cache_read_missing",
-        }
-    }
-}
-
-fn normalized_provider_matches(provider: &str, needle: &str) -> bool {
-    provider.trim().to_ascii_lowercase().contains(needle)
-}
-
-fn provider_stack_contains(provider: &str, upstream_provider: Option<&str>, needle: &str) -> bool {
-    let needle = &needle.to_ascii_lowercase();
-    normalized_provider_matches(provider, needle)
-        || upstream_provider
-            .map(|upstream| normalized_provider_matches(upstream, needle))
-            .unwrap_or(false)
-}
-
-fn provider_stack_contains_any(
-    provider: &str,
-    upstream_provider: Option<&str>,
-    needles: &[&str],
-) -> bool {
-    needles
-        .iter()
-        .any(|needle| provider_stack_contains(provider, upstream_provider, needle))
-}
-
-fn supports_reliable_zero_cache_read_warning(
-    provider: &str,
-    upstream_provider: Option<&str>,
-) -> bool {
-    if provider_stack_contains_any(
-        provider,
-        upstream_provider,
-        &["openai", "anthropic", "claude", "gemini", "google"],
-    ) {
-        return true;
-    }
-
-    // OpenRouter/Jcode-subscription routes can only be treated as reliable for zero-read
-    // warnings once the upstream provider identifies a known cache-reporting family.
-    // A bare OpenRouter route with cached_tokens=0 is not enough: some upstreams simply
-    // do not implement prompt caching, and warning on those would make the UI untrustworthy.
-    false
-}
-
-fn min_cacheable_input_tokens(provider: &str, upstream_provider: Option<&str>) -> u64 {
-    if provider_stack_contains_any(provider, upstream_provider, &["gemini", "google"]) {
-        // Be conservative for Gemini-style implicit caching. Several Gemini models have
-        // higher minimums than OpenAI/Anthropic; a higher UI threshold avoids warning on
-        // prompts that might legitimately be below the provider's cacheable size.
-        4_096
-    } else {
-        1_024
-    }
-}
-
-fn cache_expected_warm(cache_ttl: Option<&CacheTtlInfo>) -> bool {
-    cache_ttl
-        .map(|info| !info.is_cold && !info.is_estimate)
-        .unwrap_or(false)
-}
-
-/// Detect a KV/prompt-cache problem that is reliable enough to surface in the UI.
-///
-/// This intentionally does **not** warn merely because a cache-hit metric is absent. A warning
-/// requires all of the following:
-/// - a multi-turn conversation where cache reuse should be possible;
-/// - a prior completed turn still within the provider's expected cache TTL;
-/// - explicit provider telemetry showing either a cache rewrite without a read, or an explicit
-///   zero cache-read count from a known cache-reporting provider family;
-/// - enough input tokens to be cacheable for read-only providers.
-pub(crate) fn detect_kv_cache_problem(
-    provider: &str,
-    upstream_provider: Option<&str>,
-    user_turn_count: usize,
-    input_tokens: u64,
-    cache_read: Option<u64>,
-    cache_creation: Option<u64>,
-    cache_ttl: Option<&CacheTtlInfo>,
-) -> Option<KvCacheProblem> {
-    if user_turn_count <= 2 || !cache_expected_warm(cache_ttl) {
-        return None;
-    }
-
-    let cache_read_tokens = cache_read.unwrap_or(0);
-    let cache_creation_tokens = cache_creation.unwrap_or(0);
-
-    // Strongest signal: the provider explicitly says it created cache but read none.
-    if cache_creation_tokens > 0 && cache_read_tokens == 0 {
-        return Some(KvCacheProblem {
-            kind: KvCacheProblemKind::UnexpectedCacheCreation,
-            affected_tokens: Some(cache_creation_tokens),
-        });
-    }
-
-    // Read-only telemetry providers (OpenAI/Gemini and known OpenRouter upstreams) do not expose
-    // cache creation tokens. For those, an explicit zero read on a warm, cacheable conversation is
-    // the reliable signal. Absence of the metric is ignored.
-    if cache_read != Some(0) {
-        return None;
-    }
-
-    if !supports_reliable_zero_cache_read_warning(provider, upstream_provider) {
-        return None;
-    }
-
-    if input_tokens < min_cacheable_input_tokens(provider, upstream_provider) {
-        return None;
-    }
-
-    Some(KvCacheProblem {
-        kind: KvCacheProblemKind::ExpectedCacheReadMissing,
-        affected_tokens: Some(input_tokens),
-    })
-}
+mod kv_cache_problem;
+#[cfg(test)]
+pub(crate) use kv_cache_problem::KvCacheProblemKind;
+pub(crate) use kv_cache_problem::detect_kv_cache_problem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PickerKind {
@@ -1230,7 +1150,7 @@ pub struct LoginImportPrompt {
     /// `Some` while the telemetry settings sub-page is open, holding the
     /// highlighted choice.
     pub telemetry: Option<TelemetryChoice>,
-    /// Whether the environment (JCODE_NO_TELEMETRY / DO_NOT_TRACK) already
+    /// Whether the environment (KCODE_NO_TELEMETRY / DO_NOT_TRACK) already
     /// forces telemetry off, so the sub-page should say so.
     pub telemetry_env_forced_off: bool,
     /// How many rows are currently checked for import.
@@ -1787,7 +1707,7 @@ pub struct PickerOption {
 /// An SSH-backed socket is not a shared-filesystem local daemon. Keep this
 /// distinct from `App::is_remote`, which also describes ordinary local clients.
 pub(crate) fn ssh_remote_host() -> Option<String> {
-    std::env::var("JCODE_SSH_REMOTE")
+    std::env::var("KCODE_SSH_REMOTE")
         .ok()
         .filter(|host| !host.trim().is_empty())
 }

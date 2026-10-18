@@ -1,6 +1,6 @@
 //! Human-readable swarm labels and cross-swarm target resolution.
 //!
-//! Swarm ids are opaque (`session:<uuid>`, a git dir, or `JCODE_SWARM_ID`), so
+//! Swarm ids are opaque (`session:<uuid>`, a git dir, or `KCODE_SWARM_ID`), so
 //! agents in one swarm cannot reasonably address another swarm by id. Labels
 //! give each swarm a short, unique, human-readable name ("frontend",
 //! "release-train") that cross-swarm DMs and `list_swarms` use.
@@ -30,7 +30,7 @@ fn labels_path() -> PathBuf {
 #[cfg(test)]
 fn labels_path() -> PathBuf {
     std::env::temp_dir()
-        .join(format!("jcode-test-state-{}", std::process::id()))
+        .join(format!("kcode-test-state-{}", std::process::id()))
         .join(LABELS_FILE)
 }
 

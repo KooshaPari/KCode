@@ -66,7 +66,7 @@ impl SkillRegistry {
     /// direct slash invocation paths. Keeping a single registry prevents slash
     /// commands from seeing a stale startup-only skill snapshot after reloads.
     ///
-    /// Holds GLOBAL skills only (plugins, `~/.jcode/skills/`,
+    /// Holds GLOBAL skills only (plugins, `~/.kcode/skills/`,
     /// `~/.agents/skills/`). Project-local skills are a per-session overlay
     /// composed at read time from the session's workspace root (issue #457);
     /// they must never enter this shared registry, and the daemon's startup
@@ -109,7 +109,7 @@ impl SkillRegistry {
     }
 
     /// Import skills from Claude Code and Codex CLI on first run.
-    /// Only runs if ~/.jcode/skills/ doesn't exist yet.
+    /// Only runs if ~/.kcode/skills/ doesn't exist yet.
     fn import_from_external() {
         let jcode_skills = match crate::storage::jcode_dir() {
             Ok(dir) => dir.join("skills"),
@@ -251,7 +251,7 @@ impl SkillRegistry {
     }
 
     /// Load only the shared global skill sources: Claude Code plugin installs,
-    /// `~/.jcode/skills/`, and `~/.agents/skills/`.
+    /// `~/.kcode/skills/`, and `~/.agents/skills/`.
     ///
     /// This is what the process-wide shared registry holds. Project-local
     /// skills are intentionally excluded: they are a per-session overlay
@@ -269,7 +269,7 @@ impl SkillRegistry {
             registry.load_plugin_skills_from_root(&plugins_root);
         }
 
-        // Load from ~/.jcode/skills/ (jcode's own global skills)
+        // Load from ~/.kcode/skills/ (jcode's own global skills)
         if let Ok(jcode_dir) = crate::storage::jcode_dir() {
             let jcode_skills = jcode_dir.join("skills");
             if jcode_skills.exists() {
@@ -288,7 +288,7 @@ impl SkillRegistry {
     }
 
     /// Load only the project-local skill overlay for a workspace root:
-    /// `./.jcode/skills/`, `./.agents/skills/`, and `./.claude/skills/`.
+    /// `./.kcode/skills/`, `./.agents/skills/`, and `./.claude/skills/`.
     ///
     /// Loaded fresh from disk on access so edits are visible without daemon
     /// restarts and two sessions in different repositories never see each
@@ -331,8 +331,8 @@ impl SkillRegistry {
     }
 
     fn load_project_local_dirs(&mut self, working_dir: Option<&Path>) -> Result<()> {
-        // Load from ./.jcode/skills/ (project-local jcode skills)
-        let local_jcode = Self::project_local_dir(working_dir, ".jcode");
+        // Load from ./.kcode/skills/ (project-local jcode skills)
+        let local_jcode = Self::project_local_dir(working_dir, ".kcode");
         if local_jcode.exists() {
             self.load_from_dir(&local_jcode)?;
         }
@@ -609,7 +609,7 @@ impl SkillRegistry {
         self.reload_global()
     }
 
-    /// Reload the shared global skill sources (plugins, `~/.jcode/skills/`,
+    /// Reload the shared global skill sources (plugins, `~/.kcode/skills/`,
     /// `~/.agents/skills/`) into this registry.
     ///
     /// Project-local skills are intentionally NOT loaded here: they are a
@@ -635,7 +635,7 @@ impl SkillRegistry {
             count += self.load_plugin_skills_from_root(&plugins_root);
         }
 
-        // Load from ~/.jcode/skills/ (jcode's own global skills)
+        // Load from ~/.kcode/skills/ (jcode's own global skills)
         if let Ok(jcode_dir) = crate::storage::jcode_dir() {
             let jcode_skills = jcode_dir.join("skills");
             if jcode_skills.exists() {
@@ -748,7 +748,7 @@ pub const ENDORSED_SKILLS: &[EndorsedSkill] = &[
         name: "optimization",
         description: "Improve performance, latency, throughput, memory usage, or general efficiency by defining metrics, measuring, attributing bottlenecks, and prioritizing macro-optimizations.",
         category: "jcode",
-        source: "bundled in jcode repo (.jcode/skills/optimization)",
+        source: "bundled in jcode repo (.kcode/skills/optimization)",
         install: None,
     },
     EndorsedSkill {
@@ -1040,7 +1040,7 @@ mod tests {
         std::fs::set_permissions(&readonly, std::fs::Permissions::from_mode(0o444)).expect("chmod");
         let codex = temp.path().join("codex-skills");
         std::os::unix::fs::symlink(&claude, &codex).expect("symlink");
-        let dest = temp.path().join("jcode-skills");
+        let dest = temp.path().join("kcode-skills");
 
         let first = SkillRegistry::copy_skills_dir(&claude, &dest);
         assert_eq!((first.copied, first.skipped, first.failed), (1, 0, 0));
@@ -1212,7 +1212,7 @@ mod tests {
     #[test]
     fn load_for_working_dir_reads_project_local_jcode_skills() {
         let temp = tempfile::tempdir().expect("tempdir");
-        write_test_skill(temp.path(), ".jcode", "wd-only");
+        write_test_skill(temp.path(), ".kcode", "wd-only");
 
         let registry = SkillRegistry::load_for_working_dir(Some(temp.path())).expect("load skills");
 
@@ -1271,7 +1271,7 @@ mod tests {
     #[test]
     fn project_overlay_is_session_scoped_and_composes_over_globals() {
         let temp = tempfile::tempdir().expect("tempdir");
-        write_test_skill(temp.path(), ".jcode", "session-skill");
+        write_test_skill(temp.path(), ".kcode", "session-skill");
 
         // The overlay resolves against the given workspace root, not the
         // process cwd or a shared registry (issue #457).
@@ -1305,7 +1305,7 @@ mod tests {
         // chdir is process-global; serialize with other env-sensitive tests.
         let _env_guard = crate::storage::lock_test_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        write_test_skill(temp.path(), ".jcode", "session-skill");
+        write_test_skill(temp.path(), ".kcode", "session-skill");
 
         let prev_cwd = std::env::current_dir().expect("cwd");
         // reload_global must not pick up project-local skills even when the
@@ -1412,7 +1412,7 @@ mod tests {
     #[test]
     fn registry_contains_reports_loaded_skills() {
         let temp = tempfile::tempdir().expect("tempdir");
-        write_test_skill(temp.path(), ".jcode", "present-skill");
+        write_test_skill(temp.path(), ".kcode", "present-skill");
 
         let registry = SkillRegistry::load_for_working_dir(Some(temp.path())).expect("load skills");
         assert!(registry.contains("present-skill"));
@@ -1567,14 +1567,14 @@ mod tests {
         write_plugin_skill_with_description(&install, "shared-name", "plugin version");
 
         // Explicit jcode skill with the same name.
-        write_test_skill(temp.path(), ".jcode", "shared-name");
+        write_test_skill(temp.path(), ".kcode", "shared-name");
 
         // Mirror load ordering: plugins first, then explicit skill dirs, so
         // the later (explicit) insert wins in the registry map.
         let mut registry = SkillRegistry::default();
         registry.load_plugin_skills_from_root(&plugins_root);
         registry
-            .load_from_dir(&temp.path().join(".jcode/skills"))
+            .load_from_dir(&temp.path().join(".kcode/skills"))
             .expect("load explicit skills");
 
         let skill = registry.get("shared-name").expect("skill present");

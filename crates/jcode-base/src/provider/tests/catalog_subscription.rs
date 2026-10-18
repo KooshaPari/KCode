@@ -104,17 +104,17 @@ fn test_openai_live_catalog_replaces_static_fallback_list() {
     // known_openai_model_ids() also merges the configured API key's catalog;
     // isolate from the developer's real OPENAI_API_KEY / openai.env.
     let temp_home = tempfile::TempDir::new().expect("temp home");
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let prev_key = std::env::var_os("OPENAI_API_KEY");
-    crate::env::set_var("JCODE_HOME", temp_home.path());
+    crate::env::set_var("KCODE_HOME", temp_home.path());
     crate::env::remove_var("OPENAI_API_KEY");
     crate::auth::codex::set_active_account_override(Some("work".to_string()));
 
     populate_account_models(vec!["gpt-5.4-live-only".to_string()]);
     let models = known_openai_model_ids();
     match prev_home {
-        Some(value) => crate::env::set_var("JCODE_HOME", value),
-        None => crate::env::remove_var("JCODE_HOME"),
+        Some(value) => crate::env::set_var("KCODE_HOME", value),
+        None => crate::env::remove_var("KCODE_HOME"),
     }
     if let Some(value) = prev_key {
         crate::env::set_var("OPENAI_API_KEY", value);
@@ -325,8 +325,8 @@ fn test_subscription_model_guard_allows_only_curated_models_when_enabled() {
 fn test_hosted_model_guard_does_not_gate_models_by_legacy_tier() {
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::tempdir().expect("temp home");
-    crate::env::set_var("JCODE_HOME", temp_home.path().to_string_lossy().to_string());
-    crate::env::remove_var(crate::subscription_catalog::JCODE_TIER_ENV);
+    crate::env::set_var("KCODE_HOME", temp_home.path().to_string_lossy().to_string());
+    crate::env::remove_var(crate::subscription_catalog::KCODE_TIER_ENV);
     crate::subscription_catalog::clear_runtime_env();
     crate::subscription_catalog::apply_runtime_env();
 
@@ -336,12 +336,12 @@ fn test_hosted_model_guard_does_not_gate_models_by_legacy_tier() {
     assert!(ensure_model_allowed_for_subscription("claude-fable-5").is_ok());
 
     // Legacy cached tier metadata cannot change client-side availability.
-    crate::env::set_var(crate::subscription_catalog::JCODE_TIER_ENV, "ultra");
+    crate::env::set_var(crate::subscription_catalog::KCODE_TIER_ENV, "ultra");
     assert!(ensure_model_allowed_for_subscription("claude-fable-5").is_ok());
     assert!(ensure_model_allowed_for_subscription("sol").is_ok());
 
-    crate::env::remove_var(crate::subscription_catalog::JCODE_TIER_ENV);
-    crate::env::remove_var("JCODE_HOME");
+    crate::env::remove_var(crate::subscription_catalog::KCODE_TIER_ENV);
+    crate::env::remove_var("KCODE_HOME");
     crate::subscription_catalog::clear_runtime_env();
 }
 
@@ -349,8 +349,8 @@ fn test_hosted_model_guard_does_not_gate_models_by_legacy_tier() {
 fn test_filtered_display_models_respects_curated_subscription_catalog() {
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::tempdir().expect("temp home");
-    crate::env::set_var("JCODE_HOME", temp_home.path().to_string_lossy().to_string());
-    crate::env::remove_var(crate::subscription_catalog::JCODE_TIER_ENV);
+    crate::env::set_var("KCODE_HOME", temp_home.path().to_string_lossy().to_string());
+    crate::env::remove_var(crate::subscription_catalog::KCODE_TIER_ENV);
     crate::subscription_catalog::clear_runtime_env();
     crate::subscription_catalog::apply_runtime_env();
 
@@ -375,7 +375,7 @@ fn test_filtered_display_models_respects_curated_subscription_catalog() {
         ]
     );
 
-    crate::env::set_var(crate::subscription_catalog::JCODE_TIER_ENV, "ultra");
+    crate::env::set_var(crate::subscription_catalog::KCODE_TIER_ENV, "ultra");
     let filtered = filtered_display_models(vec![
         "claude-fable-5".to_string(),
         "gpt-5.6-sol".to_string(),
@@ -386,8 +386,8 @@ fn test_filtered_display_models_respects_curated_subscription_catalog() {
         vec!["claude-fable-5".to_string(), "gpt-5.6-sol".to_string()]
     );
 
-    crate::env::remove_var(crate::subscription_catalog::JCODE_TIER_ENV);
-    crate::env::remove_var("JCODE_HOME");
+    crate::env::remove_var(crate::subscription_catalog::KCODE_TIER_ENV);
+    crate::env::remove_var("KCODE_HOME");
     crate::subscription_catalog::clear_runtime_env();
 }
 
@@ -400,7 +400,7 @@ fn test_remote_jcode_subscription_fallback_keeps_managed_route_identity() {
         "gpt-5.6-sol".to_string(),
     ];
     let routes = remote_model_routes_fallback(
-        Some(crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME),
+        Some(crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME),
         &models,
     );
 
@@ -417,8 +417,8 @@ fn test_remote_jcode_subscription_fallback_keeps_managed_route_identity() {
         ]
     );
     assert!(routes.iter().all(|route| {
-        route.provider == crate::subscription_catalog::JCODE_PROVIDER_DISPLAY_NAME
-            && route.api_method == crate::subscription_catalog::JCODE_ROUTE_API_METHOD
+        route.provider == crate::subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME
+            && route.api_method == crate::subscription_catalog::KCODE_ROUTE_API_METHOD
             && route.available
     }));
 }
@@ -427,7 +427,7 @@ fn test_remote_jcode_subscription_fallback_keeps_managed_route_identity() {
 fn test_subscription_filters_do_not_activate_from_saved_credentials_alone() {
     let _guard = crate::storage::lock_test_env();
     crate::subscription_catalog::clear_runtime_env();
-    crate::env::set_var(crate::subscription_catalog::JCODE_API_KEY_ENV, "test-key");
+    crate::env::set_var(crate::subscription_catalog::KCODE_API_KEY_ENV, "test-key");
 
     assert!(ensure_model_allowed_for_subscription("gpt-5.4").is_ok());
     assert_eq!(
@@ -435,7 +435,7 @@ fn test_subscription_filters_do_not_activate_from_saved_credentials_alone() {
         vec!["gpt-5.4".to_string(), "claude-opus-4-8".to_string()]
     );
 
-    crate::env::remove_var(crate::subscription_catalog::JCODE_API_KEY_ENV);
+    crate::env::remove_var(crate::subscription_catalog::KCODE_API_KEY_ENV);
     crate::subscription_catalog::clear_runtime_env();
 }
 

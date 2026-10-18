@@ -12,6 +12,7 @@
 
 use super::info_widget;
 use super::markdown;
+use super::status_bar;
 use super::ui_diff::{
     DiffLineKind, ParsedDiffLine, collect_diff_lines, diff_add_color, diff_change_counts_for_tool,
     diff_del_color, generate_diff_lines_from_tool_input, tint_span_with_diff_color,
@@ -74,6 +75,9 @@ mod onboarding;
 mod output_style;
 #[path = "ui_overlays.rs"]
 mod overlays;
+
+#[path = "ui_elicitation.rs"]
+mod elicit_overlay;
 #[path = "ui_panel_image_preview.rs"]
 pub(crate) mod panel_image_preview;
 #[path = "ui_pinned.rs"]
@@ -524,8 +528,8 @@ use theme_support::{
     accent_color, activity_indicator, activity_indicator_frame_index, ai_color, ai_text,
     asap_color, blend_color, dim_color, file_link_color, header_icon_color, header_name_color,
     header_session_color, pending_color, prompt_entry_bg_color, prompt_entry_color,
-    prompt_entry_shimmer_color, queued_color, rainbow_prompt_color, system_message_color,
-    tool_color, user_bg, user_color, user_text,
+    prompt_entry_shimmer_color, queued_color, rainbow_prompt_color, status_text_color,
+    system_message_color, tool_color, user_bg, user_color, user_text,
 };
 
 pub(crate) use jcode_tui_markdown::{CopyTargetKind, RawCopyTarget};
@@ -2708,6 +2712,18 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         return;
     }
 
+    if let Some(elicit_state) = app.elicit_overlay() {
+        elicit_overlay::draw_elicit_overlay(frame, area, elicit_state);
+        finalize_frame_metrics(
+            app,
+            total_start,
+            Duration::ZERO,
+            total_start.elapsed(),
+            None,
+        );
+        return;
+    }
+
     // Initialize visual debug capture if enabled
     let mut debug_capture = if visual_debug::is_enabled() {
         Some(FrameCaptureBuilder::new(area.width, area.height))
@@ -2890,7 +2906,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         && app.inline_swarm_gallery_active()
         && (app.swarm_panel_focused() || !super::info_widget::swarm_strip_stands_down_for_dock())
     {
-        let members = app.inline_swarm_members();
+        let members = app.filtered_swarm_members();
         if chat_area.width >= 24 {
             let focus_key = crate::tui::keybind::swarm_panel_focus_key_label();
             // Use the same smooth cadence as the primary status spinner.
@@ -2901,7 +2917,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             // never more than a third of the chat column so the transcript
             // stays usable on short terminals.
             let focused_budget = ((chat_area.height as usize) / 3).clamp(3, 16);
-            super::info_widget::swarm_gallery::render_swarm_strip_lines(
+            let mut strip_lines = super::info_widget::swarm_gallery::render_swarm_strip_lines(
                 &members,
                 app.swarm_panel_selected(),
                 app.swarm_panel_focused(),
@@ -2909,7 +2925,26 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 spinner_frame,
                 chat_area.width as usize,
                 focused_budget,
-            )
+                app.swarm_selected_set(),
+                app.is_swarm_batch_mode(),
+            );
+            if app.swarm_filter_active() {
+                let filter_line = Line::from(vec![
+                    Span::styled("/", Style::default().fg(Color::Rgb(100, 180, 255))),
+                    Span::styled(
+                        app.swarm_filter_query().to_string(),
+                        Style::default().fg(Color::Rgb(100, 180, 255)),
+                    ),
+                    Span::styled(
+                        "█",
+                        Style::default()
+                            .fg(Color::Rgb(100, 180, 255))
+                            .add_modifier(Modifier::SLOW_BLINK),
+                    ),
+                ]);
+                strip_lines.insert(0, filter_line);
+            }
+            strip_lines
         } else {
             Vec::new()
         }
@@ -2927,9 +2962,14 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let next_prompt = user_count + 1;
 
     // Calculate input height based on the same wrapping logic used for rendering
-    // (max 10 lines visible, scrolls if more).
-    let base_input_height =
-        input_ui::wrapped_input_line_count(app, chat_area.width, next_prompt).min(10) as u16;
+    // (max 10 lines visible, scrolls if more).  In small panes the flat min(10)
+    // cap can exceed 1/3 of the available height, squeezing the transcript to
+    // near-zero rows.  Clamp to at most available_height / 3 (min 1) so the
+    // messages area always keeps at least 2/3 of the pane.
+    let max_input_lines = (chat_area.height / 3).max(1);
+    let base_input_height = input_ui::wrapped_input_line_count(app, chat_area.width, next_prompt)
+        .min(10)
+        .min(max_input_lines as usize) as u16;
     // Add 1 line for command suggestions, shell mode hints, or the Ctrl+Enter hint.
     let hint_line_height = input_ui::input_hint_line_height(app);
     let inline_block_height: u16 = inline_ui_height(app);
@@ -2993,12 +3033,13 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     }
 
     let show_donut = !onboarding_welcome && super::idle_donut_active(app);
-    let donut_height: u16 = idle_donut_reserved_height(show_donut, input_height);
+    let donut_height: u16 = idle_donut_reserved_height(show_donut, input_height, chat_area.height);
     let notification_height =
         input_ui::notification_height(app, chat_area.width).min(chat_area.height.saturating_sub(4));
     // Session status line (dir, branch, context, provider, model), always
     // pinned directly below the input line.
     let overscroll_height: u16 = 1;
+    let status_bar_height: u16 = if chat_area.width >= 80 { 1 } else { 0 };
     let fixed_height = 1
         + queued_height
         + swarm_strip_height
@@ -3007,7 +3048,8 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
         + inline_ui_gap_height
         + input_height
         + overscroll_height
-        + donut_height; // status + queued + swarm strip + notification + inline UI + gap + input + overscroll + donut
+        + donut_height
+        + status_bar_height; // status + queued + swarm strip + notification + inline UI + gap + input + overscroll + donut + status bar
     let available_height = chat_area.height;
     let stable_fixed_height = fixed_height;
     let overflows = |prepared: &PreparedChatFrame| {
@@ -3099,7 +3141,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             && !side_panel_fullscreen
             && content_height + fixed_height <= available_height);
 
-    // Layout: messages (includes header), queued, status, notification, inline UI, gap, input, donut
+    // Layout: messages (includes header), queued, status, notification, inline UI, gap, input, donut, status bar
     // All vertical chunks are within the chat_area (left column).
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -3119,6 +3161,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 Constraint::Length(input_height),  // 7 Input
                 Constraint::Length(overscroll_height), // 8 Overscroll status line
                 Constraint::Length(donut_height),  // 9 Donut animation
+                Constraint::Length(status_bar_height), // 10 Compact status bar
             ]
         } else {
             vec![
@@ -3132,6 +3175,7 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
                 Constraint::Length(input_height),         // 7 Input
                 Constraint::Length(overscroll_height),    // 8 Overscroll status line
                 Constraint::Length(donut_height),         // 9 Donut animation
+                Constraint::Length(status_bar_height),    // 10 Compact status bar
             ]
         })
         .split(chat_area);
@@ -3244,16 +3288,33 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
             ..Default::default()
         }
     } else if swarm_page_active {
-        let members = app.inline_swarm_members();
+        let members = app.filtered_swarm_members();
         let spinner_frame =
             (app.animation_elapsed() * jcode_tui_render::swarm_gallery::STRIP_SPINNER_FPS) as usize;
-        let lines = super::info_widget::swarm_gallery::render_swarm_page_lines(
+        let mut lines = super::info_widget::swarm_gallery::render_swarm_page_lines(
             &members,
             app.swarm_panel_selected(),
             spinner_frame,
             messages_area.width as usize,
             messages_area.height as usize,
+            &[],
         );
+        if app.swarm_filter_active() {
+            let filter_line = Line::from(vec![
+                Span::styled("/", Style::default().fg(Color::Rgb(100, 180, 255))),
+                Span::styled(
+                    app.swarm_filter_query().to_string(),
+                    Style::default().fg(Color::Rgb(100, 180, 255)),
+                ),
+                Span::styled(
+                    "█",
+                    Style::default()
+                        .fg(Color::Rgb(100, 180, 255))
+                        .add_modifier(Modifier::SLOW_BLINK),
+                ),
+            ]);
+            lines.insert(0, filter_line);
+        }
         clear_area(frame, messages_area);
         frame.render_widget(Paragraph::new(lines), messages_area);
         info_widget::Margins {
@@ -3386,6 +3447,10 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     if donut_height > 0 {
         animations::draw_idle_animation(frame, app, chunks[9]);
     }
+    // Compact status bar: workspace, repo, agent stats
+    if status_bar_height > 0 {
+        status_bar::render_status_bar(frame, app, chunks[10]);
+    }
     let chrome_elapsed = chrome_start.elapsed();
 
     // Draw info widget overlays (skip during idle animation - they look out of place)
@@ -3395,11 +3460,15 @@ fn draw_inner(frame: &mut Frame, app: &dyn TuiState) {
     let mut widget_render_ms: Option<f32> = None;
     let mut placements: Vec<info_widget::WidgetPlacement> = Vec::new();
     let widget_bounds = messages_area;
+    // In small panes (< 5 rows for the messages area) info widgets would overlap
+    // the transcript so aggressively they obscure more content than they add.
+    // Suppress them entirely when the space is too tight.
     if app.info_widget_overlays_enabled()
         && !widget_data.is_empty()
         && !show_donut
         && !swarm_page_active
         && !side_panel_fullscreen
+        && messages_area.height >= 5
     {
         if let Some(ref mut capture) = debug_capture {
             capture.render_order.push("render_info_widgets".to_string());

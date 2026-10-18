@@ -347,13 +347,13 @@ pub fn save_client_json(parsed: &ClientJson) -> Result<PathBuf> {
 mod tests {
     use super::*;
 
-    const DESKTOP_JSON: &str = r#"{"installed":{"client_id":"123-abc.apps.googleusercontent.com","project_id":"jcode-123456","auth_uri":"https://accounts.google.com/o/oauth2/auth","client_secret":"GOCSPX-x","redirect_uris":["http://localhost"]}}"#;
+    const DESKTOP_JSON: &str = r#"{"installed":{"client_id":"123-abc.apps.googleusercontent.com","project_id":"kcode-123456","auth_uri":"https://accounts.google.com/o/oauth2/auth","client_secret":"GOCSPX-x","redirect_uris":["http://localhost"]}}"#;
 
     #[test]
     fn enable_url_lists_all_selected_apis_with_project() {
         let url = enable_apis_url(
             &[GoogleService::Gmail, GoogleService::Calendar],
-            Some("jcode-123456"),
+            Some("kcode-123456"),
         );
         assert_eq!(
             url,
@@ -419,14 +419,14 @@ mod tests {
                 "{id}"
             );
         }
-        assert_eq!(suggest_project_id("jcode", 42), "jcode-000042");
+        assert_eq!(suggest_project_id("jcode", 42), "kcode-000042");
     }
 
     #[test]
     fn parses_desktop_and_web_clients() {
         let parsed = parse_client_json(DESKTOP_JSON).unwrap();
         assert!(parsed.desktop);
-        assert_eq!(parsed.project_id.as_deref(), Some("jcode-123456"));
+        assert_eq!(parsed.project_id.as_deref(), Some("kcode-123456"));
         assert_eq!(parsed.credentials.client_secret, "GOCSPX-x");
 
         let web = DESKTOP_JSON.replace("installed", "web");

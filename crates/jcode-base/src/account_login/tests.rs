@@ -61,7 +61,7 @@ async fn account_only_start_and_approval_use_expected_wire_contract() {
     assert!(request.starts_with("POST /v1/auth/device "));
     let body: serde_json::Value =
         serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
-    assert_eq!(body, serde_json::json!({"client_name":"jcode-cli"}));
+    assert_eq!(body, serde_json::json!({"client_name":"kcode-cli"}));
     assert!(!format!("{flow:?}").contains("fixture-device-secret"));
     let result = poll(&client, &flow).await.unwrap();
     assert!(!format!("{result:?}").contains("fixture-account-secret"));
@@ -168,13 +168,13 @@ struct EnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
 impl EnvGuard {
     fn new() -> Self {
         let keys = [
-            "JCODE_HOME",
-            "JCODE_API_KEY",
-            "JCODE_API_BASE",
-            "JCODE_ACCOUNT_ID",
-            "JCODE_ACCOUNT_EMAIL",
-            "JCODE_TIER",
-            "JCODE_SUBSCRIPTION_ACTIVE",
+            "KCODE_HOME",
+            "KCODE_API_KEY",
+            "KCODE_API_BASE",
+            "KCODE_ACCOUNT_ID",
+            "KCODE_ACCOUNT_EMAIL",
+            "KCODE_TIER",
+            "KCODE_SUBSCRIPTION_ACTIVE",
         ];
         Self(
             keys.into_iter()
@@ -203,14 +203,14 @@ async fn explicit_save_and_current_account_are_sandboxed_without_paid_plan() {
     let _lock = crate::storage::lock_test_env();
     let _env = EnvGuard::new();
     let home = tempfile::tempdir().unwrap();
-    crate::env::set_var("JCODE_HOME", home.path());
+    crate::env::set_var("KCODE_HOME", home.path());
     let client = client();
     assert!(!has_credentials());
     assert!(current_account(&client).await.unwrap().is_none());
     let (base, requests) = server(vec![(200, "", DEVICE.into()), (200, "", APPROVED.into()),
         (200, "", r#"{"account_id":"acct_fixture","email":"fixture@example.invalid","tier":"none","status":"inactive"}"#.into()),
         (401, "", "{}".into())]);
-    crate::env::set_var("JCODE_API_BASE", &base);
+    crate::env::set_var("KCODE_API_BASE", &base);
     let flow = start(&client).await.unwrap();
     let LoginPoll::Approved(approved) = poll(&client, &flow).await.unwrap() else {
         panic!("not approved")
@@ -222,10 +222,10 @@ async fn explicit_save_and_current_account_are_sandboxed_without_paid_plan() {
     // Simulate a fresh client's credential lookup: persistence must survive
     // removal of the process values populated while saving the account.
     for key in [
-        "JCODE_API_KEY",
-        "JCODE_ACCOUNT_ID",
-        "JCODE_ACCOUNT_EMAIL",
-        "JCODE_TIER",
+        "KCODE_API_KEY",
+        "KCODE_ACCOUNT_ID",
+        "KCODE_ACCOUNT_EMAIL",
+        "KCODE_TIER",
     ] {
         crate::env::remove_var(key);
     }
@@ -305,9 +305,9 @@ async fn in_flight_poll_is_cancellable_without_a_detached_worker() {
 /// Explicit opt-in contract check. No browser, email, account credential read,
 /// token approval, or credential persistence occurs. The unapproved flow expires.
 #[tokio::test]
-#[ignore = "set JCODE_ACCOUNT_TEST_API_BASE to opt into live device start/pending validation"]
+#[ignore = "set KCODE_ACCOUNT_TEST_API_BASE to opt into live device start/pending validation"]
 async fn deployed_account_start_and_pending_are_compatible() {
-    let base = std::env::var("JCODE_ACCOUNT_TEST_API_BASE").expect("explicit account API base");
+    let base = std::env::var("KCODE_ACCOUNT_TEST_API_BASE").expect("explicit account API base");
     let client = reqwest::Client::new();
     let flow = start_with_api_base(&client, &base).await.unwrap();
     assert!(flow.auth_url().starts_with("https://"));
@@ -347,7 +347,7 @@ async fn email_code_sign_in_uses_expected_wire_contract() {
     let request = requests.recv().unwrap();
     assert!(request.starts_with("POST /v1/auth/email/start "));
     assert!(request.contains(r#""email":"Me@Example.com""#));
-    assert!(request.contains(r#""client_name":"jcode-cli""#));
+    assert!(request.contains(r#""client_name":"kcode-cli""#));
 
     match verify_email(&client, &login, "000000").await.unwrap() {
         EmailCodeResult::Incorrect { attempts_remaining } => {

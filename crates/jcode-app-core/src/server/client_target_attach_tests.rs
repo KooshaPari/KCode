@@ -31,17 +31,17 @@ struct Home {
 impl Home {
     fn new() -> Self {
         let temp = tempfile::tempdir().unwrap();
-        let old = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        let old = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
         Self { _temp: temp, old }
     }
 }
 impl Drop for Home {
     fn drop(&mut self) {
         if let Some(old) = self.old.take() {
-            crate::env::set_var("JCODE_HOME", old);
+            crate::env::set_var("KCODE_HOME", old);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 }

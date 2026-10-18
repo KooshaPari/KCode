@@ -806,17 +806,17 @@ fn test_tui_cerebras_paste_key_lifecycle_has_no_degraded_success_messages() {
     let _env_lock = crate::storage::lock_test_env();
     let _guard = AzureLoginEnvGuard::save(&[
         "CEREBRAS_API_KEY",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
-        "JCODE_RUNTIME_PROVIDER",
-        "JCODE_ACTIVE_PROVIDER",
-        "JCODE_INITIAL_PROVIDER_EXPLICIT",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_CACHE_NAMESPACE",
+        "KCODE_OPENROUTER_PROVIDER_FEATURES",
+        "KCODE_OPENROUTER_MODEL_CATALOG",
+        "KCODE_OPENROUTER_AUTH_HEADER",
+        "KCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
+        "KCODE_RUNTIME_PROVIDER",
+        "KCODE_ACTIVE_PROVIDER",
+        "KCODE_INITIAL_PROVIDER_EXPLICIT",
     ]);
     ensure_test_jcode_home_if_unset();
     clear_persisted_test_ui_state();
@@ -1718,18 +1718,18 @@ fn test_azure_login_completion_switches_local_model_without_completion() {
         "AZURE_OPENAI_MODEL",
         "AZURE_OPENAI_API_KEY",
         "AZURE_OPENAI_USE_ENTRA",
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_CACHE_NAMESPACE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_OPENROUTER_MODEL_CATALOG",
-        "JCODE_OPENROUTER_AUTH_HEADER",
-        "JCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
-        "JCODE_OPENROUTER_MODEL",
-        "JCODE_RUNTIME_PROVIDER",
-        "JCODE_ACTIVE_PROVIDER",
-        "JCODE_INITIAL_PROVIDER_EXPLICIT",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_CACHE_NAMESPACE",
+        "KCODE_OPENROUTER_PROVIDER_FEATURES",
+        "KCODE_OPENROUTER_MODEL_CATALOG",
+        "KCODE_OPENROUTER_AUTH_HEADER",
+        "KCODE_OPENROUTER_DYNAMIC_BEARER_PROVIDER",
+        "KCODE_OPENROUTER_MODEL",
+        "KCODE_RUNTIME_PROVIDER",
+        "KCODE_ACTIVE_PROVIDER",
+        "KCODE_INITIAL_PROVIDER_EXPLICIT",
     ]);
     crate::env::set_var("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com");
     crate::env::set_var("AZURE_OPENAI_MODEL", "azure-deployment");
@@ -1778,7 +1778,7 @@ fn test_azure_login_completion_switches_local_model_without_completion() {
     assert_eq!(auth_changed.load(Ordering::SeqCst), 1);
     assert_eq!(complete_calls.load(Ordering::SeqCst), 0);
     assert_eq!(
-        std::env::var("JCODE_RUNTIME_PROVIDER").as_deref(),
+        std::env::var("KCODE_RUNTIME_PROVIDER").as_deref(),
         Ok("azure-openai")
     );
     assert_eq!(

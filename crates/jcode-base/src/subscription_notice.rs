@@ -104,7 +104,7 @@ pub fn from_error(error: &anyhow::Error) -> Option<&QuotaExceeded> {
 
 /// Stable per-session id so a later hit updates the same card instead of
 /// stacking duplicates in the transcript.
-pub const UPGRADE_CARD_ID: &str = "jcode-plan-limit";
+pub const UPGRADE_CARD_ID: &str = "kcode-plan-limit";
 
 /// An inline chat card that shows the limit and, when a higher plan exists, a
 /// Subscribe/Upgrade button that opens jcode.sh pricing in the browser.

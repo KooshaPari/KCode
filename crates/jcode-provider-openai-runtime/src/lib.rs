@@ -102,7 +102,7 @@ const WEBSOCKET_PERSISTENT_MAX_AGE_SECS: u64 = 3000; // 50 min (server limit is 
 /// and keep the warm cache. Dead/half-closed sockets are still detected by the
 /// ping and reconnect gracefully, and `WEBSOCKET_PERSISTENT_MAX_AGE_SECS` still
 /// caps total connection lifetime. Tunable via
-/// `JCODE_OPENAI_WS_IDLE_RECONNECT_SECS` (0 disables the idle reconnect entirely,
+/// `KCODE_OPENAI_WS_IDLE_RECONNECT_SECS` (0 disables the idle reconnect entirely,
 /// relying solely on the healthcheck + max-age cap).
 const WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT: u64 = 600; // 10 min
 /// If a persistent socket has been idle for a while, send a lightweight ping
@@ -118,24 +118,24 @@ const WEBSOCKET_PERSISTENT_KEEPALIVE_INTERVAL_SECS: u64 = 30;
 /// `Some(secs)` means reconnect after that idle duration; `None` means never
 /// force a reconnect on idle alone (healthcheck + max-age still apply).
 static WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS: LazyLock<Option<u64>> = LazyLock::new(|| {
-    match std::env::var("JCODE_OPENAI_WS_IDLE_RECONNECT_SECS") {
+    match std::env::var("KCODE_OPENAI_WS_IDLE_RECONNECT_SECS") {
         Ok(raw) => match raw.trim().parse::<u64>() {
             Ok(0) => {
                 jcode_base::logging::info(
-                    "OpenAI persistent WS idle reconnect disabled (JCODE_OPENAI_WS_IDLE_RECONNECT_SECS=0); relying on healthcheck + max-age",
+                    "OpenAI persistent WS idle reconnect disabled (KCODE_OPENAI_WS_IDLE_RECONNECT_SECS=0); relying on healthcheck + max-age",
                 );
                 None
             }
             Ok(secs) => {
                 jcode_base::logging::info(&format!(
-                    "OpenAI persistent WS idle reconnect threshold set to {}s (JCODE_OPENAI_WS_IDLE_RECONNECT_SECS)",
+                    "OpenAI persistent WS idle reconnect threshold set to {}s (KCODE_OPENAI_WS_IDLE_RECONNECT_SECS)",
                     secs
                 ));
                 Some(secs)
             }
             Err(_) => {
                 jcode_base::logging::info(&format!(
-                    "Warning: invalid JCODE_OPENAI_WS_IDLE_RECONNECT_SECS '{}'; using default {}s",
+                    "Warning: invalid KCODE_OPENAI_WS_IDLE_RECONNECT_SECS '{}'; using default {}s",
                     raw, WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT
                 ));
                 Some(WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT)
@@ -174,7 +174,7 @@ impl OpenAITransportMode {
             "https" | "http" | "sse" => Self::HTTPS,
             other => {
                 jcode_base::logging::warn(&format!(
-                    "Unknown JCODE_OPENAI_TRANSPORT '{}'; using auto. Use: auto, websocket, or https.",
+                    "Unknown KCODE_OPENAI_TRANSPORT '{}'; using auto. Use: auto, websocket, or https.",
                     other
                 ));
                 Self::Auto
@@ -810,7 +810,7 @@ impl OpenAIProvider {
         let mut model = if browser_only {
             CHATGPT_WEB_MODEL.to_string()
         } else {
-            std::env::var("JCODE_OPENAI_MODEL")
+            std::env::var("KCODE_OPENAI_MODEL")
                 .unwrap_or_else(|_| DEFAULT_MODEL.to_string())
                 .trim()
                 .to_string()
@@ -827,18 +827,18 @@ impl OpenAIProvider {
             model = DEFAULT_MODEL.to_string();
         }
 
-        let prompt_cache_key = std::env::var("JCODE_OPENAI_PROMPT_CACHE_KEY")
+        let prompt_cache_key = std::env::var("KCODE_OPENAI_PROMPT_CACHE_KEY")
             .ok()
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty());
         let prompt_cache_retention =
             jcode_base::provider::openai::prompt_cache_retention_from_env();
         if prompt_cache_retention.is_none()
-            && let Ok(raw) = std::env::var("JCODE_OPENAI_PROMPT_CACHE_RETENTION")
+            && let Ok(raw) = std::env::var("KCODE_OPENAI_PROMPT_CACHE_RETENTION")
             && !raw.trim().is_empty()
         {
             jcode_base::logging::warn(&format!(
-                "Unsupported JCODE_OPENAI_PROMPT_CACHE_RETENTION '{}'; expected 'in_memory' or '24h'",
+                "Unsupported KCODE_OPENAI_PROMPT_CACHE_RETENTION '{}'; expected 'in_memory' or '24h'",
                 raw.trim()
             ));
         }
@@ -955,7 +955,7 @@ impl OpenAIProvider {
         // choice so UI surfaces report the auth method requests will actually use.
         // `Auto` leaves the existing identity untouched.
         if let Some(route) = mode.auth_route(jcode_provider_core::DualAuthProvider::OpenAI) {
-            jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
+            jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
         }
         // Drop any cached auth snapshot so surfaces that still consult the cheap
         // cached probe (auto-mode resolution, usage availability, account labels)
@@ -966,10 +966,9 @@ impl OpenAIProvider {
     }
 
     fn reload_cached_reasoning_efforts(&self) {
-        let cached = jcode_base::provider::cached_openai_reasoning_efforts_for_scope(
-            &self.catalog_scope(),
-        )
-        .unwrap_or_default();
+        let cached =
+            jcode_base::provider::cached_openai_reasoning_efforts_for_scope(&self.catalog_scope())
+                .unwrap_or_default();
         match self.model_reasoning_efforts.write() {
             Ok(mut efforts) => *efforts = cached,
             Err(poisoned) => *poisoned.into_inner() = cached,
@@ -1174,7 +1173,7 @@ impl OpenAIProvider {
             Ok(value) => Some(value),
             Err(_) => {
                 jcode_base::logging::warn(&format!(
-                    "Invalid JCODE_OPENAI_MAX_OUTPUT_TOKENS='{}'; using default {}",
+                    "Invalid KCODE_OPENAI_MAX_OUTPUT_TOKENS='{}'; using default {}",
                     raw, DEFAULT_MAX_OUTPUT_TOKENS
                 ));
                 Some(DEFAULT_MAX_OUTPUT_TOKENS)
@@ -1215,7 +1214,7 @@ impl OpenAIProvider {
     }
 
     fn load_max_output_tokens() -> Option<u32> {
-        let raw = std::env::var("JCODE_OPENAI_MAX_OUTPUT_TOKENS").ok();
+        let raw = std::env::var("KCODE_OPENAI_MAX_OUTPUT_TOKENS").ok();
         let parsed = Self::parse_max_output_tokens(raw.as_deref());
         if raw.is_some() {
             match parsed {
@@ -1224,7 +1223,7 @@ impl OpenAIProvider {
                     value
                 )),
                 None => jcode_base::logging::info(
-                    "OpenAI max_output_tokens disabled (JCODE_OPENAI_MAX_OUTPUT_TOKENS=0)",
+                    "OpenAI max_output_tokens disabled (KCODE_OPENAI_MAX_OUTPUT_TOKENS=0)",
                 ),
             }
         }
@@ -1247,7 +1246,7 @@ impl OpenAIProvider {
     /// Defaults to `https://api.openai.com/v1`, but honors a user override so
     /// the native `openai-api` provider can target a local/proxied Responses
     /// API endpoint (issue #343). Checked in order:
-    /// `JCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
+    /// `KCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
     ///
     /// The override must be an absolute `http(s)://` URL; anything else is
     /// logged and ignored so a malformed value never silently breaks requests.

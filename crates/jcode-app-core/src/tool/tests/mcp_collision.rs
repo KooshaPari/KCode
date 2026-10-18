@@ -169,7 +169,7 @@ for line in sys.stdin:
 
 #[test]
 fn mcp_collision_manual_lifecycle_real_stdio() {
-    const MARKER: &str = "JCODE_MCP_MANAGEMENT_TEST_CHILD";
+    const MARKER: &str = "KCODE_MCP_MANAGEMENT_TEST_CHILD";
     if std::env::var_os(MARKER).is_none() {
         if !std::process::Command::new("python3")
             .arg("--version")
@@ -200,8 +200,8 @@ fn mcp_collision_manual_lifecycle_real_stdio() {
         }
         let status = child
             .env(MARKER, "1")
-            .env("JCODE_HOME", home.path().join("jcode"))
-            .env("JCODE_RUNTIME_DIR", home.path().join("runtime"))
+            .env("KCODE_HOME", home.path().join("kcode"))
+            .env("KCODE_RUNTIME_DIR", home.path().join("runtime"))
             .current_dir(home.path())
             .args([
                 "--exact",

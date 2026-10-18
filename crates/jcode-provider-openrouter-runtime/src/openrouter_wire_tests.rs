@@ -175,16 +175,16 @@ fn configured_swarm_root_effort_covers_all_wire_formats() {
 fn configured_swarm_root_effort_reads_real_config() {
     // Run this single test in a child process so changing config cannot race
     // other provider tests or reuse an already-initialized global config cache.
-    if std::env::var_os("JCODE_TEST_SWARM_ROOT_CHILD").is_none() {
+    if std::env::var_os("KCODE_TEST_SWARM_ROOT_CHILD").is_none() {
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
                 "--exact",
                 std::thread::current().name().unwrap(),
                 "--nocapture",
             ])
-            .env("JCODE_TEST_SWARM_ROOT_CHILD", "1")
-            .env("JCODE_SWARM_ROOT_EFFORT", "low")
-            .env("JCODE_SWARM_DEEP_ROOT_EFFORT", "none")
+            .env("KCODE_TEST_SWARM_ROOT_CHILD", "1")
+            .env("KCODE_SWARM_ROOT_EFFORT", "low")
+            .env("KCODE_SWARM_DEEP_ROOT_EFFORT", "none")
             .output()
             .expect("run isolated config test");
         assert!(
@@ -240,7 +240,7 @@ fn grok_build_subscription_request_spoofs_grok_cli_and_uses_oidc_bearer() {
     .expect("auth.json");
     let _home = EnvVarGuard::set("GROK_HOME", grok_home.path());
     let _deploy = EnvVarGuard::remove("GROK_DEPLOYMENT_KEY");
-    let _version = EnvVarGuard::set("JCODE_GROK_CLI_VERSION", "9.8.7");
+    let _version = EnvVarGuard::set("KCODE_GROK_CLI_VERSION", "9.8.7");
     let (addr, rx) = spawn_header_capturing_server();
     let _base = EnvVarGuard::set(
         "GROK_CLI_CHAT_PROXY_BASE_URL",

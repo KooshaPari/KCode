@@ -2,9 +2,9 @@
 //! Unix socket and translates to the internal (legacy) jcode protocol.
 //!
 //! Architecture (milestone 2 of docs/HARNESS_API_AND_DESKTOP_REWRITE.md):
-//! - Listens on `~/.jcode/jcode-api.sock` (or `JCODE_API_SOCKET`).
-//! - For each API client, dials the legacy daemon socket (`JCODE_SOCKET` or
-//!   `~/.jcode/jcode.sock`) and speaks `subscribe`/`message`/... on its
+//! - Listens on `~/.kcode/jcode-api.sock` (or `KCODE_API_SOCKET`).
+//! - For each API client, dials the legacy daemon socket (`KCODE_SOCKET` or
+//!   `~/.kcode/jcode.sock`) and speaks `subscribe`/`message`/... on its
 //!   behalf.
 //! - Translation is JSON-to-JSON so this crate does not depend on the heavy
 //!   internal protocol types and cannot be broken by additive internal
@@ -323,7 +323,7 @@ where
         reply_to,
         ApiEvent::HelloOk {
             version: API_VERSION_MAJOR,
-            server: format!("jcode-harness-api-bridge/{}", env!("CARGO_PKG_VERSION")),
+            server: format!("kcode-harness-api-bridge/{}", env!("CARGO_PKG_VERSION")),
             capabilities: [
                 "sessions",
                 "streaming",
@@ -353,7 +353,7 @@ where
     let mut legacy_reader = BufReader::new(legacy_read);
 
     let mut state =
-        translate::BridgeState::with_crash_on_disconnect(client_name.starts_with("jcode-desktop-"));
+        translate::BridgeState::with_crash_on_disconnect(client_name.starts_with("kcode-desktop-"));
     state.session_tools_supported = session_tools_supported;
 
     // 3. Pump both directions in one select loop so translation state stays
@@ -491,7 +491,7 @@ mod public_acceptance_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn stdio_stream_handshake_ping_and_eof() {
         let path = std::env::temp_dir().join(format!(
-            "jcode-stdio-{}-{}.sock",
+            "kcode-stdio-{}-{}.sock",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -555,26 +555,30 @@ mod public_acceptance_tests {
     impl Drop for JcodeHomeGuard {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(value) => unsafe { std::env::set_var("JCODE_HOME", value) },
-                None => unsafe { std::env::remove_var("JCODE_HOME") },
+                Some(value) => unsafe { std::env::set_var("KCODE_HOME", value) },
+                None => unsafe { std::env::remove_var("KCODE_HOME") },
             }
         }
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn public_socket_keeps_its_attachment_after_another_sessions_state() {
-        let _home_lock = translate::jcode_home_test_lock();
-        let root = std::env::temp_dir().join(format!(
-            "jcode-api-attachment-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(&root).unwrap();
-        let previous_home = std::env::var_os("JCODE_HOME");
-        unsafe { std::env::set_var("JCODE_HOME", &root) };
+        // Scope the MutexGuard so it drops before the first .await point.
+        let (root, previous_home) = {
+            let _home_lock = translate::jcode_home_test_lock();
+            let root = std::env::temp_dir().join(format!(
+                "kcode-api-attachment-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&root).unwrap();
+            let previous_home = std::env::var_os("KCODE_HOME");
+            unsafe { std::env::set_var("KCODE_HOME", &root) };
+            (root, previous_home)
+        };
         let _home_guard = JcodeHomeGuard(previous_home);
         let sessions = root.join("sessions");
         std::fs::create_dir_all(&sessions).unwrap();
@@ -673,9 +677,9 @@ mod single_instance_tests {
     /// bridge and its clients reported "harness API stream closed".
     #[test]
     fn a_second_bridge_cannot_take_the_socket() {
-        let dir = std::env::temp_dir().join(format!("jcode-bridge-lock-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("kcode-bridge-lock-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let socket = dir.join("jcode-api.sock");
+        let socket = dir.join("kcode-api.sock");
 
         let first = super::single_instance_lock(&socket).unwrap();
         assert!(first.is_some(), "the first bridge must take the lock");
@@ -706,7 +710,7 @@ mod socket_permission_tests {
     async fn the_api_socket_is_owner_only() {
         use std::os::unix::fs::PermissionsExt;
 
-        let dir = std::env::temp_dir().join(format!("jcode-api-perm-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("kcode-api-perm-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let api_socket = dir.join("api.sock");
         let legacy_socket = dir.join("daemon.sock");
@@ -746,7 +750,7 @@ mod fragmented_reply_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn concurrent_history_replies_survive_api_requests_between_fragments() {
         tokio::time::timeout(std::time::Duration::from_secs(10), async {
-            let path = std::env::temp_dir().join(format!("jcode-fragments-{}-{}.sock", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+            let path = std::env::temp_dir().join(format!("kcode-fragments-{}-{}.sock", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
             let listener = UnixListener::bind(&path).unwrap();
             let (client, bridge) = tokio::io::duplex(4 * 1024 * 1024);
             let (bridge_read, bridge_write) = tokio::io::split(bridge);

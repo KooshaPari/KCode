@@ -29,6 +29,12 @@ impl LsTool {
     }
 }
 
+impl Default for LsTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Deserialize)]
 struct LsInput {
     #[serde(default)]

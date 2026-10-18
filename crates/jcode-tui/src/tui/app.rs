@@ -59,7 +59,9 @@ mod commands_cloud;
 mod commands_colors;
 mod commands_desktop;
 mod commands_dispatch;
+mod commands_goal;
 mod commands_improve;
+mod commands_loop;
 mod commands_overnight;
 mod commands_plan;
 mod commands_remote;
@@ -116,12 +118,14 @@ mod terminal_liveness;
 mod terminal_setup_command;
 mod terminal_title;
 mod todos_view;
+pub(crate) mod tui_event;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
 mod tui_state;
 mod turn;
 mod turn_memory;
 mod turn_notify;
+mod ui_elicit;
 mod ui_prefs;
 
 pub(crate) use self::state_ui_storage::compact_display_messages_for_storage;
@@ -137,7 +141,7 @@ pub(crate) fn has_safe_slash_command_token(input: &str) -> bool {
 pub(crate) const COMMAND_SUGGESTION_VISIBLE_LIMIT: usize = 8;
 
 fn active_runtime_provider_key() -> Option<String> {
-    std::env::var("JCODE_RUNTIME_PROVIDER")
+    std::env::var("KCODE_RUNTIME_PROVIDER")
         .ok()
         .map(|value| value.trim().to_ascii_lowercase())
         .filter(|value| !value.is_empty())
@@ -1358,6 +1362,18 @@ pub struct App {
     swarm_panel_focused: bool,
     // Whether the focused swarm panel owns the main transcript viewport.
     swarm_panel_full_page: bool,
+    // Whether the swarm panel filter input mode is active.
+    swarm_filter_active: bool,
+    // Text typed into the swarm panel filter (case-insensitive substring match).
+    swarm_filter_query: String,
+    // Whether the swarm panel is in batch mode (multi-select actions).
+    swarm_batch_mode: bool,
+    // Indices of agents selected in batch mode.
+    swarm_selected_agents: std::collections::HashSet<usize>,
+    // Whether the swarm panel rename input is active (user pressed `r`).
+    swarm_rename_active: bool,
+    // Text typed into the swarm panel rename input.
+    swarm_rename_buffer: String,
     // Diff display mode (toggle with Alt+G)
     diff_mode: crate::config::DiffDisplayMode,
     // Center all content (from config)
@@ -1722,6 +1738,12 @@ pub struct App {
     account_picker_overlay: Option<RefCell<super::account_picker::AccountPicker>>,
     /// Usage overlay (None = not visible)
     usage_overlay: Option<RefCell<super::usage_overlay::UsageOverlay>>,
+    /// Elicitation overlay for structured agent-to-user input (None = not active)
+    elicit_overlay: Option<super::elicitation_types::ElicitOverlayState>,
+    /// Receiver for elicitation requests from the tool-core global channel.
+    /// Polled in the main event loop; when a message arrives, it is converted
+    /// to a TUI `ElicitOverlayState` and displayed as a modal overlay.
+    elicit_rx: tokio::sync::mpsc::UnboundedReceiver<Box<jcode_tool_core::ElicitMessage>>,
     /// Whether a usage refresh request is currently in flight.
     usage_report_refreshing: bool,
     usage_reset: usage_reset::ResetState,

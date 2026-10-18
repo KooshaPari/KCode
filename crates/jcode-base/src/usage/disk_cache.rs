@@ -200,12 +200,12 @@ mod tests {
     fn with_home<T>(f: impl FnOnce() -> T) -> T {
         let _guard = crate::storage::lock_test_env();
         let dir = tempfile::tempdir().unwrap();
-        let previous = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", dir.path());
+        let previous = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", dir.path());
         let result = f();
         match previous {
-            Some(value) => crate::env::set_var("JCODE_HOME", value),
-            None => crate::env::remove_var("JCODE_HOME"),
+            Some(value) => crate::env::set_var("KCODE_HOME", value),
+            None => crate::env::remove_var("KCODE_HOME"),
         }
         result
     }

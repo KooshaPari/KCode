@@ -14,12 +14,12 @@ fn path_to_pipe_name(path: &Path) -> String {
     let stem: String = path
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or("jcode")
+        .unwrap_or("kcode")
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
         .take(32)
         .collect();
-    let stem = if stem.is_empty() { "jcode" } else { &stem };
+    let stem = if stem.is_empty() { "kcode" } else { &stem };
     let normalized = path
         .to_string_lossy()
         .replace('\\', "/")
@@ -409,7 +409,7 @@ mod tests {
     #[tokio::test]
     async fn sync_pipe_probes_do_not_panic_without_a_tokio_reactor() {
         let path = std::env::temp_dir().join(format!(
-            "jcode-plain-thread-probe-{}-{}.sock",
+            "kcode-plain-thread-probe-{}-{}.sock",
             std::process::id(),
             BUSY_PIPE_TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
@@ -420,7 +420,7 @@ mod tests {
         // second probe return ERROR_PIPE_BUSY and never reach the code under
         // test, which is exactly the coverage a single shared pipe left out.
         let remove_path = std::env::temp_dir().join(format!(
-            "jcode-plain-thread-remove-{}-{}.sock",
+            "kcode-plain-thread-remove-{}-{}.sock",
             std::process::id(),
             BUSY_PIPE_TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
@@ -531,7 +531,7 @@ mod tests {
     #[tokio::test]
     async fn busy_pipe_is_reported_as_a_live_socket_path() {
         let path = std::env::temp_dir().join(format!(
-            "jcode-busy-pipe-probe-{}-{}.sock",
+            "kcode-busy-pipe-probe-{}-{}.sock",
             std::process::id(),
             BUSY_PIPE_TEST_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));

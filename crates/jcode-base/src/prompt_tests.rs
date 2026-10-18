@@ -122,9 +122,9 @@ fn full_and_split_prompt_builders_use_the_same_one_line_skill_descriptions() {
 #[test]
 fn test_load_agents_md_files_uses_sandboxed_global_files() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path().join("external")).unwrap();
 
     std::fs::write(
@@ -157,9 +157,9 @@ fn test_load_agents_md_files_uses_sandboxed_global_files() {
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -346,9 +346,9 @@ fn sponsored_discovery_is_not_injected_into_the_system_prompt() {
 #[test]
 fn test_prompt_overlay_files_are_loaded_from_project_and_global_jcode_dirs() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path()).unwrap();
     std::fs::write(
         temp.path().join("prompt-overlay.md"),
@@ -357,9 +357,9 @@ fn test_prompt_overlay_files_are_loaded_from_project_and_global_jcode_dirs() {
     .unwrap();
 
     let project_dir = tempfile::TempDir::new().unwrap();
-    std::fs::create_dir_all(project_dir.path().join(".jcode")).unwrap();
+    std::fs::create_dir_all(project_dir.path().join(".kcode")).unwrap();
     std::fs::write(
-        project_dir.path().join(".jcode/prompt-overlay.md"),
+        project_dir.path().join(".kcode/prompt-overlay.md"),
         "project prompt overlay instructions",
     )
     .unwrap();
@@ -383,18 +383,18 @@ fn test_prompt_overlay_files_are_loaded_from_project_and_global_jcode_dirs() {
     assert!(info.prompt_overlay_chars > 0);
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
 #[test]
 fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path()).unwrap();
     std::fs::write(
         temp.path().join("preferred-tools.md"),
@@ -403,9 +403,9 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
     .unwrap();
 
     let project_dir = tempfile::TempDir::new().unwrap();
-    std::fs::create_dir_all(project_dir.path().join(".jcode")).unwrap();
+    std::fs::create_dir_all(project_dir.path().join(".kcode")).unwrap();
     std::fs::write(
-        project_dir.path().join(".jcode/preferred-tools.md"),
+        project_dir.path().join(".kcode/preferred-tools.md"),
         "project preferred tools instructions",
     )
     .unwrap();
@@ -415,7 +415,7 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
     assert!(direct.0.is_some(), "expected preferred tools content");
     let direct_content = direct.0.unwrap();
     assert!(
-        direct_content.contains("Project Preferred Tools (.jcode/preferred-tools.md)"),
+        direct_content.contains("Project Preferred Tools (.kcode/preferred-tools.md)"),
         "expected project preferred tools section heading"
     );
     assert!(
@@ -423,7 +423,7 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
         "expected project preferred tools content"
     );
     assert!(
-        direct_content.contains("Global Preferred Tools (~/.jcode/preferred-tools.md)"),
+        direct_content.contains("Global Preferred Tools (~/.kcode/preferred-tools.md)"),
         "expected global preferred tools section heading"
     );
     assert!(
@@ -451,18 +451,18 @@ fn test_preferred_tools_files_are_loaded_from_project_and_global_jcode_dirs() {
     assert!(split_info.preferred_tools_chars > 0);
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
 #[test]
 fn test_swarm_prompt_prefers_project_then_global_then_default() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path()).unwrap();
 
     let project_dir = tempfile::TempDir::new().unwrap();
@@ -477,9 +477,9 @@ fn test_swarm_prompt_prefers_project_then_global_then_default() {
     assert_eq!(prompt, "global swarm routing");
 
     // Project override wins over global.
-    std::fs::create_dir_all(project_dir.path().join(".jcode")).unwrap();
+    std::fs::create_dir_all(project_dir.path().join(".kcode")).unwrap();
     std::fs::write(
-        project_dir.path().join(".jcode/swarm-prompt.md"),
+        project_dir.path().join(".kcode/swarm-prompt.md"),
         "project swarm routing",
     )
     .unwrap();
@@ -487,14 +487,14 @@ fn test_swarm_prompt_prefers_project_then_global_then_default() {
     assert_eq!(prompt, "project swarm routing");
 
     // A blank project file falls through to global instead of going empty.
-    std::fs::write(project_dir.path().join(".jcode/swarm-prompt.md"), "   \n").unwrap();
+    std::fs::write(project_dir.path().join(".kcode/swarm-prompt.md"), "   \n").unwrap();
     let prompt = load_swarm_prompt(Some(project_dir.path()));
     assert_eq!(prompt, "global swarm routing");
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -650,8 +650,8 @@ fn classify_effort_distinguishes_reasoning_from_swarm_modes() {
 fn project_system_prompt_file_replaces_default_base_prompt() {
     use crate::prompt::load_base_system_prompt;
 
-    let dir = std::env::temp_dir().join(format!("jcode-sysprompt-{}", std::process::id()));
-    let jcode_dir = dir.join(".jcode");
+    let dir = std::env::temp_dir().join(format!("kcode-sysprompt-{}", std::process::id()));
+    let jcode_dir = dir.join(".kcode");
     std::fs::create_dir_all(&jcode_dir).unwrap();
     std::fs::write(
         jcode_dir.join("system-prompt.md"),
@@ -779,23 +779,23 @@ fn desktop_prompt_detects_symlinked_nested_working_directory() {
     assert!(split.static_part.contains(DESKTOP_SELFDEV_MODE_PROMPT));
 }
 
-// Restore JCODE_HOME even when a regression assertion panics.
+// Restore KCODE_HOME even when a regression assertion panics.
 fn with_prompt_guidance_home(test: impl FnOnce(&Path)) {
     let _guard = crate::storage::lock_test_env();
     struct RestoreHome(Option<std::ffi::OsString>);
     impl Drop for RestoreHome {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(value) => crate::env::set_var("JCODE_HOME", value),
-                None => crate::env::remove_var("JCODE_HOME"),
+                Some(value) => crate::env::set_var("KCODE_HOME", value),
+                None => crate::env::remove_var("KCODE_HOME"),
             }
         }
     }
-    let _restore = RestoreHome(std::env::var_os("JCODE_HOME"));
+    let _restore = RestoreHome(std::env::var_os("KCODE_HOME"));
     let home = tempfile::TempDir::new().unwrap();
-    let jcode_dir = home.path().join(".jcode");
+    let jcode_dir = home.path().join(".kcode");
     std::fs::create_dir(&jcode_dir).unwrap();
-    crate::env::set_var("JCODE_HOME", &jcode_dir);
+    crate::env::set_var("KCODE_HOME", &jcode_dir);
     test(home.path());
 }
 
@@ -804,8 +804,8 @@ fn prompt_guidance_same_project_and_global_paths_are_loaded_once() {
     with_prompt_guidance_home(|home| {
         let overlay = "shared overlay marker\n";
         let tools = "shared preferred tools marker\n";
-        std::fs::write(home.join(".jcode/prompt-overlay.md"), overlay).unwrap();
-        std::fs::write(home.join(".jcode/preferred-tools.md"), tools).unwrap();
+        std::fs::write(home.join(".kcode/prompt-overlay.md"), overlay).unwrap();
+        std::fs::write(home.join(".kcode/preferred-tools.md"), tools).unwrap();
 
         let (full, full_info) = build_system_prompt_full(None, &[], false, None, Some(home));
         let (split, split_info) = build_system_prompt_split(None, &[], false, None, Some(home));
@@ -829,11 +829,11 @@ fn prompt_guidance_same_project_and_global_paths_are_loaded_once() {
 fn prompt_guidance_symlink_aliases_are_loaded_once() {
     with_prompt_guidance_home(|home| {
         let project = tempfile::TempDir::new().unwrap();
-        std::fs::create_dir(project.path().join(".jcode")).unwrap();
+        std::fs::create_dir(project.path().join(".kcode")).unwrap();
         for name in ["prompt-overlay.md", "preferred-tools.md"] {
-            let global = home.join(".jcode").join(name);
+            let global = home.join(".kcode").join(name);
             std::fs::write(&global, "shared symlink guidance").unwrap();
-            std::os::unix::fs::symlink(&global, project.path().join(".jcode").join(name)).unwrap();
+            std::os::unix::fs::symlink(&global, project.path().join(".kcode").join(name)).unwrap();
         }
         for (content, size) in [
             load_prompt_overlay_files_from_dir(Some(project.path())),
@@ -852,10 +852,10 @@ fn prompt_guidance_symlink_aliases_are_loaded_once() {
 fn prompt_guidance_distinct_files_with_identical_contents_are_both_loaded() {
     with_prompt_guidance_home(|home| {
         let project = tempfile::TempDir::new().unwrap();
-        std::fs::create_dir(project.path().join(".jcode")).unwrap();
+        std::fs::create_dir(project.path().join(".kcode")).unwrap();
         for name in ["prompt-overlay.md", "preferred-tools.md"] {
             for root in [home, project.path()] {
-                std::fs::write(root.join(".jcode").join(name), "identical guidance").unwrap();
+                std::fs::write(root.join(".kcode").join(name), "identical guidance").unwrap();
             }
         }
         for (content, size) in [
@@ -874,14 +874,14 @@ fn prompt_guidance_distinct_files_with_identical_contents_are_both_loaded() {
 fn prompt_guidance_missing_or_unreadable_project_keeps_global_content() {
     with_prompt_guidance_home(|home| {
         let project = tempfile::TempDir::new().unwrap();
-        std::fs::create_dir(project.path().join(".jcode")).unwrap();
+        std::fs::create_dir(project.path().join(".kcode")).unwrap();
         for name in ["prompt-overlay.md", "preferred-tools.md"] {
-            std::fs::write(home.join(".jcode").join(name), "global only").unwrap();
+            std::fs::write(home.join(".kcode").join(name), "global only").unwrap();
         }
         for unreadable in [false, true] {
             if unreadable {
                 for name in ["prompt-overlay.md", "preferred-tools.md"] {
-                    std::fs::write(project.path().join(".jcode").join(name), [0xff]).unwrap();
+                    std::fs::write(project.path().join(".kcode").join(name), [0xff]).unwrap();
                 }
             }
             for (content, size) in [

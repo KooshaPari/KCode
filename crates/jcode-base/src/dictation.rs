@@ -18,7 +18,7 @@ pub async fn run_configured() -> Result<DictationRun> {
     let command = cfg.command.trim();
     if command.is_empty() {
         anyhow::bail!(
-            "Dictation is not configured. Set `[dictation].command` in `~/.jcode/config.toml`."
+            "Dictation is not configured. Set `[dictation].command` in `~/.kcode/config.toml`."
         );
     }
 
@@ -160,9 +160,9 @@ fn window_is_desktop(window: &NiriFocusedWindow) -> bool {
     window
         ._app_id
         .as_deref()
-        .is_some_and(|app_id| app_id.contains("jcode-desktop"))
+        .is_some_and(|app_id| app_id.contains("kcode-desktop"))
         || window.pid == std::process::id()
-        || process_exe_name(window.pid).is_some_and(|name| name.starts_with("jcode-desktop"))
+        || process_exe_name(window.pid).is_some_and(|name| name.starts_with("kcode-desktop"))
 }
 
 fn process_exe_name(pid: u32) -> Option<String> {
@@ -212,16 +212,16 @@ pub fn send_transcript_blocking(
     anyhow::bail!("timed out waiting for the jcode server")
 }
 
-/// Mirrors the server's socket naming (`JCODE_SOCKET`, else the runtime dir).
+/// Mirrors the server's socket naming (`KCODE_SOCKET`, else the runtime dir).
 #[cfg(unix)]
 fn debug_socket_path() -> std::path::PathBuf {
-    let main = std::env::var_os("JCODE_SOCKET")
+    let main = std::env::var_os("KCODE_SOCKET")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| crate::storage::runtime_dir().join("jcode.sock"));
+        .unwrap_or_else(|| crate::storage::runtime_dir().join("kcode.sock"));
     let name = main
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("jcode.sock")
+        .unwrap_or("kcode.sock")
         .replace(".sock", "-debug.sock");
     main.with_file_name(name)
 }

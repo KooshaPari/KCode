@@ -635,7 +635,7 @@ fn external_transcripts_present(root: &std::path::Path, ext: &str) -> bool {
 }
 
 /// Resolve a path under the (sandbox-aware) external home so onboarding honors
-/// `JCODE_HOME`/external isolation, matching the import detectors.
+/// `KCODE_HOME`/external isolation, matching the import detectors.
 fn external_home_path(rel: &str) -> PathBuf {
     crate::storage::user_home_path(rel)
         .ok()
@@ -707,7 +707,7 @@ mod tests {
 
     #[test]
     fn external_oauth_present_requires_nonempty_file() {
-        let dir = std::env::temp_dir().join(format!("jcode-onb-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("kcode-onb-test-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let empty = dir.join("empty.json");
         let full = dir.join("full.json");
@@ -722,7 +722,7 @@ mod tests {
     #[test]
     fn external_transcripts_present_finds_nested_files() {
         let dir = std::env::temp_dir().join(format!(
-            "jcode-onb-transcripts-{}-{:?}",
+            "kcode-onb-transcripts-{}-{:?}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

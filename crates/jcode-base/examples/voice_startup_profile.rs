@@ -1,6 +1,6 @@
 //! Profiles push-to-talk startup with the real microphone and Nari. Uses credits.
 //!
-//! JCODE_VOICE_TIMING=1 cargo run -p jcode-base --features voice-capture \
+//! KCODE_VOICE_TIMING=1 cargo run -p jcode-base --features voice-capture \
 //!     --example voice_startup_profile -- 4
 //!
 //! Records for N seconds (default 4) after the simulated press. Prints only
@@ -13,7 +13,7 @@ use std::{
 
 fn main() {
     // SAFETY: single-threaded before any other thread starts.
-    unsafe { std::env::set_var("JCODE_VOICE_TIMING", "1") };
+    unsafe { std::env::set_var("KCODE_VOICE_TIMING", "1") };
     let secs: u64 = std::env::args()
         .nth(1)
         .and_then(|s| s.parse().ok())

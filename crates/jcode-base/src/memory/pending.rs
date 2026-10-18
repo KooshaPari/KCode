@@ -746,8 +746,8 @@ mod scoped_tests {
         fn drop(&mut self) {
             clear_all_pending_memory();
             match self.previous.take() {
-                Some(home) => crate::env::set_var("JCODE_HOME", home),
-                None => crate::env::remove_var("JCODE_HOME"),
+                Some(home) => crate::env::set_var("KCODE_HOME", home),
+                None => crate::env::remove_var("KCODE_HOME"),
             }
         }
     }
@@ -758,10 +758,10 @@ mod scoped_tests {
             .lock()
             .unwrap_or_else(|error| error.into_inner());
         let home = HomeGuard {
-            previous: std::env::var_os("JCODE_HOME"),
+            previous: std::env::var_os("KCODE_HOME"),
             _dir: tempfile::tempdir().expect("isolated memory home"),
         };
-        crate::env::set_var("JCODE_HOME", home._dir.path());
+        crate::env::set_var("KCODE_HOME", home._dir.path());
         clear_all_pending_memory();
         test();
     }

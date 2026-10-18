@@ -127,7 +127,7 @@ fn excluded(path: &str) -> bool {
                 | "node_modules"
                 | "dist"
                 | ".git"
-                | ".jcode"
+                | ".kcode"
                 | ".aws"
                 | ".ssh"
                 | ".gnupg"
@@ -354,7 +354,7 @@ mod tests {
             "target/a",
             "node_modules/a",
             "dist/a",
-            ".jcode/a",
+            ".kcode/a",
             "nested/target/a",
             "UPPER.PEM",
             ".git-credentials",

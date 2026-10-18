@@ -746,7 +746,7 @@ pub(super) fn launch_forked_session_local(
         .filter(|path| path.is_dir())
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let socket = std::env::var("JCODE_SOCKET").ok();
+    let socket = std::env::var("KCODE_SOCKET").ok();
     let opened = super::spawn_in_new_terminal(&exe, &session_id, &cwd, socket.as_deref())?;
     match (opened, has_prompt) {
         (true, true) => {
@@ -811,7 +811,7 @@ fn launch_review_window_local(
         .filter(|path| path.is_dir())
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| std::path::PathBuf::from("."));
-    let socket = std::env::var("JCODE_SOCKET").ok();
+    let socket = std::env::var("KCODE_SOCKET").ok();
     let opened = super::spawn_in_new_terminal(&exe, &session_id, &cwd, socket.as_deref())?;
     if opened {
         app.push_display_message(DisplayMessage::system(format!(

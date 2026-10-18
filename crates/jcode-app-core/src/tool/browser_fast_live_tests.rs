@@ -120,7 +120,7 @@ async fn handoff_with_candidates(
 async fn live_browser_handoff_completes_local_navigation() {
     let ctx = fixture_context();
     let tab_id =
-        local_fixture_tab_at_path("JCODE_BROWSER_HANDOFF_TEST_TAB_ID", &ctx, Some("/")).await;
+        local_fixture_tab_at_path("KCODE_BROWSER_HANDOFF_TEST_TAB_ID", &ctx, Some("/")).await;
     let result = handoff(
         tab_id,
         "Open Documentation, then Browser controls. Finish only when the current page visibly says Fast browser integration verified. Do not leave the local fixture website.",
@@ -160,7 +160,7 @@ async fn live_browser_handoff_completes_local_navigation() {
 async fn live_browser_handoff_completes_search_and_nested_navigation() {
     let ctx = fixture_context();
     let tab_id =
-        local_fixture_tab_at_path("JCODE_BROWSER_HANDOFF_TEST_TAB_ID", &ctx, Some("/task")).await;
+        local_fixture_tab_at_path("KCODE_BROWSER_HANDOFF_TEST_TAB_ID", &ctx, Some("/task")).await;
     let output = BrowserTool::new().execute(json!({
         "action":"handoff", "tab_id":tab_id,
         "goal":"Search for browser controls. Open Documentation from the search results, then find and open Browser controls in its scrollable sections panel. Finish only when the current page says Whole browser task verified. Stay on this local fixture website.",
@@ -206,7 +206,7 @@ async fn live_browser_handoff_completes_search_and_nested_navigation() {
 #[ignore = "requires Jcode subscription or Jev BYOK credentials, an existing BROWSER_SESSION, and a disposable local fixture with visible password/verification controls"]
 async fn live_browser_handoff_sensitive_fixture_hands_back_without_actions() {
     let ctx = fixture_context();
-    let tab_id = local_fixture_tab("JCODE_BROWSER_HANDOFF_TEST_BLOCKED_TAB_ID", &ctx).await;
+    let tab_id = local_fixture_tab("KCODE_BROWSER_HANDOFF_TEST_BLOCKED_TAB_ID", &ctx).await;
     let result = handoff(
         tab_id,
         "Continue to the Browser controls documentation. Hand back if blocked by sensitive authentication or verification. Never reset a password.",
@@ -230,7 +230,7 @@ async fn live_browser_handoff_requests_script_and_resumes() {
     const GOAL: &str = "Set this page's document.title to exactly Jev hybrid verified, then finish only when the fresh page title matches. Stay on this page.";
 
     let ctx = fixture_context();
-    let tab_id = local_fixture_tab("JCODE_BROWSER_HANDOFF_TEST_TAB_ID", &ctx).await;
+    let tab_id = local_fixture_tab("KCODE_BROWSER_HANDOFF_TEST_TAB_ID", &ctx).await;
     // No executable candidate is supplied. A typed-choice model cannot invent
     // the JavaScript needed to achieve this goal and must return to the parent.
     let needs_script = handoff(tab_id, GOAL, ctx).await;
@@ -259,7 +259,7 @@ async fn live_browser_handoff_requests_script_and_resumes() {
     // constraints before the second call, without opening or switching tabs.
     let ctx = fixture_context();
     assert_eq!(
-        local_fixture_tab("JCODE_BROWSER_HANDOFF_TEST_TAB_ID", &ctx).await,
+        local_fixture_tab("KCODE_BROWSER_HANDOFF_TEST_TAB_ID", &ctx).await,
         tab_id
     );
     let resumed = handoff_with_candidates(

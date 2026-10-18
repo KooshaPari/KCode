@@ -72,19 +72,19 @@ struct ScopedJcodeHome {
 impl ScopedJcodeHome {
     fn new(label: &str) -> Self {
         let guard = jcode_home_test_lock();
-        let previous = std::env::var_os("JCODE_HOME");
+        let previous = std::env::var_os("KCODE_HOME");
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
         let path = std::env::temp_dir().join(format!(
-            "jcode-harness-api-{label}-{}-{unique}",
+            "kcode-harness-api-{label}-{}-{unique}",
             std::process::id()
         ));
-        std::fs::create_dir_all(&path).expect("create isolated JCODE_HOME");
-        // SAFETY: all tests in this module that mutate JCODE_HOME share `LOCK`,
+        std::fs::create_dir_all(&path).expect("create isolated KCODE_HOME");
+        // SAFETY: all tests in this module that mutate KCODE_HOME share `LOCK`,
         // and this guard restores the prior value before it is released.
-        unsafe { std::env::set_var("JCODE_HOME", &path) };
+        unsafe { std::env::set_var("KCODE_HOME", &path) };
         Self {
             path,
             previous,
@@ -96,8 +96,8 @@ impl ScopedJcodeHome {
 impl Drop for ScopedJcodeHome {
     fn drop(&mut self) {
         match self.previous.take() {
-            Some(value) => unsafe { std::env::set_var("JCODE_HOME", value) },
-            None => unsafe { std::env::remove_var("JCODE_HOME") },
+            Some(value) => unsafe { std::env::set_var("KCODE_HOME", value) },
+            None => unsafe { std::env::remove_var("KCODE_HOME") },
         }
         let _ = std::fs::remove_dir_all(&self.path);
     }
@@ -1626,7 +1626,7 @@ fn a_plain_session_id_still_resolves() {
 
 /// Session records must be read from the *instance's* home, not the user's.
 ///
-/// `launch()` gives an embedded instance its own `JCODE_HOME` precisely so it
+/// `launch()` gives an embedded instance its own `KCODE_HOME` precisely so it
 /// cannot see the user's work. Reading the user's home directly made
 /// `peek_session` return the real transcripts of the jcode the user runs
 /// interactively, from a client that was supposed to be sandboxed.
@@ -1637,7 +1637,7 @@ fn session_records_are_read_from_the_instance_home() {
     let path = path.expect("a normal session id must resolve");
     assert!(
         path.starts_with(&home.path),
-        "JCODE_HOME must scope session records, got {}",
+        "KCODE_HOME must scope session records, got {}",
         path.display()
     );
 }
@@ -2019,15 +2019,15 @@ fn credential_provisioning_normalizes_gemini_and_supports_jcode() {
         "req": "set_api_key",
         "id": 8,
         "provider": "subscription",
-        "api_key": "jcode-secret"
+        "api_key": "kcode-secret"
     }));
     let [Outbound::Legacy(notify)] = outbound.as_slice() else {
         panic!("jcode credential should notify the daemon: {outbound:?}");
     };
     assert_eq!(notify["provider"], "jcode");
     assert_eq!(
-        std::fs::read_to_string(config.join("jcode-subscription.env")).unwrap(),
-        "JCODE_API_KEY=jcode-secret\n"
+        std::fs::read_to_string(config.join("kcode-subscription.env")).unwrap(),
+        "KCODE_API_KEY=jcode-secret\n"
     );
 
     let event = only_reply_event(state.api_request_to_legacy(&json!({
@@ -2110,7 +2110,7 @@ fn owner_only_writes_refuse_symlink_targets_and_directories() {
             ..
         }
     ));
-    assert!(!outside_dir.join("jcode-subscription.env").exists());
+    assert!(!outside_dir.join("kcode-subscription.env").exists());
 }
 
 #[cfg(unix)]
@@ -2509,20 +2509,20 @@ fn delayed_history_activity_cannot_resurrect_or_stop_a_newer_turn() {
 fn list_and_attach_expose_swarm_ownership_without_nesting_forks() {
     let home = ScopedJcodeHome::new("swarm-sidebar");
     // Keep the runtime override isolated as well, including under test runners
-    // that already set JCODE_RUNTIME_DIR.
-    let previous_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+    // that already set KCODE_RUNTIME_DIR.
+    let previous_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
     struct RuntimeGuard(Option<OsString>);
     impl Drop for RuntimeGuard {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(value) => unsafe { std::env::set_var("JCODE_RUNTIME_DIR", value) },
-                None => unsafe { std::env::remove_var("JCODE_RUNTIME_DIR") },
+                Some(value) => unsafe { std::env::set_var("KCODE_RUNTIME_DIR", value) },
+                None => unsafe { std::env::remove_var("KCODE_RUNTIME_DIR") },
             }
         }
     }
     let _runtime = RuntimeGuard(previous_runtime);
     let runtime = home.path.join("runtime");
-    unsafe { std::env::set_var("JCODE_RUNTIME_DIR", &runtime) };
+    unsafe { std::env::set_var("KCODE_RUNTIME_DIR", &runtime) };
     let swarm_dir = runtime.join("durable-state/swarm");
     std::fs::create_dir_all(&swarm_dir).unwrap();
     let snapshot_path = swarm_dir.join("swarm.json");

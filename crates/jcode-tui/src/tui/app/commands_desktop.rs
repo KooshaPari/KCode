@@ -9,13 +9,13 @@ use std::path::{Path, PathBuf};
 
 use super::{App, DisplayMessage};
 
-const DESKTOP_BIN_ENV: &str = "JCODE_DESKTOP_BIN";
+const DESKTOP_BIN_ENV: &str = "KCODE_DESKTOP_BIN";
 
 fn desktop_binary_name() -> &'static str {
     if cfg!(windows) {
-        "jcode-desktop.exe"
+        "kcode-desktop.exe"
     } else {
-        "jcode-desktop"
+        "kcode-desktop"
     }
 }
 
@@ -43,10 +43,10 @@ fn desktop_binary_candidates(
         out.extend(std::env::split_paths(&path_var).map(|dir| dir.join(name)));
     }
     if cfg!(target_os = "macos") {
-        out.push(PathBuf::from("/Applications/Jcode.app/Contents/MacOS").join(name));
+        out.push(PathBuf::from("/Applications/kcode.app/Contents/MacOS").join(name));
         if let Some(home) = &home {
             out.push(
-                home.join("Applications/Jcode.app/Contents/MacOS")
+                home.join("Applications/kcode.app/Contents/MacOS")
                     .join(name),
             );
         }
@@ -84,7 +84,7 @@ fn spawn_detached(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     if let Some(dir) = working_dir {
-        command.env("JCODE_DESKTOP_WORKING_DIR", dir);
+        command.env("KCODE_DESKTOP_WORKING_DIR", dir);
     }
     #[cfg(unix)]
     {

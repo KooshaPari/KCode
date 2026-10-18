@@ -981,10 +981,10 @@ fn test_startup_update_error_replaces_checking_card() {
 fn test_selfdev_command_spawns_session_in_test_mode() {
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::TempDir::new().expect("temp home");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_test = std::env::var_os("JCODE_TEST_SESSION");
-    crate::env::set_var("JCODE_HOME", temp_home.path());
-    crate::env::set_var("JCODE_TEST_SESSION", "1");
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let prev_test = std::env::var_os("KCODE_TEST_SESSION");
+    crate::env::set_var("KCODE_HOME", temp_home.path());
+    crate::env::set_var("KCODE_TEST_SESSION", "1");
 
     let repo = create_jcode_repo_fixture();
     let mut app = create_test_app();
@@ -1012,14 +1012,14 @@ fn test_selfdev_command_spawns_session_in_test_mode() {
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
     if let Some(prev_test) = prev_test {
-        crate::env::set_var("JCODE_TEST_SESSION", prev_test);
+        crate::env::set_var("KCODE_TEST_SESSION", prev_test);
     } else {
-        crate::env::remove_var("JCODE_TEST_SESSION");
+        crate::env::remove_var("KCODE_TEST_SESSION");
     }
 }
 

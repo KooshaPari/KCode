@@ -82,7 +82,7 @@ impl AntigravityProvider {
 
     pub fn new() -> Self {
         let model =
-            std::env::var("JCODE_ANTIGRAVITY_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
+            std::env::var("KCODE_ANTIGRAVITY_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
 
         let provider = Self {
             client: jcode_provider_core::shared_http_client(),

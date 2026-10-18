@@ -54,7 +54,7 @@ pub fn has_api_key() -> bool {
 }
 
 /// True when the `gemini` provider must stay on Code Assist OAuth even though
-/// an API key exists (`JCODE_GEMINI_FORCE_OAUTH`, or `[provider]
+/// an API key exists (`KCODE_GEMINI_FORCE_OAUTH`, or `[provider]
 /// gemini_force_oauth = true`). Explicit environment overrides are applied by
 /// the reloadable config loader. `gemini-api` always uses the key.
 pub fn force_oauth() -> bool {
@@ -162,12 +162,12 @@ struct GeminiCliOAuthCredentials {
 /// Resolve the Gemini CLI command from the environment or a sensible default.
 ///
 /// Preference order:
-/// 1. `JCODE_GEMINI_CLI_PATH` (supports a full command like `npx @google/gemini-cli`)
+/// 1. `KCODE_GEMINI_CLI_PATH` (supports a full command like `npx @google/gemini-cli`)
 /// 2. `gemini` on PATH
 /// 3. `npx @google/gemini-cli`
 pub fn gemini_cli_command() -> GeminiCliCommand {
     resolve_gemini_cli_command_with(
-        std::env::var("JCODE_GEMINI_CLI_PATH").ok().as_deref(),
+        std::env::var("KCODE_GEMINI_CLI_PATH").ok().as_deref(),
         super::command_exists,
     )
 }

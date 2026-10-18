@@ -42,6 +42,74 @@ impl CompactionMode {
     }
 }
 
+/// Agent operating mode: controls what the agent is allowed to do.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentMode {
+    /// Default: autonomous implementation — read, write, build, commit.
+    #[default]
+    Execute,
+    /// Coordinator: plans, delegates via swarm, reviews worker output.
+    /// Cannot write files or run build commands directly.
+    Manager,
+    /// Read-only: research, analyze, suggest. Never modifies files.
+    Researcher,
+}
+
+impl AgentMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Execute => "execute",
+            Self::Manager => "manager",
+            Self::Researcher => "researcher",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Execute => "EXEC",
+            Self::Manager => "MGR",
+            Self::Researcher => "RES",
+        }
+    }
+
+    pub fn parse(input: &str) -> Option<Self> {
+        match input.trim().to_ascii_lowercase().as_str() {
+            "execute" | "exec" => Some(Self::Execute),
+            "manager" | "mgr" => Some(Self::Manager),
+            "researcher" | "research" | "res" => Some(Self::Researcher),
+            _ => None,
+        }
+    }
+
+    /// Returns true if the given tool name is blocked in this mode.
+    pub fn is_tool_blocked(&self, tool_name: &str) -> bool {
+        match self {
+            Self::Execute => false,
+            Self::Manager => {
+                matches!(
+                    tool_name,
+                    "write" | "edit" | "multiedit" | "apply_patch" | "patch" | "gmail"
+                )
+            }
+            Self::Researcher => {
+                matches!(
+                    tool_name,
+                    "write"
+                        | "edit"
+                        | "multiedit"
+                        | "apply_patch"
+                        | "patch"
+                        | "bash"
+                        | "gmail"
+                        | "browser"
+                        | "macos_computer_use"
+                )
+            }
+        }
+    }
+}
+
 /// Session picker Enter action: "current-terminal" (default) or "new-terminal".
 /// Ctrl+Enter performs the alternate action.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -614,12 +682,12 @@ pub struct AgentsConfig {
     #[serde(default = "default_memory_embedding_backend")]
     pub memory_embedding_backend: String,
     /// OpenAI embedding model name when `memory_embedding_backend = "openai"`.
-    /// Unset = `text-embedding-3-small`. Env: `JCODE_MEMORY_EMBEDDING_MODEL`.
+    /// Unset = `text-embedding-3-small`. Env: `KCODE_MEMORY_EMBEDDING_MODEL`.
     #[serde(default)]
     pub memory_embedding_model: Option<String>,
     /// Optional override for the embeddings API base URL (no trailing slash),
     /// for OpenAI-compatible gateways. Unset = `https://api.openai.com/v1`.
-    /// Env: `JCODE_MEMORY_EMBEDDING_BASE_URL`.
+    /// Env: `KCODE_MEMORY_EMBEDDING_BASE_URL`.
     #[serde(default)]
     pub memory_embedding_base_url: Option<String>,
     /// Optional override for the remote embedding dimensionality (vector-space
@@ -631,7 +699,7 @@ pub struct AgentsConfig {
     /// parallelism. Completed/stopped workers do not consume slots. Light mode
     /// still uses a smaller fixed fan-out. `0` disables this configurable guard,
     /// leaving only the absolute `MAX_SWARM_MEMBERS` hard cap.
-    /// Env override: `JCODE_SWARM_MAX_CONCURRENT_AGENTS`.
+    /// Env override: `KCODE_SWARM_MAX_CONCURRENT_AGENTS`.
     #[serde(default = "default_swarm_max_concurrent_agents")]
     pub swarm_max_concurrent_agents: usize,
 }
@@ -783,7 +851,7 @@ impl SwarmStripLayout {
 /// Terminal window/pane spawning configuration.
 ///
 /// Without a `spawn_hook`, Unix clients inside tmux are opened in a right-side
-/// pane by the built-in launcher. `JCODE_TERMINAL` explicitly selects a terminal
+/// pane by the built-in launcher. `KCODE_TERMINAL` explicitly selects a terminal
 /// emulator instead.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -792,7 +860,7 @@ pub struct TerminalConfig {
     /// windows for swarm agents, resume-in-new-terminal, self-dev, restarts).
     ///
     /// When set, jcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
-    /// opening a terminal emulator itself, with `JCODE_SPAWN_*` metadata env
+    /// opening a terminal emulator itself, with `KCODE_SPAWN_*` metadata env
     /// vars describing the spawn (kind, session id, title, cwd, full command).
     /// This lets multiplexers and wrappers (tmux, kitty remote, zellij, herd
     /// runners, window managers) decide where and how the session appears.
@@ -801,25 +869,25 @@ pub struct TerminalConfig {
     /// tmux window in the current server. If the hook fails to launch, jcode
     /// falls back to its built-in terminal detection.
     ///
-    /// Env override: `JCODE_SPAWN_HOOK` (set empty to disable a config hook).
+    /// Env override: `KCODE_SPAWN_HOOK` (set empty to disable a config hook).
     pub spawn_hook: Option<String>,
     /// External command used to focus/raise an existing session window.
     ///
     /// When set, jcode runs the hook (instead of wmctrl/xdotool) whenever it
     /// wants to bring a session's window to the foreground, with
-    /// `JCODE_FOCUS_SESSION_ID` and `JCODE_FOCUS_TITLE` env vars. Pair this
+    /// `KCODE_FOCUS_SESSION_ID` and `KCODE_FOCUS_TITLE` env vars. Pair this
     /// with `spawn_hook` so wrappers that own placement (tmux, kitty remote,
     /// herd) also own focus (e.g. `tmux select-window`, Wayland compositor
     /// IPC like `niri msg`).
     ///
-    /// Env override: `JCODE_FOCUS_HOOK` (set empty to disable a config hook).
+    /// Env override: `KCODE_FOCUS_HOOK` (set empty to disable a config hook).
     pub focus_hook: Option<String>,
     /// Terminal used by the macOS Cmd+; launch hotkey and in-app session spawns.
     ///
     /// One of: `ghostty`, `iterm2`, `wezterm`, `warp`, `alacritty`, `vscode`,
     /// `terminal` (Apple Terminal). When set, this is the source of truth for
     /// which terminal jcode launches into and is preferred over the legacy
-    /// `~/.jcode/preferred_terminal.json` file. Re-run `jcode setup-hotkey`
+    /// `~/.kcode/preferred_terminal.json` file. Re-run `jcode setup-hotkey`
     /// after changing it so the generated launcher script picks up the change.
     ///
     /// macOS only; ignored on other platforms.
@@ -829,10 +897,10 @@ pub struct TerminalConfig {
 /// Lifecycle hooks: external commands jcode runs at well-defined points.
 ///
 /// Hook commands are parsed shell-style (quotes work) but executed directly,
-/// with `JCODE_HOOK_*` env vars describing the event (`JCODE_HOOK_EVENT`,
-/// `JCODE_HOOK_SESSION_ID`, `JCODE_HOOK_CWD`, event-specific fields, and a
-/// `JCODE_HOOK_PAYLOAD` JSON mirror). Hook processes get
-/// `JCODE_HOOKS_DISABLED=1` so nested jcode invocations don't recurse.
+/// with `KCODE_HOOK_*` env vars describing the event (`KCODE_HOOK_EVENT`,
+/// `KCODE_HOOK_SESSION_ID`, `KCODE_HOOK_CWD`, event-specific fields, and a
+/// `KCODE_HOOK_PAYLOAD` JSON mirror). Hook processes get
+/// `KCODE_HOOKS_DISABLED=1` so nested jcode invocations don't recurse.
 ///
 /// All hooks except `pre_tool` are observers: detached, fire-and-forget,
 /// failures only logged. `pre_tool` is a gate: jcode waits for it and exit
@@ -904,39 +972,39 @@ pub struct HooksConfig {
     /// before the model starts generating). Fires before the first `pre_tool`,
     /// so integrations can detect that the agent is actively working even while
     /// it is only thinking/streaming text. Fields: MODEL, SOURCE
-    /// ("chat"/"resume"/"ambient"). Env override: JCODE_HOOK_TURN_START.
+    /// ("chat"/"resume"/"ambient"). Env override: KCODE_HOOK_TURN_START.
     pub turn_start: Option<HookCommands>,
     /// Runs when an agent turn completes.
     /// Fields: STATUS ("ok"/"error"), DURATION_MS, MODEL, LAST_ASSISTANT_TEXT.
-    /// Env override: JCODE_HOOK_TURN_END.
+    /// Env override: KCODE_HOOK_TURN_END.
     pub turn_end: Option<HookCommands>,
     /// Runs when a session becomes active (created or resumed).
     /// Fields: SOURCE ("create"/"resume").
-    /// Env override: JCODE_HOOK_SESSION_START.
+    /// Env override: KCODE_HOOK_SESSION_START.
     pub session_start: Option<HookCommands>,
     /// Runs when a session closes normally.
-    /// Env override: JCODE_HOOK_SESSION_END.
+    /// Env override: KCODE_HOOK_SESSION_END.
     pub session_end: Option<HookCommands>,
     /// Gate hook before each tool call. Receives TOOL_NAME and the tool input
     /// JSON on stdin (also truncated in TOOL_INPUT). Exit 0 allows, exit 2
     /// blocks (stderr is fed back to the model), anything else fails open.
-    /// Env override: JCODE_HOOK_PRE_TOOL.
+    /// Env override: KCODE_HOOK_PRE_TOOL.
     pub pre_tool: Option<HookCommands>,
     /// Runs after each tool call completes.
     /// Fields: TOOL_NAME, TOOL_CALL_ID, TOOL_INPUT, TOUCHED_PATHS, STATUS
     /// ("ok"/"error"), DURATION_MS, OUTPUT_BYTES, ERROR.
-    /// Env override: JCODE_HOOK_POST_TOOL.
+    /// Env override: KCODE_HOOK_POST_TOOL.
     pub post_tool: Option<HookCommands>,
     /// Synchronous hook after each successful tool call. Same fields as
     /// post_tool, tool input JSON on stdin. Its stdout is appended to the tool
     /// result the model sees (e.g. linter output for edited files).
-    /// Env override: JCODE_HOOK_POST_TOOL_FEEDBACK.
+    /// Env override: KCODE_HOOK_POST_TOOL_FEEDBACK.
     pub post_tool_feedback: Option<HookCommands>,
     /// Max milliseconds to wait for each post_tool_feedback hook (default:
-    /// 10000). Env override: JCODE_HOOK_POST_TOOL_FEEDBACK_TIMEOUT_MS.
+    /// 10000). Env override: KCODE_HOOK_POST_TOOL_FEEDBACK_TIMEOUT_MS.
     pub post_tool_feedback_timeout_ms: u64,
     /// Max milliseconds to wait for the pre_tool gate before failing open
-    /// (default: 5000). Env override: JCODE_HOOK_PRE_TOOL_TIMEOUT_MS.
+    /// (default: 5000). Env override: KCODE_HOOK_PRE_TOOL_TIMEOUT_MS.
     pub pre_tool_timeout_ms: u64,
 }
 
@@ -1226,7 +1294,7 @@ pub enum WebSearchEngine {
     /// Bing search. Uses the Bing API when configured, otherwise Bing HTML search.
     Bing,
     /// SearXNG metasearch instance (JSON API). Requires `searxng_url` (or the
-    /// `JCODE_SEARXNG_URL` env var) to point at a SearXNG instance. Useful on
+    /// `KCODE_SEARXNG_URL` env var) to point at a SearXNG instance. Useful on
     /// hosts where DuckDuckGo/Bing block the request via TLS fingerprinting.
     Searxng,
     /// Provider-native server-side search (Anthropic `web_search`, OpenAI
@@ -1311,10 +1379,10 @@ impl Default for WebSearchConfig {
             engine: WebSearchEngine::Duckduckgo,
             fallback_engines: vec![WebSearchEngine::Bing],
             bing_api_key: None,
-            bing_api_key_env: "JCODE_BING_API_KEY".to_string(),
+            bing_api_key_env: "KCODE_BING_API_KEY".to_string(),
             bing_market: "en-US".to_string(),
             searxng_url: None,
-            searxng_url_env: "JCODE_SEARXNG_URL".to_string(),
+            searxng_url_env: "KCODE_SEARXNG_URL".to_string(),
             prefer_native: true,
             native_max_uses: Some(DEFAULT_NATIVE_WEB_SEARCH_MAX_USES),
             native_allowed_domains: Vec::new(),
@@ -1370,7 +1438,7 @@ pub struct ProviderConfig {
     /// Pin the `gemini` provider to Code Assist OAuth even when a Gemini
     /// Developer API key (`gemini.env` / `GEMINI_API_KEY`) is present. Without
     /// this an API key silently wins and every turn bills per token on the
-    /// key's project. `JCODE_GEMINI_FORCE_OAUTH` overrides this value.
+    /// key's project. `KCODE_GEMINI_FORCE_OAUTH` overrides this value.
     pub gemini_force_oauth: bool,
     /// Google Cloud project for Gemini Code Assist OAuth. Workspace accounts
     /// require one; without it every turn fails with "requires setting
@@ -1386,13 +1454,13 @@ pub struct ProviderConfig {
     /// Max seconds to wait for streaming data before timing out a request with
     /// no data received. Base budget only: high reasoning efforts scale it up
     /// automatically (see `jcode_base::provider::stream_idle_timeout_for_effort`).
-    /// Default: 180. Overridable via `JCODE_STREAM_IDLE_TIMEOUT_SECS`.
+    /// Default: 180. Overridable via `KCODE_STREAM_IDLE_TIMEOUT_SECS`.
     pub stream_idle_timeout_secs: u64,
     /// Maximum request attempts for transient provider errors, including the
-    /// initial attempt. Default: 8. Overridable via `JCODE_MAX_RETRIES`.
+    /// initial attempt. Default: 8. Overridable via `KCODE_MAX_RETRIES`.
     pub max_retries: u32,
     /// Maximum exponential-backoff delay between transient-error retries.
-    /// Default: 30 seconds. Overridable via `JCODE_RETRY_BACKOFF_CAP_SECS`.
+    /// Default: 30 seconds. Overridable via `KCODE_RETRY_BACKOFF_CAP_SECS`.
     pub retry_backoff_cap_secs: u64,
 }
 
@@ -1527,7 +1595,7 @@ pub struct SafetyConfig {
     pub email_smtp_port: u16,
     /// Email sender address
     pub email_from: Option<String>,
-    /// SMTP password (prefer JCODE_SMTP_PASSWORD env var)
+    /// SMTP password (prefer KCODE_SMTP_PASSWORD env var)
     pub email_password: Option<String>,
     /// IMAP host for receiving email replies (e.g. imap.gmail.com)
     pub email_imap_host: Option<String>,
@@ -1557,7 +1625,7 @@ pub struct SafetyConfig {
     pub jade_relay_enabled: bool,
     /// Jade relay API base URL (e.g. https://...lambda-url.us-east-1.on.aws/)
     pub jade_relay_api_base: Option<String>,
-    /// Jade relay bearer token (prefer JCODE_JADE_RELAY_TOKEN env var)
+    /// Jade relay bearer token (prefer KCODE_JADE_RELAY_TOKEN env var)
     pub jade_relay_token: Option<String>,
     /// Jade relay token id header (x-jade-token-id), used for fast token lookup
     pub jade_relay_token_id: Option<String>,
@@ -1642,7 +1710,7 @@ pub struct PowerConfig {
     /// those remain controlled by the active Windows power plan. The display is
     /// still allowed to sleep. Default: true.
     ///
-    /// Honored by the shared `jcode serve` daemon. The `JCODE_DISABLE_POWER_INHIBIT`
+    /// Honored by the shared `jcode serve` daemon. The `KCODE_DISABLE_POWER_INHIBIT`
     /// environment variable forces this off regardless of the config value.
     pub prevent_sleep_while_streaming: bool,
 

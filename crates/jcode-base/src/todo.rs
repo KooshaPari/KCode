@@ -1329,9 +1329,9 @@ mod tests {
     #[test]
     fn gate_observations_round_trip_and_clear() {
         let _guard = crate::storage::lock_test_env();
-        let previous_home = std::env::var_os("JCODE_HOME");
+        let previous_home = std::env::var_os("KCODE_HOME");
         let dir = tempfile::TempDir::new().expect("tempdir");
-        crate::env::set_var("JCODE_HOME", dir.path());
+        crate::env::set_var("KCODE_HOME", dir.path());
 
         let session = "gate-observation-round-trip";
         assert!(
@@ -1364,8 +1364,8 @@ mod tests {
         clear_gate_observations(session).expect("clear again");
 
         match previous_home {
-            Some(value) => crate::env::set_var("JCODE_HOME", value),
-            None => crate::env::remove_var("JCODE_HOME"),
+            Some(value) => crate::env::set_var("KCODE_HOME", value),
+            None => crate::env::remove_var("KCODE_HOME"),
         }
     }
 
@@ -1374,9 +1374,9 @@ mod tests {
     #[test]
     fn gate_observation_log_is_capped() {
         let _guard = crate::storage::lock_test_env();
-        let previous_home = std::env::var_os("JCODE_HOME");
+        let previous_home = std::env::var_os("KCODE_HOME");
         let dir = tempfile::TempDir::new().expect("tempdir");
-        crate::env::set_var("JCODE_HOME", dir.path());
+        crate::env::set_var("KCODE_HOME", dir.path());
 
         let session = "gate-observation-cap";
         let batch: Vec<GateObservation> = (0..MAX_GATE_OBSERVATIONS + 50)
@@ -1389,8 +1389,8 @@ mod tests {
         );
 
         match previous_home {
-            Some(value) => crate::env::set_var("JCODE_HOME", value),
-            None => crate::env::remove_var("JCODE_HOME"),
+            Some(value) => crate::env::set_var("KCODE_HOME", value),
+            None => crate::env::remove_var("KCODE_HOME"),
         }
     }
 
@@ -1761,9 +1761,9 @@ mod tests {
     #[test]
     fn long_session_review_is_private_durable_and_one_shot() {
         let _guard = storage::lock_test_env();
-        let previous_home = std::env::var_os("JCODE_HOME");
+        let previous_home = std::env::var_os("KCODE_HOME");
         let dir = tempfile::TempDir::new().expect("tempdir");
-        crate::env::set_var("JCODE_HOME", dir.path());
+        crate::env::set_var("KCODE_HOME", dir.path());
         let session = "long-review-one-shot";
         let todos = vec![todo("work", "in_progress", Some("ship"))];
 
@@ -1792,8 +1792,8 @@ mod tests {
         assert!(is_auto_poke_message(TODO_LONG_SESSION_REVIEW_MESSAGE));
 
         match previous_home {
-            Some(value) => crate::env::set_var("JCODE_HOME", value),
-            None => crate::env::remove_var("JCODE_HOME"),
+            Some(value) => crate::env::set_var("KCODE_HOME", value),
+            None => crate::env::remove_var("KCODE_HOME"),
         }
     }
 
@@ -2292,9 +2292,9 @@ mod tests {
     #[test]
     fn plan_intent_fields_round_trip_through_storage() {
         let _guard = crate::storage::lock_test_env();
-        let previous_home = std::env::var_os("JCODE_HOME");
+        let previous_home = std::env::var_os("KCODE_HOME");
         let dir = tempfile::TempDir::new().expect("tempdir");
-        crate::env::set_var("JCODE_HOME", dir.path());
+        crate::env::set_var("KCODE_HOME", dir.path());
 
         let plan = TodoPlan {
             user_intention: Some("Preserve why the user requested the work".to_string()),
@@ -2313,8 +2313,8 @@ mod tests {
         assert_eq!(loaded, plan);
 
         match previous_home {
-            Some(value) => crate::env::set_var("JCODE_HOME", value),
-            None => crate::env::remove_var("JCODE_HOME"),
+            Some(value) => crate::env::set_var("KCODE_HOME", value),
+            None => crate::env::remove_var("KCODE_HOME"),
         }
     }
 }

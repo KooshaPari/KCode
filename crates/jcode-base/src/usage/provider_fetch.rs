@@ -874,7 +874,7 @@ pub(super) async fn fetch_jcode_usage_report() -> Option<ProviderUsage> {
 }
 
 /// Share of a daily allowance at which Jcode starts suggesting an upgrade.
-pub(crate) const JCODE_UPGRADE_HINT_PERCENT: f32 = 80.0;
+pub(crate) const KCODE_UPGRADE_HINT_PERCENT: f32 = 80.0;
 
 pub(crate) fn jcode_usage_report(me: &crate::subscription_api::SubscriptionMe) -> ProviderUsage {
     let mut limits = Vec::new();
@@ -906,7 +906,7 @@ pub(crate) fn jcode_usage_report(me: &crate::subscription_api::SubscriptionMe) -
         let upgrade_link = jev.upgrade_url.as_deref().filter(|url| {
             url.starts_with("https://jcode.sh/") || url.starts_with("https://www.jcode.sh/")
         });
-        if worst >= JCODE_UPGRADE_HINT_PERCENT
+        if worst >= KCODE_UPGRADE_HINT_PERCENT
             && let (Some(tier), Some(url)) = (jev.upgrade_tier.as_deref(), upgrade_link)
         {
             let name = crate::subscription_catalog::JcodeTier::parse(tier)

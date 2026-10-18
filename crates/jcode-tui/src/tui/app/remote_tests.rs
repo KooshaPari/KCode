@@ -41,7 +41,7 @@ fn create_test_app() -> crate::tui::app::App {
     ensure_test_jcode_home_if_unset();
     // `has_notification()` (via `unfocused_redraw_warranted`) consults a
     // process-wide ambient-info cache that another test may have populated
-    // from its own JCODE_HOME (scheduled reminders read as a notification).
+    // from its own KCODE_HOME (scheduled reminders read as a notification).
     // Reset it so these tests observe only their own state.
     crate::tui::app::helpers::clear_ambient_info_cache_for_tests();
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
@@ -53,8 +53,8 @@ fn create_test_app() -> crate::tui::app::App {
     app
 }
 
-/// Point JCODE_HOME at a per-process temp dir when the environment does not
-/// already pin one, so tests never read the developer's real `~/.jcode`
+/// Point KCODE_HOME at a per-process temp dir when the environment does not
+/// already pin one, so tests never read the developer's real `~/.kcode`
 /// state (e.g. a populated ambient queue turns `has_notification()` on and
 /// breaks the unfocused-redraw assertions). Mirrors the helper of the same
 /// name used by the main app test suite.
@@ -63,16 +63,16 @@ fn ensure_test_jcode_home_if_unset() {
 
     static TEST_HOME: OnceLock<std::path::PathBuf> = OnceLock::new();
 
-    if std::env::var_os("JCODE_HOME").is_some() {
+    if std::env::var_os("KCODE_HOME").is_some() {
         return;
     }
 
     let path = TEST_HOME.get_or_init(|| {
-        let path = std::env::temp_dir().join(format!("jcode-test-home-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("kcode-test-home-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&path);
         path
     });
-    crate::env::set_var("JCODE_HOME", path);
+    crate::env::set_var("KCODE_HOME", path);
 }
 
 #[test]
@@ -385,15 +385,15 @@ fn reload_handoff_inactive_without_flag_or_marker() {
     // leak into the assertion.
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
-    crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+    let prev_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
+    crate::env::set_var("KCODE_RUNTIME_DIR", temp.path());
 
     let inactive = !reconnect::reload_handoff_active(&RemoteRunState::default());
 
     if let Some(prev_runtime) = prev_runtime {
-        crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+        crate::env::set_var("KCODE_RUNTIME_DIR", prev_runtime);
     } else {
-        crate::env::remove_var("JCODE_RUNTIME_DIR");
+        crate::env::remove_var("KCODE_RUNTIME_DIR");
     }
 
     assert!(inactive);
@@ -482,7 +482,7 @@ fn remote_skill_invocation_with_prompt_sends_remote_turn() {
     app.is_remote = true;
     app.runtime_mode = crate::tui::app::AppRuntimeMode::RemoteClient;
     let temp = tempfile::tempdir().expect("create skill dir");
-    let skill_dir = temp.path().join(".jcode/skills/remote-skill");
+    let skill_dir = temp.path().join(".kcode/skills/remote-skill");
     std::fs::create_dir_all(&skill_dir).expect("create skill dir");
     std::fs::write(
         skill_dir.join("SKILL.md"),
@@ -832,8 +832,8 @@ fn process_remote_followups_pauses_auto_reload_after_repeated_attempts() {
 fn handle_post_connect_dispatches_reload_followup_even_if_history_snapshot_looks_busy() {
     let _guard = crate::storage::lock_test_env();
     let temp_home = tempfile::TempDir::new().expect("create temp home");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp_home.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp_home.path());
 
     let session_id = "session_reload_busy_snapshot";
     crate::tool::selfdev::ReloadContext {
@@ -895,9 +895,9 @@ fn handle_post_connect_dispatches_reload_followup_even_if_history_snapshot_looks
         let _ = std::fs::remove_file(path);
     }
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
