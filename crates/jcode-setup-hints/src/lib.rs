@@ -1547,7 +1547,7 @@ fn linux_hotkey_sentinel(comp: linux_env::LinuxCompositor) -> &'static str {
 fn linux_hotkeys_installed(comp: linux_env::LinuxCompositor) -> bool {
     use linux_env::LinuxCompositor;
     match comp {
-        LinuxCompositor::Gnome => gnome_keybinding_list().contains("/jcode-launch-"),
+        LinuxCompositor::Gnome => gnome_keybinding_list().contains("/kcode-launch-"),
         LinuxCompositor::Cinnamon => {
             dconf_read("/org/cinnamon/desktop/keybindings/custom-list").contains("kcode-launch-")
         }
@@ -1557,7 +1557,7 @@ fn linux_hotkeys_installed(comp: linux_env::LinuxCompositor) -> bool {
         LinuxCompositor::Xfce => xfce_shortcut_commands_text().contains("/launch_jcode_"),
         LinuxCompositor::Kde => kde_globalshortcutsrc_path()
             .and_then(|p| std::fs::read_to_string(p).ok())
-            .map(|text| text.contains("[services][jcode-launch-"))
+            .map(|text| text.contains("[services][kcode-launch-"))
             .unwrap_or(false),
         other => linux_hotkey_config_path(other)
             .and_then(|p| std::fs::read_to_string(p).ok())
