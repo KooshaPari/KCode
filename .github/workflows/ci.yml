@@ -653,6 +653,10 @@ jobs:
 
   setup-friction:
     name: Setup Friction Eval (Linux installer)
+    # Disabled: the fork intentionally hard-disabled scripts/install.sh (release
+    # downloads off), which both the telemetry test and the friction scorecard
+    # exercise. Re-enable when the installer path is restored.
+    if: false
     runs-on: [self-hosted, desk-linux]
     timeout-minutes: 10
     steps:
