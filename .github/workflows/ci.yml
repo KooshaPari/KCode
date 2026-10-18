@@ -181,8 +181,14 @@ jobs:
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq mold
+          if ! command -v mold >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq mold
+            else
+              sudo dnf install -y mold
+            fi
+          fi
 
       - name: Build
         shell: bash
@@ -653,7 +659,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install probe shells
-        run: sudo apt-get update && sudo apt-get install -y fish zsh
+        run: |
+          if ! command -v fish >/dev/null 2>&1 || ! command -v zsh >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update && sudo apt-get install -y fish zsh
+            else
+              sudo dnf install -y fish zsh
+            fi
+          fi
 
       - name: Installer conversion telemetry tests
         run: bash scripts/test_install_conversion.sh
@@ -700,8 +713,14 @@ jobs:
 
       - name: Install LLVM toolchain for cargo-xwin
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq clang lld llvm ninja-build
+          if ! command -v clang >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq clang lld llvm ninja-build
+            else
+              sudo dnf install -y clang lld llvm ninja-build
+            fi
+          fi
 
       - name: Install cargo-xwin
         run: cargo install --git https://github.com/rust-cross/cargo-xwin cargo-xwin
