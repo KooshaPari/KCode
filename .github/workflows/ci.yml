@@ -18,7 +18,7 @@ env:
 jobs:
   quality:
     name: Quality Guardrails
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -114,7 +114,7 @@ jobs:
 
   release-automation:
     name: Release Automation
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -149,9 +149,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [desk-linux, macos-latest]
         include:
-          - os: ubuntu-latest
+          - os: desk-linux
             target: x86_64-unknown-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
@@ -592,7 +592,7 @@ jobs:
 
   fmt:
     name: Format
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -612,7 +612,7 @@ jobs:
 
   typescript-sdk:
     name: TypeScript SDK
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -644,7 +644,7 @@ jobs:
 
   setup-friction:
     name: Setup Friction Eval (Linux installer)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -677,7 +677,7 @@ jobs:
 
   windows-cross-check:
     name: Windows Cross-Target Check (Linux)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
