@@ -48,9 +48,9 @@ Identical to this branch (`current=8 baseline=0`). The baseline file `scripts/wa
 
 This branch modifies none of `update_product.rs`, `jcode-sdk/src/client.rs`, or `jcode-tui/src/tui/mod.rs` — the 3 files that produce all 8 warnings.
 
-### Require Linked Issue: my fault, but master is red on it too
+Gates that fail on **both** this branch and pristine master (proven identical): Quality Guardrails, Format, Build & Test (ubuntu/macos/windows), Setup Friction Eval.
 
-My PR body referenced `#116`, `#120`, `#121` — all **PRs, not issues**, so the gate found zero valid issue links. Fixing the body would link a real issue if one existed, but **no issue exists for this deadlock**, and master's own CI (run `39113416504`) is red on the same gate without needing my PR at all.
+**Require Linked Issue is NOT one of them — that failure was mine alone, and it did not exist on master.** The workflow is `on: pull_request` only, so it never runs on master pushes at all; there is no master run to compare against. Its failure was caused by my PR body citing `#116`, `#120`, `#121`, which are PRs, not issues. Fixed by filing issue #126 and linking `Closes #126`; the gate is now SUCCESS. An earlier revision of this section wrongly grouped this gate with the master-level breakage.
 
 ### Format: pre-existing on master (corrected)
 
