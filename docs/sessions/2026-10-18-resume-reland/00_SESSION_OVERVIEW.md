@@ -70,7 +70,9 @@ The 4 are NOT the resume tests. They are:
 - `idle_prewarm_starts_before_user_input_and_skips_busy_sessions`
 - `reload_tests::handle_reload_does_not_wait_for_busy_agent_lock`
 
-**All 4 pass in isolation** (1 passed each, <1.2s). So they are healthy tests, not broken ones.
+**All 4 pass in isolation** (1 passed each, 0.32s-0.65s). So they are healthy tests, not broken ones.
+
+**Narrowed (2026-10-18T19:59Z):** run as a 4-test set they deadlock (exit 124). The reproducible core is the **2-test pair** `viewer_attach_reuses_live_owner_without_tracking_placeholder` + `idle_prewarm_never_holds_agent_lock_across_pending_preparation`; each passes alone but together they starve each other. The other two pass in every pairing tried. `--test-threads=16` hangs identically, so it is lock-order starvation on the global guard, not thread pressure.
 
 ### Root cause (identified, not yet fixed)
 
