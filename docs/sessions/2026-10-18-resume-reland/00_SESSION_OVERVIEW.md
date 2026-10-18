@@ -52,6 +52,15 @@ Gates that fail on **both** this branch and pristine master (proven identical): 
 
 **Require Linked Issue is NOT one of them — that failure was mine alone, and it did not exist on master.** The workflow is `on: pull_request` only, so it never runs on master pushes at all; there is no master run to compare against. Its failure was caused by my PR body citing `#116`, `#120`, `#121`, which are PRs, not issues. Fixed by filing issue #126 and linking `Closes #126`; the gate is now SUCCESS. An earlier revision of this section wrongly grouped this gate with the master-level breakage.
 
+### CI does NOT test the resume fix (or the deadlocks)
+
+Run `39162813655` on `3cdc66b76` completed **failure**, but the failure is entirely master-equivalent:
+
+- ubuntu `Build & Test`: `2489 passed / 25 failed` — **identical** to master run `39113416504` (`2489 / 25`). The `diff` of the canonical failure-name lists (master job `117634390282` vs my job `117779774326`) is **empty: zero new failures**. All 25 are `tui::`. Same names, same set.
+- Quality Guardrails, Format, Setup Friction Eval: fail on pristine master too (proven above).
+
+**The load-bearing caveat, stated plainly:** CI's `-p jcode-app-core --lib` invocations are *filtered slices only* — `retention_readiness` and `tool::bash::tests::test_stdin_forwarding`. The string `client_session` appears **0 times** in the entire ubuntu job log. So **CI never executes the 7 resume tests this PR fixes, and never executes the 2-test deadlock pair either.** All validation of this PR is local (`cargo test -p jcode-app-core --lib` → `298 passed, 0 failed, 4 deadlocked`, with the resume 7 green via `server::client_session::tests::*`). Do not read the green CI badge as evidence the fix works. Closing that CI gap is its own change.
+
 ### Format: pre-existing on master (corrected)
 
 The Format job lists 7 files with `cargo fmt --check` diffs. **Zero** of them are in this branch's 12-file diff (verified by set-intersection of the CI list against `git diff --name-only 6ff8aa2d1...HEAD`). They are `translate_tests.rs`, `round_trip_state.rs`, `jcode-tui/src/tui/mod.rs`, etc. — dirty on master.
