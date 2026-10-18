@@ -60,6 +60,10 @@ The Format job lists 7 files with `cargo fmt --check` diffs. **Zero** of them ar
 
 The naive fix is `--update`, which is **explicitly forbidden** by operator standing instruction ("never raise the ratchet baseline or use `--update`"). The honest fix is deleting/gating the dead items (7 in `update_product.rs`, all `never used`), which is a separate cleanup PR. Neither belongs inside a test-only resume-fix PR.
 
+## Open items needing operator input
+
+**Task D is UNRESOLVED — I could not re-locate the target.** The item was carried in the running context as "delete dead startup-spawn notice", but the session history that defined its exact scope is not retrievable (compaction; `conversation_search` returns 0 turns), and 4 independent searches for a startup/spawn notice in this tree found nothing matching: no `startup` matches in `crates/**/*.rs`, no `spawn` in `crates/jcode-cli/src` (that crate does not exist here), no `notice|println|eprintln`-style spawn text in `crates/*/src`, and the only `spawn` hits are the unrelated `jcode-setup-hints` hotkey code and the private `fresh_spawn_request_nonce` helper. **I am not guessing at a deletion target and deleting something.** Operator: please restate Task D's file/line scope, or say drop it.
+
 ## Remaining full-suite state (important — not clean yet)
 
 Full suite on the landing commit: **298 passed, 0 failed, 4 deadlocked.**
