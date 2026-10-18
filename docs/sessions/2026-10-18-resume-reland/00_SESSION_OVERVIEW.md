@@ -46,7 +46,7 @@ Warning budget exceeded: current=8 baseline=0
 
 Identical to this branch (`current=8 baseline=0`). The baseline file `scripts/warning_budget.txt` currently holds `0`, and its git history shows it was deliberately lowered repeatedly (`lower budget to 202`, `lower budget to 183`, then to `0`). **Master itself is red on this gate.**
 
-This branch modifies none of `update_product.rs`, `jcode-sdk/src/client.rs`, or `jcode-tui/src/tui/mod.rs` — the 3 files that produce all 8 warnings.
+Re-measured 2026-10-18T20:13Z (after `touch`ing each source file to force recompile): the script's total is `current=8`, but only **7** of those are `update_product.rs`. The 3 files named in the earlier revision of this section were wrong: `jcode-sdk/src/client.rs` and `jcode-tui/src/tui/mod.rs` do **not** contribute to this budget run's count — the 7 are all in `crates/jcode-app-core/src/update_product.rs`: `GITHUB_REPO` (const), `update_repo`, `update_repo_for`, `fork_update_disallowed_error`, `resolve_update_repo`, `is_inside_git_repo`, `log_disabled`. The 8th is elsewhere in the workspace and unidentified.
 
 Gates that fail on **both** this branch and pristine master (proven identical): Quality Guardrails, Format, Build & Test (ubuntu/macos/windows), Setup Friction Eval.
 
@@ -58,7 +58,7 @@ The Format job lists 7 files with `cargo fmt --check` diffs. **Zero** of them ar
 
 ### I did NOT fix it (deliberately)
 
-The naive fix is `--update`, which is **explicitly forbidden** by operator standing instruction ("never raise the ratchet baseline or use `--update`"). The honest fix is deleting/gating the 8 dead items, which is a separate cleanup PR. Neither belongs inside a test-only resume-fix PR.
+The naive fix is `--update`, which is **explicitly forbidden** by operator standing instruction ("never raise the ratchet baseline or use `--update`"). The honest fix is deleting/gating the dead items (7 in `update_product.rs`, all `never used`), which is a separate cleanup PR. Neither belongs inside a test-only resume-fix PR.
 
 ## Remaining full-suite state (important — not clean yet)
 
