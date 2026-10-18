@@ -97,9 +97,13 @@ pub fn lock_test_env() -> MutexGuard<'static, ()> {
 }
 ```
 
-It is a **`std::sync::Mutex` guard held across `.await`**. Measured on `b99b19bc8`: **63 call sites across 23 files** (57 fully-qualified + 6 via `use`), and **16 of those files contain a `.await` after the lock is acquired**. Example, `client_session_tests.rs:68`:
+It is a **`std::sync::Mutex` guard held across `.await`**. Measured on `008894ab2` (2026-10-18T20:57Z): **781 bare call sites across 194 files**, of which **209 `#[tokio::test]` functions across 64 files await while holding the guard** (a second scope-aware parse gives 227 acquisitions with `.await` in scope, across 71 files). Example, `client_session_tests.rs:88`:
 
-**Correction (2026-10-18T19:28Z):** the previously-published figure was "~284 call sites across 74 files". That came from a loose `grep -rn "lock_test_env()"` which over-counted by matching three unrelated same-named helpers that are not the shared `jcode_base` guard: `jcode-telemetry-core/src/tests.rs`, `jcode-provider-bedrock/src/lib.rs`, `crates/jcode-herdr/src/env.rs`. A broad grep on an unqualified symbol name is not a call-site count. Do not cite the old number.
+**Correction chain on this number (two wrong figures, both retracted):**
+
+1. First I published "~284 call sites across 74 files". **Wrong** in both directions: the loose `grep` matched three unrelated same-named helpers that are not the shared `jcode_base` guard — `jcode-telemetry-core/src/tests.rs`, `jcode-provider-bedrock/src/lib.rs`, `crates/jcode-herdr/src/env.rs`. Do not cite that number.
+2. I then "corrected" it to "63 call sites across 23 files, 16 awaiting". **Also wrong, in the opposite direction: it under-counted by ~12x.** That figure dropped the majority of real call sites and miscounted the awaiting set.
+3. The current figure above (**781 sites / 194 files / 209 awaiting tokio tests / 64 files**) comes from a scope-aware parse: fn bounded by brace depth, acquisition inside that fn, `.await` between acquisition and fn end; cross-checked with a reverse pass over `#[tokio::test]` fns whose body contains both the guard and an `.await`. 19 files could not be parsed automatically (macro/closure bodies) and still need manual triage.
 
 ```rust
 let _env = crate::storage::lock_test_env();
@@ -109,7 +113,9 @@ tokio::time::timeout(secs(5), notification.notified()).await  // ... and again
 
 A blocking `MutexGuard` across `.await` on a current-thread tokio runtime can block the only worker thread while every other test queues on the same global lock, producing a 0%CPU hang with no panic. Under `--test-threads=4` the ordering varies, so which 4 stall is not fully deterministic across runs, but the family is stable: `concurrency`, `reload`, `idle_prewarm`.
 
-Fix would be `tokio::sync::Mutex` (or an async-aware lock) in `jcode-base/src/storage.rs`. That is a production-code change in a **shared crate used by 23 files** (16 of which await while holding it) — needs operator direction before anyone touches it.
+Fix would be `tokio::sync::Mutex` (or an async-aware lock) in `jcode-base/src/storage.rs`. That is a production-code change in a **shared crate referenced by 194 files** (209 awaiting tokio tests in 64 of them) — roughly a **60+ file change, not a surgical one**. Needs operator direction before anyone touches it.
+
+**Precedent of record:** `crates/jcode-tui/tests/test_lock_order.rs` already codifies an AB-BA deadlock contract for this guard versus `scroll_render_test_lock()` — env must be acquired *before* render. So the repo's accepted discipline for a stall on this guard is **lock ordering, not mutex replacement**. A retyping PR should be measured against whether it also has to preserve that contract, and the comment's `#1201` reference does not resolve in this repo (`gh issue view 1201` fails), so its provenance is unverified.
 
 ## Task D — startup spawn notice is dead code
 
@@ -160,7 +166,7 @@ Full detail: `docs/sessions/2026-10-18-resume-reland/C_findings.md`
 - Earlier I claimed to have verified Task B from a stale log; retracted then, now actually verified fresh at `b99b19bc8`.
 - PRs #116 and #120 are CLOSED; #120 was re-landed by the operator as #121. This re-land is separate from #121 — it lands the *addendum* `c89a0d6aa` that #121 does not carry.
 - I described #116 as a "closed issue" while diagnosing the linked-issue gate. It is a **PR**. `gh issue view 116` succeeded and I read that as confirmation; it works on both kinds.
-- **"~284 call sites across 74 files"** for `lock_test_env` was wrong; the measured figure is **63 call sites / 23 files / 16 awaiting**. See the correction note in the deadlock section above.
+- **"~284 call sites across 74 files"** for `lock_test_env` was wrong; and so was my "correction" of **63 sites / 23 files / 16 awaiting**. Both retracted. Current measured figure: **781 sites / 194 files / 209 awaiting tokio tests / 64 files**. See the two-generation correction note in the deadlock section above.
 - I reported Format and Setup Friction Eval as "pre-existing, same as master" from a stale run's job list before checking `statusCheckRollup`. The conclusion held, but the path to it was sloppy.
 
 ## Policy note
