@@ -56,7 +56,7 @@ Gates that fail on **both** this branch and pristine master (proven identical): 
 
 Run `39162813655` on `3cdc66b76` completed **failure**, but the failure is entirely master-equivalent:
 
-- ubuntu `Build & Test`: `2489 passed / 25 failed` — **identical** to master run `39113416504` (`2489 / 25`). The `diff` of the canonical failure-name lists (master job `117634390282` vs my job `117779774326`) is **empty: zero new failures**. All 25 are `tui::`. Same names, same set.
+- ubuntu `Build & Test`: `2489 passed / 25 failed` — the same counts and the same test names as master run `39113416504`. The `diff` of the canonical failure-name lists (master job `117634390282` vs my job `117779774326`) is **empty: zero new failures**. All 25 are `tui::`.
 - Quality Guardrails, Format, Setup Friction Eval: fail on pristine master too (proven above).
 
 **The load-bearing caveat, stated plainly:** CI's `-p jcode-app-core --lib` invocations are *filtered slices only* — `retention_readiness` and `tool::bash::tests::test_stdin_forwarding`. The string `client_session` appears **0 times** in the entire ubuntu job log. So **CI never executes the 7 resume tests this PR fixes, and never executes the 2-test deadlock pair either.** All validation of this PR is local (`cargo test -p jcode-app-core --lib` → `298 passed, 0 failed, 4 deadlocked`, with the resume 7 green via `server::client_session::tests::*`). Do not read the green CI badge as evidence the fix works. Closing that CI gap is its own change.
