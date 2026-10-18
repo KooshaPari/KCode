@@ -2360,7 +2360,9 @@ fn test_poke_arms_auto_poke_until_todos_are_done() {
         )
         .expect("save todos");
 
-        assert!(super::commands::handle_session_command(&mut app, "/poke"));
+        assert!(super::commands::handle_session_command(
+            &mut app, "/poke on"
+        ));
 
         assert!(app.auto_poke_incomplete_todos);
         assert!(app.pending_turn);
@@ -2498,7 +2500,9 @@ fn test_poke_queues_when_turn_is_in_progress() {
 
         app.is_processing = true;
 
-        assert!(super::commands::handle_session_command(&mut app, "/poke"));
+        assert!(super::commands::handle_session_command(
+            &mut app, "/poke on"
+        ));
 
         assert!(app.auto_poke_incomplete_todos);
         assert!(app.is_processing);
