@@ -269,11 +269,11 @@ mod terminal_mode_tests {
     fn tmux_keyboard_lifecycle_requests_and_resets_extended_keys() {
         let mut output = Vec::new();
         enable_keyboard_enhancement_to(&mut output, true).unwrap();
-        assert_eq!(output, b"\x1b[>4;2m\x1b[>7u");
+        assert_eq!(output, b"\x1b[>4;2m\x1b[>1u");
 
         output.clear();
         reapply_keyboard_enhancement_to(&mut output, true).unwrap();
-        assert_eq!(output, b"\x1b[>4;2m\x1b[=7u");
+        assert_eq!(output, b"\x1b[>4;2m\x1b[=1u");
 
         output.clear();
         disable_keyboard_enhancement_to(&mut output, true).unwrap();
@@ -285,11 +285,11 @@ mod terminal_mode_tests {
     fn outside_tmux_keyboard_lifecycle_keeps_kitty_protocol_only() {
         let mut output = Vec::new();
         enable_keyboard_enhancement_to(&mut output, false).unwrap();
-        assert_eq!(output, b"\x1b[>7u");
+        assert_eq!(output, b"\x1b[>1u");
 
         output.clear();
         reapply_keyboard_enhancement_to(&mut output, false).unwrap();
-        assert_eq!(output, b"\x1b[=7u");
+        assert_eq!(output, b"\x1b[=1u");
 
         output.clear();
         disable_keyboard_enhancement_to(&mut output, false).unwrap();
@@ -354,7 +354,7 @@ mod terminal_mode_tests {
                 );
                 assert_eq!(output.contains("\x1b[?1000h"), mouse_capture);
                 assert_eq!(
-                    output.contains("\x1b[=7u"),
+                    output.contains("\x1b[=1u"),
                     keyboard_enhanced && !cfg!(windows)
                 );
                 assert!(
@@ -2114,9 +2114,10 @@ mod tests {
     fn keyboard_enhancement_flags_avoid_report_all_keys_escape_mode() {
         let flags = keyboard_enhancement_flags();
 
-        assert!(flags.contains(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES));
-        assert!(flags.contains(KeyboardEnhancementFlags::REPORT_EVENT_TYPES));
-        assert!(flags.contains(KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS));
+        // Deliberately DISAMBIGUATE-only: REPORT_EVENT_TYPES leaks key releases
+        // as stray input on hosts that half-support the kitty protocol
+        // (herdr/ConPTY panes); ALTERNATE/ALL_KEYS stay off as well.
+        assert_eq!(flags, KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES);
         assert!(!flags.contains(KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES));
     }
 }
