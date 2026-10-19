@@ -926,9 +926,19 @@ build_resume_command`:
 | base @ `b9886143c` | 0 passed / **2 failed** | 101 |
 | #132 @ `f8f488392` (current) | **2 passed** / 0 failed | 0 |
 
-So #132 still fixes the attribution tests after absorbing #129. The `kitty_`
-test and the #129 control were still running when this section was written
-(box load average was **848** from other agents' builds); treat them as pending.
+So #132 still fixes the attribution tests after absorbing #129. **All six runs
+completed — this is the full matrix, and it is unambiguous:**
+
+| Test | base @ `b9886143c` | #132 @ `f8f488392` (current) | #129 @ `1922c0f56` |
+|---|---|---|---|
+| `build_resume_command` (2 tests) | 0 passed / **2 failed** | **2 passed** / 0 failed | 0 passed / **2 failed** |
+| `kitty_notification` (1 test) | 0 passed / **1 failed** | **1 passed** / 0 failed | 0 passed / **1 failed** |
+
+Exit codes: base `101`, #132 `0`, #129 `101` on both invocations. The
+attribution from pass 5 therefore survives the head change intact: **#132 fixes
+these tests, #129 alone does not**, and the fact that #132 now contains #129 does
+not dilute that. Note the #129 column is the control that makes this meaningful —
+without it, "#132 passes" would be consistent with "either PR passing."
 
 **#124 size, re-derived with corrected syntax — 524/352/66 confirmed twice.**
 This also fixes an error in my own documentation: the command I recorded in
