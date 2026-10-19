@@ -3,7 +3,7 @@ use std::process::{Command, Output};
 
 fn invoke(args: &[&str]) -> Output {
     let root = tempfile::tempdir().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_jcode"))
+    let output = Command::new(std::env::var("CARGO_BIN_EXE_jcode").expect("CARGO_BIN_EXE_jcode"))
         .current_dir(root.path())
         .env_clear()
         .env("HOME", root.path())
