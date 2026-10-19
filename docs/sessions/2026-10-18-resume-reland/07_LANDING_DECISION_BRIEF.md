@@ -79,6 +79,14 @@ worktree at `origin/master` (`b9886143c`), which was removed afterward.
     and targeted per-crate cohorts. Root integration tests under `tests/` are
     never compiled or run by CI, which is why this never appeared as a red check.
     The red `Build & Test` is the pre-existing `jcode-tui` lib failures.
+  - **Ambiguity resolved, no longer an assumption.** Root `Cargo.toml` reads
+    `name = "kcode"`, `autobins = false`, and the explicit `[[bin]]` list
+    contains `kcode` (path `src/main.rs`) plus `test_api`, `kcode-harness`,
+    `session_memory_bench`, `memory_recall_bench`,
+    `mermaid_side_panel_probe`, `tui_bench`. **There is no `jcode` bin target
+    at all.** The runtime probe's set matches this list exactly. So
+    `CARGO_BIN_EXE_jcode` is never set, under any invocation.
+  - A complete one-line fix exists and is not in #129: use `CARGO_BIN_EXE_kcode`.
   - This is why #129's `Format` check PASSES while #127/#132 fail it.
 
 ## CI status (all three)
