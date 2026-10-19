@@ -1074,6 +1074,7 @@ pub use crate::provider::{cache_ttl_for_provider, cache_ttl_for_provider_model};
 mod kv_cache_problem;
 #[cfg(test)]
 pub(crate) use kv_cache_problem::KvCacheProblemKind;
+#[cfg(test)]
 pub(crate) use kv_cache_problem::cache_expected_warm;
 pub(crate) use kv_cache_problem::detect_kv_cache_problem;
 
