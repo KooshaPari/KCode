@@ -9,8 +9,10 @@
 # master-stub test or scripts/portal-mcp-bridge.json.
 #
 # Exit codes:
-#   0 = bridge reached the OAuth authorize step (PASS)
-#   2 = bridge failed before/at the CIMD fetch (FAIL)
+#   0 = bridge reached the OAuth authorize step, or completed an
+#       authenticated MCP initialize from a cached token (PASS)
+#   2 = bridge neither reached an authorize URL nor completed an
+#       initialize (FAIL)
 #
 # Two 2026-10-19 corrections:
 #   1. BROWSER=/usr/bin/true is NOT set here. That silently swallowed the
@@ -22,6 +24,10 @@
 #      mcp-remote defaults to "localhost" on non-Windows. The AS rejects the
 #      mismatch with HTTP 400 InputError "Invalid redirect_uri ... not
 #      registered in client metadata". Use --host to match the CIMD.
+#   3. MCP_REMOTE_CONFIG_DIR is pinned under WORK_DIR. Without it the run
+#      reuses ~/.mcp-auth, which lets a cached token complete initialization
+#      without ever printing an authorize URL. Isolating the config dir makes
+#      every live check start from a fresh OAuth flow.
 set -uo pipefail
 
 CIMD_URL="https://auth.kooshapari.com/oauth/client-metadata.json"
@@ -44,7 +50,8 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 # --host 127.0.0.1 must match the redirect_uri registered in the CIMD.
 timeout 90 bash -c "
     cat '$WORK_DIR/init-request.json' | \
-    env -u BROWSER npx -y mcp-remote@0.15.1 \
+    env -u BROWSER MCP_REMOTE_CONFIG_DIR='$WORK_DIR/mcp-auth' \
+        npx -y mcp-remote@0.15.1 \
         '$MCP_URL' \
         --transport http-only \
         --client-metadata-url '$CIMD_URL' \
@@ -65,5 +72,14 @@ if grep -qiE "accounts\.spotify\.com/authorize|authorize\?" "$BRIDGE_LOG" "$INIT
     echo "RESULT: PASS — bridge reached the OAuth authorize step"
     exit 0
 fi
-echo "RESULT: FAIL — bridge did not reach an authorize URL"
+
+# A warm token cache lets mcp-remote complete MCP initialization WITHOUT
+# printing an authorize URL. That is a successful authenticated run, not a
+# failure, so accept a real JSON-RPC initialize response as PASS too.
+if grep -qE '"serverInfo"|"protocolVersion"' "$INIT_LOG" 2>/dev/null; then
+    echo "RESULT: PASS — bridge completed an authenticated MCP initialize (cached token)"
+    exit 0
+fi
+
+echo "RESULT: FAIL — bridge neither reached an authorize URL nor completed an initialize"
 exit 2

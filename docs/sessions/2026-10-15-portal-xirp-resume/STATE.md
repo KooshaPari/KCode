@@ -195,7 +195,7 @@ resolves against **upstream `1jehuang/jcode`**, not the fork. Always pass
   section 15 append. Do not add further patterns.
 - **B6 — Portal OAuth client allow-listing. SOLVED. The append landed.**
   Earlier this was recorded as needing vendor authorization.
-  That is wrong. `kooshapari@kooshapari.com` is a member of **Portal Admins**, and
+  That is wrong. The operator account is a member of **Portal Admins**, and
   the allow-list is an editable field: `App Settings -> General -> MCP ->
   Allowed client ID patterns`, which then held exactly 4 inputs and an
   "Add item" control. The 4 inputs match the 4 patterns in the checkpoint,
@@ -1574,21 +1574,14 @@ All verification was performed live against the production endpoints; no part of
    workspace.create-wiki-page
    workspace.update-wiki-page
    ```
-8. User-scoped authentication was confirmed via `tools/call` on `auth.who-am-i`, which returned the operator's actual Backstage identity (proves user-scoped auth, not just service auth):
+8. The `tools/call auth.who-am-i` call succeeded, confirming user-scoped authentication rather than service auth alone:
    ```
-   metadata.name        : kooshapari
-   metadata.namespace   : default
-   metadata.uid         : a9fa48f8-7f2f-428c-836a-d0b3c8843c44
-   annotation           : platform-auth/user-id = auth0|6ac6acc63e23c05ef5a19c19
-   spec.profile.displayName : kooshapari@kooshapari.com
-   spec.profile.email       : kooshapari@kooshapari.com
-   relations:
-     memberOf group:portal/admins
-     memberOf project:default/phenotype-platform
-     memberOf project:default/tracera-agileplus
-     ownerOf  project:default/phenotype-platform
-     ownerOf  project:default/tracera-agileplus
+   auth.who-am-i : succeeded (identity payload redacted)
    ```
+   The returned payload carried the operator's personal identifiers, email,
+   Backstage UID, platform user id, and group/project membership. It is not
+   reproduced here: this file is tracked in the repository, and that payload is
+   only readable from the authenticated MCP endpoint.
 9. A full bridge run (stdin held open) executed an MCP `initialize` followed by `tools/list` and exited 0 with real MCP JSON-RPC responses on stdout:
    ```
    {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"backstage","version":"0.2.2"}}}
@@ -1735,7 +1728,7 @@ The exact canonical argument vector was launched as a **real MCP stdio client** 
 |---|---|
 | `initialize` | `serverInfo {name: backstage, version: 0.2.2}` |
 | `tools/list` | **34** tools |
-| `tools/call auth.who-am-i` | operator identity — `metadata.name kooshapari`, `namespace default`, `uid a9fa48f8-7f2f-428c-836a-d0b3c8843c44`, `platform-auth/user-id auth0\|6ac6acc63e23c05ef5a19c19` |
+| `tools/call auth.who-am-i` | succeeded — returned the authenticated operator identity (payload redacted; see step 8 of the authenticated-run section) |
 | consent gate | **0** `Waiting for authorization` / `Waiting for auth code` lines in stderr |
 
 Zero consent-gate lines is the load-bearing observation: it proves the cached token was reused and no browser consent was required. mcp-remote's stderr confirmed the negotiation path:
