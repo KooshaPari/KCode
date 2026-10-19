@@ -1067,9 +1067,9 @@ impl CacheTtlInfo {
 pub use crate::provider::{cache_ttl_for_provider, cache_ttl_for_provider_model};
 
 mod kv_cache_problem;
-pub(crate) use kv_cache_problem::cache_expected_warm;
 #[cfg(test)]
 pub(crate) use kv_cache_problem::KvCacheProblemKind;
+pub(crate) use kv_cache_problem::cache_expected_warm;
 pub(crate) use kv_cache_problem::detect_kv_cache_problem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
