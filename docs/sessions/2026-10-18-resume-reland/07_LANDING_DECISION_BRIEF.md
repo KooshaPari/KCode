@@ -136,9 +136,12 @@ recommendation is:
 - **Land #127 now.** Minimal risk, verified.
 - **#132** — minimal risk and verified, but see the constraint added by pass 5:
   it **conflicts with #124** in `helpers_tests.rs`, and #124's version of that
-  fix is strictly better (`file_stem()` for `kcode.exe` on Windows). #124's
-  fixed-set is also a strict superset of #132's, so #132 adds no test fixes that
-  #124 does not already provide. Land **#124 first**, or rebase #132 after it.
+  fix is strictly better (`file_stem()` for `kcode.exe` on Windows). #124 also
+  fixes far more pre-existing failures (~25-26 vs #132's 3-4; both numbers are
+  run-dependent). Land **#124 first**, or rebase #132 after it — the reverse
+  order silently loses the Windows `file_stem()` improvement. *(An earlier pass-5
+  draft claimed #124's fixed-set was a strict superset of #132's; that claim is
+  retracted in the pass-5 section — it holds on one run and breaks on the next.)*
 - **#124** *(This bullet's conclusion was reversed in the third pass — kept
   for the record.)* ~~Highest value in the batch. It fixes 25 of the 27
   pre-existing tui failures. Confirm the `desk-linux` self-hosted runner is
@@ -549,6 +552,26 @@ stress-tested against a second read, and neither survived one. Any claim in this
 brief that rests on a single un-repeated observation should be treated as
 unverified.
 
+### Pass-5 additions to this list
+
+- **"#124's fixed set is a strict superset of #132's."** **RETRACTED — this was
+  my own pass-5 claim and it fails its own cross-check.** Against #124's run-1
+  failure set, `fixed_132 - fixed_124` is **empty** (26 fixed vs 4), which is
+  what made me write the claim. Against run-2 it is **one test**:
+  `build_resume_command_..._codex`, which #124 fixed on run 1 and failed again
+  on run 2. The lesson is the same as pass 4's, one level subtler: pass 4 taught
+  that a *count* is run-dependent. Pass 5 teaches that a *set relationship*
+  derived from those counts is run-dependent too. I had computed it once, found
+  zero asymmetry, and wrote it down as a property of the PRs instead of a
+  property of the run. Also note: I first documented the retraction with the
+  comparison direction described backwards (as if run 1 alone produced the
+  counterexample) and had to re-verify and correct that too — two wrong
+  accounts of one relationship, both mine.
+- I also wrote a **fabricated self-accusation** into the pass-5 draft (claiming
+  I had mis-transcribed a #129 path). Grep showed the brief always had it
+  correct, and I removed it before commit. Worth noting because the direction
+  was opposite: not an overstatement, an invented error.
+
 ## New nuance found on re-read: root `[lib]` is still named `jcode`
 
 While re-verifying, I found something pass-2 got subtly wrong. Root
@@ -779,13 +802,25 @@ are network-dependent (`https://auth.x.ai/...` DNS cancellation), i.e. the suite
 has an environmental-noise floor independent of any PR.
 
 **Conclusion for the operator: treat every exact count in this brief as a
-distribution, not a measurement.** The *rankings* are stable, and one ranking
-claim is stronger than I expected: **#124's fixed set is a strict superset of
-#132's** — every test #132 fixes, #124 also fixes (empty `comm -23` in both
-directions on the fixed sets). So #124 subsumes #132's test fixes entirely,
-which is consistent with finding a genuine conflict between the two PRs.
-No genuine PR-caused regression was found. The exact integers (27, 25, 2, 3, 4)
-should not be quoted as facts, including the #124 headline number.
+distribution, not a measurement — and that includes the set-comparison claim I
+am about to make, which did NOT survive its own cross-check.**
+
+On the run-1 numbers, #124's fixed set appears to be a strict superset of
+#132's: 26 tests fixed vs 4, and `fixed_132 - fixed_124` came out **empty**.
+Re-checking the same comparison against #124's **run-2** failure set **breaks
+it** — `build_resume_command_uses_imported_jcode_session_for_codex`
+(fixed by #124 on run 1) *failed* on run 2, so against run 2 the difference
+`fixed_132 - fixed_124` is that one test, not zero. That is the same churn
+already documented above, and it means **the superset is a property of one
+run, not of the PRs.**
+
+Do not lean on it. The defensible version is narrower and still useful: #132
+fixes very few tests (3-4), #124 fixes many more (25-26), and the two PRs
+overlap in at least the one test both fixes — `build_resume_command_..._codex`
+— which is itself evidence of genuine coupling, consistent with the real
+conflict found above. No genuine PR-caused regression was found. The exact
+integers (27, 25, 2, 3, 4) should not be quoted as facts, including the #124
+headline number.
 
 ## What this pass did NOT re-validate
 
