@@ -624,7 +624,9 @@ jobs:
   typescript-sdk:
     name: TypeScript SDK
     runs-on: [self-hosted, desk-linux]
-    timeout-minutes: 10
+    # 10 min is not enough when the desk runner shares CPU with cargo builds;
+    # npm run check alone has crossed the limit three runs in a row.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
