@@ -18,6 +18,10 @@ env:
 jobs:
   quality:
     name: Quality Guardrails
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
     timeout-minutes: 45
     steps:
@@ -114,6 +118,10 @@ jobs:
 
   release-automation:
     name: Release Automation
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
     timeout-minutes: 5
     steps:
@@ -127,6 +135,10 @@ jobs:
 
   build:
     name: Build & Test (${{ matrix.os }})
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ matrix.os }}
     # 35 minutes covers a normal push (~12 min with a warm Swatinem cache) but
     # not a *rerun*, where the cache is cold: three consecutive reruns of a
@@ -603,6 +615,10 @@ jobs:
 
   fmt:
     name: Format
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
     timeout-minutes: 10
     steps:
@@ -623,6 +639,10 @@ jobs:
 
   typescript-sdk:
     name: TypeScript SDK
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
     # 10 min is not enough when the desk runner shares CPU with cargo builds;
     # npm run check alone has crossed the limit three runs in a row.
@@ -703,6 +723,10 @@ jobs:
 
   windows-cross-check:
     name: Windows Cross-Target Check (Linux)
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
     timeout-minutes: 35
     steps:
