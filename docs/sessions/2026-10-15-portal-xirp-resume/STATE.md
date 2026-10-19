@@ -1615,3 +1615,93 @@ The `BROWSER=/usr/bin/true` defect and the `redirect_uri` host mismatch are inde
 ### 27.8 Operator-visible state
 
 The XJ-03 bridge is now operationally complete: consent was completed, the token was minted, and the Portal MCP endpoint was verified live against the production surface. No further operator action is required for the bridge itself. Subsequent kcode launches will refresh the token silently via mcp-remote's cached credential without re-prompting.
+
+## 28. ROUND-2 — the local stub test was a false positive (2026-10-19T21:13Z)
+
+A second, independent validation pass over the §27 fix found that `scripts/test-portal-bridge.sh` — the repository's own regression test for the bridge — never actually tested the thing it claimed to test. The test passed while the code path it guarded was broken. Two distinct defects were involved, and the second one invalidated the test's central premise.
+
+### 28.1 Defect 3 — the stub served plain HTTP, and mcp-remote silently ignores http CIMD URLs
+
+`scripts/stub-cimd-server.py` served the client metadata document over `http://127.0.0.1:<port>/cimd.json`.
+
+`mcp-remote@0.15.1` validates the client metadata URL before using it. `isClientMetadataUrl()` requires an `https:` URL with a non-root pathname. An `http://` URL is discarded with a warning and the bridge proceeds as though no client metadata document had been configured at all:
+
+```
+Warning: Ignoring invalid client metadata URL: http://127.0.0.1:1/cimd.json. It must be an HTTPS URL with a path.
+```
+
+The consequence is worse than a failing test: with the CIMD discarded, mcp-remote falls back to **dynamic client registration**, and dynamic registration uses the **default callback host** (`localhost` on macOS/Linux) — which is the exact defect §27 fixed. The test was therefore structurally incapable of catching the bug it existed to catch, because the bug's own trigger disabled the feature the test was asserting on.
+
+### 28.2 Defect 4 — the assertion was satisfied by the harness's own probe
+
+The original assertion was:
+
+```bash
+if grep -q "/cimd.json" "$STUB_LOG" 2>/dev/null; then
+    CIMD_FETCHED=1
+```
+
+The stub logs every request it serves. Immediately before that assertion, the harness itself runs `curl` against `/cimd.json` to verify the stub works — which appends the very same log line. The grep therefore matched the harness's own request, and the test reported "CIMD fetch verified" unconditionally. This was reproduced empirically: with the plain-HTTP stub, exactly one `/cimd.json` request existed in the log, and it came from the harness.
+
+There was also a `PASS (partial)` branch that exited 0 when the CIMD fetch was not confirmed but OAuth activity was seen. That escape hatch turned "could not prove anything" into a green run.
+
+### 28.3 The premise itself was wrong: mcp-remote never fetches the CIMD
+
+While building the corrected test, source inspection of `mcp-remote@0.15.1` (`dist/chunk-KJCT2FXL.js`) showed the corrected test still could not assert what the original intended. mcp-remote does **not** download the client metadata document. Per SEP-991 it uses the CIMD URL **as the `client_id`** and asks the **authorization server** to fetch it:
+
+```js
+async clientIdMetadataDocument() {
+  if (!this.clientMetadataUrl) return void 0;
+  const metadata = await this.getAuthorizationServerMetadata();
+  if (metadata?.client_id_metadata_document_supported !== true) {
+    debugLog("Authorization server does not accept a client metadata document; registering instead", ...);
+    return void 0;
+  }
+  debugLog("Identifying this client by its metadata document", { client_id: this.clientMetadataUrl });
+  return { client_id: this.clientMetadataUrl };
+}
+```
+
+The stub therefore never sees a `/cimd.json` request from mcp-remote — the AS would make it. A local stub can never observe the client-metadata fetch at all. Any local assertion of the form "the stub logged a CIMD fetch" is unfounded, regardless of scheme.
+
+Production corroborates this: for the working client there is **no** `client_info.json` in `~/.mcp-auth/mcp-remote-v1/` (the AS accepted the client-by-URL, so no dynamic registration was ever saved), whereas the two pre-fix clients that fell back to dynamic registration **do** have `client_info.json`, each carrying the `localhost` redirect_uri that broke §27:
+
+| client_info.json | redirect_uris |
+|---|---|
+| `6244cf5467a6f706b7b55d5e88d4e4c4_client_info.json` | `['http://localhost:28491/oauth/callback']` |
+| `d511bd2ac7fee33f00eae41bec6cf3fd_client_info.json` | `['http://localhost:12064/oauth/callback']` |
+
+### 28.4 The corrected test
+
+`scripts/stub-cimd-server.py` now serves **HTTPS** with a self-signed `127.0.0.1` certificate (`--tls-dir`), and prints `scheme=https` on its second stdout line so the harness can refuse to run against a plain-HTTP stub. `scripts/test-portal-bridge.sh` generates a short-lived certificate into its own temp work dir, points `NODE_EXTRA_CA_CERTS` at it (undici honours that variable), and asserts what is actually observable locally:
+
+1. **The CIMD URL was accepted** — mcp-remote did not log `Ignoring invalid client metadata URL`, and did log `Using client metadata document`. This is the real regression guard: an `http://` URL is silently dropped, and dropping it re-arms the §27 defect.
+2. **The callback host is `127.0.0.1`** — matching the host the CIMD registers.
+3. **A callback port was derived** and the callback server started.
+
+The `PASS (partial)` escape hatch is removed; an unproven configuration is now a hard failure (exit 2). The stub's `/cimd.json` request count is still reported, but only as transparency — it is explicitly **not** an assertion.
+
+A pre-existing, unrelated bug was also fixed in the same pass: the CIMD body summary used an f-string containing escaped quotes (`f"client_id={d[\"client_id\"]}"`), which is a `SyntaxError` on Python < 3.12 (this host runs 3.9.6). The body line always printed `(parse error)`. It now uses string concatenation.
+
+### 28.5 Negative-test evidence (the test is not vacuous)
+
+The corrected test was verified to **fail** when each defect is reintroduced:
+
+| Mutation | Result | Evidence |
+|---|---|---|
+| none (corrected script) | **PASS**, exit 0 | CIMD accepted, callback host `127.0.0.1`, callback port derived |
+| `--client-metadata-url` given as `http://` | **FAIL**, exit 2 | `Warning: Ignoring invalid client metadata URL: http://127.0.0.1:1/cimd.json. It must be an HTTPS URL with a path.` |
+| `--host 127.0.0.1` removed | **FAIL**, exit 2 | `FAIL: callback hostname was not 127.0.0.1` |
+
+The original test passed under the first mutation. The corrected test fails under both. That is the property the original lacked.
+
+### 28.6 Files changed (this follow-up commit)
+
+| File | Change |
+|------|--------|
+| `scripts/stub-cimd-server.py` | Added `--tls-dir` for HTTPS serving with a self-signed cert; prints `scheme=https|http`; warns loudly and falls back to HTTP (with a warning that the assertion is meaningless) if the cert is missing; docstring corrected to describe SEP-991 behaviour. |
+| `scripts/test-portal-bridge.sh` | Generates a short-lived self-signed cert in the temp work dir; passes `--tls-dir` to the stub and refuses to run if the stub is not HTTPS; sets `NODE_EXTRA_CA_CERTS` for the mcp-remote invocation; rewrote the assertions (CIMD accepted / callback host / callback port); removed the `PASS (partial)` escape hatch; fixed the Python 3.9 f-string `SyntaxError` in the body summary; corrected the header and exit-code documentation. |
+
+### 28.7 Relationship to §27
+
+The §27 production fix is unaffected and remains correct: `--host 127.0.0.1` is required, the production CIMD already registers `http://127.0.0.1:47290/oauth/callback`, and the bridge is live and verified. This commit corrects the **test**, not the fix. It also closes the last route by which the §27 defect could have regressed undetected: previously, a change that dropped `--host 127.0.0.1` (or that made the CIMD URL unusable) would still have produced a green local test run.
