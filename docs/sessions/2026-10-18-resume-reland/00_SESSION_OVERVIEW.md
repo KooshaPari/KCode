@@ -392,3 +392,31 @@ property of one arbitrary mutation site, not of the assertions. The three write 
 mutated independently, and the single-site count moves 1 → 1 → 7 depending on which one you
 break. Only the both-sites figure is a statement about the tests.
 
+## CI state on the two merged PRs — the red Build & Test is the pre-existing jcode-tui family (2026-10-19T08:34Z)
+
+`gh pr checks` on both merged PRs shows `Build & Test` failing on **all three OS runners**, plus
+`Format`, `Quality Guardrails`, `Setup Friction Eval` and `TypeScript SDK`. Recording this because
+my earlier "Format and Setup Friction Eval are pre-existing" verification did not cover
+`Build & Test`, and master has **no branch protection** (`gh api branches/master/protection` →
+`HTTP 404 Branch not protected`), so nothing forces a green gate anyway.
+
+**Root cause of the ubuntu failure, from `gh run view --job 117874792591 --log-failed`:**
+
+- One `test result: FAILED. 2489 passed; 25 failed; 19 ignored; 0 measured; 1 filtered out`
+- Extracted from the `test <name> ... FAILED` markers: **25 distinct failing tests, and
+  `rg -c '^tui::'` = 25 while non-`tui::` = 0.** Every failure is `jcode-tui`.
+
+That is the same deterministic family already documented for Task C in
+`C_findings.md` (29 failures on a local `cargo test -p jcode-tui` run; CI's workspace-wide run
+reports 25 for that crate, the two figures come from different scopes and are not directly
+comparable — CI also runs `1 filtered out`). Sampled panics match exactly:
+`swarm_buffer.rs:562` "dir shown", `swarm_buffer.rs:636` "model on overscroll line".
+
+**Conclusion: neither merge introduced a failure.** Both PRs' changed crates
+(`jcode-app-core`, `setup_hints`) are untouched by these failures — the resume suite is
+`EXITCODE=0` / 24 passed and there is no `setup_hints` entry in the failure set. The red
+Build & Test predates both merges and is the known-broken `jcode-tui` suite.
+
+Same failure set observed on PR #128's run (`39180379133`), so it is not specific to #125
+and predates this session's landings.
+
