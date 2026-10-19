@@ -133,7 +133,12 @@ Updated verdicts after the extended second pass (see below).
 Landing is the operator's decision. After the extended second pass the
 recommendation is:
 
-- **Land #127 and #132 now.** Minimal risk, verified, 0 regressions.
+- **Land #127 now.** Minimal risk, verified.
+- **#132** — minimal risk and verified, but see the constraint added by pass 5:
+  it **conflicts with #124** in `helpers_tests.rs`, and #124's version of that
+  fix is strictly better (`file_stem()` for `kcode.exe` on Windows). #124's
+  fixed-set is also a strict superset of #132's, so #132 adds no test fixes that
+  #124 does not already provide. Land **#124 first**, or rebase #132 after it.
 - **#124** *(This bullet's conclusion was reversed in the third pass — kept
   for the record.)* ~~Highest value in the batch. It fixes 25 of the 27
   pre-existing tui failures. Confirm the `desk-linux` self-hosted runner is
@@ -605,12 +610,18 @@ number. Re-measured two independent ways this pass:
 
 - `gh pr view 124 --json additions,deletions` → **`additions=524`,
   `deletions=352`**, `mergeable=MERGEABLE`, `draft=false`, `changed_files=66`
-- `gh pr checks`-independent cross-check, summing per-file `changes` from
-  `gh api .../pulls/124/files` → `additions=876, deletions=876`
-  ... which is a **counting trap**, not a contradiction: the files endpoint
-  reports `changes` = additions + deletions per file, so 876+876 is not the
-  right quantity and must not be compared to 524+352. The PR-level
-  `additions`/`deletions` fields (524/352) are the correct source.
+- A second derivation, summing per-file `.additions`/`.deletions` from
+  `gh api .../pulls/124/files` → **524 / 352 across 66 files**. This is a real
+  second source; the `changes` field on that endpoint equals `additions +
+  deletions` per file (verified), so summing `changes` instead yields 876/876,
+  which is a **counting trap, not a contradiction** — do not compare it to the
+  PR-level fields. The PR-level `additions`/`deletions` (524/352) are the
+  correct source, and they are what both derivations agree on.
+
+> *(Method note added in pass 5: the second bullet above was re-derived
+> correctly in pass 5. The pass-4 wording implied a single call with a
+> malformed `?per_page=100` path was a valid independent source. It landed on
+> the same numbers, so the conclusion held, but the described method did not.)*
 
 **Use `+524/-352`, 66 files.** The `+513/-351`, `+449/-277` and `+514/-352`
 figures are all retracted; 514 was mine.
@@ -658,3 +669,132 @@ created by this audit — left untouched deliberately.
 
 The `wt3-124-current` worktree used for the re-runs in Correction 8 was removed
 after the gates passed, so no new worktrees remain from this pass either.
+
+---
+
+# FIFTH VALIDATION PASS — independent re-validation of the whole brief
+
+Instruction: re-validate the claims marked complete, because several rested on
+worktrees that no longer existed or on single un-repeated observations. Nothing
+here is a re-statement of an earlier pass unless it was re-measured this pass.
+
+## Re-validated and confirmed
+
+**Commits are on origin.** `82e5e5f6b` and `c0f40e398` are both ancestors of
+`origin/fix/resume-peer-drain-relend`, whose tip now equals local HEAD. `c0f40e398`
+confirmed independently via `gh api .../commits`.
+
+**#124 size: two independent derivations agree exactly.**
+`gh pr view --json additions,deletions,changed_files` → **524 / 352 / 66**, and
+summing per-file `.additions`/`.deletions` from `gh api .../pulls/124/files`
+→ **524 / 352 / 66 files**. Also verified semantically that the files endpoint's
+`changes` field equals `additions + deletions` per file, which is why summing
+that field (876/876) is meaningless. Note: my pass-4 "cross-check" used
+`?per_page=100` in the path, which is a malformed query, not a second source —
+it happened to land on the same answer, so the conclusion was right but the
+method I described was not.
+
+**#124 ci.yml state re-read from the commit object** (`git show <head>:.github/
+workflows/ci.yml`, no worktree needed), parsed by a script that walks the
+`jobs:` block rather than by grep: **9 top-level jobs** (`quality`,
+`release-automation`, `build`, `windows-build-test`, `fmt`, `typescript-sdk`,
+`setup-friction`, `powershell-syntax`, `windows-cross-check`); **3 disabled** by
+`if: false` (`windows-build-test`, `powershell-syntax`, `setup-friction`);
+**7 desk-runner jobs**, of which one (`setup-friction`) is itself disabled —
+`build` reaches the desk via `matrix.os: [desk-linux]` on a
+`runs-on: ${{ matrix.os }}` line, exactly as pass 4 said. Both remaining
+`windows-latest` jobs are `if: false`.
+
+**#132 attribution: now confirmed with a real control.** Pass 3's version had no
+proof that its trees were genuinely isolated. This pass built three trees at the
+same master tip (`b9886143c`) and **proved isolation by file-set equality** —
+each tree's diff-vs-master matched the corresponding PR's own `files` list
+exactly. (Pass 3 has no such proof anywhere: it asserted isolation without ever
+comparing a tree's changed-file set against the PR's declared file list.)
+
+| Test | base | 132-only | 129-only |
+|---|---|---|---|
+| `build_resume_command_..._claude_code` | FAIL | **PASS** | FAIL |
+| `build_resume_command_..._codex` | FAIL | **PASS** | FAIL |
+| `kitty_notification_is_one_completed_clickable_message` | FAIL | **PASS** | FAIL |
+
+Causal mechanism inspected, not just correlated: #132 changes
+`String::from("jcode")` → `("kcode")` in `build_turn_notification` and
+`PathBuf::from("jcode")` → `("kcode")` in `launch_client_executable`, and updates
+the three assertions to match. On base the panic reads
+`left: Some("kcode") / right: Some("jcode")`, which is the expected shape.
+
+Full-suite on 132-only: **2485 passed / 24 failed** vs base 2481/28 in the same
+session — +3 fixed, **0 regressions** (empty `comm -13`).
+
+## NEW FINDING 1 — #124 and #132 CONFLICT in `helpers_tests.rs`
+
+Not recorded anywhere in earlier passes. Merging #132 (`9ead3963e5a95`) onto
+#124's current head:
+
+```
+CONFLICT (content): Merge conflict in crates/jcode-tui/src/tui/app/helpers_tests.rs
+```
+
+The cause is that **both PRs fix the same two assertions**, and #124 fixes them
+*better*: it switches `program.file_name()` → `program.file_stem()` with the
+comment "the launcher binary is kcode.exe on Windows," whereas #132 only rewrote
+`Some("jcode")` → `Some("kcode")` on `file_name()`. Both sides end at
+`Some("kcode")`; only the accessor differs.
+
+**Landing consequence:** with both open on `master`, whoever lands second hits a
+one-hunk conflict in two places. It is trivially resolvable in #124's favour
+(keeping `file_stem()`), which I verified: resolving toward #124 leaves both
+tests passing (`EXITCODE=0` each). The operator should land **#124 first, or
+rebased #132 after it** — the reverse order silently loses the Windows
+`file_stem()` improvement. This is a stronger version of the "land #121 before
+#124" ordering rule already in this brief.
+
+## NEW FINDING 2 — the "0 regressions / fixes 25 of 27" claim does not
+## survive repeated runs. It churns.
+
+Every earlier pass quoted a single full-suite run per tree. Running each tree
+**twice in the same session on the same warm target**:
+
+| Tree | Run 1 | Run 2 |
+|---|---|---|
+| base | 2481 passed / **28 failed** | 2482 passed / **27 failed** |
+| #124 | 2509 passed / **3 failed** | 2508 passed / **4 failed** |
+
+Failure-set churn between the two runs of the *same tree*:
+
+- **base:** 1 test flipped — `test_new_for_remote_restores_observe_mode_from_reload_state`
+- **#124:** 3 tests flipped, including
+  `build_resume_command_uses_imported_jcode_session_for_codex` (a test #124
+  *fixes*, which then failed on run 2) and
+  `render_system_message_uses_scheduled_task_card` — precisely the test pass 3
+  had already flagged as flaky.
+
+I chased the one apparent #124 regression
+(`test_model_picker_waits_for_async_post_login_catalog_activation`, which failed
+in the full suite but not on base) rather than reporting it: it **passes in
+isolation on both trees** (`EXITCODE=0` each), so it is a parallel-load/timing
+flake, not a regression. Worth noting its two sibling failures in the same log
+are network-dependent (`https://auth.x.ai/...` DNS cancellation), i.e. the suite
+has an environmental-noise floor independent of any PR.
+
+**Conclusion for the operator: treat every exact count in this brief as a
+distribution, not a measurement.** The *rankings* are stable, and one ranking
+claim is stronger than I expected: **#124's fixed set is a strict superset of
+#132's** — every test #132 fixes, #124 also fixes (empty `comm -23` in both
+directions on the fixed sets). So #124 subsumes #132's test fixes entirely,
+which is consistent with finding a genuine conflict between the two PRs.
+No genuine PR-caused regression was found. The exact integers (27, 25, 2, 3, 4)
+should not be quoted as facts, including the #124 headline number.
+
+## What this pass did NOT re-validate
+
+Deliberately out of scope: the #123/#119/#121 one-shot check runs (their trees
+were not rebuilt), and the #8/#10 divergence counts (measured once, earlier).
+Those remain single-observation claims and should be treated as unverified.
+
+## Housekeeping
+
+All 5 `w5-*` worktrees created for this pass were removed after use; total
+registered worktrees back to **54**, matching the pass-4 baseline. No `w5-`
+dirs or logs left in scratch.
