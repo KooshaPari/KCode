@@ -196,6 +196,38 @@ is clean (`git status --porcelain` empty) and still on another agent's branch
 **Lesson:** `rg -c` / `grep -c` piped into `sed`/`awk` produces a fabricated count on zero
 matches. Never assert a count without a non-zero observed value.
 
+## Workspace check (validated 2026-10-19T07:51Z)
+
+`cargo check --workspace --all-targets` on both trees (`081c1cf60~1` = pre-both-merges vs
+`origin/master` = post-both), logs redirected to files, never piped:
+
+| | parent | child (master) |
+|---|---|---|
+| `Checking` lines reached | 582 | 582 (same final crate) |
+| distinct warning texts | 37 | 39 |
+| `^error` lines | 2 | 2, **identical set** |
+
+**Warnings NEW in child (delta = +2):**
+  1. `associated function with_spawn_notice is never used` (`jcode-setup-hints/src/lib.rs:201:8`)
+  2. `` `jcode-setup-hints` (lib) generated 1 warning `` — cargo's summary line for #1, not a second defect
+
+**Warnings GONE: none.** PR #125's assertion additions produced zero warnings.
+
+The single real new warning is the `dead_code` warning that **both merge bodies predicted and
+both flagged as an accepted follow-up** (#128 orphaned `with_spawn_notice`). It is a warning,
+not an error; `cargo check` behaviour is otherwise unchanged.
+
+The 2 `^error` lines are identical in both trees and are **not** from these merges:
+`error: environment variable CARGO_BIN_EXE_jcode not defined at compile time` plus its
+`could not compile kcode (test "cli_exit_status")` follow-on — a `--all-targets` build-script
+quirk that predates both PRs (master-equivalent by construction).
+
+**Log-truncation caveat:** neither log contains cargo's final `Finished` banner because the
+redirect was read while the build was still finalizing. The comparison is still valid because
+both trees emitted the identical 582 `Checking` lines and ended on the same crate (`kcode`),
+so both reached the same point in the build. Do not reuse the raw 32/34 `grep -c` warning
+counts — those were mid-build snapshots; the 37/39 distinct-text figures are the real measure.
+
 ## Ledger metadata (verified)
 
 Both squash commits carry `tx-agent: jcode` and `tx-validated: test` plus scope/task/intent
