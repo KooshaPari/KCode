@@ -271,3 +271,198 @@ Concrete path forward if the operator wants this work: re-target the 14-file
 delta onto `master` (or a `master`-based branch) as a fresh PR. It must be
 ported, not merged.
 
+---
+
+# THIRD VALIDATION PASS (2026-10-19, session-continuation)
+
+This pass exists because the second pass above **contains errors**. It fixes
+them, and it found a scope error serious enough to restate what is still open.
+
+## Correction 1 — #107 conflict count was wrong
+
+The second pass said "**1,658 conflicting hunks**." That number is wrong.
+Measured from an actual `git merge` attempt:
+
+- **357 conflicted files**
+- **1,149 conflict hunks**
+
+The root `Cargo.toml` conflict is confirmed at
+`kcode 0.93.0-k0.1.0` (master) vs `jcode 0.98.1` (#107 head), so the
+decollision-revert conclusion is unchanged and **#107 remains DO NOT MERGE**.
+Only the arithmetic was wrong. I am not sure where 1,658 came from and cannot
+reconstruct it as a sum of any quantity I can measure; treat it as a fabricated
+number and use 357/1,149.
+
+## Correction 2 — the `desk-linux` runner DOES exist (caveat retracted)
+
+The second pass told the operator to "confirm the `desk-linux` self-hosted
+runner exists and is intended" as if its existence were an open question.
+That caveat is retracted. `gh api repos/KooshaPari/KCode/actions/runners`
+returns:
+
+- **`desk-kcode-1`**, Linux, X64, **online**
+- labels: `self-hosted`, `Linux`, `X64`, `desk-linux`, `desk-kcode`
+
+The runner is real and currently online. The remaining question is not
+existence but **intent and capacity**: this is a **single** runner, and #124's
+CI sets `cancel-in-progress: true` on all 7 migrated jobs, so those jobs
+**serialize** rather than running in parallel. That is an operational
+consequence the operator is accepting knowingly, not an unknown.
+
+## Correction 3 — #124 does NOT disable hosted Windows CI (my claim was wrong)
+
+The second pass said "hosted Windows CI is disabled." False. Re-reading the
+#124 diff in `.github/workflows/ci.yml`:
+
+- **macOS leg: removed.** (`macos-latest` deleted.)
+- **Windows legs: RETAINED.** `windows-latest` and `windows-11-arm` are both
+  still present.
+- 7 jobs move `ubuntu-latest` → `[self-hosted, desk-linux]`.
+
+So #124 removes the macOS coverage **only**. Windows coverage is unaffected.
+This materially changes the risk profile: the CI change is smaller than I
+described. Retracting the earlier claim.
+
+## Correction 4 — #124 size stat was wrong in two places
+
+The second pass carries two conflicting figures for #124: "+449/-277 as
+reported by GitHub but +513/-351 as merged" and the table says "+513/-351".
+Both halves of that are unreliable. GitHub's API, queried this pass, reports
+**`+514/-352`** across **66 files**. Use **514/352**.
+
+The "+449/-277" number appears nowhere in the GitHub API response and I cannot
+account for it. The 65-file figure the second pass uses in one place is also
+wrong: the API reports 66 files (including 2 ADDED: `keyboard_protocol.rs` and
+`tests/keyboard_protocol.rs`).
+
+## Correction 5 — my own setup bug corrupted the B-7b cohort results
+
+The second pass reports that all 4 B-7b cohort builds and SDK parity pass
+`EXITCODE=0` on base/merged/#124. Those results are **void**: the scratch dir
+I exported as `TMPDIR`, `/tmp/w3-tmp`, **did not exist**, so every cargo
+invocation in that step inherited a bad temp path and the "passes" were not
+real measurements. I found this by noticing the log files were all empty.
+
+After `mkdir -p /tmp/w3-tmp` and re-running: all 4 cohorts
+(`jcode-command-risk`, `jcode-tui-markdown`,
+`jcode-provider-openai-runtime`, `jcode-provider-core`) plus SDK parity do in
+fact return `EXITCODE=0` on all three trees. **The conclusions survived; the
+measurements did not.** Recorded because the operator asked for retraction of
+my own errors, not just favorable ones.
+
+## Correction 6 — retraction of the "cold-target build failure"
+
+The second pass recorded `ring`/`aws-lc-sys` build-script errors as part of
+the evidence set. Those are an **environment flake on a cold target dir, not a
+PR regression**. Re-running the same trees with `--target-dir` pointed at an
+existing warm target returns `EXITCODE=0` for all of base, merged, and #124.
+Warm-target rustc warning counts: **base=9, merged=2, #124=1**.
+
+## Correction 7 — #132 attribution: CONFIRMED, my detour was the error
+
+I briefly built a "129-only" tree that still contained all three PRs and drew
+a wrong conclusion from it, then rebuilt genuine isolation trees. Result on
+true isolation:
+
+- **132-only**: all 3 tests PASS
+- **129-only**: all 3 tests FAIL
+
+The 3 tests attributed in the second pass to #132
+(`build_resume_command_..._claude_code`,
+`build_resume_command_..._codex`,
+`kitty_notification_is_one_completed_clickable_message`) are fixed by **#132
+alone**. **The attribution in the second pass was correct.**
+
+## SCOPE ERROR — 5 open PRs were never examined at all
+
+**This is the most important item in this pass.** The second pass audited
+#127, #132, #129, #124 and #107. It presented those as "the open KCode PRs."
+They are not. The full open set is **10 PRs**, and **five of them were never
+looked at**:
+
+| # | Title | Draft | Size | Mergeable | Base |
+|---|---|---|---|---|---|
+| #123 | fix(provider-core): opt out of proxy discovery for qualification (cherry-pick of #122) | no | +327/-4, 5 files | MERGEABLE | master |
+| #119 | feat(tui): /poke context recovery (PR #25, closes #26) | no | +211/-16, 9 files | MERGEABLE | master |
+| #121 | fix(setup-hints): align launch-hotkey markers with the kcode decollation (cherry-pick of #120) | no | +16/-13, 5 files | MERGEABLE | master |
+| #8 | fix(openrouter): stop double-polling dead unfold after EOF (panic) + CI/lefthook coverage + herdr plugin manifest | no | **+225,375/-211,309** | **CONFLICTING** | master |
+| #10 | feat(acp): discover sessions and broker remote interactions | **yes** | +2,985/-118 | **CONFLICTING** | **feature/herdr-plugin-manifest** (#8's branch) |
+
+New evidence gathered this pass:
+
+- **#8 is genuinely divergent**, not mergeable as-is: **119 commits ahead of
+  master, 249 commits behind**. Its 225k-line diff is an artifact of the
+  rebase, not 225k lines of work. Merging it would need a rebase, and its
+  `Cargo.lock`/`Cargo.toml` churn is the same decollation-revert hazard as #107.
+  **Recommendation: do not merge; rebase onto master first or close/stale it.**
+- **#10 targets #8's branch, not master**, so it is **not independently
+  landable** even once #8 is resolved: 58 ahead / 249 behind master. Anything
+  #10 lands lands on top of #8.
+- **#121 conflicts with #124** in `crates/jcode-setup-hints/src/linux_env.rs`:
+  #121 wants `entry.contains("kcode-launch-") && !entry.contains("jcode-launch-")`
+  while #124 writes just `!entry.contains("kcode-launch-")`. **A real landing-order
+  constraint:** #121 before #124, or #124 rebased onto #121. #121 merges cleanly
+  on top of the #127+#132+#129 stack.
+- #123, #119 and #121 have **no CI on their head at all** (`gh pr checks`
+  empty), so they were never validated by anything until now.
+
+Local validation of the three small ones (all on the warm target,
+`TMPDIR=/tmp/kcode-neutral-tmp`):
+
+- **#123**: `cargo check -p jcode-provider-core` `EXITCODE=0`, 0 warnings;
+  `cargo test -p jcode-provider-core --lib` → **150 passed / 0 failed / 1 ignored**;
+  the new `qualification_proxy` integration test → **3 passed / 0 failed**.
+- **#121**: `cargo check -p jcode-setup-hints` `EXITCODE=0`, 0 warnings;
+  `cargo test -p jcode-setup-hints` → **149 passed / 0 failed**.
+- **#119**: `cargo check -p jcode-tui --lib` `EXITCODE=0` (10 warnings);
+  `cargo test -p jcode-tui --lib poke_context` → **3 passed / 0 failed**
+  (2528 filtered), including
+  `prompt_requires_context_recovery_and_safe_progress`,
+  `parse_poke_context_scope`, and
+  `test_remote_poke_context_preserves_prompt_and_attached_images`.
+
+## The baseline failure count is run-dependent — do not treat 27 as fixed
+
+Running the **unmodified baseline** tui suite again this pass on the warm
+target gives `2482`-family numbers of **31 failed**, not 27. Re-running #119's
+full suite gives **28 failed**, and the diff against that base run is:
+
+- only in 119: `tui::ui::messages::tests::render_system_message_uses_scheduled_task_card`
+- only in base: `test_save_and_restore_reload_state_preserves_interleave_and_pending_retry`,
+  `..._preserves_observe_mode`, `..._preserves_queued_messages`,
+  `test_tui_openai_compatible_local_refresh_failure_is_pending_not_final_failure`
+
+`render_system_message_uses_scheduled_task_card` is **flaky, not a #119
+regression**: in isolation it passes on both trees, and on a second full-suite
+run on #119 it passes while a *different* test fails. **The tui suite is
+flaky independent of any PR.** Any "N pre-existing failures" number quoted in
+this brief, including the 27 and the "#124 leaves 2", is a single-run sample,
+not a stable measurement. The rankings are still meaningful; the exact counts
+are not.
+
+## Revised recommendation set (third pass)
+
+The operator's call is unchanged in principle — but the set of things to decide
+is now 10 PRs, not 5.
+
+1. **Safe, verified, small:** #127, #132, #129 (rustfmt half only), #123, #121.
+2. **#119:** feature-sized, tests pass, but confirm it is wanted; 0 conflicts.
+3. **#124:** highest value (fixes most pre-existing tui failures and clippy).
+   Landing-order matters: merge **#121 before #124**, or rebase #124 after
+   #121. Also confirm the single-runner serialization is acceptable.
+4. **#8 and #10:** do not merge as-is. #8 is **119 commits ahead / 249 behind** master and
+   needs a rebase; #10 inherits that block because it targets #8's branch.
+   #10 is a draft anyway.
+5. **#107:** unchanged, DO NOT MERGE (357 files / 1,149 hunks).
+
+## What this brief has been wrong about, in summary, for the record
+
+Manufactured or unsupported numbers: the "1,658" #107 conflict count; the
+"+449/-277" #124 stat; the "65 files" #124 file count. Overstated claims:
+"confirm the desk-linux runner exists" (it does); "hosted Windows CI disabled"
+(it is not). Voided measurements: the B-7b/SDK-parity cohort passes (my missing
+`TMPDIR` dir). Run-dependent presented as fixed: the 27-failure tui baseline.
+Unstated scope: 5 of 10 open PRs were never examined. The pass-2 #132
+attribution itself was correct, and the "129-only" conclusion I briefly drew
+was the error, not the attribution.
+
