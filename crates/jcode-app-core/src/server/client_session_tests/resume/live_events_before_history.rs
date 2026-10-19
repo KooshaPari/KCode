@@ -84,7 +84,8 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
     let swarm_plans = Arc::new(RwLock::new(HashMap::<String, VersionedPlan>::new()));
     let swarm_coordinators = Arc::new(RwLock::new(HashMap::<String, String>::new()));
     let client_count = Arc::new(RwLock::new(1usize));
-    let (writer, _peer_stream) = test_writer()?;
+    let (writer, peer_stream) = test_writer()?;
+    let mut peer_frames = drain_peer(peer_stream);
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel::<ServerEvent>();
     let event_history = Arc::new(RwLock::new(VecDeque::<SwarmEvent>::new()));
     let event_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -201,6 +202,8 @@ async fn handle_resume_session_registers_live_events_before_history_replay() -> 
             .any(|event| matches!(event, ServerEvent::Error { .. })),
         "restore resume should not emit error events: {events:?}"
     );
+
+    assert_peer_history_for(&mut peer_frames, target_session_id).await?;
 
     restore_runtime_dir(prev_runtime);
     Ok(())
