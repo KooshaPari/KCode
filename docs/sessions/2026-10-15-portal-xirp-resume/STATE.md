@@ -1705,3 +1705,100 @@ The original test passed under the first mutation. The corrected test fails unde
 ### 28.7 Relationship to §27
 
 The §27 production fix is unaffected and remains correct: `--host 127.0.0.1` is required, the production CIMD already registers `http://127.0.0.1:47290/oauth/callback`, and the bridge is live and verified. This commit corrects the **test**, not the fix. It also closes the last route by which the §27 defect could have regressed undetected: previously, a change that dropped `--host 127.0.0.1` (or that made the CIMD URL unusable) would still have produced a green local test run.
+
+## 29. ROUND-3 — canonical-config validation + refresh-token rotation (2026-10-19T21:48Z)
+
+A third validation pass closed the two remaining gaps from §28: the canonical operator config was exercised end-to-end as an actual MCP client session, and the authorization server's refresh-token behaviour was characterised against the live AS.
+
+### 29.1 Canonical config audit
+
+`~/.kcode/mcp.json` (the operator's live config, 8 servers) carries the `portal-bridge` entry with exactly the repaired argument vector:
+
+```json
+["-y", "mcp-remote@0.15.1",
+ "https://phenotype.spotifyportal.com/api/mcp-actions/v1",
+ "--transport", "http-only",
+ "--client-metadata-url", "https://auth.kooshapari.com/oauth/client-metadata.json",
+ "--resource", "https://phenotype.spotifyportal.com/api/mcp-actions/v1",
+ "--host", "127.0.0.1"]
+```
+
+`--host 127.0.0.1` is present, the server URL is the first positional argument, and `timeout_secs` is 120. `~/.jcode/mcp.json` was **not** modified (mtime unchanged at 2026-10-16 15:31; no portal-bridge entry added there — the legacy parity gap recorded as V33 in §26 stands, deliberately).
+
+`scripts/portal-mcp-bridge.json` in the repository already carries the same corrected vector, so the deployed config and the source-of-truth config agree.
+
+### 29.2 Canonical-config end-to-end run
+
+The exact canonical argument vector was launched as a **real MCP stdio client** (not curl, not a raw JSON-RPC pipe), and the session returned genuine MCP responses:
+
+| Step | Result |
+|---|---|
+| `initialize` | `serverInfo {name: backstage, version: 0.2.2}` |
+| `tools/list` | **34** tools |
+| `tools/call auth.who-am-i` | operator identity — `metadata.name kooshapari`, `namespace default`, `uid a9fa48f8-7f2f-428c-836a-d0b3c8843c44`, `platform-auth/user-id auth0\|6ac6acc63e23c05ef5a19c19` |
+| consent gate | **0** `Waiting for authorization` / `Waiting for auth code` lines in stderr |
+
+Zero consent-gate lines is the load-bearing observation: it proves the cached token was reused and no browser consent was required. mcp-remote's stderr confirmed the negotiation path:
+
+```
+Using client metadata document: https://auth.kooshapari.com/oauth/client-metadata.json
+Using authorize resource: https://phenotype.spotifyportal.com/api/mcp-actions/v1
+Using callback port derived from the server URL: 47290
+Discovered authorization server: https://phenotype.spotifyportal.com/api/auth
+Connected to remote server using StreamableHTTPClientTransport
+```
+
+The derived callback port (47290) matches the port the CIMD registers, which is why the cached token remains valid without re-authorization.
+
+### 29.3 Live AS metadata
+
+`GET https://phenotype.spotifyportal.com/.well-known/oauth-authorization-server`:
+
+```
+issuer                                 : https://phenotype.spotifyportal.com/api/auth
+client_id_metadata_document_supported  : true
+grant_types_supported                  : ["authorization_code", "refresh_token"]
+token_endpoint                         : https://phenotype.spotifyportal.com/api/auth/v1/token
+```
+
+`client_id_metadata_document_supported: true` is what allows the SEP-991 client-by-URL flow. Without it mcp-remote falls back to dynamic client registration, which uses the default callback host and re-arms the §27 defect — this is the server-side precondition that §27.3's fix depends on.
+
+### 29.4 redirect_uri enforcement (live AS)
+
+| `redirect_uri` | Result |
+|---|---|
+| `http://127.0.0.1:47290/oauth/callback` | **HTTP 302** → `https://phenotype.spotifyportal.com/oauth2/authorize/…` |
+| `http://localhost:47290/oauth/callback` | **HTTP 400** — invalid redirect URI |
+
+This is direct, live confirmation that the §27 `--host 127.0.0.1` fix is load-bearing: the same request succeeds with `127.0.0.1` and fails with `localhost`.
+
+### 29.5 Refresh-token rotation — a real operational hazard
+
+The authorization server **rotates** refresh tokens. Every successful `refresh_token` grant invalidates the token it consumed and returns a new one. Proven live:
+
+| Step | Result |
+|---|---|
+| refresh with RT-A | **HTTP 200**, returns access token (515 chars) + RT-B (80 chars) |
+| refresh with RT-A again | **HTTP 400** `{"error":"invalid_grant","error_description":"Invalid refresh token"}` |
+| refresh with RT-B | **HTTP 200**, returns a new access token + RT-C |
+
+The consequence is a **local cache-consistency trap**. A refresh performed with `curl` that is not written back to `tokens.json` leaves a spent refresh token in the cache. The grant appears to succeed (HTTP 200) while the cached token is already dead, and the *next* launch fails with `invalid_grant` — which reads like a broken authorization server but is entirely a local bug.
+
+This was not hypothetical: an earlier manual refresh in this session left exactly that state, and the cached refresh token began rejecting with `invalid_grant` while the access token still worked. It was repaired by completing a fresh consent flow and then persisting the rotated pair atomically.
+
+Mitigation added: **`scripts/refresh-portal-token.py`** performs the refresh and writes the rotated pair back to `tokens.json` in the same operation (write-to-temp + `os.replace`, mode `0600`), so the cache can never retain a spent refresh token. It never prints token material, supports `--check` for a read-only status report, and is idempotent — three consecutive runs each returned exit 0 and left the cache refreshable.
+
+`mcp-remote` itself handles a dead refresh token correctly: its `authInternal` catch re-throws non-server `OAuthError`s, which drops it back to a full authorization redirect rather than failing hard; and its `provider.tokens()` path logs `Proactive token refresh failed, falling back to the stored token`. So a stale refresh token degrades to a re-consent prompt, not a crash.
+
+### 29.6 Files changed (this commit)
+
+| File | Change |
+|------|--------|
+| `scripts/refresh-portal-token.py` | **New.** Refreshes the XJ-03 portal token and persists the rotation atomically so the cache never holds a spent refresh token. `--check` reports state without refreshing. Never prints token material. |
+| `docs/sessions/2026-10-15-portal-xirp-resume/STATE.md` | This section. |
+
+### 29.7 State at close-out
+
+- The canonical config path is verified end-to-end through a real MCP client session with zero re-consent.
+- The refresh path is verified against the live AS, and the rotation hazard it exposes now has a repository-level mitigation.
+- The refresh-token cache is live and self-consistent as of 2026-10-19T21:47Z (verified by three consecutive successful refresh-and-persist runs).
