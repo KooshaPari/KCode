@@ -338,3 +338,57 @@ Full detail: `docs/sessions/2026-10-18-resume-reland/C_findings.md`
 ## Policy note
 
 I previously ran the cherry-pick test inside the operator's read-only master repo and restored it (0 dirty, same HEAD/branch). This time the cherry-pick, build, and all test runs were confined to the `wt-resume-relend` worktree.
+
+## Mutation test — is PR #125's new peer assertion coverage load-bearing? (2026-10-19T08:19Z)
+
+The question the previous section left open: `assert_peer_history_for` errors on empty,
+timeout, and wrong event, so its error paths exist — but does it actually **fire**? An
+assertion nobody can break is decoration. Answered by mutation, in a detached worktree at
+`origin/master` (`⁠b9886143c⁠`), then reverted.
+
+**Baseline first** (unmutated HEAD): `EXITCODE=0`, `24 passed; 0 failed; 1 ignored`, 12.08s.
+So any failure below is caused by the mutation, not flake.
+
+**Iteration 1 — mutate only the `busy` fallback** (`handle_get_history` persisted path,
+`client_state.rs:168`): `EXITCODE=101`, 23 pass / **1 fail**.
+Caught: `...allows_live_attach_when_existing_agent_is_busy`, with
+`peer never received a history frame`.
+
+**Iteration 2 — mutate only `write_event`** (drop every `ServerEvent::History`, line 924):
+`EXITCODE=101`, 23 pass / **1 fail**. Same single test. **This was the misleading result**: it
+suggested 1 of 6 assertions were load-bearing.
+
+**Iteration 3 — mutate both sinks.** Grepping the three `ServerEvent::History` construction
+sites explains why: the non-busy path builds its frame at line 814 and writes it via
+`encode_event` + a **direct `write_all` at line 861**, which bypasses `write_event` entirely.
+With both sites broken: `EXITCODE=101`, 17 pass / **7 fail**.
+
+| Caught the fully-broken history write | Message |
+|---|---|
+| `allows_live_attach_when_existing_agent_is_busy` | `peer never received a history frame` |
+| `allows_attach_without_local_history` | `peer never received the resume History frame` |
+| `allows_attach_from_different_client_instance` | same |
+| `allows_multiple_live_tui_attach` | same |
+| `allows_reconnect_takeover_with_local_history` | same |
+| `allows_same_client_instance_takeover_without_local_history` | same |
+| `registers_live_events_before_history_replay` | same |
+
+That is **7 of 7** peer-frames checks, not 1 of 6. All six `assert_peer_history_for` sites plus
+the inline assertion in `busy_existing_attach.rs` (which uses `drain_peer` but writes its own
+match, the reason `assert_peer_history_for` counts 6 files while `drain_peer` counts 7).
+**Verdict: the assertions are load-bearing.** #125's real value is assertion coverage that
+catches a silent regression in history delivery — corroborating the corrected claim above that
+this PR is not merely line-count churn.
+
+Reverted after: `git status --porcelain` empty, `EXITCODE=0`, 24 passed / 0 failed. Neither
+mutation was committed anywhere. Full-suite `cargo check` was not re-run after the revert because
+the touched file is byte-identical to `origin/master` (`git diff` empty), so the earlier
+validated workspace result still applies.
+
+### Correction to the 1-of-6 figure
+
+Do **not** record "only 1 of 6 assertions catch a dropped history frame". That statement is a
+property of one arbitrary mutation site, not of the assertions. The three write sites are
+mutated independently, and the single-site count moves 1 → 1 → 7 depending on which one you
+break. Only the both-sites figure is a statement about the tests.
+
