@@ -115,13 +115,21 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 #   a. Get an error from the MCP endpoint (not a real MCP server)
 #   b. Successfully fetch CIMD and then fail on OAuth AS discovery
 # Either case proves the CIMD fetch happened (verified in step 5).
+#
+# Arg order: the server URL must be the FIRST positional arg. Putting
+# --transport before it makes mcp-remote parse '--transport' as the URL
+# (TypeError: Invalid URL). Fixed 2026-10-19.
+# --host 127.0.0.1 must match the redirect_uri registered in the CIMD
+# (the stub publishes 127.0.0.1; mcp-remote defaults to localhost on
+# non-Windows). Fixed 2026-10-19.
 timeout 30 bash -c "
     cat '$WORK_DIR/init-request.json' | \
     npx -y mcp-remote@0.15.1 \
-        --transport http-only \
         '$MCP_URL' \
+        --transport http-only \
         --client-metadata-url '$CIMD_URL' \
         --resource '$MCP_URL' \
+        --host 127.0.0.1 \
         --debug \
         2>'$BRIDGE_LOG' > '$INIT_LOG'
 " || true

@@ -1437,3 +1437,181 @@ Expected wall time from "Quit" to "Allow clicked": ~30 s.
 arc is closed at the §24.x chain. Next operator work is the consent
 step (26.5) and then either vendor contact (§19.1 draft, channel-
 blocked) or XJ-07 implementation dispatch.
+## 27. ROOT CAUSE + LIVE FIX — redirect_uri host mismatch (2026-10-19T20:51Z)
+
+The XJ-03 Spotify Portal OAuth bridge had been stuck across multiple prior sessions. The symptom was: the bridge reached the OAuth authorize step, printed an authorize URL, and then waited forever. No `tokens.json` was ever written. Prior STATE.md sections (§24.x, §26) recorded this as "operator has not consented" and left the consent click as the remaining operator action.
+
+Two independent defects were found on 2026-10-19. The first masked the second; the second was the real blocker. The consent click was never the gate.
+
+### 27.1 Symptom recap
+
+Across §24.x and §26 the bridge ran end-to-end through `npx mcp-remote` launch and printed the Spotify authorize URL. The mcp-remote process then blocked on its loopback callback server. The cached pre-consent artifacts (`code_verifier_<uuid>.txt`, `discovery_state_<uuid>.json`) accumulated in `~/.mcp-auth/mcp-remote-v1/` (V91 found 6 such files across operator test runs). No `_tokens.json` ever appeared. The bridge log line `Authentication required. Waiting for authorization...` plus the presence of a `code_verifier` file made the failure mode look like a human-gated wait. It was not.
+
+### 27.2 Defect 1 — suppressed consent page (harness bug)
+
+`scripts/test-portal-bridge-live.sh` exported `BROWSER=/usr/bin/true` into the mcp-remote environment. mcp-remote's browser helper therefore executed `/usr/bin/true` instead of opening a real browser. `/usr/bin/true` exits 0, so mcp-remote logged a success line and proceeded. No tab was ever opened.
+
+Direct evidence from the mcp-remote debug log on the prior session's failed run:
+
+```
+Browser launch environment {"DISPLAY":"...","BROWSER":"/usr/bin/true"}
+Browser helper open exited {"code":0}
+Browser opened automatically.
+Authentication required. Waiting for authorization...
+Waiting for auth code from callback server
+```
+
+The "Browser opened automatically." line is mcp-remote logging on a clean exit of its helper. It is not evidence that a browser opened. The exit code 0 came from `/usr/bin/true`, which produces no UI and writes nothing to disk.
+
+This defect masked Defect 2 by preventing any operator from ever seeing the failure surface. The HTTP 400 from the authorize endpoint (see §27.3) would normally have surfaced in the user's browser as an error page. With `BROWSER=/usr/bin/true`, no browser ever rendered the error and the only signal the operator had was the indefinite wait.
+
+Fix: replace `BROWSER=/usr/bin/true` with `env -u BROWSER` so the `BROWSER` variable is unset for the mcp-remote invocation and macOS `open` handles the URL the way it does by default.
+
+### 27.3 Defect 2 — redirect_uri host mismatch (the real blocker)
+
+The production CIMD at `https://auth.kooshapari.com/oauth/client-metadata.json` (HTTP 200, 356 bytes) registers exactly one `redirect_uri`:
+
+```
+"redirect_uris": ["http://127.0.0.1:47290/oauth/callback"]
+```
+
+mcp-remote 0.15.1 builds its callback host from this source (from `dist/chunk-KJCT2FXL.js`, around line 33761):
+
+```
+let host = process.platform === "win32" ? "127.0.0.1" : "localhost";
+```
+
+On macOS the bridge therefore requested `http://localhost:47290/oauth/callback`. The Spotify Portal authorization server rejected the authorize request with HTTP 400:
+
+```
+{"error":{"name":"InputError","message":"Invalid redirect_uri 'http://localhost:47290/oauth/callback', not registered in client metadata"}}
+```
+
+The server-side rejection happened before any consent page was ever rendered. The operator could not have consented to a request the server refused to honor.
+
+The §26 note that "mcp-remote builds the callback ... on 127.0.0.1" was incorrect. mcp-remote uses `localhost` on macOS and Linux; `127.0.0.1` only on Windows. `scripts/derive_callback_port.py` carried the same incorrect note and has been corrected in this commit.
+
+Fix: pass `--host 127.0.0.1` to mcp-remote so the requested `redirect_uri` matches the CIMD. mcp-remote exposes this via the `--host` flag. An alternative (also valid) is to publish the `localhost` form in the CIMD, but the two must agree; either side alone leaves the bridge blocked.
+
+### 27.4 The fix
+
+Four script/config files in the repository plus one operator-side config file were updated. The minimum necessary change is `--host 127.0.0.1` on every mcp-remote invocation that talks to the Spotify Portal CIMD, plus removing the `BROWSER=/usr/bin/true` shim:
+
+```
+mcp-remote --host 127.0.0.1 <server_url>
+# invoked via: env -u BROWSER mcp-remote --host 127.0.0.1 <server_url>
+```
+
+The portal-bridge stdio entry in `scripts/portal-mcp-bridge.json` carries the `--host 127.0.0.1` flag, and `scripts/test-portal-bridge-live.sh` invokes mcp-remote under `env -u BROWSER`. `scripts/test-portal-bridge.sh` had a separate latent defect fixed in the same commit (the `--transport` flag was placed before the server URL positional, which made mcp-remote parse `--transport` as the URL and throw `TypeError: Invalid URL`); the URL is now passed as the first positional and the `--host 127.0.0.1` flag is added.
+
+### 27.5 LIVE verification evidence (2026-10-19T20:50–20:51Z)
+
+All verification was performed live against the production endpoints; no part of the flow was simulated. Timestamps are UTC.
+
+1. The orphaned `mcp-remote` process PID 90176 from the prior attempt was gone; port 47290 was free.
+2. The bridge was relaunched with `--host 127.0.0.1`. The mcp-remote log emitted `Using callback hostname: 127.0.0.1`, confirming the `--host` flag took effect. The authorize URL now carried `redirect_uri=http%3A%2F%2F127.0.0.1%3A47290%2Foauth%2Fcallback`. Previously it had carried `%2Flocalhost%3A47290`.
+3. The authorize endpoint response changed from HTTP 400 to HTTP 302 Found, redirecting to:
+   ```
+   https://phenotype.spotifyportal.com/oauth2/authorize/da4c30f9-3ff2-4c2c-85e1-2ea7bbbc103c
+   ```
+4. A real Safari tab titled "Spotify Portal" surfaced at:
+   ```
+   https://phenotype.spotifyportal.com/oauth2/authorize/9d0feef7-7a27-48b7-b313-e6fd2a75106c
+   ```
+5. Consent was completed. `tokens.json` was written to:
+   ```
+   ~/.mcp-auth/mcp-remote-v1/abb316d3ba70bc7220e11618a1b43906_tokens.json
+   ```
+   (1,396 bytes) containing:
+   ```
+   access_token  : <JWT, 515 chars>
+   id_token      : <JWT, 515 chars>
+   refresh_token : <80 chars>
+   token_type    : Bearer
+   scope         : openid offline_access
+   issuer        : https://phenotype.spotifyportal.com/api/auth
+   expires_in    : 3600
+   ```
+   The mcp-remote debug log confirmed `hasAccessToken: true`, `hasIdToken: true`, `hasRefreshToken: true`.
+6. The token was verified against the live Portal MCP endpoint. `POST https://phenotype.spotifyportal.com/api/mcp-actions/v1` with `Authorization: Bearer <access_token>` and an MCP `initialize` request returned HTTP 200 and:
+   ```
+   {"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"backstage","version":"0.2.2"}},"jsonrpc":"2.0","id":1}
+   ```
+7. `tools/list` against the same endpoint returned 34 tools:
+   ```
+   auth.who-am-i
+   catalog.get-catalog-model-description
+   catalog.get-catalog-entity
+   catalog.validate-entity
+   catalog.register-entity
+   catalog.unregister-entity
+   catalog.query-catalog-entities
+   catalog.refresh-catalog-entity
+   search.query
+   telemetry.submit-feedback
+   workspace.prepare-create-workspace
+   workspace.create-workspace
+   workspace.edit-workspace
+   workspace.add-workspace-entity
+   workspace.add-workspace-member
+   workspace.remove-workspace-entity
+   workspace.remove-workspace-member
+   workspace.list-workspaces
+   workspace.list-workspace-members
+   workspace.get-workspace-context
+   workspace.list-wiki-pages
+   workspace.list-resources
+   workspace.list-suggestions
+   workspace.list-session-transcripts
+   workspace.get-workspace
+   workspace.get-wiki-page
+   workspace.get-resource
+   workspace.get-suggestion
+   workspace.get-session-transcript
+   workspace.create-suggestion
+   workspace.create-resource
+   workspace.update-resource
+   workspace.create-wiki-page
+   workspace.update-wiki-page
+   ```
+8. User-scoped authentication was confirmed via `tools/call` on `auth.who-am-i`, which returned the operator's actual Backstage identity (proves user-scoped auth, not just service auth):
+   ```
+   metadata.name        : kooshapari
+   metadata.namespace   : default
+   metadata.uid         : a9fa48f8-7f2f-428c-836a-d0b3c8843c44
+   annotation           : platform-auth/user-id = auth0|6ac6acc63e23c05ef5a19c19
+   spec.profile.displayName : kooshapari@kooshapari.com
+   spec.profile.email       : kooshapari@kooshapari.com
+   relations:
+     memberOf group:portal/admins
+     memberOf project:default/phenotype-platform
+     memberOf project:default/tracera-agileplus
+     ownerOf  project:default/phenotype-platform
+     ownerOf  project:default/tracera-agileplus
+   ```
+9. A full bridge run (stdin held open) executed an MCP `initialize` followed by `tools/list` and exited 0 with real MCP JSON-RPC responses on stdout:
+   ```
+   {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"backstage","version":"0.2.2"}}}
+   ```
+   The accompanying `tools/list` response carried 34 tools. The bridge reused the cached token with zero `Waiting for authorization` log lines on this run, confirming subsequent launches need no re-consent.
+10. The harness's own MCP client connected to the bridge over stdio using the exact argument vector from `~/.kcode/mcp.json` and enumerated all 34 tools. A live `tools/call` for `auth.who-am-i` through that harness connection returned the same operator identity, confirming the fix works through the real client path and not only through direct curl.
+
+### 27.6 Corrected prior claim
+
+§24.4, §26.4, and §26.5 described the bridge state as "operator has not consented" and recorded "the operator should click Allow" as the remaining action. The V91 evidence (6 `code_verifier` files, 0 `tokens.json`) was consistent with that reading but could not distinguish between two failure modes: human-gated wait and server-side rejection. §26.5's "operator-only remaining action" was therefore a misdiagnosis rather than an operator failure. The real cause was a server-side HTTP 400 against an unregistered `redirect_uri` host, masked by a harness bug that prevented the failure surface from ever rendering in a browser.
+
+The `BROWSER=/usr/bin/true` defect and the `redirect_uri` host mismatch are independent: either alone would have produced the same observable symptoms. Both had to be fixed before the bridge could complete.
+
+### 27.7 Files changed
+
+| File | Change |
+|------|--------|
+| `scripts/portal-mcp-bridge.json` | Added `"--host", "127.0.0.1"` to the portal-bridge args; updated description with the live-verified status and the reason; added `_deploy_notes.redirect_uri_host_fix` and `_deploy_notes.live_verified_at` / `live_verified_result`. |
+| `scripts/test-portal-bridge-live.sh` | Replaced `BROWSER=/usr/bin/true` with `env -u BROWSER`; added `--host 127.0.0.1`; added explanatory header comments. |
+| `scripts/test-portal-bridge.sh` | Fixed the mcp-remote arg order so the server URL is the first positional arg (it still had `--transport` before the URL, which made mcp-remote parse `--transport` as the URL and throw `TypeError: Invalid URL`); added `--host 127.0.0.1`. |
+| `scripts/derive_callback_port.py` | Corrected the inaccurate note about mcp-remote's callback host. |
+| `~/.kcode/mcp.json` (operator config, not in the repo) | Added `"--host", "127.0.0.1"` to the portal-bridge server args, with the same description update. Backup at `~/.kcode/mcp.json.bak-20261019`. |
+
+### 27.8 Operator-visible state
+
+The XJ-03 bridge is now operationally complete: consent was completed, the token was minted, and the Portal MCP endpoint was verified live against the production surface. No further operator action is required for the bridge itself. Subsequent kcode launches will refresh the token silently via mcp-remote's cached credential without re-prompting.
