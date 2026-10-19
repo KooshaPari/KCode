@@ -113,13 +113,13 @@ Updated verdicts after the extended second pass (see below).
 | #127 | dead_code silences, +7/-0 | Verified: 7/7 warnings silenced, tests pass, 0 regressions | minimal |
 | #132 | jcode->kcode strings, +8/-8 | Verified: fmt clean, assertions renamed with code, fixes 3 tests | minimal |
 | #129 | rustfmt drift, 9 files | Verified: repo-wide drift real and fully cleared. Split: land rustfmt half, revert/fix the `env!` half | minimal |
-| #124 | Windows keyboard fix + CI migration, +514/-352 | Keyboard fix: LAND (best-tested change in the batch). Bundled CI migration: BLOCKED — targets an offline runner and disables 3 of 12 `ci.yml` jobs | low code risk, high ops surface *(see third pass)* |
+| #124 | Windows keyboard fix + CI migration, +524/-352, 66 files | Keyboard fix: LAND (best-tested change in the batch). Bundled CI migration: BLOCKED — targets an offline runner and disables 3 of 9 `ci.yml` jobs | low code risk, high ops surface *(see third pass)* |
 | #107 | draft on upstream jcode 0.98.1 | **DO NOT MERGE.** 2,808 commits diverged, 357 conflicted files / 1,149 hunks, would revert decollation | blocked |
 
 ## Drafts / large PRs (verdict updated in the extended pass)
 
 - **#124** `fix(tui): keep Windows keyboard negotiation on native console input (cherry-pick of #97)`
-  — `isDraft=false`, **+514/-352**, 66 files, `mergeable=MERGEABLE`.
+  — `isDraft=false`, **+524/-352**, 66 files, `mergeable=MERGEABLE` *(corrected in pass 4)*.
   ~~+449/-277 as reported by GitHub but +513/-351 as merged~~ *(both figures
   wrong; GitHub API says 514/352 — see Correction 4).*
   ~~"It is now the recommended land."~~ *(SUPERSEDED — see Correction 2/3: the
@@ -210,7 +210,7 @@ flip any gate. Two output diffs, both improvements or neutral:
 value and then mis-flagged as conflicting (my merge used a bad ref and the
 failure was my error, not a real conflict). Real merge into clean master:
 **0 conflicts**, `HEAD=126a6586c`, 66 files, ~~+513/-351~~ *(GitHub API says
-`+514/-352` — see Correction 4; the 513/351 figure is wrong).*
+`+524/-352` — see Correction 4; the 513/351 figure is wrong).*
 
 **What it actually is: it bundles TWO things.**
 
@@ -271,7 +271,7 @@ confirm the `desk-linux` self-hosted runner exists and is intended before
 merging, but the code side is the best-tested change here.~~
 
 > **SUPERSEDED by the third pass.** The runner exists but is **offline**, and
-> #124 disables 3 of 12 `ci.yml` jobs. The recommendation below now reads
+> #124 disables 3 of 9 `ci.yml` jobs. The recommendation below now reads
 > "land the keyboard fix, resolve the CI blockers first." This paragraph's
 > "land #124" referred to the bundle, which is no longer the advice.
 
@@ -360,7 +360,7 @@ itself wrong.** The real state is messier than either of my two claims:
 - **`windows-cross-check`** keeps its name and survives, but moves
   `ubuntu-latest` → `[self-hosted, desk-linux]`.
 
-So: **3 of the 12 jobs in `ci.yml` are disabled outright, the macOS leg is
+So: **3 of the 9 jobs in `ci.yml` are disabled outright, the macOS leg is
 removed, and 7 jobs move to the offline self-hosted runner.** Of my two
 conflicting accounts, the original pass-2 claim ("Windows CI disabled") was
 **closer to the truth**, and the pass-3 correction that supposedly fixed it was
@@ -377,7 +377,8 @@ check.
 The second pass carries two conflicting figures for #124: "+449/-277 as
 reported by GitHub but +513/-351 as merged" and the table says "+513/-351".
 Both halves of that are unreliable. GitHub's API, queried this pass, reports
-**`+514/-352`** across **66 files**. Use **514/352**.
+**`+514/-352`** across **66 files**. *(SUPERSEDED in pass 4: the true figure is
+  **`+524/-352`** across 66 files, and the head SHA moved. See Correction 8.)*
 
 The "+449/-277" number appears nowhere in the GitHub API response and I cannot
 account for it. The 65-file figure the second pass uses in one place is also
@@ -501,7 +502,7 @@ is now 10 PRs, not 5.
    the operator must resolve first:
    - `desk-kcode-1` is **offline**, and #124 migrates 7 jobs onto it. Those jobs
      will silently queue forever.
-   - #124 disables **3 of the 12 `ci.yml` jobs outright** (`windows-build-test`,
+   - #124 disables **3 of the 9 `ci.yml` jobs outright** (`windows-build-test`,
      `powershell-syntax`, `setup-friction`) and removes the macOS leg. That is a
      large coverage reduction to accept knowingly, not a side effect.
    - Landing-order still matters: merge **#121 before #124**, or rebase #124
@@ -560,3 +561,100 @@ Anyone auditing decollision completeness needs to look at `[lib]` too, and
 #121/#124 do not touch it. This is a legitimate finding, and it was missed
 twice.
 
+
+---
+
+# FOURTH VALIDATION PASS (2026-10-19, later same session)
+
+Trigger: while re-verifying single un-repeated observations (per pass 3's own
+methodological warning), I found **#124 was rebased under me** and that two
+figures I had written as "corrections" were themselves wrong.
+
+## Correction 8 — #124 was rebased; my tested tree is stale (but conclusions survive)
+
+The commit I tested, `126a6586c`, is **no longer an ancestor of #124's head.**
+
+- Head then: `126a6586c`
+- Head now: **`e37ca7a38ae4`** (`test(resume): restore KCODE_HOME via drop guard
+  in busy-attach test`), **37 commits** total on the PR
+- `126a6586c` is still reachable in the object store; it is just superseded
+- Delta between them is **2 commits**: `c32f99086` (YAML key dedup in a disabled
+  job) and `e37ca7a38ae4` (a `KcodeHomeGuard` drop-guard refactor in
+  `jcode-app-core` test code). Neither touches `jcode-tui` behavior.
+
+Because the delta is 2 commits and neither is behavioral for the tui suite, I
+**re-ran every #124 gate at the current head** rather than assuming the old
+results carried over:
+
+| Check | Re-run at current head | Prior (old head) | Verdict |
+|---|---|---|---|
+| `cargo test -p jcode-tui --lib -- --test-threads=4` | `2510 passed; 2 failed; 19 ignored` | `2510 passed; 2 failed` | **unchanged** |
+| `cargo clippy -p jcode-tui --lib -- -D warnings` | `EXITCODE=0` | `EXITCODE=0` | **unchanged** |
+| `cargo fmt --all -- --check` | `EXITCODE=0` | `EXITCODE=0` | **unchanged** |
+
+So the #124 keyboard-fix recommendation stands on fresh evidence at the current
+head. Note the surface for this is real: a PR can change between "I tested it"
+and "the operator merges it," so any #124 conclusion should be re-checked at
+merge time, not inherited from this brief.
+
+## Correction 9 — my "+514/-352" was wrong too. The real stat is +524/-352
+
+In Correction 4 I replaced one fabricated pair with another. I read
+`additions=514` off a single `gh pr view` call and wrote it down as the correct
+number. Re-measured two independent ways this pass:
+
+- `gh pr view 124 --json additions,deletions` → **`additions=524`,
+  `deletions=352`**, `mergeable=MERGEABLE`, `draft=false`, `changed_files=66`
+- `gh pr checks`-independent cross-check, summing per-file `changes` from
+  `gh api .../pulls/124/files` → `additions=876, deletions=876`
+  ... which is a **counting trap**, not a contradiction: the files endpoint
+  reports `changes` = additions + deletions per file, so 876+876 is not the
+  right quantity and must not be compared to 524+352. The PR-level
+  `additions`/`deletions` fields (524/352) are the correct source.
+
+**Use `+524/-352`, 66 files.** The `+513/-351`, `+449/-277` and `+514/-352`
+figures are all retracted; 514 was mine.
+
+## Correction 10 — "3 of 12 jobs" was wrong: it is 9 jobs total, 7 on the desk runner
+
+Two separate miscounts:
+
+1. **The denominator was wrong.** Pass 3 said "12 jobs in `ci.yml`." Enumerating
+   top-level job keys in #124's post-image `ci.yml` gives **9**:
+   `quality`, `release-automation`, `build`, `windows-build-test`, `fmt`,
+   `typescript-sdk`, `setup-friction`, `powershell-syntax`,
+   `windows-cross-check`. (`push` and the `on:` triggers are not jobs; a naive
+   `grep -cE '^  [a-z-]+:$'` returns 10 because it catches `push:` too.)
+2. **The desk-runner numerator was right for the wrong reason.** Pass 3 said "7
+   jobs move to `[self-hosted, desk-linux]`." Counting `runs-on` lines
+   containing `desk-linux` gives only **6** (`quality`, `release-automation`,
+   `fmt`, `typescript-sdk`, `setup-friction`, `windows-cross-check`). The 7th is
+   **`build`**, which does *not* name `desk-linux` on its `runs-on` line — it
+   uses `runs-on: ${{ matrix.os }}` with `matrix.os: [desk-linux]`. So **7 is
+   correct, but it requires reading the matrix, not just `runs-on`.**
+
+Verified final state on #124's current head:
+
+- **3 of 9 `ci.yml` jobs are `if: false`**: `windows-build-test`,
+  `powershell-syntax`, `setup-friction` (all confirmed by reading the `if:`
+  line, per the pass-3 lesson about not stopping at `runs-on`)
+- **7 of 9 run on `[self-hosted, desk-linux]`**, one of which (`setup-friction`)
+  is itself disabled
+- macOS leg removed from the `build` matrix (`os: [desk-linux]` only, comment
+  says hosted minutes are capped at $0)
+- Both remaining `windows-latest` jobs are `if: false`
+
+**Blocking status unchanged and still the binding constraint:** `desk-kcode-1`
+remains **`status=offline`** on re-query this pass, and #124 routes 7 jobs to it.
+Those jobs queue forever until it is brought up.
+
+## Housekeeping note
+
+The pass-3 cleanup item ("remove the 5 `wt3-*` worktrees") is **already done**:
+`git worktree list` shows no `wt3-*` entries and none exist on disk. The removal
+happened during the context-overflow recovery that dropped the preceding
+messages. Total registered worktrees: **54**, including pre-existing ones not
+created by this audit — left untouched deliberately.
+
+The `wt3-124-current` worktree used for the re-runs in Correction 8 was removed
+after the gates passed, so no new worktrees remain from this pass either.
