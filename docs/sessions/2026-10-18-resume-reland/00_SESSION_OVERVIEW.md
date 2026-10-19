@@ -127,6 +127,60 @@ One process detail worth remembering: `git merge-tree --write-tree` returns a **
 
 Verify worktrees (`wt-verify125`, `wt-postmaster`) were removed and pruned; the 5 `ci-audit-jcode*` worktrees and the other scratch worktrees were not touched.
 
+## VALIDATION CORRECTIONS (2026-10-19T07:35Z) — three claims of mine are wrong
+
+Deep validation of the two landed merges invalidated parts of what I put in PR #125's
+squash body. Retracting them explicitly.
+
+**1. "line-count-only" (the 6 test files) is FALSE.** `git diff --numstat 081c1cf60 b9886143c`
+shows `busy_existing_attach.rs` as 5+/8-, and reading every hunk shows the 6 files:
+  - turn the discarded `let (writer, _peer_stream) = test_writer()?` into a live handle
+    (`drain_peer(peer_stream)`), and
+  - add a real `assert_peer_history_for(&mut peer_frames, target_session_id).await?` assertion.
+  - `busy_existing_attach.rs` additionally *replaces* an existing `read_line` assertion with
+    the channel form, and widens its timeout from 1s to 5s.
+  These are substantive assertion additions, not line-count noise. My body said the opposite.
+
+**2. "the 6 new `handle_resume_session_allows_*` tests" are NOT NEW.** Grep of the PRE commit
+(`081c1cf60`) finds exactly one `async fn handle_resume_session_allows_*` per file in all 6
+files; POST finds the same 6. The PR added **zero** test functions and only added assertions
+inside tests that already existed. My body said "All 6 of this PR's new tests pass".
+
+**3. The deadlock does NOT reproduce on a warm build.** I ran the resume suite on PRE-#125
+master (`081c1cf60`) twice:
+  - cold target, 6m35s: 10 tests exceeded 60s and I killed it. Footnotes: the compile alone
+    took 3m07s. This looks like a hang but is not distinguishable from a slow contended host.
+  - warm target (reusing the same `target/`), 1m25s: **EXITCODE=0, 24 passed / 0 failed /
+    1 ignored, finished in 12.97s.**
+  So the "deadlock" framing in the PR title and body is unproven at best. PR #125's tests pass
+  both before and after the PR. What the PR actually changes is assertion *coverage* of an
+  existing code path (peer history write on takeover), which is still worth having — the
+  old code discarded the peer stream and asserted nothing about it — but it is not a fix and
+  the PR title "land stranded resume-peer drain fix" overstates it.
+
+**Why the prod code is absent:** PR #125 touches **zero** production files (`git diff
+--name-only 081c1cf60 b9886143c` is tests + docs only). The peer-drain logic exists in prod
+independently since `4dd91a9c6` (client_session.rs, the takeover branch sends
+`disconnect_tx.send(())`), so the fix itself was never stranded. What was stranded was the
+*assertion coverage* for it. The commit that authored those tests is real -
+`b99b19bc8 test(jcode-app-core): drain resume peer stream to fix test deadlock`, and PR #116
+(the intended carrier) is CLOSED-not-merged, so "re-land" is accurate in the mechanical sense
+while "drain fix" is not in the file-churn sense.
+
+**Bottom line:** both merges are safe and neither introduced a regression. My *description*
+of #125 in its merge body was wrong in three materially misleading ways, and that text is now
+permanent ledger content. It cannot be rewritten (no history rewriting) — the correction lives
+here and in `06_OUTCOME_AUDIT.md`.
+
+## Ledger metadata (verified)
+
+Both squash commits carry `tx-agent: jcode` and `tx-validated: test` plus scope/task/intent
+trailers; `git lg-validate 10` reports all 10 entries pass. `git lg-audit` prints
+"10 of last 10 commits are unsigned" and "3 reflog entries suggest history rewriting", both of
+which are false alarms: the trailers are present, and the "reset: moving to HEAD" reflog
+signature (seen in my worktree, `wt-deadcode-spawn-notice`, and `main-worktree`) moved no ref —
+every cited commit still resolves. I did not run `git reset` in this session.
+
 ## Remaining full-suite state (important — not clean yet)
 
 Full suite on the landing commit: **298 passed, 0 failed, 4 deadlocked.**
