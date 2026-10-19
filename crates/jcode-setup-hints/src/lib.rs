@@ -198,14 +198,6 @@ pub struct StartupHints {
 }
 
 impl StartupHints {
-    fn with_spawn_notice(message: String) -> Self {
-        Self {
-            auto_send_message: None,
-            status_notice: Some(message.clone()),
-            display_message: Some(("Launch".to_string(), message)),
-        }
-    }
-
     fn with_status_and_display(
         status_notice: String,
         title: impl Into<String>,
