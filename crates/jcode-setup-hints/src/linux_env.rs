@@ -352,7 +352,7 @@ pub(crate) fn gnome_binding(chord: &KeyChord) -> Option<String> {
 /// re-installs overwrite rather than accumulate.
 pub(crate) fn gnome_keybinding_path(index: usize) -> String {
     format!(
-        "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/jcode-launch-{index}/"
+        "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/kcode-launch-{index}/"
     )
 }
 
@@ -393,7 +393,7 @@ pub(crate) fn gnome_keybindings(binds: &[ScriptBind]) -> Vec<GnomeKeybinding> {
 
 /// Merge jcode's entries into an existing gsettings/dconf string-array value
 /// (e.g. `['/a/', '/b/']` or `@as []`), preserving foreign entries and
-/// replacing any previous jcode slots (matched on the `jcode-launch-` marker).
+/// replacing any previous jcode slots (matched on the `kcode-launch-` marker).
 /// Used for GNOME keybinding paths and Cinnamon slot names alike. Pure string
 /// surgery on the GVariant text format so it is unit-testable without dconf.
 pub(crate) fn merge_gnome_keybinding_list(current: &str, ours: &[String]) -> String {
@@ -424,7 +424,7 @@ pub(crate) fn dconf_slot_name(index: usize) -> String {
 /// types).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DconfKeybinding {
-    /// Slot name, e.g. `jcode-launch-0`.
+    /// Slot name, e.g. `kcode-launch-0`.
     pub slot: String,
     pub name: String,
     pub command: String,
@@ -540,7 +540,7 @@ pub(crate) fn kde_shortcuts(binds: &[ScriptBind]) -> Vec<KdeShortcut> {
 }
 
 /// Upsert `_launch=` entries for jcode's services into `kglobalshortcutsrc`
-/// INI text: existing `[services][jcode-launch-*.desktop]` sections are
+/// INI text: existing `[services][kcode-launch-*.desktop]` sections are
 /// replaced, other sections are preserved, and missing sections are appended.
 /// Pure so the INI surgery is unit-testable.
 pub(crate) fn upsert_kde_shortcut_sections(current: &str, shortcuts: &[KdeShortcut]) -> String {
@@ -548,7 +548,7 @@ pub(crate) fn upsert_kde_shortcut_sections(current: &str, shortcuts: &[KdeShortc
     let mut skipping = false;
     for line in current.lines() {
         if line.starts_with('[') {
-            skipping = line.starts_with("[services][jcode-launch-");
+            skipping = line.starts_with("[services][kcode-launch-");
         }
         if !skipping {
             out.push(line.to_string());
@@ -853,7 +853,7 @@ mod tests {
     fn gnome_list_merge_also_handles_cinnamon_slot_names() {
         // Cinnamon's custom-list holds bare slot names, not dconf paths.
         let ours = vec![dconf_slot_name(0), dconf_slot_name(1)];
-        let current = "['custom0', 'jcode-launch-0', 'jcode-launch-5']";
+        let current = "['custom0', 'kcode-launch-0', 'kcode-launch-5']";
         let merged = merge_gnome_keybinding_list(current, &ours);
         assert!(merged.contains("'custom0'"));
         assert!(!merged.contains("kcode-launch-5"));
@@ -883,13 +883,13 @@ mod tests {
     #[test]
     fn kde_ini_upsert_replaces_our_sections_and_keeps_others() {
         let scs = kde_shortcuts(&[bind("cmd+;", "/a.sh", "home", false)]);
-        let current = "[services][firefox.desktop]\n_launch=Meta+F\n\n[services][jcode-launch-0.desktop]\n_launch=Meta+X\n\n[services][jcode-launch-9.desktop]\n_launch=Meta+Y\n";
+        let current = "[services][firefox.desktop]\n_launch=Meta+F\n\n[services][kcode-launch-0.desktop]\n_launch=Meta+X\n\n[services][kcode-launch-9.desktop]\n_launch=Meta+Y\n";
         let updated = upsert_kde_shortcut_sections(current, &scs);
         assert!(updated.contains("[services][firefox.desktop]"));
         assert!(updated.contains("_launch=Meta+F"));
         assert_eq!(
             updated
-                .matches("[services][jcode-launch-0.desktop]")
+                .matches("[services][kcode-launch-0.desktop]")
                 .count(),
             1
         );
