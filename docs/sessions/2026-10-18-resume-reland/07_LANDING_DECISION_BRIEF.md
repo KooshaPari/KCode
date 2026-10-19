@@ -113,15 +113,17 @@ Updated verdicts after the extended second pass (see below).
 | #127 | dead_code silences, +7/-0 | Verified: 7/7 warnings silenced, tests pass, 0 regressions | minimal |
 | #132 | jcode->kcode strings, +8/-8 | Verified: fmt clean, assertions renamed with code, fixes 3 tests | minimal |
 | #129 | rustfmt drift, 9 files | Verified: repo-wide drift real and fully cleared. Split: land rustfmt half, revert/fix the `env!` half | minimal |
-| #124 | Windows keyboard fix + CI migration, +513/-351 | **LAND.** Fixes 25/27 pre-existing tui failures, 0 regressions, clippy `--lib` EXITCODE=0, fmt=0 | low code risk, high ops surface |
-| #107 | draft on upstream jcode 0.98.1 | **DO NOT MERGE.** 2,808 commits diverged, 1,658 conflicts, would revert decollision | blocked |
+| #124 | Windows keyboard fix + CI migration, +514/-352 | Keyboard fix: LAND (best-tested change in the batch). Bundled CI migration: BLOCKED — targets an offline runner and disables 3 of 12 `ci.yml` jobs | low code risk, high ops surface *(see third pass)* |
+| #107 | draft on upstream jcode 0.98.1 | **DO NOT MERGE.** 2,808 commits diverged, 357 conflicted files / 1,149 hunks, would revert decollation | blocked |
 
 ## Drafts / large PRs (verdict updated in the extended pass)
 
 - **#124** `fix(tui): keep Windows keyboard negotiation on native console input (cherry-pick of #97)`
-  — `isDraft=false`, +449/-277 as reported by GitHub but +513/-351 as merged,
-  66 files, `mergeable=MERGEABLE`. **No longer "needs verification" — see the
-  extended pass. It is now the recommended land.**
+  — `isDraft=false`, **+514/-352**, 66 files, `mergeable=MERGEABLE`.
+  ~~+449/-277 as reported by GitHub but +513/-351 as merged~~ *(both figures
+  wrong; GitHub API says 514/352 — see Correction 4).*
+  ~~"It is now the recommended land."~~ *(SUPERSEDED — see Correction 2/3: the
+  bundled CI migration targets an offline runner and disables 3 jobs.)*
 - **#107** `Native wake receipts on Jcode 0.98.1 source baseline`
   — draft, +654/-1, 14 files, base is `codex/native-wake-base-1c7426e`
   (upstream, not master). **Blocked: must be ported, not merged.**
@@ -132,11 +134,19 @@ Landing is the operator's decision. After the extended second pass the
 recommendation is:
 
 - **Land #127 and #132 now.** Minimal risk, verified, 0 regressions.
-- **Land #124.** Highest value in the batch. It fixes 25 of the 27 pre-existing
-  tui failures. Confirm the `desk-linux` self-hosted runner is intended first,
-  because it also migrates all 7 CI jobs off `ubuntu-latest` and removes the
-  macOS and hosted Windows legs. If the operator wants that CI change
-  separated, the keyboard fix alone should be split out.
+- **#124** *(This bullet's conclusion was reversed in the third pass — kept
+  for the record.)* ~~Highest value in the batch. It fixes 25 of the 27
+  pre-existing tui failures. Confirm the `desk-linux` self-hosted runner is
+  intended first, because it also migrates all 7 CI jobs off `ubuntu-latest`
+  and removes the macOS and hosted Windows legs. If the operator wants that CI
+  change separated, the keyboard fix alone should be split out.~~
+
+  > **Third-pass correction:** the runner is **offline** (not merely "needs
+  > confirmation"), and the CI change disables `windows-build-test`,
+  > `powershell-syntax` and `setup-friction` outright. **Land the keyboard fix;
+  > treat the CI migration as a separate, currently-blocked change.** Also: the
+  > "27" and "25" figures are single-run samples (see the run-dependence note
+  > below).
 - **Split #129.** Land the rustfmt half (verified: clears all drift); revert the
   `env!` half or change it to `CARGO_BIN_EXE_kcode`.
 - **Do not merge #107.** Port it onto a `master`-based branch first.
@@ -199,7 +209,8 @@ flip any gate. Two output diffs, both improvements or neutral:
 `gh pr view` reports `mergeable=MERGEABLE`, which I initially took at face
 value and then mis-flagged as conflicting (my merge used a bad ref and the
 failure was my error, not a real conflict). Real merge into clean master:
-**0 conflicts**, `HEAD=126a6586c`, 66 files, +513/-351.
+**0 conflicts**, `HEAD=126a6586c`, 66 files, ~~+513/-351~~ *(GitHub API says
+`+514/-352` — see Correction 4; the 513/351 figure is wrong).*
 
 **What it actually is: it bundles TWO things.**
 
@@ -217,6 +228,13 @@ failure was my error, not a real conflict). Real merge into clean master:
    `cargo install` steps are guarded with `command -v ... ||` for persistent
    `CARGO_HOME`. Touches `.github/workflows/{ci,freebsd-smoke,ios-testflight,
    require-issue,update-star-history}.yml` plus scripts and TS SDK tests.
+
+   > **SUPERSEDED — see "Correction 2" and "Correction 3" below before relying
+   > on this paragraph.** The Windows sentence here happens to be closer to the
+   > truth than my later "Windows retained" correction, but the specifics of
+   > *which* jobs are disabled, and the fact that the `desk-linux` runner is
+   > **offline**, are both in the third-pass section. Do not merge on the strength
+   > of this paragraph alone.
 
 **Effect on the repo's failing test suite — verified, not inferred:**
 
@@ -248,9 +266,14 @@ pre-existing warnings on master (confirmed at `tui/mod.rs:1070/1850`,
 identical `--lib` scope, baseline is `EXITCODE=101` and #124 is `EXITCODE=0`.
 
 **Recommendation changes: land #124.** It is the highest-value PR in the
-batch. The CI migration is a real operational change and the operator should
+batch. ~~The CI migration is a real operational change and the operator should
 confirm the `desk-linux` self-hosted runner exists and is intended before
-merging, but the code side is the best-tested change here.
+merging, but the code side is the best-tested change here.~~
+
+> **SUPERSEDED by the third pass.** The runner exists but is **offline**, and
+> #124 disables 3 of 12 `ci.yml` jobs. The recommendation below now reads
+> "land the keyboard fix, resolve the CI blockers first." This paragraph's
+> "land #124" referred to the bundle, which is no longer the advice.
 
 ## PR #107 — DO NOT MERGE (blocked, not a judgment call)
 
@@ -262,7 +285,8 @@ merging, but the code side is the best-tested change here.
 - The PR's real delta vs its own base is only 14 files / +654/-1 (native wake
   receipts), so it **looks** tiny — but the delta relative to master is
   enormous because the histories diverged.
-- Attempted merge into master: **1,658 conflicting hunks.**
+- Attempted merge into master: ~~**1,658 conflicting hunks.**~~ *(CORRECTED: 357
+  conflicted files / 1,149 conflict hunks. See Correction 1 below.)*
 - Merging it would revert the fork decollision.
 - **The GitHub `mergeable=MERGEABLE` badge is misleading here.** It reflects
   GitHub's own merge-base logic, not what a real merge would do.
@@ -293,35 +317,60 @@ Only the arithmetic was wrong. I am not sure where 1,658 came from and cannot
 reconstruct it as a sum of any quantity I can measure; treat it as a fabricated
 number and use 357/1,149.
 
-## Correction 2 — the `desk-linux` runner DOES exist (caveat retracted)
+## Correction 2 (amended) — the runner exists but is **OFFLINE**
 
 The second pass told the operator to "confirm the `desk-linux` self-hosted
-runner exists and is intended" as if its existence were an open question.
-That caveat is retracted. `gh api repos/KooshaPari/KCode/actions/runners`
-returns:
+runner exists and is intended," as if existence were an open question. That
+caveat was wrong: the runner exists. **But I then compounded the error**: I
+wrote it as "currently online." That is false.
 
-- **`desk-kcode-1`**, Linux, X64, **online**
-- labels: `self-hosted`, `Linux`, `X64`, `desk-linux`, `desk-kcode`
+`gh api repos/KooshaPari/KCode/actions/runners`, re-queried three times this
+pass, returns exactly one runner:
 
-The runner is real and currently online. The remaining question is not
-existence but **intent and capacity**: this is a **single** runner, and #124's
-CI sets `cancel-in-progress: true` on all 7 migrated jobs, so those jobs
-**serialize** rather than running in parallel. That is an operational
-consequence the operator is accepting knowingly, not an unknown.
+- **`desk-kcode-1`**, Linux, X64, labels `self-hosted`, `Linux`, `X64`,
+  `desk-linux`, `desk-kcode`
+- **`status=offline`**, `busy=false` — on all three queries, not a transient
+  blip I caught mid-restart.
 
-## Correction 3 — #124 does NOT disable hosted Windows CI (my claim was wrong)
+**This is a blocking fact, not a footnote.** #124 migrates its CI jobs onto
+`[self-hosted, desk-linux]`, and that runner is not running. If #124 lands as
+written, those jobs will queue forever and never report. The operator must
+either bring `desk-kcode-1` online before merging #124, or accept that the
+migrated jobs are effectively silent until they do. Retracting "online."
 
-The second pass said "hosted Windows CI is disabled." False. Re-reading the
-#124 diff in `.github/workflows/ci.yml`:
+Separately, capacity is still a real concern even once online: this is a
+**single** runner and the migrated jobs carry `cancel-in-progress: true`, so
+they serialize rather than run in parallel.
 
-- **macOS leg: removed.** (`macos-latest` deleted.)
-- **Windows legs: RETAINED.** `windows-latest` and `windows-11-arm` are both
-  still present.
-- 7 jobs move `ubuntu-latest` → `[self-hosted, desk-linux]`.
+## Correction 3 (amended) — #124 DOES disable Windows CI. My "Windows is
+## retained" correction was also wrong.
 
-So #124 removes the macOS coverage **only**. Windows coverage is unaffected.
-This materially changes the risk profile: the CI change is smaller than I
-described. Retracting the earlier claim.
+Pass 2 said "hosted Windows CI is disabled." In the third pass I flagged that
+as an error and claimed Windows legs were retained. **That correction was
+itself wrong.** The real state is messier than either of my two claims:
+
+- **macOS leg: removed.** `os: [ubuntu-latest, macos-latest]` → `ubuntu-latest`
+  in the `build-sweep` matrix.
+- **`windows-build-test` — disabled.** In #124's post-image `ci.yml` the job at
+  line 451 still exists but gains **`if: false`** (line 455). It never runs.
+- **`powershell-syntax` — disabled.** Same treatment: `if: false` at line 708,
+  with the comment *"Disabled with windows-build-test; PowerShell syntax is
+  checked locally on the desk."*
+- **`setup-friction` — disabled** by `if: false` as well.
+- **`windows-cross-check`** keeps its name and survives, but moves
+  `ubuntu-latest` → `[self-hosted, desk-linux]`.
+
+So: **3 of the 12 jobs in `ci.yml` are disabled outright, the macOS leg is
+removed, and 7 jobs move to the offline self-hosted runner.** Of my two
+conflicting accounts, the original pass-2 claim ("Windows CI disabled") was
+**closer to the truth**, and the pass-3 correction that supposedly fixed it was
+the wrong one. Both are retracted; the table above is the verified state,
+extracted from #124's post-image file rather than from the diff I had skimmed.
+
+The reason I got this wrong twice is worth recording: I read the `runs-on`
+lines and saw `windows-latest` still present, and stopped there. The job was
+disabled by a different mechanism (`if: false`) two lines away, which I did not
+check.
 
 ## Correction 4 — #124 size stat was wrong in two places
 
@@ -447,9 +496,18 @@ is now 10 PRs, not 5.
 
 1. **Safe, verified, small:** #127, #132, #129 (rustfmt half only), #123, #121.
 2. **#119:** feature-sized, tests pass, but confirm it is wanted; 0 conflicts.
-3. **#124:** highest value (fixes most pre-existing tui failures and clippy).
-   Landing-order matters: merge **#121 before #124**, or rebase #124 after
-   #121. Also confirm the single-runner serialization is acceptable.
+3. **#124:** highest value (fixes most pre-existing tui failures and clippy),
+   **but it is now blocked on CI infrastructure, not on code.** Two hard blockers
+   the operator must resolve first:
+   - `desk-kcode-1` is **offline**, and #124 migrates 7 jobs onto it. Those jobs
+     will silently queue forever.
+   - #124 disables **3 of the 12 `ci.yml` jobs outright** (`windows-build-test`,
+     `powershell-syntax`, `setup-friction`) and removes the macOS leg. That is a
+     large coverage reduction to accept knowingly, not a side effect.
+   - Landing-order still matters: merge **#121 before #124**, or rebase #124
+     after #121.
+   - **The keyboard fix alone is the part I would land.** Splitting it from the
+     CI migration is cleaner than taking both together.
 4. **#8 and #10:** do not merge as-is. #8 is **119 commits ahead / 249 behind** master and
    needs a rebase; #10 inherits that block because it targets #8's branch.
    #10 is a draft anyway.
@@ -458,11 +516,47 @@ is now 10 PRs, not 5.
 ## What this brief has been wrong about, in summary, for the record
 
 Manufactured or unsupported numbers: the "1,658" #107 conflict count; the
-"+449/-277" #124 stat; the "65 files" #124 file count. Overstated claims:
-"confirm the desk-linux runner exists" (it does); "hosted Windows CI disabled"
-(it is not). Voided measurements: the B-7b/SDK-parity cohort passes (my missing
-`TMPDIR` dir). Run-dependent presented as fixed: the 27-failure tui baseline.
+"+449/-277" #124 stat; the "65 files" #124 file count. Overstated or simply
+wrong claims:
+
+- "confirm the desk-linux runner exists" — it does exist. My caveat was wrong.
+- Then, correcting that caveat, I wrote that the runner was **"currently
+  online."** **It is offline.** This is the most consequential error in the
+  brief, because it converts a blocking CI concern into a non-blocking one.
+- "hosted Windows CI is retained" (#124) — **wrong.** #124 disables
+  `windows-build-test`, `powershell-syntax` and `setup-friction` via `if: false`
+  and removes the macOS leg. My pass-2 "Windows CI disabled" claim was closer to
+  correct; my pass-3 "correction" of it was the error.
+
+Voided measurements: the B-7b/SDK-parity cohort passes (my missing `TMPDIR`
+dir). Run-dependent presented as fixed: the 27-failure tui baseline.
 Unstated scope: 5 of 10 open PRs were never examined. The pass-2 #132
 attribution itself was correct, and the "129-only" conclusion I briefly drew
 was the error, not the attribution.
+
+**A methodological note on why these errors happened.** Both of the pass-3
+errors above came from the same failure mode: I ran *one* query, read the first
+matching line, and wrote the finding down. The runner status was read once and
+recorded as online; the Windows question was answered by grepping `runs-on` and
+stopping before reaching the `if: false` two lines later. Neither claim was
+stress-tested against a second read, and neither survived one. Any claim in this
+brief that rests on a single un-repeated observation should be treated as
+unverified.
+
+## New nuance found on re-read: root `[lib]` is still named `jcode`
+
+While re-verifying, I found something pass-2 got subtly wrong. Root
+`Cargo.toml` has **both** names:
+
+- line 2: `name = "kcode"` → the release binary, which is correct
+- **line 108: `[lib]` `name = "jcode"`** → the library target is **still named
+  `jcode`**, and no `[[bin]]` is named `jcode`.
+
+This does **not** overturn the pass-2 `env!` conclusion (which is about
+`CARGO_BIN_EXE_jcode`, a *binary* env var, and no bin target named `jcode`
+exists), but it does correct one draft claim that the pass-1/2 work implies:
+**the decollation is not complete.** The library target was never renamed.
+Anyone auditing decollision completeness needs to look at `[lib]` too, and
+#121/#124 do not touch it. This is a legitimate finding, and it was missed
+twice.
 
