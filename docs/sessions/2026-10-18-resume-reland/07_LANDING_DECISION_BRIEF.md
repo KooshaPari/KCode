@@ -155,8 +155,15 @@ recommendation is:
   > treat the CI migration as a separate, currently-blocked change.** Also: the
   > "27" and "25" figures are single-run samples (see the run-dependence note
   > below).
-- **Split #129.** Land the rustfmt half (verified: clears all drift); revert the
-  `env!` half or change it to `CARGO_BIN_EXE_kcode`.
+- **#129 — no longer a separate decision; it is inside #132.** *(Pass 6
+  supersedes the older "Split #129" advice below.)* #129's head `1922c0f56` is an
+  **ancestor of #132's current head `f8f488392`** — #132 merged the #129 branch in
+  so its own Format + Quality Guardrails would pass. Landing #132 therefore lands
+  #129 too. If the `env!` change is unwanted it must be reverted **inside #132**,
+  not in a separate PR.
+- ~~**Split #129.** Land the rustfmt half (verified: clears all drift); revert the
+  `env!` half or change it to `CARGO_BIN_EXE_kcode`.~~ *(Obsolete — see the bullet
+  above.)*
 - **Do not merge #107.** Port it onto a `master`-based branch first.
 
 ---
@@ -707,26 +714,50 @@ here is a re-statement of an earlier pass unless it was re-measured this pass.
 `origin/fix/resume-peer-drain-relend`, whose tip now equals local HEAD. `c0f40e398`
 confirmed independently via `gh api .../commits`.
 
-**#124 size: two independent derivations agree exactly.**
-`gh pr view --json additions,deletions,changed_files` → **524 / 352 / 66**, and
-summing per-file `.additions`/`.deletions` from `gh api .../pulls/124/files`
-→ **524 / 352 / 66 files**. Also verified semantically that the files endpoint's
-`changes` field equals `additions + deletions` per file, which is why summing
-that field (876/876) is meaningless. Note: my pass-4 "cross-check" used
-`?per_page=100` in the path, which is a malformed query, not a second source —
-it happened to land on the same answer, so the conclusion was right but the
-method I described was not.
+**#124 size: two independent derivations agree exactly.** Re-derived again this
+pass with corrected command syntax, because the syntax documented in the
+pass-5 text below was itself wrong (see note).
+
+- `gh pr view --json additions,deletions,changedFiles,headRefOid,state,isDraft,mergeable`
+  → **`additions=524`, `deletions=352`, `changedFiles=66`**, head
+  `e37ca7a38ae4...`, `state=OPEN`, `isDraft=false`, `mergeable=MERGEABLE`
+- Summing per-file `.additions`/`.deletions` from `gh pr view --json files`
+  → **524 / 352 across 66 files** (matches all three)
+- The REST endpoint `gh api repos/KooshaPari/KCode/pulls/124/files` returns all
+  66 files in **one page** (no `per_page` juggling needed) and additionally
+  exposes `changes`, whose per-file sum is **876** — consistent with
+  `additions + deletions = 524 + 352` in every single file (checked individually:
+  zero exceptions). That is why summing `changes` and comparing it to the
+  PR-level numbers is a **counting trap, not a contradiction.**
+
+> *(Correction added this pass to my own documentation: the method as written in
+> pass 5 could not have run. `changed_files` is not a valid `--json` field (the
+> real name is `changedFiles`), and `changes` is absent from
+> `gh pr view --json files` entirely — it only exists on the REST endpoint. The
+> numbers 524/352/66 are correct and now reproduced from both sources, but the
+> recorded commands were wrong and are fixed above.)*
 
 **#124 ci.yml state re-read from the commit object** (`git show <head>:.github/
-workflows/ci.yml`, no worktree needed), parsed by a script that walks the
-`jobs:` block rather than by grep: **9 top-level jobs** (`quality`,
-`release-automation`, `build`, `windows-build-test`, `fmt`, `typescript-sdk`,
-`setup-friction`, `powershell-syntax`, `windows-cross-check`); **3 disabled** by
-`if: false` (`windows-build-test`, `powershell-syntax`, `setup-friction`);
-**7 desk-runner jobs**, of which one (`setup-friction`) is itself disabled —
-`build` reaches the desk via `matrix.os: [desk-linux]` on a
-`runs-on: ${{ matrix.os }}` line, exactly as pass 4 said. Both remaining
-`windows-latest` jobs are `if: false`.
+workflows/ci.yml`, no worktree needed), parsed by a real YAML parser this pass
+(an independent method — the pass-5 text says "a script that walks the `jobs:`
+block rather than by grep"; `yaml.safe_load` is stronger and agrees): **9
+top-level jobs** (`quality`, `release-automation`, `build`, `windows-build-test`,
+`fmt`, `typescript-sdk`, `setup-friction`, `powershell-syntax`,
+`windows-cross-check`); **3 disabled** by `if: false` (`windows-build-test`,
+`powershell-syntax`, `setup-friction`); **7 desk-routed**, `build` reaching the
+desk via `matrix.os: [desk-linux]` on a `runs-on: ${{ matrix.os }}` line,
+exactly as pass 4 said. Both remaining `windows-latest` jobs are `if: false`.
+
+> **REFINEMENT (this pass) — a 7-vs-6 detail the brief left ambiguous.** #124 is
+> described throughout as "migrating 7 jobs onto the offline runner." That is
+> correct as *routing*, but **only 6 of the 7 are actually enabled**:
+> `setup-friction` is desk-routed *and* one of the three `if: false` jobs. So the
+> accurate operational statement is: **6 enabled jobs would silently queue
+> forever** on the offline `desk-kcode-1` runner; the 7th is skipped anyway. This
+> makes the CI picture marginally less severe than the brief implies, but the
+> blocking conclusion is unchanged — #124's CI migration cannot be relied on
+> until that runner is up. Non-desk enabled jobs: **none.** Every enabled job in
+> #124's `ci.yml` runs on the desk.
 
 **#132 attribution: now confirmed with a real control.** Pass 3's version had no
 proof that its trees were genuinely isolated. This pass built three trees at the
@@ -833,3 +864,114 @@ Those remain single-observation claims and should be treated as unverified.
 All 5 `w5-*` worktrees created for this pass were removed after use; total
 registered worktrees back to **54**, matching the pass-4 baseline. No `w5-`
 dirs or logs left in scratch.
+
+---
+
+# SIXTH VALIDATION PASS — deep re-derivation of every pass-5 claim
+
+Trigger: re-check each pass-5 claim against its primary source instead of against
+my own notes. Method upgrade: a real YAML parser for the CI file, corrected `gh`
+field names, and a fresh set of isolation trees at the **current** PR heads.
+
+## THE BIG ONE — #132 has absorbed #129, and pass 5 tested a stale head
+
+Pass 5 tested #132 at `9ead3963e5a95` (12-13 files, tui-only). **That is not
+#132's head any more.** Current head is **`f8f488392fe7d`**, and it is a merge
+commit:
+
+```
+f8f488392 merge: bring in PR #129's fmt + clippy fixes so this branch passes
+          Format + Quality Guardrails
+1922c0f56 fix(jcode-tui-mermaid): collapse split doc comment to satisfy clippy
+68e322d8a Merge remote-tracking branch 'origin/master' into fix/repo-ci-pre-existing-drift
+5b65b1878 fix(ci): collapse nested if-let in sockets.rs (clippy collapsible_if)
+36375a526 fix(ci): clear repo-wide rustfmt drift + fix env! macro in cli_status
+```
+
+Verified by ancestry, not by reading the message:
+
+- `9ead3963e5a95` **is an ancestor of** `f8f488392fe7d` (the branch was extended,
+  not rebased) — so pass-5's results are not *wrong*, they are *incomplete*
+- **#129's head `1922c0f56` IS an ancestor of #132's head `f8f488392`**
+- reverse does not hold: #132 is not contained in #129
+- both PRs target `master`
+
+**Consequence for the operator: landing #132 now lands #129 as well.** #132's
+file list grew from the tui-only set to 13 files that include #129's full 10-file
+rustfmt/clippy list. This makes the standing advice **"Split #129: land the
+rustfmt half, revert the `env!` half"** obsolete — that split has already
+happened on the other side, inside #132. The decision is no longer "three small
+PRs"; it is "#127, and one combined #132+#129 PR".
+
+This is the same class of error as pass 4's "#124 was rebased under me," and it
+should be assumed to keep happening: **PR heads move between validation and
+merge.** Every conclusion here is pinned to a SHA for that reason.
+
+## Re-verified at the CURRENT heads
+
+**Isolation, re-proven by file-set equality** (the proof pass 3 never had, now
+repeated at the new heads). Three trees at `master = b9886143c`, each merged with
+one PR head:
+
+| Tree | diff-vs-master files | PR-declared files | Exact match |
+|---|---|---|---|
+| #132 @ `f8f488392` | 13 | 13 | **yes** |
+| #129 @ `1922c0f56` | 10 | 10 | **yes** |
+
+**Attribution holds at the new #132 head.** `cargo test -p jcode-tui --lib --
+build_resume_command`:
+
+| Tree | Result | Exit |
+|---|---|---|
+| base @ `b9886143c` | 0 passed / **2 failed** | 101 |
+| #132 @ `f8f488392` (current) | **2 passed** / 0 failed | 0 |
+
+So #132 still fixes the attribution tests after absorbing #129. The `kitty_`
+test and the #129 control were still running when this section was written
+(box load average was **848** from other agents' builds); treat them as pending.
+
+**#124 size, re-derived with corrected syntax — 524/352/66 confirmed twice.**
+This also fixes an error in my own documentation: the command I recorded in
+pass 5 (`--json additions,deletions,changed_files`) **cannot run**.
+`changed_files` is not a valid field (it is `changedFiles`), and `changes` does
+not exist on `gh pr view --json files` at all — only on the REST endpoint. The
+numbers were right; the recorded method was wrong. Corrected in the pass-5 text.
+
+**#124 ci.yml, re-parsed with `yaml.safe_load`** (independent of my hand-rolled
+walker): 9 jobs, 3 `if: false`, 7 desk-routed, `build` reaching the desk through
+`matrix.os: [desk-linux]`. Confirmed, plus one refinement: **only 6 of the 7
+desk jobs are enabled** — `setup-friction` is desk-routed *and* disabled. So
+**6** enabled jobs, not 7, would queue forever on the offline runner. Non-desk
+enabled jobs: **none**.
+
+**Runner, re-queried twice this pass:** `desk-kcode-1`, `status=offline`,
+`busy=true`, labels include `desk-linux`. Identical across both queries. The
+`busy=true` + `offline` combination means it holds a job lock while not
+connected — it will not drain that job by itself.
+
+**Commits on origin:** `82e5e5f6b` and `c0f40e398` are ancestors of
+`origin/fix/resume-peer-drain-relend` (3 and 2 commits back respectively); local
+HEAD equals origin tip.
+
+## Worktree state (asked directly, recorded here)
+
+- **57** registered worktrees, all of `KooshaPari/KCode`. Baseline before this
+  pass: 54. The 3 extra are this pass's isolation trees under `/tmp`.
+- Zero prunable, zero locked, zero missing paths.
+- **The main repo is not on `master`.** It moved twice while I was looking:
+  `fix/repo-ci-pre-existing-drift` → `fix/setup-hints-orphan-spawn-notice`. Other
+  agents are switching branches in the shared checkout, so it is **not** a
+  reliable read-only baseline. Use a detached worktree at a pinned SHA instead.
+- Box state during this pass: 10 cores, 16 GB, **load average 848**, ~12
+  concurrent `cargo` processes from other agents. Any timing or parallelism claim
+  made under this load is not meaningful.
+
+## Method lesson from this pass
+
+I tried to parallelise the three trees by **hardlink-cloning** the warm target
+(`cp -al`), expecting three independent builds for ~2 GB of extra disk. It does
+not work: the clones share the **same `target/debug/.cargo-lock` inode**
+(verified: all three at inode `958582255`), so cargo serialises them exactly as if
+they were one directory. It is safe, but it is not parallel. True parallelism
+needs `--target-dir` per tree on genuinely separate copies, or removing the lock
+file per clone and accepting that hardlinked artifact writes race.
