@@ -431,7 +431,9 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          cargo install cargo-audit --locked
+          # Self-hosted runners keep CARGO_HOME between runs; a bare install
+          # fails once the binary exists.
+          command -v cargo-audit >/dev/null || cargo install cargo-audit --locked
           scripts/security_preflight.sh --strict
 
   windows-build-test:
