@@ -608,19 +608,18 @@ fn install_macos_hotkey_listener(
 }
 
 fn startup_hints_for_launch(_state: &SetupHintsState) -> Option<StartupHints> {
-    #[cfg(any(test, target_os = "macos"))]
-    let spawn_notice = if !_state.hotkey_configured || _state.startup_spawn_hint_dismissed {
-        None
-    } else {
-        Some(format!(
-            "Cmd+; launches a new jcode in your home directory from anywhere, system-wide (opens in {}). Cmd+' reopens your last project; Cmd+Shift+' opens a self-dev session.",
-            effective_macos_terminal().label()
-        ))
-    };
-    #[cfg(not(any(test, target_os = "macos")))]
-    let spawn_notice: Option<String> = None;
-
-    spawn_notice.map(StartupHints::with_spawn_notice)
+    // The startup spawn notice was retired: nothing in the crate ever writes
+    // `startup_spawn_hint_dismissed = false`, so the prior `if !hotkey_configured
+    // || dismissed { None } else { Some(notice) }` gate always evaluated to None
+    // in practice. The function remains so callers (lib.rs:1353) and tests in
+    // setup_hints_tests.rs continue to compile against the same signature; it
+    // simply no longer constructs the notice.
+    //
+    // Note: `SetupHintsState::startup_spawn_hint_dismissed` is intentionally kept
+    // on the struct for state-file compatibility — existing users may have
+    // `false` persisted, and the serde Deserialize path still reads it.
+    let _ = _state;
+    None
 }
 
 /// Read a single-character choice from the user.
