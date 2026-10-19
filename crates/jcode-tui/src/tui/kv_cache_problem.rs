@@ -80,7 +80,9 @@ fn min_cacheable_input_tokens(provider: &str, upstream_provider: Option<&str>) -
 }
 
 pub(crate) fn cache_expected_warm(cache_ttl: Option<&CacheTtlInfo>) -> bool {
-    cache_ttl.map(|info| !info.is_cold && !info.is_estimate).unwrap_or(false)
+    cache_ttl
+        .map(|info| !info.is_cold && !info.is_estimate)
+        .unwrap_or(false)
 }
 
 /// Detect a KV/prompt-cache problem that is reliable enough to surface in the UI.

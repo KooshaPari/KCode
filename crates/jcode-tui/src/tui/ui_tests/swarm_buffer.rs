@@ -725,4 +725,3 @@ fn widgets_render_detail_layer_without_repeating_status_line_facts() {
         assert!(line.contains(owned), "line owns {owned:?}: {line}");
     }
 }
-
