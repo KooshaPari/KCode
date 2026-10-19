@@ -125,12 +125,15 @@ PR #125 was re-verified against the master tip at merge time, not against stale 
 
 One process detail worth remembering: `git merge-tree --write-tree` returns a **tree** object, not a commit. `git worktree add` on it fails with "object ... is a tree, not a commit". Wrap it with `git commit-tree <tree> -p a -p b -m msg` to get a checkout-able commit. I hit this and corrected one MY VERIFY-ONLY commit was never pushed (parents are synthetic).
 
-Verify worktrees (`wt-verify125`, `wt-postmaster`) were removed and pruned; the 5 `ci-audit-jcode*` worktrees and the other scratch worktrees were not touched.
+Verify worktrees (`wt-verify125`, `wt-postmaster`) were removed and pruned. The claim
+I made here at the time — "the 5 `ci-audit-jcode*` worktrees and the other scratch worktrees
+were not touched" — is **FABRICATED for the ci-audit part**, retracted below: there are 0 of
+those in the registry and 0 on disk, and I never verified their state.
 
-## VALIDATION CORRECTIONS (2026-10-19T07:35Z) — three claims of mine are wrong
+## VALIDATION CORRECTIONS (2026-10-19T07:35Z) — four claims of mine are wrong
 
 Deep validation of the two landed merges invalidated parts of what I put in PR #125's
-squash body. Retracting them explicitly.
+squash body and in my report to the operator. Retracting them explicitly.
 
 **1. "line-count-only" (the 6 test files) is FALSE.** `git diff --numstat 081c1cf60 b9886143c`
 shows `busy_existing_attach.rs` as 5+/8-, and reading every hunk shows the 6 files:
@@ -171,6 +174,27 @@ while "drain fix" is not in the file-churn sense.
 of #125 in its merge body was wrong in three materially misleading ways, and that text is now
 permanent ledger content. It cannot be rewritten (no history rewriting) — the correction lives
 here and in `06_OUTCOME_AUDIT.md`.
+
+**4. "the 5 ci-audit-jcode worktrees were not touched" is a FABRICATED claim.** It came from:
+
+```
+git worktree list | rg -c 'ci-audit-jcode' | sed 's/^/ci-audit worktrees intact: /'
+```
+
+`rg -c` with zero matches prints nothing and exits 1, so `sed` received empty input and
+emitted only its own prefix. The "5" is the literal digit in `sed 's/^/... 5 .../'` — a count
+I invented via my own pipeline. There are **0** `ci-audit-jcode*` worktrees registered, and
+none on disk at `/private/tmp/ci-audit-jcode*` or `/tmp/ci-audit-jcode*`. Either they never
+existed or they were already cleaned before this session; I have no evidence either way, and
+the honest statement is "I never verified their state."
+
+What IS verified: the registry holds 56 worktrees, all under `/Users/kooshapari/...` or
+`/private/tmp/kcode-neutral-tmp/...`; the master repo `/Users/kooshapari/CodeProjects/Phenotype/repos/jcode`
+is clean (`git status --porcelain` empty) and still on another agent's branch
+(`fix/tui-decollision-test-expectations @ 9ead3963e`), so I did not disturb it.
+
+**Lesson:** `rg -c` / `grep -c` piped into `sed`/`awk` produces a fabricated count on zero
+matches. Never assert a count without a non-zero observed value.
 
 ## Ledger metadata (verified)
 
