@@ -37,15 +37,15 @@ fn product_path(path: PathBuf) -> Option<PathBuf> {
 
 /// Runtime directory holding the daemon and API sockets.
 pub fn runtime_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("KCODE_RUNTIME_DIR") {
-        if let Some(path) = product_path(PathBuf::from(dir)) {
-            return path;
-        }
+    if let Ok(dir) = std::env::var("KCODE_RUNTIME_DIR")
+        && let Some(path) = product_path(PathBuf::from(dir))
+    {
+        return path;
     }
-    if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
-        if let Some(path) = product_path(PathBuf::from(dir)) {
-            return path;
-        }
+    if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR")
+        && let Some(path) = product_path(PathBuf::from(dir))
+    {
+        return path;
     }
     #[cfg(target_os = "macos")]
     if let Ok(dir) = std::env::var("TMPDIR") {
@@ -92,10 +92,10 @@ fn sanitize(raw: String) -> String {
 
 /// Path of the versioned harness API socket. `KCODE_API_SOCKET` overrides it.
 pub fn api_socket_path() -> PathBuf {
-    if let Ok(custom) = std::env::var("KCODE_API_SOCKET") {
-        if let Some(path) = product_path(PathBuf::from(custom)) {
-            return path;
-        }
+    if let Ok(custom) = std::env::var("KCODE_API_SOCKET")
+        && let Some(path) = product_path(PathBuf::from(custom))
+    {
+        return path;
     }
     runtime_dir().join("kcode-api.sock")
 }
@@ -103,10 +103,10 @@ pub fn api_socket_path() -> PathBuf {
 /// Path of the internal daemon socket the bridge translates onto.
 /// `KCODE_SOCKET` overrides it.
 pub fn legacy_socket_path() -> PathBuf {
-    if let Ok(custom) = std::env::var("KCODE_SOCKET") {
-        if let Some(path) = product_path(PathBuf::from(custom)) {
-            return path;
-        }
+    if let Ok(custom) = std::env::var("KCODE_SOCKET")
+        && let Some(path) = product_path(PathBuf::from(custom))
+    {
+        return path;
     }
     runtime_dir().join("kcode.sock")
 }
