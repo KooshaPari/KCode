@@ -65,13 +65,35 @@ Run `39162813655` on `3cdc66b76` completed **failure**, but the failure is entir
 
 The Format job lists 7 files with `cargo fmt --check` diffs. **Zero** of them are in this branch's 12-file diff (verified by set-intersection of the CI list against `git diff --name-only 6ff8aa2d1...HEAD`). They are `translate_tests.rs`, `round_trip_state.rs`, `jcode-tui/src/tui/mod.rs`, etc. — dirty on master.
 
+### TypeScript SDK: red, verified master-equivalent (2026-10-19T00:19Z)
+
+`TypeScript SDK` was not in the earlier check list. Verified separately on run `39165880921` (job `117788740741`, log at `/tmp/kcode-neutral-tmp/logs/ts-sdk.log`):
+
+- All **20** failing tests share one root cause. Distinct error codes: `cross_product_path` ×20. Literal message: `KCode cannot use jcode binaries or storage`, raised from `assertKcodePath` at `sdk/typescript/src/product.ts:16`.
+- That guard is a **product-decollation** assertion from the jcode→kcode rename. Unrelated to resume, peer drain, or locks.
+- `git diff origin/master...fix/resume-peer-drain-relend -- sdk/typescript/src/product.ts` is **empty** (identical). The PR does not touch `sdk/` or product identity at all: `git diff --name-only` returns no `sdk` or `product` path.
+- `sdk/typescript/dist/` is untracked, so CI rebuilds it from identical source and fails identically on master.
+- The job then ended in `The operation was canceled` at 21:12:31, 10 minutes after the last test failure at 21:02:29 — a cleanup timeout after the failures, not the cause of them.
+
+Verdict: red on this PR for the same reason it is red on master. Not a regression from this branch. Recorded in the PR #125 body as an addendum.
+
 ### I did NOT fix it (deliberately)
 
 The naive fix is `--update`, which is **explicitly forbidden** by operator standing instruction ("never raise the ratchet baseline or use `--update`"). The honest fix is deleting/gating the dead items (7 in `update_product.rs`, all `never used`), which is a separate cleanup PR. Neither belongs inside a test-only resume-fix PR.
 
 ## Open items needing operator input
 
-**Task D is UNRESOLVED — I could not re-locate the target.** The item was carried in the running context as "delete dead startup-spawn notice", but the session history that defined its exact scope is not retrievable (compaction; `conversation_search` returns 0 turns), and 4 independent searches for a startup/spawn notice in this tree found nothing matching: no `startup` matches in `crates/**/*.rs`, no `spawn` in `crates/jcode-cli/src` (that crate does not exist here), no `notice|println|eprintln`-style spawn text in `crates/*/src`, and the only `spawn` hits are the unrelated `jcode-setup-hints` hotkey code and the private `fresh_spawn_request_nonce` helper. **I am not guessing at a deletion target and deleting something.** Operator: please restate Task D's file/line scope, or say drop it.
+### Task D — RESOLVED scope, fix dispatched (2026-10-19T00:09Z)
+
+**Update to the UNRESOLVED note that used to stand here.** The target was recovered on 2026-10-19, not guessed: `crates/jcode-setup-hints/src/lib.rs`. `startup_spawn_hint_dismissed` has exactly 4 references — `lib.rs:77` (field), `lib.rs:141` (default `true`), `lib.rs:612` (gate), plus `scripts/update_rehearsal.py:213` which persists `True`. **Nothing in the repo ever writes `false`**, so the gate at 612 is never taken and the notice string at 616 emits zero times in production. Its dead text still reads `"Cmd+; launches a new jcode"` — pre-rebrand wording.
+
+Corroborating: `cargo check -p jcode-setup-hints --all-targets` → **EXITCODE=0 with zero dead_code warnings**, so it is unreachable by dataflow rather than by the compiler's reachability analysis. That is why no tooling flagged it.
+
+**Caveat that bounds the claim:** `SetupHintsState` is `#[derive(Serialize, Deserialize)]` with `#[serde(default)]` and the field is `pub`. A live user's `setup_hints.json` could in principle contain `"startup_spawn_hint_dismissed": false`, which would resurrect the notice. Proven only: **no writer in the repo produces `false`**. Not proven dead in all cases.
+
+**Scope decision:** delete the unreachable notice string and the machinery that exists only to carry it; **keep the `startup_spawn_hint_dismissed` field** on the public persisted schema (dropping a `pub` field from a deserializing struct is a separate compatibility decision).
+
+**Dispatched** to worker `monkey` (`session_monkey_1792368565012_40aed1528fa5ace6`) in an isolated worktree `wt-deadcode-spawn-notice`, branch `fix/remove-dead-spawn-notice`. Status at last check: in flight.
 
 ## Remaining full-suite state (important — not clean yet)
 
@@ -88,6 +110,8 @@ The 4 are NOT the resume tests. They are:
 **Narrowed (2026-10-18T19:59Z):** run as a 4-test set they deadlock (exit 124). The reproducible core is the **2-test pair** `viewer_attach_reuses_live_owner_without_tracking_placeholder` + `idle_prewarm_never_holds_agent_lock_across_pending_preparation`; each passes alone but together they starve each other. The other two pass in every pairing tried. `--test-threads=16` hangs identically, so it is lock-order starvation on the global guard, not thread pressure.
 
 ### Root cause (identified, not yet fixed)
+
+Scope decision recorded: the fix is **NOT surgical**. Switching `jcode-base/src/storage.rs:34` to an async-aware lock would require touching **781 call sites across 194 files** (209 `#[tokio::test]` fns across 64 files await while holding the guard). That is roughly a **60+ file change**, not a localized one, and it would also have to preserve the existing AB-BA contract in `crates/jcode-tui/tests/test_lock_order.rs`. Awaiting operator direction.
 
 `crates/jcode-base/src/storage.rs:34`:
 
@@ -117,9 +141,9 @@ Fix would be `tokio::sync::Mutex` (or an async-aware lock) in `jcode-base/src/st
 
 **Precedent of record:** `crates/jcode-tui/tests/test_lock_order.rs` already codifies an AB-BA deadlock contract for this guard versus `scroll_render_test_lock()` — env must be acquired *before* render. So the repo's accepted discipline for a stall on this guard is **lock ordering, not mutex replacement**. A retyping PR should be measured against whether it also has to preserve that contract, and the comment's `#1201` reference does not resolve in this repo (`gh issue view 1201` fails), so its provenance is unverified.
 
-## Task D — startup spawn notice is dead code
+## Task D — startup spawn notice is dead code (detail)
 
-Verdict: **delete** (recommendation, operator decision).
+Verdict: **delete** (recommendation; operator decision on the field, see the caveat in "Open items needing operator input" above, which supersedes this section's earlier UNRESOLVED status).
 
 `startup_spawn_hint_dismissed` has exactly 4 references: `crates/jcode-setup-hints/src/lib.rs` lines 77 (field), 141 (default `true`), 612 (gate), 616 (the notice itself), plus `scripts/update_rehearsal.py:213` which persists `True`.
 
