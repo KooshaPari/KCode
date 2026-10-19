@@ -2,6 +2,9 @@
 async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() -> Result<()> {
     let _guard = crate::storage::lock_test_env();
     let (_runtime, prev_runtime) = setup_runtime_dir()?;
+    let temp_home = tempfile::TempDir::new().map_err(|e| anyhow!(e))?;
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp_home.path());
 
     let target_session_id = "session_existing_live_busy";
     let temp_session_id = "session_temp_connecting_busy";
@@ -18,6 +21,15 @@ async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() 
         tool_duration_ms: None,
         token_usage: None,
     };
+
+    // The busy-attach history path deliberately reads the persisted session
+    // snapshot instead of waiting on the live agent lock, so the expected
+    // message must exist on disk.
+    let mut persisted_session =
+        crate::session::Session::create_with_id(target_session_id.to_string(), None, None);
+    persisted_session.model = Some("mock".to_string());
+    persisted_session.replace_messages(vec![persisted_message.clone()]);
+    persisted_session.save().map_err(|e| anyhow!(e))?;
 
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let existing_registry = Registry::new(provider.clone()).await;
@@ -222,5 +234,10 @@ async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() 
     }
 
     restore_runtime_dir(prev_runtime);
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("KCODE_HOME", prev_home);
+    } else {
+        crate::env::remove_var("KCODE_HOME");
+    }
     Ok(())
 }
