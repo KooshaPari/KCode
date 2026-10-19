@@ -353,8 +353,9 @@ fn build_resume_command_uses_imported_jcode_session_for_claude_code() {
         None,
     );
 
+    // Compare the stem: the launcher binary is kcode.exe on Windows.
     assert_eq!(
-        program.file_name().and_then(|name| name.to_str()),
+        program.file_stem().and_then(|name| name.to_str()),
         Some("kcode")
     );
     assert_eq!(
@@ -380,8 +381,9 @@ fn build_resume_command_uses_imported_jcode_session_for_codex() {
         None,
     );
 
+    // Compare the stem: the launcher binary is kcode.exe on Windows.
     assert_eq!(
-        program.file_name().and_then(|name| name.to_str()),
+        program.file_stem().and_then(|name| name.to_str()),
         Some("kcode")
     );
     assert_eq!(
