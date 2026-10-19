@@ -468,8 +468,12 @@ New evidence gathered this pass:
   while #124 writes just `!entry.contains("kcode-launch-")`. **A real landing-order
   constraint:** #121 before #124, or #124 rebased onto #121. #121 merges cleanly
   on top of the #127+#132+#129 stack.
-- #123, #119 and #121 have **no CI on their head at all** (`gh pr checks`
-  empty), so they were never validated by anything until now.
+- ~~#123, #119 and #121 have **no CI on their head at all** (`gh pr checks`
+  empty), so they were never validated by anything until now.~~ **WRONG —
+  retracted in pass 6.** All three have CI, it ran at 03:17-03:22Z (before this
+  sentence was written), and it FAILED on all three platforms. The failures are
+  pre-existing (master's own push runs fail too). See "Closing the remaining
+  'not re-validated' items" at the end of this brief.
 
 Local validation of the three small ones (all on the warm target,
 `TMPDIR=/tmp/kcode-neutral-tmp`):
@@ -985,3 +989,71 @@ not work: the clones share the **same `target/debug/.cargo-lock` inode**
 they were one directory. It is safe, but it is not parallel. True parallelism
 needs `--target-dir` per tree on genuinely separate copies, or removing the lock
 file per clone and accepting that hardlinked artifact writes race.
+
+## Closing the remaining "not re-validated" items (pass 6)
+
+The pass-5 section listed #123/#119/#121 and #8/#10 as deliberately out of scope.
+The cheap parts are now re-derived. The expensive parts (rebuilding those trees
+and re-running their package tests) stay out of scope, and are marked as such.
+
+### CORRECTION — "#123/#119/#121 have no CI on their head at all" is WRONG
+
+Pass 3 recorded: *"#123, #119 and #121 have **no CI on their head at all**
+(`gh pr checks` empty), so they were never validated by anything until now."*
+That is false as stated. All three DO have CI, and it ran **before** pass 3 wrote
+that sentence:
+
+| PR | run | created | conclusion |
+|---|---|---|---|
+| #123 (head `587ba412f`) | 39194359668 | 2026-10-19T03:22:11Z | **failure** |
+| #119 (head `b3ec4dab4`) | 39193978433 | 2026-10-19T03:17:21Z | **failure** |
+| #121 (head `b65a4701b`) | 39193983666 | 2026-10-19T03:17:25Z | **failure** |
+
+Each fails `Build & Test` on all three of macos-latest, ubuntu-latest and
+windows-latest. So the true statement is "CI ran and failed," not "CI never ran."
+
+**But the failures are pre-existing, not PR-caused** — established with a control
+rather than assumed. Every `push`-event CI run on `master` fails too:
+
+```
+2026-10-19T06:53:03Z failure b9886143c1   <- current master
+2026-10-19T03:23:05Z failure 081c1cf608
+2026-10-19T00:10:59Z failure 19ae474570
+2026-10-18T08:57:00Z failure 6ff8aa2d15
+```
+
+Master is red on its own. A three-platform, three-PR uniform failure — including
+for #121, which touches 5 files in `jcode-setup-hints` and cannot plausibly break
+macOS *and* Windows *and* Linux — is the same pre-existing drift already
+documented here (failing `warning`, `codesize`, `testsize`, `panic`, `swallow`
+gates and ~27 pre-existing tui failures). **Conclusion unchanged: these PRs are
+not making CI worse, because CI was already red.** What the failing badge does
+mean is that **the "mergeable" signal from CI is worthless on this repo right
+now** — a red check tells you nothing about the PR.
+
+Metadata re-verified and identical to the earlier record: #123 `+327/-4` 5 files,
+#119 `+211/-16` 9 files, #121 `+16/-13` 5 files; all OPEN, non-draft,
+MERGEABLE, all targeting `master`.
+
+### #121 still conflicts with #124 — file confirmed
+
+`crates/jcode-setup-hints/src/linux_env.rs` is in #121's 5-file list, as recorded.
+The one-line landing-order constraint (#121 before #124, or rebase #124 onto
+#121) stands unverified at the content level this pass — I confirmed the file is
+in scope, not the exact predicate collision, which was read in pass 3.
+
+### #8 and #10 divergence — re-derived exactly, and a new detail
+
+| PR | ahead of master | behind master |
+|---|---|---|
+| #8 (head `adb5669e6`) | **119** | **249** |
+| #10 (head `09680ac23`) | **58** | **249** |
+
+Both match the earlier figures exactly. New detail worth recording: **#10 is 27
+commits ahead of, and 88 behind, #8's current head.** Its base branch
+`feature/herdr-plugin-manifest` now points at `adb5669e6` — the same commit as
+#8's head — so #10 was branched from an older state of that branch and has since
+fallen 88 commits behind it. #10 is therefore blocked twice over: it inherits
+#8's divergence from master, and it is itself stale relative to #8. It is also
+still a draft. **Do not merge; do not treat as landable-in-sequence behind #8
+without a rebase.**
