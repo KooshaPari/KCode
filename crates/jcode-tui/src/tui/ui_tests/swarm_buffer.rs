@@ -552,8 +552,14 @@ fn overscroll_line_row(state: &TestState, width: u16) -> String {
         .draw(|frame| crate::tui::ui::draw(frame, state))
         .expect("overscroll frame");
     let rows = buffer_rows(&terminal);
-    // The overscroll line is the last row of the frame.
-    rows.last().cloned().unwrap_or_default()
+    // The overscroll line sits above the compact status bar (ui.rs gates that
+    // bar to width >= 80), so it is the last row only on narrow frames.
+    let idx = if width >= 80 {
+        rows.len().saturating_sub(2)
+    } else {
+        rows.len().saturating_sub(1)
+    };
+    rows.get(idx).cloned().unwrap_or_default()
 }
 
 #[test]
@@ -626,7 +632,8 @@ fn overscroll_model_is_pink() {
         .draw(|frame| crate::tui::ui::draw(frame, &state))
         .expect("overscroll frame");
     let buf = terminal.backend().buffer();
-    let y = buf.area.height - 1;
+    // Same compact-status-bar offset as overscroll_line_row (width 200 >= 80).
+    let y = buf.area.height - 2;
     let row: String = (0..buf.area.width)
         .map(|x| buf[(x, y)].symbol().to_string())
         .collect();
@@ -718,3 +725,4 @@ fn widgets_render_detail_layer_without_repeating_status_line_facts() {
         assert!(line.contains(owned), "line owns {owned:?}: {line}");
     }
 }
+
