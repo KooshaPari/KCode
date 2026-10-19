@@ -112,6 +112,21 @@ Quality Guardrails, Format, Setup Friction Eval, Build & Test ×3 OS, TypeScript
 
 **One deliberate leftover:** the change orphans `StartupHints::with_spawn_notice` (`lib.rs:201`), which now emits `warning: associated function with_spawn_notice is never used`. It is the only warning in the crate, `cargo check` still exits 0, and per scope the worker kept it rather than `#[allow]`-ing it away. Deleting it (and the `status_notice` field it fed) is a follow-up, tracked in the PR body. The `startup_spawn_hint_dismissed` field itself emits **no** warning — `#[serde(default = "default_true")]` keeps serde reading it.
 
+## Landed: PR #128 + PR #125 (2026-10-19T07:01Z)
+
+| PR | Squash commit | Verification on real `origin/master` |
+|---|---|---|
+| #128 | `081c1cf60` | `cargo test -p jcode-setup-hints` -> EXITCODE=101, **143 pass / 6 fail — same 6 names as the pre-merge baseline** |
+| #125 | `b9886143c` | `cargo test -p jcode-app-core --lib resume` -> EXITCODE=0, **24 pass / 0 fail**, all 6 new `handle_resume_session_allows_*` tests green |
+
+Both used the normal `gh pr merge --squash --body-file` path (elicitate IS installed in this session, so the AGENTS.md squash-fallback was not needed).
+
+PR #125 was re-verified against the master tip at merge time, not against stale evidence: two other agents landed `19ae47457` and `6ff8aa2d1` in between. `merge-tree` -> `6134a117` clean, simulated squash `bba6da5be`, detached worktree, `cargo check` EXITCODE=0 and the 24-test resume run before merging. post-merge master re-run confirms the same.
+
+One process detail worth remembering: `git merge-tree --write-tree` returns a **tree** object, not a commit. `git worktree add` on it fails with "object ... is a tree, not a commit". Wrap it with `git commit-tree <tree> -p a -p b -m msg` to get a checkout-able commit. I hit this and corrected one MY VERIFY-ONLY commit was never pushed (parents are synthetic).
+
+Verify worktrees (`wt-verify125`, `wt-postmaster`) were removed and pruned; the 5 `ci-audit-jcode*` worktrees and the other scratch worktrees were not touched.
+
 ## Remaining full-suite state (important — not clean yet)
 
 Full suite on the landing commit: **298 passed, 0 failed, 4 deadlocked.**
