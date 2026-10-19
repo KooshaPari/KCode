@@ -1,9 +1,24 @@
+/// Restore the previous `KCODE_HOME` on every exit path, including panics and
+/// early `?` returns, so a failed run never leaks the temp home into the
+/// process-wide environment other tests share.
+struct KcodeHomeGuard(Option<std::ffi::OsString>);
+
+impl Drop for KcodeHomeGuard {
+    fn drop(&mut self) {
+        if let Some(prev) = self.0.take() {
+            crate::env::set_var("KCODE_HOME", prev);
+        } else {
+            crate::env::remove_var("KCODE_HOME");
+        }
+    }
+}
+
 #[tokio::test]
 async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() -> Result<()> {
     let _guard = crate::storage::lock_test_env();
     let (_runtime, prev_runtime) = setup_runtime_dir()?;
     let temp_home = tempfile::TempDir::new().map_err(|e| anyhow!(e))?;
-    let prev_home = std::env::var_os("KCODE_HOME");
+    let _home_guard = KcodeHomeGuard(std::env::var_os("KCODE_HOME"));
     crate::env::set_var("KCODE_HOME", temp_home.path());
 
     let target_session_id = "session_existing_live_busy";
@@ -234,10 +249,5 @@ async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() 
     }
 
     restore_runtime_dir(prev_runtime);
-    if let Some(prev_home) = prev_home {
-        crate::env::set_var("KCODE_HOME", prev_home);
-    } else {
-        crate::env::remove_var("KCODE_HOME");
-    }
     Ok(())
 }
