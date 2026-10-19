@@ -18,8 +18,8 @@ concurrency:
 jobs:
   update:
     # Disabled: hosted ubuntu-latest minutes are capped at $0 (never pay for GH CI).
+    # When re-enabling, replace this with: if: github.repository == '1jehuang/jcode'
     if: false
-    if: github.repository == '1jehuang/jcode'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
