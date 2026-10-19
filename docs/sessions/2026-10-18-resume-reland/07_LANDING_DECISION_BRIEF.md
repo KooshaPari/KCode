@@ -92,10 +92,12 @@ worktree at `origin/master` (`b9886143c`), which was removed afterward.
 ## CI status (all three)
 
 Same pre-existing cause as #125/#128, already root-caused earlier this arc:
-`Build & Test` fails on all 3 OS runners with 25 distinct `tui::` test
-failures, 0 non-tui. Not caused by any of these PRs. `Format` fails on
-#127 and #132 for unrelated repo-adjacent drift; #129 is the PR that clears it.
-Master has no branch protection, so these gates are advisory only.
+`Build & Test` fails on all 3 OS runners. The exact count, re-verified in the
+extended pass, is **27 distinct `tui::` test failures** on baseline (I
+previously wrote 25; 27 is correct). 0 non-tui failures. Not caused by any of
+these PRs. `Format` fails on #127 and #132 for unrelated repo-adjacent drift;
+#129 is the PR that clears it. Master has no branch protection, so these gates
+are advisory only.
 
 ## Interaction check
 
@@ -104,23 +106,168 @@ in one scratch branch: `cargo fmt --all -- --check` → `EXITCODE=0`.
 
 ## Non-draft, mergeable summary
 
+Updated verdicts after the extended second pass (see below).
+
 | PR | Scope | Verdict on technical merit | Risk |
 |----|-------|---------------------------|------|
-| #127 | dead_code silences, +7/-0 | Verified: 7/7 warnings silenced, tests pass | minimal |
-| #132 | jcode→kcode strings, +8/-8 | Verified: fmt clean, assertions renamed with code | minimal |
-| #129 | rustfmt drift, 9 files | Verified: repo-wide drift is real and fully cleared | minimal, but see caveat |
+| #127 | dead_code silences, +7/-0 | Verified: 7/7 warnings silenced, tests pass, 0 regressions | minimal |
+| #132 | jcode->kcode strings, +8/-8 | Verified: fmt clean, assertions renamed with code, fixes 3 tests | minimal |
+| #129 | rustfmt drift, 9 files | Verified: repo-wide drift real and fully cleared. Split: land rustfmt half, revert/fix the `env!` half | minimal |
+| #124 | Windows keyboard fix + CI migration, +513/-351 | **LAND.** Fixes 25/27 pre-existing tui failures, 0 regressions, clippy `--lib` EXITCODE=0, fmt=0 | low code risk, high ops surface |
+| #107 | draft on upstream jcode 0.98.1 | **DO NOT MERGE.** 2,808 commits diverged, 1,658 conflicts, would revert decollision | blocked |
 
-## Drafts (not recommended for landing now)
+## Drafts / large PRs (verdict updated in the extended pass)
 
 - **#124** `fix(tui): keep Windows keyboard negotiation on native console input (cherry-pick of #97)`
-  — now `isDraft=false`, +449/-277, 65 files, `mergeable=MERGEABLE`. Large surface, no verification performed this session.
+  — `isDraft=false`, +449/-277 as reported by GitHub but +513/-351 as merged,
+  66 files, `mergeable=MERGEABLE`. **No longer "needs verification" — see the
+  extended pass. It is now the recommended land.**
 - **#107** `Native wake receipts on Jcode 0.98.1 source baseline`
   — draft, +654/-1, 14 files, base is `codex/native-wake-base-1c7426e`
-  (not master), head `codex/native-wake-receipts-20261016`. Feature work on a non-master baseline.
+  (upstream, not master). **Blocked: must be ported, not merged.**
 
 ## Operator call required
 
-Landing is the operator's decision. The three above are technically low-risk
-and verified. #129 carries the caveat that one of its two changes is cosmetic
-relocation rather than a fix. #124 and #107 need their own verification passes
-before any call.
+Landing is the operator's decision. After the extended second pass the
+recommendation is:
+
+- **Land #127 and #132 now.** Minimal risk, verified, 0 regressions.
+- **Land #124.** Highest value in the batch. It fixes 25 of the 27 pre-existing
+  tui failures. Confirm the `desk-linux` self-hosted runner is intended first,
+  because it also migrates all 7 CI jobs off `ubuntu-latest` and removes the
+  macOS and hosted Windows legs. If the operator wants that CI change
+  separated, the keyboard fix alone should be split out.
+- **Split #129.** Land the rustfmt half (verified: clears all drift); revert the
+  `env!` half or change it to `CARGO_BIN_EXE_kcode`.
+- **Do not merge #107.** Port it onto a `master`-based branch first.
+
+---
+
+# EXTENDED VALIDATION (second pass, 2026-10-19)
+
+The first pass above answered "is each PR internally correct?". It did **not**
+answer "does each PR cause no regression?" or validate #124/#107 at all.
+This pass closes those gaps. Method: two detached worktrees at `origin/master`
+(`b9886143c`) — one clean baseline, one with all three stacked — run under
+identical conditions with `export TMPDIR=/tmp/kcode-neutral-tmp`. Both removed
+afterward.
+
+## RETRACTION: the failure count was wrong
+
+I previously stated **25** distinct failing tui tests. The correct baseline
+number is **27**. Re-derived by extracting test names from the rustc
+`failures:` block, not by counting summary lines:
+
+- Baseline `cargo test -p jcode-tui --lib -- --test-threads=4`:
+  `2482 passed; 27 failed; 19 ignored`, `EXITCODE=101`, 64.22s
+- Merged (#127+#132+#129): `2485 passed; 24 failed; 19 ignored`, `EXITCODE=101`
+
+The "25" figure came from a CI log line and was an undercount. **27 is the
+number to use.** (Also see PR #124 below, which cuts this to 2.)
+
+## Regression test: baseline vs merged
+
+Failure sets differenced with `comm`:
+
+- **Fixed by the three PRs (3):**
+  - `tui::app::helpers::helpers_tests::build_resume_command_uses_imported_jcode_session_for_claude_code`
+  - `tui::app::helpers::helpers_tests::build_resume_command_uses_imported_jcode_session_for_codex`
+  - `tui::app::turn_notify::tests::kitty_notification_is_one_completed_clickable_message`
+- **Newly broken: ZERO.** No test fails only after the merge.
+
+All three fixed tests are exactly the ones PR #132 touches. Net effect:
++3 passing, 0 regressions, 24 remaining failures all pre-existing.
+
+## CI gate scripts, both trees
+
+Exit codes **identical** on baseline and merged: `deps=0`, `wildcard=0` pass;
+`warning`, `codesize`, `testsize`, `panic`, `swallow` fail. The PRs do not
+flip any gate. Two output diffs, both improvements or neutral:
+
+- **warning gate:** distinct rustc warnings drop **9 -> 2**. Exactly the 7
+  `update_product` dead-code warnings are removed and **0 are added**. This
+  independently reconfirms the "7" count from a second, stronger source than
+  the earlier grep. The remaining 2 failures (`with_spawn_notice`, an unused
+  import in `tui/mod.rs`) are pre-existing on master.
+- **testsize gate:** `translate_tests.rs` is over budget and **grew** on both
+  trees, but **less** on merged (`4028 -> 4033`) than baseline
+  (`4028 -> 4037`), because #129's rustfmt compaction shrank the file.
+- `codesize`, `panic`, `swallow`: byte-identical output on both trees.
+
+## PR #124 — re-validated, and it is far more valuable than first assessed
+
+`gh pr view` reports `mergeable=MERGEABLE`, which I initially took at face
+value and then mis-flagged as conflicting (my merge used a bad ref and the
+failure was my error, not a real conflict). Real merge into clean master:
+**0 conflicts**, `HEAD=126a6586c`, 66 files, +513/-351.
+
+**What it actually is: it bundles TWO things.**
+
+1. A genuine, well-documented Windows keyboard fix. New file
+   `crates/jcode-tui/src/tui/keyboard_protocol.rs` matches keyboard
+   negotiation to the active input decoder: on Windows, crossterm 0.29 uses
+   `ReadConsoleInputW`, so requesting kitty/modifyOtherKeys reporting can lose
+   special keys. `write_mode` returns `Unsupported` for `Push` on native
+   console and no-ops `Set`/`Pop`. Arguably the single cleanest fix in this
+   whole batch.
+2. **A complete CI-infrastructure migration.** All **7** `runs-on: ubuntu-latest`
+   jobs move to `runs-on: [self-hosted, desk-linux]`; the `macos-latest` leg
+   is deleted; hosted Windows CI is disabled. Cover comments note fork PRs
+   never run on an unisolated persistent self-hosted runner, and
+   `cargo install` steps are guarded with `command -v ... ||` for persistent
+   `CARGO_HOME`. Touches `.github/workflows/{ci,freebsd-smoke,ios-testflight,
+   require-issue,update-star-history}.yml` plus scripts and TS SDK tests.
+
+**Effect on the repo's failing test suite — verified, not inferred:**
+
+- `cargo test -p jcode-tui --lib -- --test-threads=4` on #124:
+  `2510 passed; 2 failed; 19 ignored`, `EXITCODE=101`
+- vs baseline `2482 passed; 27 failed`
+- **Fixes 25 of the 27 pre-existing failures. Zero regressions.**
+- New `crates/jcode-tui/tests/keyboard_protocol.rs`: 3 tests pass.
+- `cargo test -p jcode-tui --lib keyboard`: 13 passed.
+- `cargo fmt --all -- --check`: `EXITCODE=0`
+- `cargo clippy -p jcode-tui --lib -- -D warnings`: **`EXITCODE=0` on #124 vs
+  `EXITCODE=101` on baseline** — it fixes clippy failures too.
+
+**Two failures remain, both unrelated to keyboard, both separate work:**
+
+- `tui::app::helpers::helpers_tests::detected_resume_terminal_recognizes_handterm_term_program`
+  — terminal-detection priority: got `Some("herdr")`, expected `Some("handterm")`.
+- `tui::app::tests::test_tui_cerebras_paste_key_lifecycle_has_no_degraded_success_messages`
+  — panics at `tests/state_model_poke_03.rs:947`.
+
+**One clippy caveat, resolved.** `cargo clippy -p jcode-tui --all-targets -- -D warnings`
+on #124 reports 3 errors (`unused import: cache_expected_warm`,
+`variable does not need to be mutable`, `field pending_swarm_rename is never
+read`). I first read these as newly introduced. **That was wrong.** They are
+pre-existing warnings on master (confirmed at `tui/mod.rs:1070/1850`,
+`remote_startup_input_02/part_01.rs:1822`, `ui_tests/mod.rs:159`). Baseline has
+9 `-D warnings` errors but **aborts on `jcode-tui-mermaid` / `jcode-setup-hints`
+/ `jcode-harness-api` before reaching `jcode-tui`**, which masks them. On the
+identical `--lib` scope, baseline is `EXITCODE=101` and #124 is `EXITCODE=0`.
+
+**Recommendation changes: land #124.** It is the highest-value PR in the
+batch. The CI migration is a real operational change and the operator should
+confirm the `desk-linux` self-hosted runner exists and is intended before
+merging, but the code side is the best-tested change here.
+
+## PR #107 — DO NOT MERGE (blocked, not a judgment call)
+
+- Base branch `codex/native-wake-base-1c7426e` is **not** an ancestor of
+  master and diverges at `752df77d3`, sitting **2,808 commits ahead**.
+- The head commit's own `Cargo.toml` declares `name = "jcode"`,
+  `version = "0.98.1"` — it is built on the **upstream** product baseline,
+  whereas master is `name = "kcode"`, `version = "0.93.0-k0.1.0`.
+- The PR's real delta vs its own base is only 14 files / +654/-1 (native wake
+  receipts), so it **looks** tiny — but the delta relative to master is
+  enormous because the histories diverged.
+- Attempted merge into master: **1,658 conflicting hunks.**
+- Merging it would revert the fork decollision.
+- **The GitHub `mergeable=MERGEABLE` badge is misleading here.** It reflects
+  GitHub's own merge-base logic, not what a real merge would do.
+
+Concrete path forward if the operator wants this work: re-target the 14-file
+delta onto `master` (or a `master`-based branch) as a fresh PR. It must be
+ported, not merged.
+
