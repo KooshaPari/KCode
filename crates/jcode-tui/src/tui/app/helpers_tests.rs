@@ -355,7 +355,7 @@ fn build_resume_command_uses_imported_jcode_session_for_claude_code() {
 
     assert_eq!(
         program.file_name().and_then(|name| name.to_str()),
-        Some("jcode")
+        Some("kcode")
     );
     assert_eq!(
         args,
@@ -382,7 +382,7 @@ fn build_resume_command_uses_imported_jcode_session_for_codex() {
 
     assert_eq!(
         program.file_name().and_then(|name| name.to_str()),
-        Some("jcode")
+        Some("kcode")
     );
     assert_eq!(
         args,
