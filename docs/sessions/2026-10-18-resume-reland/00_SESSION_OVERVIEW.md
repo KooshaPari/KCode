@@ -83,17 +83,34 @@ The naive fix is `--update`, which is **explicitly forbidden** by operator stand
 
 ## Open items needing operator input
 
-### Task D — RESOLVED scope, fix dispatched (2026-10-19T00:09Z)
+## Task D — RESOLVED, worker landed PR #128 (2026-10-19T03:19Z)
 
-**Update to the UNRESOLVED note that used to stand here.** The target was recovered on 2026-10-19, not guessed: `crates/jcode-setup-hints/src/lib.rs`. `startup_spawn_hint_dismissed` has exactly 4 references — `lib.rs:77` (field), `lib.rs:141` (default `true`), `lib.rs:612` (gate), plus `scripts/update_rehearsal.py:213` which persists `True`. **Nothing in the repo ever writes `false`**, so the gate at 612 is never taken and the notice string at 616 emits zero times in production. Its dead text still reads `"Cmd+; launches a new jcode"` — pre-rebrand wording.
+**Update to the UNRESOLVED note that used to stand here.** The target was recovered on 2026-10-19, not guessed: `crates/jcode-setup-hints/src/lib.rs`. `startup_spawn_hint_dismissed` has exactly 4 references — `lib.rs:77` (field), `lib.rs:141` (default `true`), `lib.rs:612` (gate), plus `scripts/update_rehearsal.py:213` which persists `True`. **Nothing in the repo ever writes `false`**, so the gate at 612 is never taken and the notice string at 616 emits zero times in production. Its dead text still read `"Cmd+; launches a new jcode"` — pre-rebrand wording.
 
 Corroborating: `cargo check -p jcode-setup-hints --all-targets` → **EXITCODE=0 with zero dead_code warnings**, so it is unreachable by dataflow rather than by the compiler's reachability analysis. That is why no tooling flagged it.
 
-**Caveat that bounds the claim:** `SetupHintsState` is `#[derive(Serialize, Deserialize)]` with `#[serde(default)]` and the field is `pub`. A live user's `setup_hints.json` could in principle contain `"startup_spawn_hint_dismissed": false`, which would resurrect the notice. Proven only: **no writer in the repo produces `false`**. Not proven dead in all cases.
+**Caveat that bounds the claim:** `SetupHintsState` is `#[derive(Serialize, Deserialize)]` with `#[serde(default)]` and the field is `pub`. `#[serde(default = "default_true")]` at `:76` means serde's generated `Deserialize` reads the field, so a live user's `setup_hints.json` could contain `"startup_spawn_hint_dismissed": false` and resurrect the notice. Proven only: **no writer in the repo produces `false`**. Not proven dead in all cases.
 
-**Scope decision:** delete the unreachable notice string and the machinery that exists only to carry it; **keep the `startup_spawn_hint_dismissed` field** on the public persisted schema (dropping a `pub` field from a deserializing struct is a separate compatibility decision).
+**Landed.** Worker `monkey` (`session_monkey_1792368565012_40aed1528fa5ace6`) worked in an isolated worktree `wt-deadcode-spawn-notice`, branch `fix/remove-dead-spawn-notice`, and opened **PR #128** (commit `059948345`). Diff is 1 file, 12 insertions / 13 deletions. It deletes the `spawn_notice` local and the notice string, replaces them with an explanatory comment, leaves `startup_hints_for_launch`'s signature intact (`let _ = _state; None`), and **keeps** the `startup_spawn_hint_dismissed` field. `cargo fmt -p jcode-setup-hints -- --check` → `EXITCODE=0`.
 
-**Dispatched** to worker `monkey` (`session_monkey_1792368565012_40aed1528fa5ace6`) in an isolated worktree `wt-deadcode-spawn-notice`, branch `fix/remove-dead-spawn-notice`. Status at last check: in flight.
+### My two in-flight corrections on this PR (both were mine, both retracted)
+
+I told the operator in one message that this PR **breaks** `setup_hints_tests::first_three_launches_can_include_hotkey_notice_too`, inferring it was `#[cfg(target_os = "macos")]` and therefore silently skipped. **Both halves were wrong and I retracted them in the same session:**
+
+1. The test is `#[cfg(target_os = "macos")]` but the host triple is `aarch64-apple-darwin`, so it **does** compile and run. Run in isolation it panics: `setup_hints_tests.rs:38:50: expected startup hint`, `EXITCODE=101`.
+2. **It fails identically on pristine `origin/master`.** Ran the same named test in the master-equivalent worktree (`crates/jcode-setup-hints/` verified byte-identical to `origin/master` there); same panic, same line, same exit code. Full-suite failure sets diff to **IDENTICAL** on both trees: 143 passed / 6 failed, same 6 names. Root cause on master: the test sets `hotkey_configured: true` but leaves `startup_spawn_hint_dismissed` at its default `true`, so the old gate `!true || true` → `None`, and `.expect("expected startup hint")` fails. The notice was already dead when that test was written.
+
+So PR #128 introduces **zero** regressions; it makes a pre-existing dead branch slightly more honest.
+
+### My verification-scope gap (found and corrected)
+
+I first ran `cargo fmt -p jcode-setup-hints -- --check` → `EXITCODE=0` and nearly reported the Format gate as "green locally". That was a **scoping error**: the crate-scoped check cannot see the 7 files CI flagged. Workspace-wide `cargo fmt --all -- --check` → `EXITCODE=1` on **both** master and the branch, with a path-normalized **IDENTICAL** 7-file set: `jcode-app-core/examples/print_build_info.rs`, `jcode-base/tests/mcp_xj07_failure_modes.rs`, `jcode-core/examples/smoke.rs`, `jcode-core/src/stdin_detect_tests.rs`, `jcode-harness-api-server/src/translate_tests.rs`, `jcode-herdr/examples/round_trip_state.rs`, `jcode-tui/src/tui/mod.rs`. `jcode-setup-hints` appears in **neither**. PR #128 touches none of them.
+
+### PR #128 CI state (all 6 reds are master-equivalent)
+
+Quality Guardrails, Format, Setup Friction Eval, Build & Test ×3 OS, TypeScript SDK. Require Linked Issue = **pass**. Verified the Format red by reading the CI job diff directly: the three files it names are in the master-equivalent set above. Same pattern as PR #125 — CI is red on pristine master across this workspace, so a red run is not evidence of breakage. Local verification is recorded in PR #128's body with before/after EXITCODEs and log paths.
+
+**One deliberate leftover:** the change orphans `StartupHints::with_spawn_notice` (`lib.rs:201`), which now emits `warning: associated function with_spawn_notice is never used`. It is the only warning in the crate, `cargo check` still exits 0, and per scope the worker kept it rather than `#[allow]`-ing it away. Deleting it (and the `status_notice` field it fed) is a follow-up, tracked in the PR body. The `startup_spawn_hint_dismissed` field itself emits **no** warning — `#[serde(default = "default_true")]` keeps serde reading it.
 
 ## Remaining full-suite state (important — not clean yet)
 
