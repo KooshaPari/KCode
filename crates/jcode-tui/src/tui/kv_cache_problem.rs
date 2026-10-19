@@ -80,7 +80,13 @@ fn min_cacheable_input_tokens(provider: &str, upstream_provider: Option<&str>) -
 }
 
 pub(crate) fn cache_expected_warm(cache_ttl: Option<&CacheTtlInfo>) -> bool {
-    cache_ttl.map(|info| !info.is_cold).unwrap_or(false)
+    // An `is_estimate` value is a heuristic guess, not evidence: only treat the
+    // cache as expected-warm when we have a concrete TTL reading AND it is not
+    // already cold. See `cache_estimate_is_not_evidence_of_an_expected_warm_hit`
+    // in the tui::tests module for the regression this guards against.
+    cache_ttl
+        .map(|info| !info.is_estimate && !info.is_cold)
+        .unwrap_or(false)
 }
 
 /// Detect a KV/prompt-cache problem that is reliable enough to surface in the UI.
