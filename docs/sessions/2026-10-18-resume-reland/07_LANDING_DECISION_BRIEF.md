@@ -464,10 +464,17 @@ New evidence gathered this pass:
   landable** even once #8 is resolved: 58 ahead / 249 behind master. Anything
   #10 lands lands on top of #8.
 - **#121 conflicts with #124** in `crates/jcode-setup-hints/src/linux_env.rs`:
-  #121 wants `entry.contains("kcode-launch-") && !entry.contains("jcode-launch-")`
-  while #124 writes just `!entry.contains("kcode-launch-")`. **A real landing-order
-  constraint:** #121 before #124, or #124 rebased onto #121. #121 merges cleanly
-  on top of the #127+#132+#129 stack.
+  ~~#121 wants `entry.contains("kcode-launch-") && !entry.contains("jcode-launch-")`
+  while #124 writes just `!entry.contains("kcode-launch-")`.~~ **That is backwards
+  — corrected in pass 6.** The real split is: **#121** is a pure `jcode`→`kcode`
+  rename (only `[services][kcode-launch-`) while **#124** keeps BOTH markers
+  (`jcode` **or** `kcode`), i.e. #124 is backward compatible and #121 is a clean
+  break. Verified by reading both blobs **and** by a real test merge: exactly
+  **1 conflicted file, 1 conflict hunk**. The hunk is the `skipping = ...` line,
+  not the `entry.contains(...)` predicate the old text pointed at (#121 never
+  touches that line). **Resolve toward #124** — taking #121's side silently drops
+  handling for pre-existing `jcode-launch-*` slots and orphans user config from
+  before the rename. #121's other 4 files do not conflict.
 - ~~#123, #119 and #121 have **no CI on their head at all** (`gh pr checks`
   empty), so they were never validated by anything until now.~~ **WRONG —
   retracted in pass 6.** All three have CI, it ran at 03:17-03:22Z (before this
@@ -524,8 +531,9 @@ is now 10 PRs, not 5.
    - #124 disables **3 of the 9 `ci.yml` jobs outright** (`windows-build-test`,
      `powershell-syntax`, `setup-friction`) and removes the macOS leg. That is a
      large coverage reduction to accept knowingly, not a side effect.
-   - Landing-order still matters: merge **#121 before #124**, or rebase #124
-     after #121.
+   - Landing-order still matters: **resolve the `linux_env.rs` hunk toward
+     #124's both-markers version** (see the corrected #121 note above — the old
+     "merge #121 before #124" framing was based on a backwards reading).
    - **The keyboard fix alone is the part I would land.** Splitting it from the
      CI migration is cleaner than taking both together.
 4. **#8 and #10:** do not merge as-is. #8 is **119 commits ahead / 249 behind** master and
@@ -805,8 +813,10 @@ one-hunk conflict in two places. It is trivially resolvable in #124's favour
 (keeping `file_stem()`), which I verified: resolving toward #124 leaves both
 tests passing (`EXITCODE=0` each). The operator should land **#124 first, or
 rebased #132 after it** — the reverse order silently loses the Windows
-`file_stem()` improvement. This is a stronger version of the "land #121 before
-#124" ordering rule already in this brief.
+`file_stem()` improvement. This is a stronger version of the #121/#124 ordering
+note above — same shape of problem (two PRs editing the same predicate), but for
+that pair the correct resolution is toward #124's **wider** predicate, not
+whichever lands second.
 
 ## NEW FINDING 2 — the "0 regressions / fixes 25 of 27" claim does not
 ## survive repeated runs. It churns.
@@ -1057,3 +1067,63 @@ fallen 88 commits behind it. #10 is therefore blocked twice over: it inherits
 #8's divergence from master, and it is itself stale relative to #8. It is also
 still a draft. **Do not merge; do not treat as landable-in-sequence behind #8
 without a rebase.**
+
+### CORRECTION — the #121/#124 collision was described with the two PRs SWAPPED
+
+Pass 3 recorded the `linux_env.rs` collision as:
+
+> "#121 wants `entry.contains("kcode-launch-") && !entry.contains("jcode-launch-")`
+> while #124 writes just `!entry.contains("kcode-launch-")`."
+
+**That is backwards, and the predicate is also mis-transcribed** (both sides are
+negated; neither side "wants" a positive `contains`). Verified by reading both
+blobs and by an actual test merge:
+
+```
+$ git merge b65a4701b   (into #124's head e37ca7a38)
+CONFLICT (content): Merge conflict in crates/jcode-setup-hints/src/linux_env.rs
+1 conflicted file, 1 conflict hunk
+```
+
+The real conflict, at the `skipping = ...` line:
+
+```
+<<<<<<< HEAD                                    (#124)
+            skipping = line.starts_with("[services][jcode-launch-")
+                || line.starts_with("[services][kcode-launch-");
+=======                                          (#121)
+            skipping = line.starts_with("[services][kcode-launch-");
+>>>>>>> b65a4701b
+```
+
+The two PRs are doing **different jobs**, not the same job twice:
+
+| | approach | effect |
+|---|---|---|
+| **#121** | pure rename `jcode` → `kcode` everywhere (code, comments, tests) | legacy `jcode-launch-*` entries are **no longer matched** — a clean break |
+| **#124** | adds `kcode` **alongside** `jcode` (`!kcode && !jcode`; `jcode \|\| kcode`) | legacy and new entries are both handled — backward compatible |
+
+So the landing-order note needs inverting in spirit: the question is not "#121
+before #124" but **which marker set you want to keep**. Resolution should
+preserve **#124's both-markers version**; taking #121's side would silently drop
+handling for pre-existing `jcode-launch-*` slots, orphaning user config from before
+the rename. #121's other 4 files (`lib.rs`, `linux_niri.rs`,
+`macos_launcher_tests.rs`, `setup_hints_tests.rs`) do not conflict.
+
+Also note: the collision is **not** at the `entry.contains(...)` predicate the
+pass-3 text points at. #121 never touches that line — the diff at
+`if !entry.contains(...)` is #124's alone. The single conflict hunk is the
+`skipping = ...` line, 144 lines further down.
+
+### Root `[lib]` decollision check — confirmed still unfixed
+
+Pass 3's finding holds, verified by parsing the manifest this pass: root
+`Cargo.toml` has `package.name = "kcode"` and `[lib] name = "jcode"`
+(`Cargo.toml:107-109`), and there are **7 `[[bin]]` targets, none of them named
+`jcode`** — `kcode`, `test_api`, `kcode-harness`, `session_memory_bench`,
+`memory_recall_bench`, `mermaid_side_panel_probe`, `tui_bench`. The single
+`name = "jcode"` occurrence in the whole manifest is the library target.
+Neither #121 nor #124 touches this, so the decollision is still incomplete at
+the library-target level even after the rename work lands. This does not
+invalidate the `CARGO_BIN_EXE_jcode` conclusion (no bin of that name exists), but
+it is an open piece of the rename that nothing in the current PR set closes.
