@@ -69,7 +69,7 @@ impl TestEnvGuard {
     pub(crate) fn new() -> Result<Self> {
         let lock = lock_jcode_home();
         let temp_home = tempfile::Builder::new()
-            .prefix("jcode-e2e-home-")
+            .prefix("kcode-e2e-home-")
             .tempdir()?;
         // No telemetry: a concurrency lease finishing at runtime shutdown otherwise recreates
         // telemetry_concurrency_v2/ after the TempDir is removed, leaking one dir per test.

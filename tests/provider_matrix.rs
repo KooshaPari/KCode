@@ -87,7 +87,7 @@ impl TestEnv {
     fn new() -> Result<Self> {
         let lock = lock_env();
         let temp = tempfile::Builder::new()
-            .prefix("jcode-provider-matrix-")
+            .prefix("kcode-provider-matrix-")
             .tempdir()?;
         let saved = tracked_env_vars()
             .into_iter()
