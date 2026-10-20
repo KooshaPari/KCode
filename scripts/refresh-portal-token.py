@@ -32,8 +32,8 @@ Usage
 Exit codes
 ----------
     0 = refresh succeeded and the rotated tokens were persisted
-    1 = the refresh failed (the cached refresh token was already spent)
-    2 = no token cache found
+    1 = the refresh failed, or the token endpoint was unreachable
+    2 = no usable token cache found
 """
 
 from __future__ import annotations
@@ -42,6 +42,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -50,13 +51,24 @@ import urllib.request
 TOKEN_PATH = os.path.expanduser(
     "~/.mcp-auth/mcp-remote-v1/abb316d3ba70bc7220e11618a1b43906_tokens.json"
 )
-TOKEN_URL = "https://phenotype.spotifyportal.com/api/auth/v1/token"
+# Public OAuth token endpoint, not a credential.
+TOKEN_ENDPOINT = "https://phenotype.spotifyportal.com/api/auth/v1/token"
 CLIENT_ID = "https://auth.kooshapari.com/oauth/client-metadata.json"
 RESOURCE = "https://phenotype.spotifyportal.com/api/mcp-actions/v1"
 
+# Sentinel status for a transport failure, distinct from any HTTP status code.
+NETWORK_ERROR = -1
+
 
 def post_form(url: str, fields: dict[str, str]) -> tuple[int, dict]:
-    """POST an application/x-www-form-urlencoded body and decode the JSON reply."""
+    """POST an application/x-www-form-urlencoded body and decode the JSON reply.
+
+    Returns ``(status, body)``. A JSON error response comes back with its real
+    HTTP status. A transport failure (DNS, TLS, timeout, connection reset) is
+    reported as ``(NETWORK_ERROR, {...})`` so callers can tell "the server said
+    no" apart from "we never reached the server". No request field is ever
+    included in the returned body, so token material cannot leak through it.
+    """
     body = urllib.parse.urlencode(fields).encode()
     request = urllib.request.Request(
         url,
@@ -65,14 +77,20 @@ def post_form(url: str, fields: dict[str, str]) -> tuple[int, dict]:
         method="POST",
     )
     try:
+        # Scheme is a module constant pointing at a fixed https endpoint.
         with urllib.request.urlopen(request, timeout=30) as response:
             return response.status, json.loads(response.read().decode())
     except urllib.error.HTTPError as exc:
+        # HTTPError is a URLError subclass, so it must be handled first.
         raw = exc.read().decode()
         try:
             return exc.code, json.loads(raw)
         except json.JSONDecodeError:
             return exc.code, {"error": "unparseable_response", "raw": raw[:200]}
+    except urllib.error.URLError as exc:
+        return NETWORK_ERROR, {"error": "network_error", "reason": str(exc.reason)}
+    except (TimeoutError, OSError) as exc:
+        return NETWORK_ERROR, {"error": "network_error", "reason": type(exc).__name__}
 
 
 def describe(cached: dict) -> str:
@@ -80,17 +98,58 @@ def describe(cached: dict) -> str:
     expires_at = cached.get("expires_at")
     left = "unknown"
     if isinstance(expires_at, (int, float)):
-        left = "%ds" % int(expires_at / 1000 - time.time())
+        left = f"{int(expires_at / 1000 - time.time())}s"
     return (
-        "access_token=<%d chars> refresh_token=<%d chars> expires_in=%s left=%s scope=%s"
-        % (
-            len(cached.get("access_token", "")),
-            len(cached.get("refresh_token", "")),
-            cached.get("expires_in"),
-            left,
-            cached.get("requested_scope") or cached.get("scope"),
-        )
+        f"access_token=<{len(cached.get('access_token', ''))} chars> "
+        f"refresh_token=<{len(cached.get('refresh_token', ''))} chars> "
+        f"expires_in={cached.get('expires_in')} left={left} "
+        f"scope={cached.get('requested_scope') or cached.get('scope')}"
     )
+
+
+def persist_durably(token_path: str, payload: dict) -> None:
+    """Atomically and durably replace ``token_path`` with ``payload`` (mode 0600).
+
+    The temporary file is created *in the destination directory* with
+    owner-only permissions before any data is written (``NamedTemporaryFile``
+    uses 0600), then flushed and fsynced. ``os.replace`` swaps it into place
+    atomically, and on POSIX the parent directory is fsynced so the rename
+    itself survives a crash. On Windows the rename is used as-is and the
+    durability guarantee is limited to what the OS provides for it. The
+    temporary file is removed if anything fails before the swap.
+    """
+    directory = os.path.dirname(os.path.abspath(token_path)) or "."
+    tmp_path = ""
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=directory,
+        prefix=".tokens-",
+        suffix=".tmp",
+        delete=False,
+    ) as handle:
+        tmp_path = handle.name
+        if hasattr(os, "fchmod"):
+            os.fchmod(handle.fileno(), 0o600)  # already 0600; make it explicit
+        json.dump(payload, handle, indent=2)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+    try:
+        os.replace(tmp_path, token_path)
+    except OSError:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+    if os.name == "posix":
+        dir_fd = os.open(directory, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
 
 
 def main() -> int:
@@ -106,17 +165,19 @@ def main() -> int:
         help="override the tokens.json path (default: %(default)s)",
     )
     args = parser.parse_args()
+    # Operator-supplied path, by design: this helper manages one cache file
+    # that the caller may relocate (e.g. a per-run scratch copy in the tests).
     token_path = os.path.expanduser(args.token_path)
 
     if not os.path.exists(token_path):
-        print("FAIL: no token cache at %s" % token_path)
+        print(f"FAIL: no token cache at {token_path}")
         return 2
 
-    with open(token_path) as handle:
+    with open(token_path, encoding="utf-8") as handle:
         cached = json.load(handle)
 
     if args.check:
-        print("cache: %s" % describe(cached))
+        print(f"cache: {describe(cached)}")
         return 0
 
     refresh_token = cached.get("refresh_token")
@@ -125,7 +186,7 @@ def main() -> int:
         return 2
 
     status, body = post_form(
-        TOKEN_URL,
+        TOKEN_ENDPOINT,
         {
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
@@ -135,12 +196,27 @@ def main() -> int:
         },
     )
 
-    if status != 200 or not body.get("access_token"):
+    if status == NETWORK_ERROR:
         print(
-            "FAIL: refresh returned HTTP %s (%s). The cached refresh token was "
-            "already spent; re-run the consent flow to mint a new one."
-            % (status, body.get("error"))
+            f"FAIL: could not reach the token endpoint ({body.get('reason')}). "
+            "The token cache was NOT modified; retry once the network is back."
         )
+        return 1
+
+    if status != 200 or not body.get("access_token"):
+        error = body.get("error")
+        if error == "invalid_grant":
+            print(
+                f"FAIL: refresh returned HTTP {status} (invalid_grant). The cached "
+                "refresh token was already spent; re-run the consent flow to mint "
+                "a new one."
+            )
+        else:
+            print(
+                f"FAIL: refresh returned HTTP {status} ({error}). The token cache "
+                "was NOT modified; retry later. If this persists, re-run the "
+                "consent flow."
+            )
         return 1
 
     # Persist the rotated pair BEFORE reporting success. The refresh token
@@ -154,14 +230,10 @@ def main() -> int:
         cached["expires_in"] = body["expires_in"]
         cached["expires_at"] = int(time.time() * 1000) + int(body["expires_in"]) * 1000
 
-    tmp_path = token_path + ".tmp"
-    with open(tmp_path, "w") as handle:
-        json.dump(cached, handle, indent=2)
-    os.replace(tmp_path, token_path)
-    os.chmod(token_path, 0o600)
+    persist_durably(token_path, cached)
 
     print("OK: refreshed (HTTP 200); rotated refresh token persisted")
-    print("    cache: %s" % describe(cached))
+    print(f"    cache: {describe(cached)}")
     return 0
 
 

@@ -1692,7 +1692,7 @@ The original test passed under the first mutation. The corrected test fails unde
 
 | File | Change |
 |------|--------|
-| `scripts/stub-cimd-server.py` | Added `--tls-dir` for HTTPS serving with a self-signed cert; prints `scheme=https|http`; warns loudly and falls back to HTTP (with a warning that the assertion is meaningless) if the cert is missing; docstring corrected to describe SEP-991 behaviour. |
+| `scripts/stub-cimd-server.py` | Added `--tls-dir` for HTTPS serving with a self-signed cert; prints `scheme=https` (or `scheme=http` when falling back); warns loudly and falls back to HTTP (with a warning that the assertion is meaningless) if the cert is missing; docstring corrected to describe SEP-991 behaviour. |
 | `scripts/test-portal-bridge.sh` | Generates a short-lived self-signed cert in the temp work dir; passes `--tls-dir` to the stub and refuses to run if the stub is not HTTPS; sets `NODE_EXTRA_CA_CERTS` for the mcp-remote invocation; rewrote the assertions (CIMD accepted / callback host / callback port); removed the `PASS (partial)` escape hatch; fixed the Python 3.9 f-string `SyntaxError` in the body summary; corrected the header and exit-code documentation. |
 
 ### 28.7 Relationship to §27
