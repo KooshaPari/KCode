@@ -1045,12 +1045,13 @@ Metadata re-verified and identical to the earlier record: #123 `+327/-4` 5 files
 #119 `+211/-16` 9 files, #121 `+16/-13` 5 files; all OPEN, non-draft,
 MERGEABLE, all targeting `master`.
 
-### #121 still conflicts with #124 — file confirmed
+### #121 still conflicts with #124 — and the description below is now corrected
 
-`crates/jcode-setup-hints/src/linux_env.rs` is in #121's 5-file list, as recorded.
-The one-line landing-order constraint (#121 before #124, or rebase #124 onto
-#121) stands unverified at the content level this pass — I confirmed the file is
-in scope, not the exact predicate collision, which was read in pass 3.
+`crates/jcode-setup-hints/src/linux_env.rs` is in #121's 5-file list. This
+subsection originally said the content-level collision was *unverified* this
+pass; it has since been verified, and the earlier description was **backwards**.
+See the dedicated correction earlier in this document for the real split (#121 =
+rename-only, #124 = both markers) and for the corrected resolution guidance.
 
 ### #8 and #10 divergence — re-derived exactly, and a new detail
 
