@@ -288,7 +288,7 @@ test("a missing bridge socket explains how to start it", async () => {
     (error: HarnessError) => {
       assert.equal(error.name, "HarnessError");
       assert.equal(error.code, "connect_failed");
-      assert.match(error.message, /jcode api-bridge/);
+      assert.match(error.message, /kcode api-bridge/);
       assert.match(error.message, new RegExp(missing.replace(/[/\\]/g, "\\$&")));
       return true;
     },
