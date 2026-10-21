@@ -146,7 +146,13 @@ jobs:
     # the same green steps (#693). A rerun is exactly what you reach for after a
     # concurrency cancellation, so the old cap made healthy commits look red.
     # 75 still bounds a genuinely hung job well under the windows job's 150.
-    timeout-minutes: 120
+    #
+    # 240 because this job now runs intentionally cold (see the `cache-targets:
+    # "false"` note below). Measured on this runner: Build cold = 2453s,
+    # `cargo test --lib --bins --no-run` cold ~= 2990s. That pair alone is 5443s,
+    # so the previous 120-minute (7200s) cap left under 30 minutes for checkout,
+    # toolchain, mold, and the nine cohort/e2e steps after the compile.
+    timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
     # published crate*. When cargo builds such a crate its CWD is that crate dir,
@@ -189,6 +195,25 @@ jobs:
           # Suffix bumped to evict caches that held 1.83.0 / <unknown rustc>
           # artifacts produced before RUSTUP_TOOLCHAIN=stable pinned the job.
           key: ${{ matrix.os }}-stablepin
+          # `cache-targets: "false"` keeps $CARGO_HOME (registry + git + bin) in
+          # the cache and drops the workspace `target/` directory from it.
+          # (Swatinem/rust-cache action.yml: "Determines whether workspace
+          # targets are cached. If `false`, only the cargo registry will be
+          # cached." src/config.ts pushes `workspaces.map(ws => ws.target)` onto
+          # cachePaths only when this input is true.)
+          #
+          # Why this job and not the others: this is the only job that runs a
+          # full `cargo build --release` AND `cargo test --lib --bins --no-run`
+          # AND eight integration/e2e compiles into the same target dir, so its
+          # third-party dependency rlibs for *both* profiles dominate the blob.
+          # The measured blob was 2,029,470,155 bytes; the restore step aborts
+          # at a ~600s cap after 37-44% and falls through to "No cache found",
+          # which makes the job cold anyway -- so caching target/ buys this job
+          # nothing it actually gets, and costs 641s of doomed download on every
+          # attempt. Registry-only is also provably restorable: it is a strict
+          # subset of this repo's other jobs' blobs, and job 119062133759
+          # restored a 687,972,881-byte blob successfully inside the same window.
+          cache-targets: "false"
 
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
@@ -227,7 +252,7 @@ jobs:
       - name: Compile library and binary tests
         shell: bash
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          python3 .github/scripts/run_with_timeout.py 3300 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --lib --bins --no-run
 
       - name: Run deterministic retention-readiness cohort
