@@ -140,13 +140,24 @@ jobs:
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ matrix.os }}
-    # 35 minutes covers a normal push (~12 min with a warm Swatinem cache) but
-    # not a *rerun*, where the cache is cold: three consecutive reruns of a
-    # known-good commit were cancelled at the cap, each getting further through
-    # the same green steps (#693). A rerun is exactly what you reach for after a
-    # concurrency cancellation, so the old cap made healthy commits look red.
-    # 75 still bounds a genuinely hung job well under the windows job's 150.
-    timeout-minutes: 120
+    # 240 minutes = 14400s covers the COLD-cache worst case INCLUDING the
+    # post-cache-save step, which the previous cap (120m = 7200s) silently
+    # omitted. Verified numbers (build & test job):
+    #   green run 39390720989 (2026-10-20, warm cache, 5106s = 85.1m total):
+    #     setup 38 + Build 520 + Compile 634 + downstream 1863 + cache-save 2042
+    #     + post-checkout 8 = 5105s ≈ 5106s.
+    #   cold run 39523965735 (2026-10-21, rust-cache restore auth-failure,
+    #     Build succeeded at 2453s cold vs 520s warm = 4.7x ratio, compile
+    #     step killed at 909s by the OLD 900s cap). The cold-worst-case
+    #     wall-clock with the corrected step timeout (3300s, see below) is:
+    #       setup 814 + Build 2453 + Compile 3300 + downstream 1863
+    #       + cache-save 2042 + post-checkout 8 = 10480s = 174.7m.
+    #     240m fits that with ~65m (37%) margin -- enough to absorb a
+    #     slightly heavier compile or cache-save without silently dropping
+    #     downstream tests to SKIPPED, which is the failure mode this job
+    #     is explicitly designed to prevent (#161).
+    # 240 still bounds a genuinely hung job well under the 6h GA cap.
+    timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
     # published crate*. When cargo builds such a crate its CWD is that crate dir,
@@ -232,22 +243,26 @@ jobs:
 
       - name: Compile library and binary tests
         shell: bash
-        # 2400s, not 900s: warm cache ran this step in 634s on the last green
-        # master run (run 39390720989, 2026-10-20), leaving only 30% headroom.
-        # When rust-cache failed to restore on the next push (run 39523965735,
-        # 2026-10-21, the cache-restore auth-error path), this step was killed
-        # by `exit 124` after 900s while still compiling transitive deps
-        # (last log: `crypto-bigint v0.5.5`). The preceding `Build` step alone
-        # took 2453s cold (vs 520s warm, a ~4.7x ratio), so the cold-cache
-        # cost of compiling every crate's `--lib --bins` test harness comfortably
-        # exceeds 900s. 2400s keeps the step inside the job-level budget
-        # (Build=2453 + Compile=2400 + downstream ~1500 = 6353s = 106m, well
-        # under timeout-minutes: 120 = 7200s) and matches the empirical Build
-        # cold/warm ratio. This is a timeout RELAXATION for a provably-too-tight
-        # budget, not a gate weakening: no assertion, gate, or test step is
-        # removed, and the step still aborts the job on a hung compile.
+        # 3300s, not 2400s: the previous PR set this to 2400s and computed the
+        # cold-cache worst case as "Build=2453 + Compile=2400 + downstream ~1500
+        # = 6353s = 106m, well under timeout-minutes: 120 = 7200s". That math
+        # OMITTED the `Post Run Swatinem/rust-cache@v2` step (2042s = 34m in
+        # the green run) AND underestimated the cold Compile cost. Verified:
+        #   warm Compile = 634s (green run 39390720989); warm Build = 520s,
+        #   so the warm Compile:Build ratio is 634/520 = 1.219.
+        #   cold Build = 2453s (cold run 39523965735 with the same runner),
+        #   giving the cold Compile extrapolate as 2453 * 1.219 ≈ 2990s.
+        # 2400s would still kill the step at `exit 124` mid-compile in cold
+        # mode, failing the job and reporting every downstream test step as
+        # SKIPPED rather than FAILED. 3300s leaves ~310s (≈10%) margin over
+        # the extrapolated cold cost and is well under the bumped job-level
+        # 240m timeout. Worst-case job wall clock including the cache-save
+        # step is ~10480s = 174.7m, fits with ~37% headroom (see the comment
+        # on `timeout-minutes`). Still a timeout RELAXATION for a provably-
+        # too-tight budget, not a gate weakening: no assertion, gate, or test
+        # step is removed, and the step still aborts the job on a hung compile.
         run: |
-          python3 .github/scripts/run_with_timeout.py 2400 \
+          python3 .github/scripts/run_with_timeout.py 3300 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --lib --bins --no-run
 
       - name: Run deterministic retention-readiness cohort
