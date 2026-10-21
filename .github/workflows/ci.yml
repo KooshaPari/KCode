@@ -189,6 +189,12 @@ jobs:
           # Suffix bumped to evict caches that held 1.83.0 / <unknown rustc>
           # artifacts produced before RUSTUP_TOOLCHAIN=stable pinned the job.
           key: ${{ matrix.os }}-stablepin
+          # Match `quality` / `windows-build-test` / `windows-cross-check`:
+          # cache every crate so a transient cache miss (e.g. the
+          # rust-cache restore auth failure on run 39523965735) recovers more
+          # aggressively on the next push instead of re-downloading 200+
+          # registry crates on every cold job.
+          cache-all-crates: "true"
 
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
@@ -226,8 +232,22 @@ jobs:
 
       - name: Compile library and binary tests
         shell: bash
+        # 2400s, not 900s: warm cache ran this step in 634s on the last green
+        # master run (run 39390720989, 2026-10-20), leaving only 30% headroom.
+        # When rust-cache failed to restore on the next push (run 39523965735,
+        # 2026-10-21, the cache-restore auth-error path), this step was killed
+        # by `exit 124` after 900s while still compiling transitive deps
+        # (last log: `crypto-bigint v0.5.5`). The preceding `Build` step alone
+        # took 2453s cold (vs 520s warm, a ~4.7x ratio), so the cold-cache
+        # cost of compiling every crate's `--lib --bins` test harness comfortably
+        # exceeds 900s. 2400s keeps the step inside the job-level budget
+        # (Build=2453 + Compile=2400 + downstream ~1500 = 6353s = 106m, well
+        # under timeout-minutes: 120 = 7200s) and matches the empirical Build
+        # cold/warm ratio. This is a timeout RELAXATION for a provably-too-tight
+        # budget, not a gate weakening: no assertion, gate, or test step is
+        # removed, and the step still aborts the job on a hung compile.
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          python3 .github/scripts/run_with_timeout.py 2400 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --lib --bins --no-run
 
       - name: Run deterministic retention-readiness cohort
