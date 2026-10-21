@@ -1134,3 +1134,103 @@ fn env_model_for_choice_only_targets_openrouter_slot_runtimes() {
         None
     );
 }
+
+/// Regression test for the reported symptom: `jcode --provider auto` (the
+/// default) resolved to Cursor/gpt-5 even though `~/.jcode/config.toml`
+/// declared `default_provider = "openai-compatible"` with a working profile.
+///
+/// The cause is in `detect_auto_provider_flags`: auto credential detection
+/// consulted the bare `OPENROUTER_API_KEY` slot BEFORE the configured
+/// `[providers.openai-compatible]` profile's own `api_key_env`/`env_file`
+/// bindings were applied to the environment. The configured default therefore
+/// looked credential-less, `has_openrouter` came back false, and credential
+/// priority picked Cursor instead (`auto_default_provider` ranks Cursor ahead
+/// of OpenRouter).
+///
+/// This asserts the flag that the fix actually changes: with a config default
+/// whose profile carries its own api-key env, auto detection must report the
+/// OpenRouter slot as credentialed.
+#[tokio::test]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "test env locks intentionally stay held across provider init to isolate process-global auth env"
+)]
+async fn auto_detection_applies_config_default_profile_before_credential_check() {
+    let _guard = lock_env();
+    let _env_guard = crate::storage::lock_test_env();
+    let dir = TempDir::new().expect("temp dir");
+    let keys = [
+        "KCODE_HOME",
+        "KCODE_CONFIG_DEFAULT_TEST_KEY",
+        "OPENROUTER_API_KEY",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_CACHE_NAMESPACE",
+        "KCODE_OPENROUTER_PROVIDER_FEATURES",
+        "KCODE_OPENROUTER_TRANSPORT_STATE",
+        "KCODE_OPENROUTER_ALLOW_NO_AUTH",
+        "KCODE_PROVIDER_PROFILE_ACTIVE",
+        "KCODE_PROVIDER_PROFILE_NAME",
+        "KCODE_NAMED_PROVIDER_PROFILE",
+        "KCODE_ACTIVE_PROVIDER",
+        "KCODE_INITIAL_PROVIDER_EXPLICIT",
+    ];
+    let saved: Vec<(&str, Option<String>)> = keys
+        .iter()
+        .map(|key| (*key, std::env::var(key).ok()))
+        .collect();
+
+    crate::env::set_var("KCODE_HOME", dir.path());
+    // A storage-path-compliant home so Config::path() resolves this temp dir
+    // instead of silently falling back to defaults.
+    let config_home = dir.path().join("kcode-home");
+    crate::env::set_var("KCODE_HOME", &config_home);
+    for key in &keys[2..] {
+        crate::env::remove_var(*key);
+    }
+    // The bare OpenRouter slot is EMPTY: this is the situation that made auto
+    // discard the configured default.
+    assert!(
+        !provider::openrouter::has_credentials(),
+        "precondition: the bare OPENROUTER_API_KEY slot must be unconfigured"
+    );
+
+    std::fs::create_dir_all(&config_home).expect("create test config dir");
+    std::fs::write(
+        config_home.join("config.toml"),
+        r#"
+[provider]
+default_provider = "openai-compatible"
+default_model = "test-compat-model"
+
+[providers.openai-compatible]
+type = "open-ai-compatible"
+base_url = "https://api.example.invalid/v1"
+api_key_env = "KCODE_CONFIG_DEFAULT_TEST_KEY"
+"#,
+    )
+    .expect("write config");
+    // The profile's own credential, which auto detection must honor.
+    crate::env::set_var("KCODE_CONFIG_DEFAULT_TEST_KEY", "config-default-key");
+    crate::config::invalidate_config_cache();
+    crate::auth::AuthStatus::invalidate_cache();
+
+    let availability = detect_auto_provider_flags().await;
+
+    assert!(
+        availability.has_openrouter,
+        "auto detection must honor the configured default profile's own api_key_env"
+    );
+
+    for (key, value) in saved {
+        if let Some(value) = value {
+            crate::env::set_var(key, value);
+        } else {
+            crate::env::remove_var(key);
+        }
+    }
+    crate::env::remove_var("KCODE_CONFIG_DEFAULT_TEST_KEY");
+    crate::config::invalidate_config_cache();
+    crate::auth::AuthStatus::invalidate_cache();
+}
