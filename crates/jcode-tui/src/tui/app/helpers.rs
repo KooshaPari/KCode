@@ -188,7 +188,7 @@ pub(super) fn launch_client_executable() -> PathBuf {
     crate::build::client_update_candidate(jcode_selfdev_types::client_selfdev_requested())
         .map(|(path, _label)| path)
         .or_else(|| std::env::current_exe().ok())
-        .unwrap_or_else(|| PathBuf::from("jcode"))
+        .unwrap_or_else(|| PathBuf::from("kcode"))
 }
 
 pub(super) fn partition_queued_messages(

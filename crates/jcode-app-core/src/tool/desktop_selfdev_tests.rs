@@ -21,7 +21,7 @@ fn checkout() -> tempfile::TempDir {
     std::fs::create_dir_all(root.path().join("crates/jcode-desktop-ui/src")).unwrap();
     std::fs::write(
         root.path().join("Cargo.toml"),
-        "[package]\nname='jcode-desktop'\nversion='0.1.0'\n",
+        "[package]\nname='kcode-desktop'\nversion='0.1.0'\n",
     )
     .unwrap();
     root
@@ -153,7 +153,7 @@ fn ambiguous_instances_and_foreign_executables_are_rejected() {
     );
     let root = Path::new("/desktop");
     assert_eq!(
-        host_profile(root, Path::new("/desktop/target/release/jcode-desktop")).unwrap(),
+        host_profile(root, Path::new("/desktop/target/release/kcode-desktop")).unwrap(),
         "release"
     );
     for exe in [
