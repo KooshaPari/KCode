@@ -326,9 +326,6 @@ fn stop_global_stream(control: &GlobalEventControl, error: Option<Error>) {
     drop(children);
 }
 
-/// A live subscription: (id, session filter, sink).
-type Subscriber = (u64, Option<String>, Sender<ApiEvent>);
-
 struct Inner {
     writer: Mutex<Box<dyn Write + Send>>,
     /// Requests waiting for their `reply_to` frame.
