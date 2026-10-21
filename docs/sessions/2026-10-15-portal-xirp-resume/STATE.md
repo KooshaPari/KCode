@@ -195,7 +195,7 @@ resolves against **upstream `1jehuang/jcode`**, not the fork. Always pass
   section 15 append. Do not add further patterns.
 - **B6 — Portal OAuth client allow-listing. SOLVED. The append landed.**
   Earlier this was recorded as needing vendor authorization.
-  That is wrong. `kooshapari@kooshapari.com` is a member of **Portal Admins**, and
+  That is wrong. The operator account is a member of **Portal Admins**, and
   the allow-list is an editable field: `App Settings -> General -> MCP ->
   Allowed client ID patterns`, which then held exactly 4 inputs and an
   "Add item" control. The 4 inputs match the 4 patterns in the checkpoint,
@@ -1334,3 +1334,464 @@ of the KCode fork's portal/Xirp work.
    (#64 → 2026-10-17T06:45:12Z, #67 → 2026-10-17T04:47:33Z, #75 →
    2026-10-17T06:45:14Z). No `gh pr edit` was required. See §22.2 for the
    full finding. The §22 fix is therefore already cross-fork consistent.
+
+## 26. V1–V95 validation arc + fix-branch wrap-up (2026-10-19T00:08Z)
+
+Operator signal `"go"` at 2026-10-19T00:08:08Z authorized autonomous
+wrap-up of the XJ-03 bridge chain. The preceding session ran a
+95-item validation pass (`V1` through `V95`) against the deployed
+bridge state. This section records the arc, the bugs found, the
+fixes committed, and the final branch disposition.
+
+### 26.1 Bugs found and fixed (4 real, 1 false alarm)
+
+| # | Where | What was wrong | Fix | Commit (fix) | Commit (master) |
+|---|-------|----------------|-----|--------------|------------------|
+| V2b | §24.6 timeline | Documented t+ offsets were script-relative, not mcp-remote-relative; off by ~2 s | Rewrote §24.6 with mcp-remote-relative offsets anchored on `08:48:53.407Z`; total wall time **2.740 s** | `eb414e45b` | `d9c61c02a` |
+| V12 | §24.4 missing on fix branch | Commit `27ee6d696` (§24.4 XJ-07 cargo test re-verification) only landed on master; fix branch never received it via cherry-pick | Aborted `git cherry-pick 27ee6d696` due to conflict with §24.6 timeline fix; manually inserted §24.4 between §24.3 and §24.5 | `b3f00d22e` | n/a (already on master) |
+| V15 | §24.4 referenced a non-existent §26 | §24.4 said "XJ-07 work shipped in §26" but STATE.md only went to §25; dangling cross-ref | Replaced both §26 mentions in §24.4 with **"§23 (the XJ-07 spec) and commit `530511a66` (`test(mcp): XJ-07 failure and rollback tests`)"** | `1f7a93f0b` | `6ff8aa2d1` |
+| V17 | Deployed `mcp.json` content check (false alarm) | Initial Python check used `mcpServers` (Claude Code key); kcode's canonical key is `servers` | Reran with correct key: `portal-bridge` is deployed, 8 servers total, entry byte-identical to `scripts/portal-mcp-bridge.json` minus `_deploy_notes` | (no commit) | (no commit) |
+| V53 | Fresh live test | First attempt with 25 s timeout killed npx (script needs 90 s); second attempt with 100 s timeout: EXIT 0, total wall time **2.357 s** (faster than §24.6 because auth server is now warm) | Adjusted test-script timeout to 100 s; documented warm-cache variance in V53 findings | (no commit — script unchanged) | n/a |
+
+### 26.2 Validations that passed (notable subset)
+
+- **V8** — Vendor draft Q1–Q6 internally consistent.
+- **V14** — `STATE.md` byte-identical between `fix` and `master` (91,056 bytes; `diff` empty).
+- **V18** — Test script `scripts/test-portal-bridge-live.sh` present and runnable.
+- **V19** — Bridge log `~/.jcode/scratch/xj03-live-61063/bridge.stderr.log` (14,160 bytes, 55 timestamped events) still on disk.
+- **V22/V63** — DNS `auth.kooshapari.com` resolves to `172.67.215.71` + `104.21.24.10` (Cloudflare proxy).
+- **V23** — CIMD endpoint: `HTTP 200`, `cf-ray: a4c6555a4865637e-LAX`, 138 ms; body byte-identical to `jcode-cimd.worker.js` (89 lines, 3,905 bytes).
+- **V27** — §24 cross-refs all resolve (no §27/§28/§29/§30/§26 dangling refs).
+- **V34** — `~/.kcode/mcp.json.bak-1792308142` (2696 bytes, 7 servers) diff vs current 8-server file: +portal-bridge only, no other mutations.
+- **V44** — Cloudflare Worker direct: `HTTP 200`, 135 ms.
+- **V45** — Spotify Portal MCP endpoint: `HTTP 401` (correct challenge; endpoint live).
+- **V48** — `_deploy_notes` block stripped from deployed entry.
+- **V50** — Other servers (e.g., `6244cf5...`, `d511bd2...`) DO have `tokens.json` → proves OAuth flow works for those servers, just not yet for `portal-bridge`.
+- **V55** — All files referenced by §24.6 exist on disk.
+- **V62** — `/tmp/xj07_final.log` shows 5 cargo tests PASS (the XJ-07 failure-mode test set).
+- **V64** — Secrets audit on bridge log: 0 leaked `code_verifier`, 0 leaked `access_token`, 0 leaked `Authorization Bearer` headers. The `client_secret`/`id_token`/`refresh_token` hits are from the **public** `authorizationServerMetadata` document Spotify's auth server publishes (declares supported auth methods — not secrets).
+- **V66** — §23 contains the verbatim XJ-07 spec from `docs/XIRP_CUSTOM_HARNESS.md:132`, 5 acceptance criteria, implementation sketch, status change. The §24.4 → §23 reference is substantive, not a dangling link.
+- **V67** — Fresh-run Spotify authorize URL byte-identical to §24.5 documented URL after redacting per-run `code_challenge` and `state` values.
+- **V70** — All 7 §24 sections (`## 24`, `## 24.1`, …, `## 24.6`) have consistent `## 24.N <title> (YYYY-MM-DDTHH:MMZ)` format.
+- **V76** — `STATE.md` diff between `fix` and `master`: empty.
+- **V85** — All 6 "missing" §-refs in cross-doc scan are valid: `### 22.1`/`### 22.2` (h3 sub-headings in STATE.md lines 725/767), `§1.2`/`§1.6` (cross-doc refs to `RESUME.md`), `§8.2.*` (cross-doc refs to `APPENDICES.md`), `§1` (legacy ref; section was renamed to §1b).
+- **V88** — Fresh bridge log (09:02Z run) has 155 lines / 55 timestamped events, byte-identical structure to the §24.6 reference log (01:48Z).
+- **V91** — 6 `code_verifier_<uuid>.txt` files in `~/.mcp-auth/mcp-remote-v1/`: 3 from operator's prior test runs (Oct 17 15:42, Oct 17 23:31, Oct 18 01:48) and 3 from the V53 fresh-test attempts (Oct 18 01:59, 02:01, 02:02). All 6 have paired `discovery_state_<uuid>.json` files. **None** has a corresponding `_tokens.json` → bridge correctly in waiting state.
+- **V92** — `mcp-remote@0.15.1` package integrity confirmed; `chunk-KJCT2FXL.js` 1,420,822 bytes, byte-identical across both npx cache versions.
+- **V95** — §23 is substantive (3,165 chars, 63 lines, 2 spec-refs to `XIRP_CUSTOM_HARNESS.md`); correctly scoped (spec discovery + acceptance criteria + status change + implementation sketch; test-file refs live in §24.4).
+
+### 26.3 Disposition: `fix/xj03-bridge-arg-order-20261017`
+
+The fix branch **served its purpose** as a feature-isolated workspace
+during the §24.x audit-correction arc. As of this validation pass:
+
+- **All §24.x file content is already on `master`** via cherry-pick
+  replay (the 9 fix-only commits are 1-to-1 parallel with the
+  11 master-only commits; the cherry-picks converged the file
+  content but not the commit graph).
+- **No open PR** for the fix branch (`gh pr list --head
+  fix/xj03-bridge-arg-order-20261017` returns `[]`).
+- **No substantive content to merge** — squashing fix → master
+  would either be a no-op or, worse, would delete the 2
+  investigation files that master has and fix doesn't
+  (`AUTH-DNS-FORENSICS-2026-10-17.md`, `XJ-AUDIT-2026-10-17.md`,
+  added to master in commit `43dc7593b`).
+
+Therefore the canonical cleanup is to **delete the fix branch**
+(local + remote) once this §26 is committed and pushed to `master`.
+A local safe-delete (`git branch -d`) is used; `git branch -D` is
+blocked by policy.
+
+### 26.4 Bridge state at wrap-up
+
+```
+~/.kcode/mcp.json                              8 servers, portal-bridge deployed
+~/.jcode/mcp.json                              9 servers, NO portal-bridge (legacy parity gap; V33)
+auth.kooshapari.com                            DNS live (172.67.215.71 + 104.21.24.10)
+https://auth.kooshapari.com/cimd/v1/{hash}     HTTP 200, 138 ms (V23)
+mcp-remote@0.15.1                              Package integrity confirmed (V92)
+~/.mcp-auth/mcp-remote-v1/                     6 code_verifier + 6 discovery_state files
+                                               0 tokens.json (operator has not consented)
+```
+
+### 26.5 Operator-only remaining action (unchanged from §24.6)
+
+1. Quit kcode.
+2. Relaunch kcode.
+3. Click **Allow** on the Spotify consent page.
+4. Subsequent launches: silent token refresh (no prompt).
+
+Expected wall time from "Quit" to "Allow clicked": ~30 s.
+
+### 26.6 Final commit trail (operator signal → master)
+
+| Step | Action | Commit | Result |
+|------|--------|--------|--------|
+| 1 | Add §26 to `STATE.md` on `master` | (this commit) | 1,336 → ~1,500 lines, +~3 KB |
+| 2 | `git push origin master` | (this commit's push) | origin/master advances |
+| 3 | `git branch -d fix/xj03-bridge-arg-order-20261017` | n/a | local branch removed |
+| 4 | `git push origin --delete fix/xj03-bridge-arg-order-20261017` | n/a | remote branch removed |
+| 5 | Final state | `master` = new HEAD | repo clean; fix branch retired |
+
+**No further subagent dispatches required.** The XJ-03 audit-correction
+arc is closed at the §24.x chain. Next operator work is the consent
+step (26.5) and then either vendor contact (§19.1 draft, channel-
+blocked) or XJ-07 implementation dispatch.
+## 27. ROOT CAUSE + LIVE FIX — redirect_uri host mismatch (2026-10-19T20:51Z)
+
+The XJ-03 Spotify Portal OAuth bridge had been stuck across multiple prior sessions. The symptom was: the bridge reached the OAuth authorize step, printed an authorize URL, and then waited forever. No `tokens.json` was ever written. Prior STATE.md sections (§24.x, §26) recorded this as "operator has not consented" and left the consent click as the remaining operator action.
+
+Two independent defects were found on 2026-10-19. The first masked the second; the second was the real blocker. The consent click was never the gate.
+
+### 27.1 Symptom recap
+
+Across §24.x and §26 the bridge ran end-to-end through `npx mcp-remote` launch and printed the Spotify authorize URL. The mcp-remote process then blocked on its loopback callback server. The cached pre-consent artifacts (`code_verifier_<uuid>.txt`, `discovery_state_<uuid>.json`) accumulated in `~/.mcp-auth/mcp-remote-v1/` (V91 found 6 such files across operator test runs). No `_tokens.json` ever appeared. The bridge log line `Authentication required. Waiting for authorization...` plus the presence of a `code_verifier` file made the failure mode look like a human-gated wait. It was not.
+
+### 27.2 Defect 1 — suppressed consent page (harness bug)
+
+`scripts/test-portal-bridge-live.sh` exported `BROWSER=/usr/bin/true` into the mcp-remote environment. mcp-remote's browser helper therefore executed `/usr/bin/true` instead of opening a real browser. `/usr/bin/true` exits 0, so mcp-remote logged a success line and proceeded. No tab was ever opened.
+
+Direct evidence from the mcp-remote debug log on the prior session's failed run:
+
+```
+Browser launch environment {"DISPLAY":"...","BROWSER":"/usr/bin/true"}
+Browser helper open exited {"code":0}
+Browser opened automatically.
+Authentication required. Waiting for authorization...
+Waiting for auth code from callback server
+```
+
+The "Browser opened automatically." line is mcp-remote logging on a clean exit of its helper. It is not evidence that a browser opened. The exit code 0 came from `/usr/bin/true`, which produces no UI and writes nothing to disk.
+
+This defect masked Defect 2 by preventing any operator from ever seeing the failure surface. The HTTP 400 from the authorize endpoint (see §27.3) would normally have surfaced in the user's browser as an error page. With `BROWSER=/usr/bin/true`, no browser ever rendered the error and the only signal the operator had was the indefinite wait.
+
+Fix: replace `BROWSER=/usr/bin/true` with `env -u BROWSER` so the `BROWSER` variable is unset for the mcp-remote invocation and macOS `open` handles the URL the way it does by default.
+
+### 27.3 Defect 2 — redirect_uri host mismatch (the real blocker)
+
+The production CIMD at `https://auth.kooshapari.com/oauth/client-metadata.json` (HTTP 200, 356 bytes) registers exactly one `redirect_uri`:
+
+```
+"redirect_uris": ["http://127.0.0.1:47290/oauth/callback"]
+```
+
+mcp-remote 0.15.1 builds its callback host from this source (from `dist/chunk-KJCT2FXL.js`, around line 33761):
+
+```
+let host = process.platform === "win32" ? "127.0.0.1" : "localhost";
+```
+
+On macOS the bridge therefore requested `http://localhost:47290/oauth/callback`. The Spotify Portal authorization server rejected the authorize request with HTTP 400:
+
+```
+{"error":{"name":"InputError","message":"Invalid redirect_uri 'http://localhost:47290/oauth/callback', not registered in client metadata"}}
+```
+
+The server-side rejection happened before any consent page was ever rendered. The operator could not have consented to a request the server refused to honor.
+
+The §26 note that "mcp-remote builds the callback ... on 127.0.0.1" was incorrect. mcp-remote uses `localhost` on macOS and Linux; `127.0.0.1` only on Windows. `scripts/derive_callback_port.py` carried the same incorrect note and has been corrected in this commit.
+
+Fix: pass `--host 127.0.0.1` to mcp-remote so the requested `redirect_uri` matches the CIMD. mcp-remote exposes this via the `--host` flag. An alternative (also valid) is to publish the `localhost` form in the CIMD, but the two must agree; either side alone leaves the bridge blocked.
+
+### 27.4 The fix
+
+Four script/config files in the repository plus one operator-side config file were updated. The minimum necessary change is `--host 127.0.0.1` on every mcp-remote invocation that talks to the Spotify Portal CIMD, plus removing the `BROWSER=/usr/bin/true` shim:
+
+```
+mcp-remote --host 127.0.0.1 <server_url>
+# invoked via: env -u BROWSER mcp-remote --host 127.0.0.1 <server_url>
+```
+
+The portal-bridge stdio entry in `scripts/portal-mcp-bridge.json` carries the `--host 127.0.0.1` flag, and `scripts/test-portal-bridge-live.sh` invokes mcp-remote under `env -u BROWSER`. `scripts/test-portal-bridge.sh` had a separate latent defect fixed in the same commit (the `--transport` flag was placed before the server URL positional, which made mcp-remote parse `--transport` as the URL and throw `TypeError: Invalid URL`); the URL is now passed as the first positional and the `--host 127.0.0.1` flag is added.
+
+### 27.5 LIVE verification evidence (2026-10-19T20:50–20:51Z)
+
+All verification was performed live against the production endpoints; no part of the flow was simulated. Timestamps are UTC.
+
+1. The orphaned `mcp-remote` process PID 90176 from the prior attempt was gone; port 47290 was free.
+2. The bridge was relaunched with `--host 127.0.0.1`. The mcp-remote log emitted `Using callback hostname: 127.0.0.1`, confirming the `--host` flag took effect. The authorize URL now carried `redirect_uri=http%3A%2F%2F127.0.0.1%3A47290%2Foauth%2Fcallback`. Previously it had carried `%2Flocalhost%3A47290`.
+3. The authorize endpoint response changed from HTTP 400 to HTTP 302 Found, redirecting to:
+   ```
+   https://phenotype.spotifyportal.com/oauth2/authorize/da4c30f9-3ff2-4c2c-85e1-2ea7bbbc103c
+   ```
+4. A real Safari tab titled "Spotify Portal" surfaced at:
+   ```
+   https://phenotype.spotifyportal.com/oauth2/authorize/9d0feef7-7a27-48b7-b313-e6fd2a75106c
+   ```
+5. Consent was completed. `tokens.json` was written to:
+   ```
+   ~/.mcp-auth/mcp-remote-v1/abb316d3ba70bc7220e11618a1b43906_tokens.json
+   ```
+   (1,396 bytes) containing:
+   ```
+   access_token  : <JWT, 515 chars>
+   id_token      : <JWT, 515 chars>
+   refresh_token : <80 chars>
+   token_type    : Bearer
+   scope         : openid offline_access
+   issuer        : https://phenotype.spotifyportal.com/api/auth
+   expires_in    : 3600
+   ```
+   The mcp-remote debug log confirmed `hasAccessToken: true`, `hasIdToken: true`, `hasRefreshToken: true`.
+6. The token was verified against the live Portal MCP endpoint. `POST https://phenotype.spotifyportal.com/api/mcp-actions/v1` with `Authorization: Bearer <access_token>` and an MCP `initialize` request returned HTTP 200 and:
+   ```
+   {"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"backstage","version":"0.2.2"}},"jsonrpc":"2.0","id":1}
+   ```
+7. `tools/list` against the same endpoint returned 34 tools:
+   ```
+   auth.who-am-i
+   catalog.get-catalog-model-description
+   catalog.get-catalog-entity
+   catalog.validate-entity
+   catalog.register-entity
+   catalog.unregister-entity
+   catalog.query-catalog-entities
+   catalog.refresh-catalog-entity
+   search.query
+   telemetry.submit-feedback
+   workspace.prepare-create-workspace
+   workspace.create-workspace
+   workspace.edit-workspace
+   workspace.add-workspace-entity
+   workspace.add-workspace-member
+   workspace.remove-workspace-entity
+   workspace.remove-workspace-member
+   workspace.list-workspaces
+   workspace.list-workspace-members
+   workspace.get-workspace-context
+   workspace.list-wiki-pages
+   workspace.list-resources
+   workspace.list-suggestions
+   workspace.list-session-transcripts
+   workspace.get-workspace
+   workspace.get-wiki-page
+   workspace.get-resource
+   workspace.get-suggestion
+   workspace.get-session-transcript
+   workspace.create-suggestion
+   workspace.create-resource
+   workspace.update-resource
+   workspace.create-wiki-page
+   workspace.update-wiki-page
+   ```
+8. The `tools/call auth.who-am-i` call succeeded, confirming user-scoped authentication rather than service auth alone:
+   ```
+   auth.who-am-i : succeeded (identity payload redacted)
+   ```
+   The returned payload carried the operator's personal identifiers, email,
+   Backstage UID, platform user id, and group/project membership. It is not
+   reproduced here: this file is tracked in the repository, and that payload is
+   only readable from the authenticated MCP endpoint.
+9. A full bridge run (stdin held open) executed an MCP `initialize` followed by `tools/list` and exited 0 with real MCP JSON-RPC responses on stdout:
+   ```
+   {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":"backstage","version":"0.2.2"}}}
+   ```
+   The accompanying `tools/list` response carried 34 tools. The bridge reused the cached token with zero `Waiting for authorization` log lines on this run, confirming subsequent launches need no re-consent.
+10. The harness's own MCP client connected to the bridge over stdio using the exact argument vector from `~/.kcode/mcp.json` and enumerated all 34 tools. A live `tools/call` for `auth.who-am-i` through that harness connection returned the same operator identity, confirming the fix works through the real client path and not only through direct curl.
+
+### 27.6 Corrected prior claim
+
+§24.4, §26.4, and §26.5 described the bridge state as "operator has not consented" and recorded "the operator should click Allow" as the remaining action. The V91 evidence (6 `code_verifier` files, 0 `tokens.json`) was consistent with that reading but could not distinguish between two failure modes: human-gated wait and server-side rejection. §26.5's "operator-only remaining action" was therefore a misdiagnosis rather than an operator failure. The real cause was a server-side HTTP 400 against an unregistered `redirect_uri` host, masked by a harness bug that prevented the failure surface from ever rendering in a browser.
+
+The `BROWSER=/usr/bin/true` defect and the `redirect_uri` host mismatch are independent: either alone would have produced the same observable symptoms. Both had to be fixed before the bridge could complete.
+
+### 27.7 Files changed
+
+| File | Change |
+|------|--------|
+| `scripts/portal-mcp-bridge.json` | Added `"--host", "127.0.0.1"` to the portal-bridge args; updated description with the live-verified status and the reason; added `_deploy_notes.redirect_uri_host_fix` and `_deploy_notes.live_verified_at` / `live_verified_result`. |
+| `scripts/test-portal-bridge-live.sh` | Replaced `BROWSER=/usr/bin/true` with `env -u BROWSER`; added `--host 127.0.0.1`; added explanatory header comments. |
+| `scripts/test-portal-bridge.sh` | Fixed the mcp-remote arg order so the server URL is the first positional arg (it still had `--transport` before the URL, which made mcp-remote parse `--transport` as the URL and throw `TypeError: Invalid URL`); added `--host 127.0.0.1`. |
+| `scripts/derive_callback_port.py` | Corrected the inaccurate note about mcp-remote's callback host. |
+| `~/.kcode/mcp.json` (operator config, not in the repo) | Added `"--host", "127.0.0.1"` to the portal-bridge server args, with the same description update. Backup at `~/.kcode/mcp.json.bak-20261019`. |
+
+### 27.8 Operator-visible state
+
+The XJ-03 bridge is now operationally complete: consent was completed, the token was minted, and the Portal MCP endpoint was verified live against the production surface. No further operator action is required for the bridge itself. Subsequent kcode launches will refresh the token silently via mcp-remote's cached credential without re-prompting.
+
+## 28. ROUND-2 — the local stub test was a false positive (2026-10-19T21:13Z)
+
+A second, independent validation pass over the §27 fix found that `scripts/test-portal-bridge.sh` — the repository's own regression test for the bridge — never actually tested the thing it claimed to test. The test passed while the code path it guarded was broken. Two distinct defects were involved, and the second one invalidated the test's central premise.
+
+### 28.1 Defect 3 — the stub served plain HTTP, and mcp-remote silently ignores http CIMD URLs
+
+`scripts/stub-cimd-server.py` served the client metadata document over `http://127.0.0.1:<port>/cimd.json`.
+
+`mcp-remote@0.15.1` validates the client metadata URL before using it. `isClientMetadataUrl()` requires an `https:` URL with a non-root pathname. An `http://` URL is discarded with a warning and the bridge proceeds as though no client metadata document had been configured at all:
+
+```
+Warning: Ignoring invalid client metadata URL: http://127.0.0.1:1/cimd.json. It must be an HTTPS URL with a path.
+```
+
+The consequence is worse than a failing test: with the CIMD discarded, mcp-remote falls back to **dynamic client registration**, and dynamic registration uses the **default callback host** (`localhost` on macOS/Linux) — which is the exact defect §27 fixed. The test was therefore structurally incapable of catching the bug it existed to catch, because the bug's own trigger disabled the feature the test was asserting on.
+
+### 28.2 Defect 4 — the assertion was satisfied by the harness's own probe
+
+The original assertion was:
+
+```bash
+if grep -q "/cimd.json" "$STUB_LOG" 2>/dev/null; then
+    CIMD_FETCHED=1
+```
+
+The stub logs every request it serves. Immediately before that assertion, the harness itself runs `curl` against `/cimd.json` to verify the stub works — which appends the very same log line. The grep therefore matched the harness's own request, and the test reported "CIMD fetch verified" unconditionally. This was reproduced empirically: with the plain-HTTP stub, exactly one `/cimd.json` request existed in the log, and it came from the harness.
+
+There was also a `PASS (partial)` branch that exited 0 when the CIMD fetch was not confirmed but OAuth activity was seen. That escape hatch turned "could not prove anything" into a green run.
+
+### 28.3 The premise itself was wrong: mcp-remote never fetches the CIMD
+
+While building the corrected test, source inspection of `mcp-remote@0.15.1` (`dist/chunk-KJCT2FXL.js`) showed the corrected test still could not assert what the original intended. mcp-remote does **not** download the client metadata document. Per SEP-991 it uses the CIMD URL **as the `client_id`** and asks the **authorization server** to fetch it:
+
+```js
+async clientIdMetadataDocument() {
+  if (!this.clientMetadataUrl) return void 0;
+  const metadata = await this.getAuthorizationServerMetadata();
+  if (metadata?.client_id_metadata_document_supported !== true) {
+    debugLog("Authorization server does not accept a client metadata document; registering instead", ...);
+    return void 0;
+  }
+  debugLog("Identifying this client by its metadata document", { client_id: this.clientMetadataUrl });
+  return { client_id: this.clientMetadataUrl };
+}
+```
+
+The stub therefore never sees a `/cimd.json` request from mcp-remote — the AS would make it. A local stub can never observe the client-metadata fetch at all. Any local assertion of the form "the stub logged a CIMD fetch" is unfounded, regardless of scheme.
+
+Production corroborates this: for the working client there is **no** `client_info.json` in `~/.mcp-auth/mcp-remote-v1/` (the AS accepted the client-by-URL, so no dynamic registration was ever saved), whereas the two pre-fix clients that fell back to dynamic registration **do** have `client_info.json`, each carrying the `localhost` redirect_uri that broke §27:
+
+| client_info.json | redirect_uris |
+|---|---|
+| `6244cf5467a6f706b7b55d5e88d4e4c4_client_info.json` | `['http://localhost:28491/oauth/callback']` |
+| `d511bd2ac7fee33f00eae41bec6cf3fd_client_info.json` | `['http://localhost:12064/oauth/callback']` |
+
+### 28.4 The corrected test
+
+`scripts/stub-cimd-server.py` now serves **HTTPS** with a self-signed `127.0.0.1` certificate (`--tls-dir`), and prints `scheme=https` on its second stdout line so the harness can refuse to run against a plain-HTTP stub. `scripts/test-portal-bridge.sh` generates a short-lived certificate into its own temp work dir, points `NODE_EXTRA_CA_CERTS` at it (undici honours that variable), and asserts what is actually observable locally:
+
+1. **The CIMD URL was accepted** — mcp-remote did not log `Ignoring invalid client metadata URL`, and did log `Using client metadata document`. This is the real regression guard: an `http://` URL is silently dropped, and dropping it re-arms the §27 defect.
+2. **The callback host is `127.0.0.1`** — matching the host the CIMD registers.
+3. **A callback port was derived** and the callback server started.
+
+The `PASS (partial)` escape hatch is removed; an unproven configuration is now a hard failure (exit 2). The stub's `/cimd.json` request count is still reported, but only as transparency — it is explicitly **not** an assertion.
+
+A pre-existing, unrelated bug was also fixed in the same pass: the CIMD body summary used an f-string containing escaped quotes (`f"client_id={d[\"client_id\"]}"`), which is a `SyntaxError` on Python < 3.12 (this host runs 3.9.6). The body line always printed `(parse error)`. It now uses string concatenation.
+
+### 28.5 Negative-test evidence (the test is not vacuous)
+
+The corrected test was verified to **fail** when each defect is reintroduced:
+
+| Mutation | Result | Evidence |
+|---|---|---|
+| none (corrected script) | **PASS**, exit 0 | CIMD accepted, callback host `127.0.0.1`, callback port derived |
+| `--client-metadata-url` given as `http://` | **FAIL**, exit 2 | `Warning: Ignoring invalid client metadata URL: http://127.0.0.1:1/cimd.json. It must be an HTTPS URL with a path.` |
+| `--host 127.0.0.1` removed | **FAIL**, exit 2 | `FAIL: callback hostname was not 127.0.0.1` |
+
+The original test passed under the first mutation. The corrected test fails under both. That is the property the original lacked.
+
+### 28.6 Files changed (this follow-up commit)
+
+| File | Change |
+|------|--------|
+| `scripts/stub-cimd-server.py` | Added `--tls-dir` for HTTPS serving with a self-signed cert; prints `scheme=https` (or `scheme=http` when falling back); warns loudly and falls back to HTTP (with a warning that the assertion is meaningless) if the cert is missing; docstring corrected to describe SEP-991 behaviour. |
+| `scripts/test-portal-bridge.sh` | Generates a short-lived self-signed cert in the temp work dir; passes `--tls-dir` to the stub and refuses to run if the stub is not HTTPS; sets `NODE_EXTRA_CA_CERTS` for the mcp-remote invocation; rewrote the assertions (CIMD accepted / callback host / callback port); removed the `PASS (partial)` escape hatch; fixed the Python 3.9 f-string `SyntaxError` in the body summary; corrected the header and exit-code documentation. |
+
+### 28.7 Relationship to §27
+
+The §27 production fix is unaffected and remains correct: `--host 127.0.0.1` is required, the production CIMD already registers `http://127.0.0.1:47290/oauth/callback`, and the bridge is live and verified. This commit corrects the **test**, not the fix. It also closes the last route by which the §27 defect could have regressed undetected: previously, a change that dropped `--host 127.0.0.1` (or that made the CIMD URL unusable) would still have produced a green local test run.
+
+## 29. ROUND-3 — canonical-config validation + refresh-token rotation (2026-10-19T21:48Z)
+
+A third validation pass closed the two remaining gaps from §28: the canonical operator config was exercised end-to-end as an actual MCP client session, and the authorization server's refresh-token behaviour was characterised against the live AS.
+
+### 29.1 Canonical config audit
+
+`~/.kcode/mcp.json` (the operator's live config, 8 servers) carries the `portal-bridge` entry with exactly the repaired argument vector:
+
+```json
+["-y", "mcp-remote@0.15.1",
+ "https://phenotype.spotifyportal.com/api/mcp-actions/v1",
+ "--transport", "http-only",
+ "--client-metadata-url", "https://auth.kooshapari.com/oauth/client-metadata.json",
+ "--resource", "https://phenotype.spotifyportal.com/api/mcp-actions/v1",
+ "--host", "127.0.0.1"]
+```
+
+`--host 127.0.0.1` is present, the server URL is the first positional argument, and `timeout_secs` is 120. `~/.jcode/mcp.json` was **not** modified (mtime unchanged at 2026-10-16 15:31; no portal-bridge entry added there — the legacy parity gap recorded as V33 in §26 stands, deliberately).
+
+`scripts/portal-mcp-bridge.json` in the repository already carries the same corrected vector, so the deployed config and the source-of-truth config agree.
+
+### 29.2 Canonical-config end-to-end run
+
+The exact canonical argument vector was launched as a **real MCP stdio client** (not curl, not a raw JSON-RPC pipe), and the session returned genuine MCP responses:
+
+| Step | Result |
+|---|---|
+| `initialize` | `serverInfo {name: backstage, version: 0.2.2}` |
+| `tools/list` | **34** tools |
+| `tools/call auth.who-am-i` | succeeded — returned the authenticated operator identity (payload redacted; see step 8 of the authenticated-run section) |
+| consent gate | **0** `Waiting for authorization` / `Waiting for auth code` lines in stderr |
+
+Zero consent-gate lines is the load-bearing observation: it proves the cached token was reused and no browser consent was required. mcp-remote's stderr confirmed the negotiation path:
+
+```
+Using client metadata document: https://auth.kooshapari.com/oauth/client-metadata.json
+Using authorize resource: https://phenotype.spotifyportal.com/api/mcp-actions/v1
+Using callback port derived from the server URL: 47290
+Discovered authorization server: https://phenotype.spotifyportal.com/api/auth
+Connected to remote server using StreamableHTTPClientTransport
+```
+
+The derived callback port (47290) matches the port the CIMD registers, which is why the cached token remains valid without re-authorization.
+
+### 29.3 Live AS metadata
+
+`GET https://phenotype.spotifyportal.com/.well-known/oauth-authorization-server`:
+
+```
+issuer                                 : https://phenotype.spotifyportal.com/api/auth
+client_id_metadata_document_supported  : true
+grant_types_supported                  : ["authorization_code", "refresh_token"]
+token_endpoint                         : https://phenotype.spotifyportal.com/api/auth/v1/token
+```
+
+`client_id_metadata_document_supported: true` is what allows the SEP-991 client-by-URL flow. Without it mcp-remote falls back to dynamic client registration, which uses the default callback host and re-arms the §27 defect — this is the server-side precondition that §27.3's fix depends on.
+
+### 29.4 redirect_uri enforcement (live AS)
+
+| `redirect_uri` | Result |
+|---|---|
+| `http://127.0.0.1:47290/oauth/callback` | **HTTP 302** → `https://phenotype.spotifyportal.com/oauth2/authorize/…` |
+| `http://localhost:47290/oauth/callback` | **HTTP 400** — invalid redirect URI |
+
+This is direct, live confirmation that the §27 `--host 127.0.0.1` fix is load-bearing: the same request succeeds with `127.0.0.1` and fails with `localhost`.
+
+### 29.5 Refresh-token rotation — a real operational hazard
+
+The authorization server **rotates** refresh tokens. Every successful `refresh_token` grant invalidates the token it consumed and returns a new one. Proven live:
+
+| Step | Result |
+|---|---|
+| refresh with RT-A | **HTTP 200**, returns access token (515 chars) + RT-B (80 chars) |
+| refresh with RT-A again | **HTTP 400** `{"error":"invalid_grant","error_description":"Invalid refresh token"}` |
+| refresh with RT-B | **HTTP 200**, returns a new access token + RT-C |
+
+The consequence is a **local cache-consistency trap**. A refresh performed with `curl` that is not written back to `tokens.json` leaves a spent refresh token in the cache. The grant appears to succeed (HTTP 200) while the cached token is already dead, and the *next* launch fails with `invalid_grant` — which reads like a broken authorization server but is entirely a local bug.
+
+This was not hypothetical: an earlier manual refresh in this session left exactly that state, and the cached refresh token began rejecting with `invalid_grant` while the access token still worked. It was repaired by completing a fresh consent flow and then persisting the rotated pair atomically.
+
+Mitigation added: **`scripts/refresh-portal-token.py`** performs the refresh and writes the rotated pair back to `tokens.json` in the same operation (write-to-temp + `os.replace`, mode `0600`), so the cache can never retain a spent refresh token. It never prints token material, supports `--check` for a read-only status report, and is idempotent — three consecutive runs each returned exit 0 and left the cache refreshable.
+
+`mcp-remote` itself handles a dead refresh token correctly: its `authInternal` catch re-throws non-server `OAuthError`s, which drops it back to a full authorization redirect rather than failing hard; and its `provider.tokens()` path logs `Proactive token refresh failed, falling back to the stored token`. So a stale refresh token degrades to a re-consent prompt, not a crash.
+
+### 29.6 Files changed (this commit)
+
+| File | Change |
+|------|--------|
+| `scripts/refresh-portal-token.py` | **New.** Refreshes the XJ-03 portal token and persists the rotation atomically so the cache never holds a spent refresh token. `--check` reports state without refreshing. Never prints token material. |
+| `docs/sessions/2026-10-15-portal-xirp-resume/STATE.md` | This section. |
+
+### 29.7 State at close-out
+
+- The canonical config path is verified end-to-end through a real MCP client session with zero re-consent.
+- The refresh path is verified against the live AS, and the rotation hazard it exposes now has a repository-level mitigation.
+- The refresh-token cache is live and self-consistent as of 2026-10-19T21:47Z (verified by three consecutive successful refresh-and-persist runs).

@@ -352,7 +352,7 @@ pub(crate) fn gnome_binding(chord: &KeyChord) -> Option<String> {
 /// re-installs overwrite rather than accumulate.
 pub(crate) fn gnome_keybinding_path(index: usize) -> String {
     format!(
-        "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/jcode-launch-{index}/"
+        "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/kcode-launch-{index}/"
     )
 }
 
@@ -404,7 +404,7 @@ pub(crate) fn merge_gnome_keybinding_list(current: &str, ours: &[String]) -> Str
         let after = &rest[start + 1..];
         let Some(end) = after.find('\'') else { break };
         let entry = &after[..end];
-        if !entry.contains("kcode-launch-") {
+        if !entry.contains("kcode-launch-") && !entry.contains("jcode-launch-") {
             entries.push(entry.to_string());
         }
         rest = &after[end + 1..];
@@ -548,7 +548,8 @@ pub(crate) fn upsert_kde_shortcut_sections(current: &str, shortcuts: &[KdeShortc
     let mut skipping = false;
     for line in current.lines() {
         if line.starts_with('[') {
-            skipping = line.starts_with("[services][jcode-launch-");
+            skipping = line.starts_with("[services][jcode-launch-")
+                || line.starts_with("[services][kcode-launch-");
         }
         if !skipping {
             out.push(line.to_string());
@@ -889,13 +890,13 @@ mod tests {
         assert!(updated.contains("_launch=Meta+F"));
         assert_eq!(
             updated
-                .matches("[services][jcode-launch-0.desktop]")
+                .matches("[services][kcode-launch-0.desktop]")
                 .count(),
             1
         );
         assert!(updated.contains("_launch=Meta+;"));
         assert!(!updated.contains("Meta+X"));
-        assert!(!updated.contains("kcode-launch-9"));
+        assert!(!updated.contains("jcode-launch-9"));
         // Idempotent.
         assert_eq!(upsert_kde_shortcut_sections(&updated, &scs), updated);
     }

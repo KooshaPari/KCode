@@ -12,7 +12,11 @@ env:
 # existing issue (not a pull request) in this repository.
 
 on:
-  pull_request:
+  # pull_request_target: this check only reads PR title/body via the API, and
+  # the job runs on the persistent self-hosted desk runner. Running the base
+  # branch's workflow definition means an external PR cannot edit these steps
+  # to execute anything on that host. There is no checkout of PR code.
+  pull_request_target:
     types: [opened, edited, reopened, synchronize, ready_for_review]
 
 permissions:
@@ -27,7 +31,8 @@ concurrency:
 jobs:
   require-issue:
     name: Require Linked Issue
-    runs-on: ubuntu-latest
+    # Moved off hosted ubuntu-latest ($0 minutes cap) to the self-hosted desk runner.
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 5
     steps:
       - name: Check for a linked, existing issue

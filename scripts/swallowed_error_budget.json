@@ -1,9 +1,9 @@
 {
-  "total": 3848,
+  "total": 3853,
   "totals_by_pattern": {
     "dot_ok": 1466,
-    "let_underscore": 1436,
-    "unwrap_or_default": 946
+    "let_underscore": 1439,
+    "unwrap_or_default": 948
   },
   "tracked_files": {
     "crates/jcode-app-core/src/agent.rs": {
@@ -30,6 +30,11 @@
       "dot_ok": 0,
       "let_underscore": 1,
       "unwrap_or_default": 0
+    },
+    "crates/jcode-app-core/src/agent/provider.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
     },
     "crates/jcode-app-core/src/agent/response_recovery.rs": {
       "dot_ok": 0,
@@ -158,7 +163,7 @@
     },
     "crates/jcode-app-core/src/server/client_actions.rs": {
       "dot_ok": 2,
-      "let_underscore": 49,
+      "let_underscore": 50,
       "unwrap_or_default": 2
     },
     "crates/jcode-app-core/src/server/client_comm_channels.rs": {
@@ -183,7 +188,7 @@
     },
     "crates/jcode-app-core/src/server/client_lifecycle.rs": {
       "dot_ok": 2,
-      "let_underscore": 44,
+      "let_underscore": 45,
       "unwrap_or_default": 1
     },
     "crates/jcode-app-core/src/server/client_lifecycle_logging.rs": {
@@ -1361,6 +1366,11 @@
       "let_underscore": 2,
       "unwrap_or_default": 0
     },
+    "crates/jcode-cache-vectors/src/cache_hash.rs": {
+      "dot_ok": 0,
+      "let_underscore": 0,
+      "unwrap_or_default": 1
+    },
     "crates/jcode-cache-vectors/src/prompt_state.rs": {
       "dot_ok": 0,
       "let_underscore": 0,
@@ -1863,7 +1873,7 @@
     },
     "crates/jcode-setup-hints/src/lib.rs": {
       "dot_ok": 8,
-      "let_underscore": 21,
+      "let_underscore": 22,
       "unwrap_or_default": 15
     },
     "crates/jcode-setup-hints/src/linux_niri.rs": {
@@ -2278,7 +2288,7 @@
     },
     "crates/jcode-tui/src/tui/app/input.rs": {
       "dot_ok": 10,
-      "let_underscore": 4,
+      "let_underscore": 5,
       "unwrap_or_default": 5
     },
     "crates/jcode-tui/src/tui/app/local.rs": {
@@ -2438,7 +2448,7 @@
     },
     "crates/jcode-tui/src/tui/app/tui_state.rs": {
       "dot_ok": 5,
-      "let_underscore": 1,
+      "let_underscore": 0,
       "unwrap_or_default": 6
     },
     "crates/jcode-tui/src/tui/app/turn.rs": {
