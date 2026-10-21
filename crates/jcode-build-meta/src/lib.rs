@@ -56,7 +56,7 @@ fn parse_release_semver(value: &str) -> Option<String> {
     let major = parts.next()?.parse::<u32>().ok()?;
     let minor = parts.next()?.parse::<u32>().ok()?;
     let patch = parts.next()?.parse::<u32>().ok()?;
-    if parts.next().is_some() {
+    if parts.next().is_some() || (major, minor, patch) == (0, 0, 0) {
         return None;
     }
     let channel_suffix = match channel_part.map(str::trim) {
@@ -152,7 +152,8 @@ mod tests {
         // Existing behavior — three numeric components, no channel.
         assert_eq!(parse_release_semver("v1.2.3").as_deref(), Some("1.2.3"));
         assert_eq!(parse_release_semver(" 1.2.3 ").as_deref(), Some("1.2.3"));
-        assert_eq!(parse_release_semver("0.0.0").as_deref(), Some("0.0.0"));
+        assert_eq!(parse_release_semver("0.0.0"), None);
+        assert_eq!(parse_release_semver("0.0.0-k0.1.0-dev"), None);
     }
 
     #[test]

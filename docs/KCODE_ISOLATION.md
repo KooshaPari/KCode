@@ -83,3 +83,112 @@ The complete Windows build-support suite and the repository code-size budget
 are not green. Full workspace/default-feature release validation and live
 ConPTY behavior are not claimed by these checks. The anchor and kitty fixes
 remain separate stacked changes.
+
+## Forward delivery work breakdown
+
+Audit anchor: `master` at `2aea04dd871f21da5c5b21800d156a2c9b0830b1`,
+2026-10-21. Hosted source/release inspection is evidence about repository state;
+it is not a local build, device install, CI pass, or remote-session receipt.
+The Windows execution helper failed before command execution with
+`orchestrator_helper_incomplete: setup helper exited successfully before setup completed`.
+Local repo location, command resolution, running server identity, and Mac
+runtime state therefore remain UNKNOWN. Restore the execution transport before
+running the blocked checks; do not repeatedly probe it or kill shared agents.
+
+### Findings and existing work
+
+- Root Cargo package and binary are `kcode`, version `0.93.0-k0.1.0`.
+  The build metadata script parsed the fork-bearing patch as an integer,
+  defaulted the numeric base to zero, and dropped the fork suffix while deriving
+  a development version. This change uses its existing channel-aware parser,
+  preserves the suffix, fails on missing/zero root identity, and rejects zero
+  runtime release overrides. This is source reasoning; the old installed
+  Jaguar client's origin has not been demonstrated.
+- `docs/sessions/20260917-herdr-pwsh-triage/FINDINGS.md` is historical
+  source-based triage with estimated reproduction steps. Its OSC/PowerShell
+  explanation remains a hypothesis until isolated reproduction proves it.
+  Do not drain arbitrary queued input or suppress escapes based on that note.
+- Fork PR [#124](https://github.com/KooshaPari/KCode/pull/124) already landed
+  native Windows keyboard negotiation; inspect its behavior before another fix.
+  The isolation document's earlier checks exclude full default-feature release
+  validation and live ConPTY acceptance.
+- Existing open convergence work includes [#152](https://github.com/KooshaPari/KCode/pull/152)
+  (test binary identity), [#156](https://github.com/KooshaPari/KCode/pull/156)
+  (format/lint), [#157](https://github.com/KooshaPari/KCode/pull/157)
+  (turn notification identity), [#160](https://github.com/KooshaPari/KCode/pull/160)
+  (SDK assertions), [#163](https://github.com/KooshaPari/KCode/pull/163)
+  (Windows pipe fallback), and [#166](https://github.com/KooshaPari/KCode/pull/166),
+  [#168](https://github.com/KooshaPari/KCode/pull/168),
+  [#169](https://github.com/KooshaPari/KCode/pull/169) (workspace lint/build
+  cache convergence). Reuse reviewed fixes; do not assume open means integrated.
+- The published [v0.85.0-k1.0.0](https://github.com/KooshaPari/KCode/releases/tag/v0.85.0-k1.0.0)
+  contains only a jcode-named FreeBSD asset. There is no verified Windows or Mac
+  artifact in that release. The v0.90.0-k1.0.0 tag is not a published release;
+  [Release run 37421410488](https://github.com/KooshaPari/KCode/actions/runs/37421410488)
+  skipped.
+- [Windows Smoke run 39111372009](https://github.com/KooshaPari/KCode/actions/runs/39111372009)
+  failed runtime smoke. x64 build/test compilation passed, but 13 targeted filters discovered zero
+  tests and only the final filter ran one test. Runtime smoke failed at
+  provider_behavior::test_model_switch_resets_provider_session with
+  'Did not receive Done for first message' (30.30s, exit 101).
+  Lifecycle, version, and installer steps did not execute; ARM64 skipped and
+  there were no downloadable artifacts. These partial passes do not clear the
+  installation gate.
+- The historical `docs/drafts/pr-fix-build-meta-channel.md` acceptance of
+  zero versions and its test-pass assertions are superseded by this plan;
+  they are not current validation receipts.
+- The release workflow is guarded to upstream `1jehuang/jcode`; its packaging
+  and Windows smoke paths still use `jcode.exe`, `jcode-*`, and
+  `JCODE_BUILD_SEMVER`. Removing that guard alone cannot produce a safe fork
+  channel. Dependabot alert state is UNKNOWN because the connector rejected
+  that endpoint; no security pass is claimed.
+
+### Dependency order and acceptance
+
+```text
+W1 transport + exact identity
+  -> W2 version + existing convergence -> W3 native terminal matrix
+  -> W4 HERDR and remote Mac matrix
+  -> W5 fork artifacts -> W6 coexistence install -> W7 update channel
+```
+
+| Work | Owner lane | Current state | Exit evidence |
+| --- | --- | --- | --- |
+| W1 | Windows/Mac runtime | BLOCKED: execution transport | Resolve repo/branch/dirty state and all PATH candidates. Record client and long-lived server executable, SHA-256, fork version, runtime directory, socket/pipe/port, lock and launch owner independently on both hosts. Preserve stock processes/data. |
+| W2 | KCode metadata/convergence | Proposed source fix; execution UNEXECUTED | Run metadata build-script tests, crate tests, product-isolation tests, formatting and required local gates; require nonzero discovered/passed test counts at the exact candidate SHA. Built client and daemon must report a nonzero BASEVERSION-kSEMVER; reject zero, malformed or mismatched release identity. Reuse open fixes after review. |
+| W3 | Windows terminal | UNKNOWN live behavior | Standard Windows Terminal with PowerShell, then HERDR-local: test ordinary typing, Enter, Shift+Enter, paste, resize, reconnect, Ctrl+C and exit using process-owned input/output logs. Independent negative control outside HERDR. No screenshots/recordings. |
+| W4 | Remote Mac | UNKNOWN supported route | Resolve the actual winterm-herdr deployment/transport from docs/config before testing Windows -> HERDR -> Mac. Inspect fork NATIVE_SSH restrictions; do not treat Unix-client SSH support or REMOTE_HANDOFF design as Windows attach implementation. Verify server identity/IPC separation and reconnect/session continuity on each supported route. |
+| W5 | Build/release | BLOCKED by validation | Use suitable existing self-hosted/free compute; record placement. Produce KCode-only Windows x64/ARM64 and supported Mac assets from exact tested SHA, fork versions, hashes, signing/provenance and nonzero client/server output. Add fork-specific workflow/installer-smoke paths; preserve upstream guard until replacement is validated. |
+| W6 | Device install/coexistence | BLOCKED: no verified artifact/transport | Install trusted local artifact with scripts/install.ps1; verify user/process PATH in a fresh shell, executable hash/version, and correct server attachment. Stock jcode must remain separately launchable. Compare stock state bytes/mtimes/permissions before and after imports and KCode operations. |
+| W7 | Maintained channel | Disabled intentionally | Publish only verified fork artifacts and correct release notes. Then enable fork-only authenticated/checksummed update discovery/install and test upgrade, failed download, wrong product/version/hash and rollback without touching jcode. |
+
+W2 focused commands (UNEXECUTED in this audit):
+
+```text
+rustc --edition 2024 --test crates/jcode-build-meta/build.rs -o <temporary-test-executable>
+<temporary-test-executable>
+cargo test -p jcode-build-meta
+python -m unittest discover -s tests -p test_kcode_product_isolation.py
+cargo fmt --all -- --check
+```
+
+Before declaring W2 complete, verify that valid explicit fork overrides retain
+precedence, zero overrides cannot produce zero output, missing/invalid root
+metadata fails instead of manufacturing a version, and both Windows and Mac
+release builds preserve the full fork suffix. A test build alone does not
+replace the W1 client/server runtime receipt.
+
+The operator confirmed the one-way boundary: Jcode data may be imported into
+KCode only. Imports remain explicit and opt-in; KCode must never write back
+into Jcode or share a writable home with it. The existing importer implements:
+
+```text
+stock jcode sessions --explicit selected snapshot import--> KCode sessions
+stock jcode state   <------------- no write-back ---------- KCode
+```
+
+Configuration, credentials, caches, logs, sockets/ports, locks, launchers,
+application/package identifiers and update channels require independent KCode
+ownership. Internal Rust/API compatibility names may remain when they cannot
+route runtime writes or stock launches. Continuous cross-device sync is not
+implemented by the snapshot importer and is not claimed here.
