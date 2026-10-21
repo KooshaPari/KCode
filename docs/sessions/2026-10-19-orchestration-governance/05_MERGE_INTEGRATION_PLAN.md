@@ -1,931 +1,399 @@
-# Merge Integration Plan — KCode PR Stack (2026-10-19)
+# Merge Integration Plan - KCode PR Stack (2026-10-21)
 
-Status: ready for operator review | Date: 2026-10-19 | Author: subagent (merge triage)
+Status: ready for operator review | Date: 2026-10-21 | Author: subagent (merge triage)
 Session: `docs/sessions/2026-10-19-orchestration-governance/`
-Repo: `KooshaPari/KCode` @ `b9886143c13e683111aaf73d7f3ceab655860685`
+Repo: `KooshaPari/KCode` @ `2aea04dd871f21da5c5b21800d156a2c9b0830b1`
 Local clone: `/Users/kooshapari/CodeProjects/Phenotype/repos/jcode`
+Supersedes: the 2026-10-19 edition of this document (written against `b9886143c`).
 
 ---
 
-## 1. Purpose and scope
+## 1. What changed since 2026-10-19
 
-This document is the **fix-forward integration plan** for the 11 open PRs on
-`KooshaPari/KCode` that touch the broken CI pipeline on master. It exists to
-let the operator land every PR in a single, no-force-push sequence that
-clears `Format` and `Quality Guardrails`, resolves the `cli_exit_status.rs`
-compile error, and gates the cache-TTL test regression behind `#[cfg(test)]`.
+Master advanced from `b9886143c` to `2aea04dd8`. Two upstream PRs landed in that
+window and they absorbed a large slice of the local fix stack:
 
-Scope: 11 PRs (`#127, #129, #132, #134, #137, #140, #144, #145, #148, #150,
-#152`). The 6 unrelated open PRs (`#138, #124, #123, #121, #119, #107`) and
-2 stale PRs (`#10, #8`) are flagged out-of-scope in §7.
+| Upstream PR | Title | Effect on this plan |
+|---|---|---|
+| #124 | Windows keyboard negotiation | Added `crates/jcode-tui/src/tui/keyboard_protocol.rs`. Its TUI assertions landed on master, so 8 of the 21 issue-135 tests now pass without any local PR. |
+| #138 | Portal XJ-03 bridge | Lands independently of this stack. No direct file overlap with the local PRs below. |
 
-Hard constraints (binding for every step below):
+Consequences for the previous edition:
 
-- NO force-push, NO rebase of published branches, NO `git reset --hard`, NO
-  `git reset HEAD~`, NO `git clean -fd`, NO `git branch -D`, NO `gh pr merge`,
-  NO `gh pr close`. The operator merges via the GitHub UI or via a local
-  fast-forward/squash merge; agent never rewrites history.
-- All commits authored by subagents carry `tx-agent` / `tx-validated` ledger
-  trailers.
-- The plan must be **re-verified against the live PR list** before
-  execution — at least one of the PRs in scope (`#152`) opened during the
-  triage window and there is no guarantee no further PRs have appeared.
-  Operator must run `gh pr list --repo KooshaPari/KCode --state open --json
-  number,title,headRefName` immediately before step 1 and abort if the list
-  has drifted.
+- Steps 6 through 9, which merged `#129`, `#132`, and `#134`, are **obsolete**. All
+  three are superseded, and their replacements (`#156`, `#157`, `#158`) have mostly
+  become no-ops on master.
+- The 11-PR scope has shrunk to ten. Two are provably empty and one is comment-only.
+- The file-set table was recomputed against current master rather than carried forward.
+
+Every file and line count below is a **true residual** against `origin/master` at
+`2aea04dd8`, computed with the procedure in section 10. A true residual is what the PR
+would actually change if merged today, not the diff between its base and its head.
 
 ---
 
-## 2. Verified stack state (re-checked 2026-10-19T23:09Z)
+## 2. Current stack
 
-Local repo: `/Users/kooshapari/CodeProjects/Phenotype/repos/jcode`.
-`origin/master` = `b9886143c13e683111aaf73d7f3ceab655860685`.
-All ancestry numbers verified via `git rev-list --count
-origin/master..origin/<branch>`. PR metadata verified via `gh pr list`.
+All residuals computed against `origin/master` = `2aea04dd8`.
 
-| PR  | Branch                                          | ahead | files | Issue | File set                                                                                                                            |
-|----:|-------------------------------------------------|------:|------:|-------|-------------------------------------------------------------------------------------------------------------------------------------|
-| #127 | `fix/update-product-warnings`                   | 1     | 1     | #142  | `crates/jcode-app-core/src/update_product.rs`                                                                                       |
-| #129 | `fix/repo-ci-pre-existing-drift`                | 4     | 10    | #130  | repo-wide rustfmt + 2 clippy fixes + `tests/cli_exit_status.rs` (wrong fix)                                                         |
-| #132 | `fix/tui-decollision-test-expectations`         | 6     | 13    | #131  | #129 commits merged-in (`f8f488392`, `1922c0f56`) + 3 TUI test literal fixes                                                       |
-| #134 | `fix/cache-estimate-not-evidence`               | 7     | 14    | #133  | #129 + #132 commits merged-in + `cache_expected_warm` semantics fix                                                                  |
-| #137 | `fix/setup-hints-orphan-spawn-notice`           | 1     | 1     | #136  | `crates/jcode-setup-hints/src/lib.rs` (dead-code removal)                                                                           |
-| #140 | `fix/setup-hints-pr128-test-regression`         | 2     | 2     | #139  | `lib.rs` + `setup_hints_tests.rs` (SUPERSET of #137)                                                                                |
-| #148 | `fix/sdk-test-paths-kcode-prefix`               | 1     | 4     | #147  | `sdk/typescript/test/{client.test.ts,launch.test.ts,live-options.mjs,mock-harness.ts}`                                               |
-| #150 | `fix/tui-cache-expected-warm-unused-import`     | 1     | 1     | #149  | `crates/jcode-tui/src/tui/mod.rs` (gates re-export behind `#[cfg(test)]`)                                                          |
-| #145 | `docs/orchestration-governance-docs-only`        | 1     | 1     | #143  | `docs/sessions/2026-10-19-orchestration-governance/04_ORCHESTRATION_GOVERNANCE_PROPOSAL.md` (new file, 276 lines)                     |
-| #144 | `docs/orchestration-governance-proposal`        | 3     | 3     | #143  | SUPERSEDED — touches `crates/jcode-setup-hints/src/lib.rs` + `setup_hints_tests.rs` + the same docs file. Close in favour of #145 + #140 |
-| #152 | `fix/cli-exit-status-kcode-bin`                 | 1     | 1     | #151  | `tests/cli_exit_status.rs` (correct `env!("CARGO_BIN_EXE_kcode")` fix; supersedes the wrong runtime `std::env::var` attempt in #129) |
+| PR | Branch | True residual vs master | Issue | Conflict | Recommendation |
+|---:|---|---|---|---|---|
+| #156 | `fix/ci-rustfmt-clippy-drift-clean` | **EMPTY (0 files).** All 8 of its files are byte-identical to master. | #130 | clean | **NO-OPTIONAL.** Content absorbed by upstream merges. Merging is a harmless no-op. |
+| #157 | `fix/tui-kcode-decollision` | **3 files, 15 lines.** `helpers.rs` (1), `helpers_tests.rs` (4), `turn_notify.rs` (10). All `jcode` to `kcode` string decollision in the turn-notification title and the resume-command binary name. | #131 | **CONFLICTS** on `crates/jcode-tui/src/tui/app/helpers_tests.rs` | **MERGE-AFTER-CONFLICT-RESOLUTION.** See section 4.1. |
+| #158 | `fix/tui-cache-estimate-not-evidence` | **COMMENT-ONLY.** Master already has `!info.is_cold && !info.is_estimate`. The PR adds an explanatory comment and reorders the two conditions. Regression test `cache_estimate_is_not_evidence_of_an_expected_warm_hit` already exists on master at `crates/jcode-tui/src/tui/mod.rs:1887`. | #133 | **CONFLICTS** on `crates/jcode-tui/src/tui/kv_cache_problem.rs` | **SUPERSEDED.** Behavior already on master. Recommend **CLOSE**, or resolve manually to keep only the comment. |
+| #150 | `fix/tui-cache-expected-warm-unused-import` | **EMPTY (0 files).** Master already has `#[cfg(test)] pub(crate) use kv_cache_problem::cache_expected_warm;`. | #149 | clean | **NO-OPTIONAL.** Already on master. |
+| #152 | `fix/cli-exit-status-kcode-bin` | **1 file, 3 lines.** `tests/cli_exit_status.rs`. `JCODE_HOME` to `KCODE_HOME`, `join("jcode")` to `join("kcode")`, `starts_with("jcode ")` to `starts_with("kcode ")`. | #147 | clean | **MERGE.** The `env!("CARGO_BIN_EXE_kcode")` half is already on master. The env-var half is **not**, and is a real fix (section 3). |
+| #148 | `fix/sdk-test-paths-kcode-prefix` | **2 files, 4 lines.** `sdk/typescript/test/launch.test.ts`, `sdk/typescript/test/live-options.mjs`. Fixture-path renames only. | #147 | clean | **SUPERSEDED** by #160. Its 2-file residual is a strict subset of #160's 7-file residual. |
+| #160 | `fix/sdk-typescript-kcode-assertions` | **7 files, 18 lines.** `launch.test.ts`, `live-isolation.mjs`, `live-launch.mjs`, `live-options.mjs`, `live-text-framing.mjs`, `live-tools.mjs`, `pipe-name.test.ts`. | #159 | clean | **MERGE.** Fully subsumes #148. PR body carries `Closes #159`. |
+| #145 | `docs/orchestration-governance-docs-only` | **2 docs files.** This proposal plus this plan. | #143 | clean | **MERGE** (this PR). |
+| #140 | `fix/setup-hints-pr128-test-regression` | Superset of #137. | #139 | clean | **MERGE.** |
+| #127 | `fix/update-product-warnings` | CI unblock for update-product warnings. | #142 | clean | **MERGE.** |
 
-Notes:
+### 2.1 The `JCODE_HOME` finding
 
-- PR #152 was created at 2026-10-19T22:34:50Z (after this triage session
-  started). The plan was originally drafted assuming it would need to be
-  discovered by title search; it has been incorporated into the sequence
-  below. **Step 0 explicitly re-runs the search to confirm no further PRs
-  have appeared since this was written.**
-- `crates/jcode-tui/src/tui/mod.rs` shows up in PR #132, #134, and #150.
-  Verified by `git diff origin/<branch> -- crates/jcode-tui/src/tui/mod.rs`
-  for each.
+This is the one remaining item in the whole stack that is a genuine fix rather than a
+rename already done. Verified across the entire Rust tree on master: `KCODE_HOME` is
+used everywhere across dozens of crates. `JCODE_HOME` survives in **exactly one Rust
+file**, `tests/cli_exit_status.rs`. One further mention lives in
+`crates/jcode-telemetry-core/CONCURRENCY.md`, which is documentation prose.
+
+That is precisely the 3-line residual #152 still carries. The `env!("CARGO_BIN_EXE_kcode")`
+half of #152 is already on master. Only the env-var half remains. It should be merged
+as a real fix, not dismissed as cosmetic.
 
 ---
 
-## 3. Blocking defects
+## 3. Recommended merge order
 
-Two independent blockers must be resolved before `Quality Guardrails`
-becomes green.
+Reasoning is given inline. The order is chosen so that no PR is merged into a tree
+that a later PR then invalidates.
 
-### 3.1 Wrong `cli_exit_status.rs` fix in #129
+| Step | PR | Why here |
+|---:|---|---|
+| 1 | #127 | Smallest independent CI unblock. No file overlap with any later step, so it can also be merged at any point without risk. |
+| 2 | #140 | Superset of #137. Merging the superset first makes #137 redundant, which is the intent. |
+| 3 | #152 | Independent of every other step in this table. Touches only `tests/cli_exit_status.rs`. |
+| 4 | #160 | Independent of #152. Touches only `sdk/typescript/`. **Fully subsumes #148**, so #148 should be closed rather than merged. |
+| 5 | #157 | Requires manual conflict resolution (section 4.1). Sequenced late so the operator has the most information before resolving it. |
+| 6 | #145 | This PR. Docs only, zero code interaction, safe to land at any time. |
+| 7 | #156 | **Optional.** Empty residual. Merging changes nothing. Skipping is equally valid. |
+| 8 | #150 | **Optional.** Empty residual. Same reasoning as #156. |
 
-Master at `b9886143c`:
+### 3.1 Explicit independence statements
 
-```rust
-let output = Command::new(env!("CARGO_BIN_EXE_jcode"))
-```
-
-Cargo.toml `[[bin]]` target is named `kcode` (`path = "src/main.rs"`),
-so `CARGO_BIN_EXE_jcode` is **never defined at compile time** — the
-integration test fails to compile with E0461 (environment variable not
-defined at compile time).
-
-PR #129 attempted the fix as:
-
-```rust
-let output = Command::new(std::env::var("CARGO_BIN_EXE_jcode").expect("CARGO_BIN_EXE_jcode"))
-```
-
-This is also wrong: `CARGO_BIN_EXE_*` is set by Cargo **at compile time**
-for integration test targets, never as a runtime environment variable. The
-test would compile but panic at runtime with "environment variable not
-found".
-
-The correct form is `env!("CARGO_BIN_EXE_kcode")` (which PR #152 ships):
-
-```rust
-let output = Command::new(env!("CARGO_BIN_EXE_kcode"))
-```
-
-Verified on `tests/cli_exit_status.rs` from PR #152, branch
-`fix/cli-exit-status-kcode-bin`, commit `d639961e4`, ahead of master by
-exactly 1 commit, touching only that one file.
-
-### 3.2 Accumulated-merge duplicates in #132 and #134
-
-PR #132 is **6 commits** ahead of master:
-
-```
-f8f488392  merge: bring in PR #129's fmt + clippy fixes
-1922c0f56  fix(jcode-tui-mermaid): collapse split doc comment
-9ead3963e  fix(tui): 3 leftover kcode/jcode decollision mismatches
-68e322d8a  Merge remote-tracking branch 'origin/master' into fix/repo-ci-pre-existing-drift
-5b65b1878  fix(ci): collapse nested if-let in sockets.rs (clippy collapsible_if)
-36375a526  fix(ci): clear repo-wide rustfmt drift + fix env! macro in cli_exit_status
-```
-
-The last three (`68e322d8a`, `5b65b1878`, `36375a526`) are byte-equivalent
-to #129's three rustfmt/clippy/env! commits. The `f8f488392` merge commit
-brought them in explicitly to make #132 pass CI standalone.
-
-PR #134 is **7 commits** ahead of master. Its last commit
-(`c182fcb7c`, "cache_expected_warm returns false on estimates, not just
-cold") is the only #134-specific change. The first six are identical to
-#132's six (and therefore inherit #129's three).
-
-**Consequence of merge order:**
-
-If the operator merges in the order #129 → #132 → #134:
-
-1. After #129: master carries the rustfmt/clippy/env! commits. The env!
-   fix is wrong (see §3.1) but `cargo check` will pass because
-   `std::env::var(...)` is valid Rust even if it never executes.
-2. After #132: git applies #132's three new commits
-   (`9ead3963e`, `1922c0f56`, `f8f488392`). The `f8f488392` merge commit
-   is a no-op against the just-merged #129 content (its purpose was to
-   bring #129's content into #132's branch, which is now redundant). Git
-   will accept this as a clean fast-forward because all of #132's
-   pre-merge content already matches what #129 just brought in. The two
-   new fixes (`9ead3963e` TUI literals, `1922c0f56` mermaid comment) apply
-   cleanly because their contexts are unaffected by #129.
-3. After #134: git applies #134's lone semantic change `c182fcb7c`. Clean.
-   The mod.rs reorder of `cache_expected_warm` from position A to
-   position B happens here.
-
-If the operator merges in any other order:
-
-- #134 first: master has no rustfmt/clippy cleanup yet. #134's branch
-  builds against #129's content; pulling that into a master without
-  rustfmt will produce a cascade of fmt/clippy failures in the
-  integration test infrastructure. The merge will technically succeed
-  but `Quality Guardrails` will go red.
-- #132 first: same problem as #134 first.
-- #129 last: the wrong `cli_exit_status.rs` fix lands last and is the
-  blocking CI failure that motivated the whole stack. No benefit.
-
-**Conclusion:** the correct order is #152 → #127 → #140 → #137 close →
-#148 → #129 → #132 → #134 → #150 → #145, with #144 closed (operator
-action, no merge).
-
-### 3.3 Textual conflict: #134 vs #150 in `crates/jcode-tui/src/tui/mod.rs`
-
-Verified by `git diff origin/<branch>` against master on both branches:
-
-Master at line 1069 of `crates/jcode-tui/src/tui/mod.rs`:
-
-```rust
-mod kv_cache_problem;
-pub(crate) use kv_cache_problem::cache_expected_warm;       <- position A
-#[cfg(test)]
-pub(crate) use kv_cache_problem::KvCacheProblemKind;
-pub(crate) use kv_cache_problem::detect_kv_cache_problem;
-```
-
-PR #134 (after applying) at the same location:
-
-```rust
-mod kv_cache_problem;
-#[cfg(test)]
-pub(crate) use kv_cache_problem::KvCacheProblemKind;
-pub(crate) use kv_cache_problem::cache_expected_warm;       <- moved to position B, NO cfg(test)
-pub(crate) use kv_cache_problem::detect_kv_cache_problem;
-```
-
-PR #150 (after applying) at the same location:
-
-```rust
-mod kv_cache_problem;
-#[cfg(test)]
-pub(crate) use kv_cache_problem::KvCacheProblemKind;
-#[cfg(test)]
-pub(crate) use kv_cache_problem::cache_expected_warm;       <- moved to position B, WITH cfg(test)
-pub(crate) use kv_cache_problem::detect_kv_cache_problem;
-```
-
-Both branches perform an identical "remove from position A" operation.
-Both branches add a `cache_expected_warm` line at position B, but #150
-also inserts a `#[cfg(test)]` attribute one line above it. The two
-insertion sites overlap (they both target the gap between `KvCacheProblemKind`
-and `detect_kv_cache_problem`) but produce different content (#134 adds
-1 line, #150 adds 2 lines).
-
-**Verdict: textual conflict, yes.** Git's three-way merge will report a
-conflict on the position-B insertion. The operator (or auto-resolve
-script) must take #150's version — that is the desired final state
-(both re-exports gated behind `#[cfg(test)]`).
+- **#152 and #160 touch disjoint files.** #152 is `tests/cli_exit_status.rs` only.
+  #160 is seven files under `sdk/typescript/`. They can merge in **either order**
+  with no interaction. Steps 3 and 4 are not a dependency, only a stable presentation
+  order.
+- **#160 subsumes #148.** #148's true residual (`launch.test.ts`, `live-options.mjs`,
+  4 lines) is a strict subset of #160's true residual (those same two files plus five
+  more, 18 lines). Merging #148 after #160 would be a no-op. The recommendation is to
+  **merge #160 and close #148**.
+- **#150 and #156 need no merge at all.** Both have an empty true residual. They are
+  listed as optional steps purely so the operator can see they were evaluated.
 
 ---
 
-## 4. Recommended merge sequence
+## 4. Conflict-resolution guidance
 
-Numbered, with per-step commands and verification. The operator runs the
-GitHub UI "Merge pull request" button (squash or rebase is fine — both
-`Merge commit` and `Squash and merge` work because the conflict is
-contained in the mod.rs file and is resolved manually before push). The
-local `git fetch && git merge --no-ff` alternative is shown only where
-the auto-merge UI cannot resolve a conflict.
+### 4.1 PR #157, conflict on `helpers_tests.rs`
 
-### Step 0: Pre-flight verification
+The conflict file is `crates/jcode-tui/src/tui/app/helpers_tests.rs`.
 
-```bash
-cd /Users/kooshapari/CodeProjects/Phenotype/repos/jcode
+Master already uses `program.file_stem()`, with the comment *"Compare the stem: the
+launcher binary is kcode.exe on Windows"*. That master form is **newer** and should be
+kept.
+
+Resolution procedure:
+
+1. **Take the PR's `helpers.rs` change.** 1 line, a `jcode` to `kcode` decollision in
+   the turn-notification title.
+2. **Take the PR's `turn_notify.rs` change.** 10 lines, the same decollision plus the
+   resume-command binary name.
+3. **DISCARD the PR's `helpers_tests.rs` change.** Master already has the newer
+   `file_stem()` form with its explanatory comment. Keeping the PR's version would
+   regress to the older comparison.
+
+Net result after resolution: a 11-line effective diff across 2 files.
+
+### 4.2 PR #158, conflict on `kv_cache_problem.rs`
+
+The conflict file is `crates/jcode-tui/src/tui/kv_cache_problem.rs`.
+
+Master already carries the correct behavior, expressed as `!info.is_cold &&
+!info.is_estimate`. The regression test `cache_estimate_is_not_evidence_of_an_expected_warm_hit`
+already exists on master at `crates/jcode-tui/src/tui/mod.rs:1887`. The PR's only real
+contribution is an explanatory comment plus a reorder of the two conditions.
+
+Recommendation: **close #158.** Merging it costs a conflict resolution and buys a
+comment. The alternative, if the comment is considered valuable, is to resolve the
+conflict by hand and keep **only** the comment, discarding the reorder.
+
+---
+
+## 5. CI gate status
+
+### 5.1 Format / Quality Guardrails - OPEN
+
+**This gate is open and its outcome is not yet known.** A parallel audit is still
+running to determine whether master itself still carries rustfmt or clippy drift.
+This document therefore makes **no claim that master is fmt-clean**.
+
+What can be stated precisely:
+
+- PR #156's own 8-file set is already **byte-identical to master**. Whatever drift
+  #156 was written to fix, its intended file set has already been reconciled.
+- The master-side drift question is a **separate** question from #156's residual, and
+  is being audited independently.
+- Until that audit returns, the operator should treat this gate as **UNKNOWN**, not
+  passing and not failing.
+
+### 5.2 TypeScript SDK
+
+- #148 fixed fixture paths but not stale assertions. #160 completes the job.
+- **Baseline on master: 82 tests, 81 pass, 1 fail.**
+- That single failure is **macOS-only**:
+  `login inheritance creates file links, never credential directory links`.
+  The production darwin branch ignores `XDG_CONFIG_HOME`, so the test passes on Linux CI.
+- **#160's branch measures the same 82 / 81 / 1**, with the same single macOS-only
+  failure. #160 does not regress anything.
+- `npm run typecheck` exits 0 on the #160 branch.
+
+### 5.3 Pre-existing failures, OUT OF SCOPE
+
+Do not chase these. They are unrelated to this stack and were present before it:
+
+- macOS provider-matrix failures.
+- Setup Friction Eval, caused by the KCode release-download stub.
+- Windows and setup failures.
+- Unrelated provider failures.
+
+### 5.4 Category A TUI fork-command gap - OPEN implementation task
+
+Three tests **still fail on master**:
+
+- `test_fork_command_with_prompt_forks_session`
+- `test_fork_command_without_prompt_forks_idle_session`
+- `test_btw_command_forks_session_with_question`
+
+They fail at `crates/jcode-tui/src/tui/app/tests/commands_accounts_01/part_01.rs:1206`
+with `left: "error"`, `right: "system"`. The fork handler pushes an error message
+where the test expects a system message.
+
+Issue #135 recommends an **implementation** fix, not a test change: emit the
+`kcode --resume <new-id>` hint.
+
+**No PR exists for this yet.** It is recorded here as an open implementation task for
+a future agent.
+
+### 5.5 Stray branch, must be deleted
+
+`fix/tui-refactor-regressions` exists on origin at `0f4afc872`, based on the **old**
+master `b9886143c`. Merging it would **revert upstream #124's Windows keyboard work**
+and **delete** `crates/jcode-tui/src/tui/keyboard_protocol.rs`.
+
+**It must not be merged. The operator should delete the branch.** Agents do not delete
+branches.
+
+---
+
+## 6. Operator action list
+
+### 6.1 Merge, in this order
+
+```
+1. #127  fix/update-product-warnings
+2. #140  fix/setup-hints-pr128-test-regression
+3. #152  fix/cli-exit-status-kcode-bin          (real fix, see section 2.1)
+4. #160  fix/sdk-typescript-kcode-assertions   (subsumes #148)
+5. #157  fix/tui-kcode-decollision            (resolve conflict per section 4.1 first)
+6. #145  docs/orchestration-governance-docs-only
+7. #156  fix/ci-rustfmt-clippy-drift-clean     OPTIONAL, empty residual
+8. #150  fix/tui-cache-expected-warm-unused-import   OPTIONAL, empty residual
+```
+
+Steps 3 and 4 are independent and may be swapped. Steps 7 and 8 may be skipped
+entirely.
+
+### 6.2 Close
+
+```
+#148   superseded by #160 (strict subset)
+#137   superseded by #140
+#144   superseded by #145
+#129   superseded by #156
+#132   superseded by #157
+#134   superseded by #158
+#158   superseded, behavior already on master (see section 4.2)
+#156   OPTIONAL close, empty residual (see section 5.1)
+```
+
+Each of `#129`, `#132`, `#134`, `#137`, `#144`, `#148` already carries a verified
+"Closed by #NNN" supersession comment on GitHub.
+
+### 6.3 Delete branch
+
+```
+fix/tui-refactor-regressions   at 0f4afc872   MUST NOT be merged (section 5.5)
+```
+
+### 6.4 Open implementation task
+
+- Category A TUI fork-command gap, issue #135. No PR exists (section 5.4).
+
+### 6.5 Awaiting the parallel audit
+
+- Master-side rustfmt / clippy drift determination (section 5.1).
+
+### 6.6 Division of responsibility
+
+**The agent does not merge PRs, does not close PRs, and does not delete branches.**
+Every item in section 6 is an operator action.
+
+---
+
+## 7. Preserved strings
+
+The following `jcode` occurrences are **intentional and must not be "fixed"**.
+A mechanical find-and-replace over these strings is a known trap.
+
+| String | Why it stays |
+|---|---|
+| `jcode_not_found` | Stable public error code. `sdk/typescript/src/launch.ts:727` throws exactly this, mirrored by `crates/jcode-sdk/src/errors.rs:56`. Callers branch on it. |
+| `crates/jcode-harness-api/` | The crate directory really is named that. Changing the path breaks the test. |
+| `jcodeHome` | Still the SDK option name. `sdk/typescript/src/launch.ts:163`, `:209`, `sdk/typescript/src/client.ts:274`. |
+| `jcode-transport` | The Rust module name, `crates/jcode-transport/`. |
+| `jcode-api` pipe stem | Pinned by `crates/jcode-transport/src/windows.rs`. The TS SDK mirrors that derivation in `sdk/typescript/src/sockets.ts`. |
+| `JCODE_SDK_TEST_BINARY`, `JCODE_SCRATCH_DIR`, `JCODE_DISABLE_TELEMETRY` | Opt-in `live-*.mjs` script-local env vars, not a production contract. |
+
+Contrast with `JCODE_HOME`, which **is** a real defect in exactly one Rust file. See
+section 2.1.
+
+---
+
+## 8. Binding hard constraints
+
+These are binding for every step in this document and for any agent acting on it.
+
+Forbidden:
+
+```
+git push --force
+git push --force-with-lease
+git reset --hard
+git reset HEAD~
+git clean -fd
+git branch -D
+gh pr merge
+gh pr close
+gh repo delete
+gh repo create
+```
+
+- **No force-push.** The docs branch is based on the old master `b9886143c`, so the
+  push is a normal fast-forward of the branch's own commits. Do **not** rebase, do
+  **not** merge master into the branch, do **not** force-push.
+- **No rebase of published branches.** History is an immutable ledger.
+- **Every agent commit carries ledger trailers.** At minimum `tx-agent` and
+  `tx-validated`.
+
+---
+
+## 9. TUI verification method
+
+Reproduced on a clean `origin/master` worktree. Per-module filters are used to isolate
+subsystems.
+
+```
+cargo test -p jcode-tui
+cargo test -p jcode-tui session_picker
+cargo test -p jcode-tui app::tests
+cargo test -p jcode-tui ui_prefs
+```
+
+**Master result: 2293 passed / 219 failed / 19 ignored.**
+
+The 219 failures are environment-dependent local failures, notably:
+
+- `session_picker::loading::*`, which are filesystem-dependent.
+- `app::tests::test_poke_*`.
+- `ui_prefs::tests`, which are disk-dependent.
+
+These are **not** the issue-135 regressions.
+
+Of the 21 issue-135 tests: **18 pass on master, 3 fail** (the Category A fork-command
+tests from section 5.4).
+
+### 9.1 Why 8 of the 21 now pass without any local PR
+
+Upstream #124 already landed these behaviors:
+
+| Behavior | Location on master |
+|---|---|
+| Keyboard-enhancement assertions (`\x1b[>1u` / `\x1b[=1u`) | `crates/jcode-tui/src/tui/mod.rs:272-292` |
+| Disconnect glyph, `⚡ Connection lost - retrying` | `crates/jcode-tui/src/tui/app/remote/reconnect.rs:117` |
+| `kcode --resume` hint | `crates/jcode-tui/src/tui/app/commands.rs:460`, `:467`, `:2523`, and `commands_review.rs:768` |
+| Session-picker height 24 | `crates/jcode-tui/src/tui/session_picker_tests.rs:1983`, `:2039`, `:2103`, `:2167`, `:2534` |
+| Overscroll row computation `height-2` when width is 80 or greater | compact status bar renders exactly when `chat_area.width >= 80`, at `crates/jcode-tui/src/tui/ui.rs:3042`, with the test at `crates/jcode-tui/src/tui/ui_tests/swarm_buffer.rs:556-558` |
+
+The compact-layout threshold for session picker height is `height < 20` at
+`crates/jcode-tui/src/tui/session_picker.rs:2200`.
+
+---
+
+## 10. Verification commands
+
+### 10.1 Recomputing a PR's true residual
+
+```
 git fetch origin
-gh pr list --repo KooshaPari/KCode --state open --json number,title,headRefName,isDraft \
-  > /tmp/open-prs-pre-flight.json
-test -s /tmp/open-prs-pre-flight.json
+
+# Merge-tree gives the resolved tree (or reports the conflict).
+git merge-tree --write-tree origin/master origin/<branch>
+
+# Diff that tree against master. Empty output means a no-op PR.
+git diff --stat origin/master <tree-sha>
 ```
 
-Compare the resulting list against the table in §2. **If any of
-`#127, #129, #132, #134, #137, #140, #144, #145, #148, #150, #152` is
-missing**, or if any new open PR appears with a title matching
-`/cli_exit_status|CARGO_BIN_EXE|tui.*test|format|drift/i`, STOP and
-re-read this plan before continuing.
+For #157 and #158, `git merge-tree --write-tree` reports a conflict. In that case the
+true residual is computed by resolving the conflict locally and diffing the result.
 
-### Step 1: Merge #152 (`fix/cli-exit-status-kcode-bin`)
-
-This is the correct `cli_exit_status.rs` fix. Merge first so it is in
-place before #129's wrong fix is even considered.
-
-**Operator action (UI):**
-
-1. Open PR #152.
-2. Review the diff: 4 lines added, 4 lines removed, single file
-   `tests/cli_exit_status.rs`. The diff is the canonical fix described
-   in §3.1: `CARGO_BIN_EXE_kcode` (not `jcode`), `KCODE_HOME` (not
-   `JCODE_HOME`), `.starts_with("kcode ")` (not `"jcode "`).
-3. Click `Merge pull request` → `Squash and merge` (or `Merge commit`).
-
-**Verification after merge:**
-
-```bash
-git pull --ff-only origin master
-git show origin/master:tests/cli_exit_status.rs | head -16
-# expect line 6: let output = Command::new(env!("CARGO_BIN_EXE_kcode"))
-```
-
-Wait for `Quality Guardrails` (cargo check --all-targets --all-features) on
-the resulting master SHA. Expected: GREEN — the integration test now
-compiles.
-
-### Step 2: Merge #127 (`fix/update-product-warnings`)
-
-Adds 7 `#[allow(dead_code)]` attributes to `update_product.rs`. Reviewer
-should note that this is a deliberate CI-unblock with three real defects
-hidden behind the allow-list (see §8 operator decisions). The merge is
-correct; the cleanup is a follow-up.
-
-**Operator action (UI):**
-
-1. Open PR #127. Diff: 1 file, +7 lines (all `#[allow(dead_code)]`).
-2. Click `Merge pull request` → `Squash and merge`.
-
-**Verification after merge:**
-
-```bash
-git pull --ff-only origin master
-git show origin/master:crates/jcode-app-core/src/update_product.rs | grep -c '#\[allow(dead_code)\]'
-# expect 7
-cargo check -p jcode-app-core --all-targets --all-features
-```
-
-Wait for `Quality Guardrails` and `Build & Test (ubuntu-latest)`. Expected:
-GREEN.
-
-### Step 3: Close #137 (operator action — no merge)
-
-PR #137 (delete `with_spawn_notice` from `lib.rs`) is a strict subset of
-PR #140 (same `lib.rs` change plus a `setup_hints_tests.rs` regression
-guard). Merging both would create a textual conflict on `lib.rs` (both
-remove the same `with_spawn_notice` block — git would auto-resolve, but
-the second merge is redundant work).
-
-**Operator action (UI):**
-
-1. Open PR #137.
-2. Post a comment: `Superseded by #140 (which also includes the
-   lib.rs change plus the setup_hints_tests.rs regression guard). Closing
-   this PR to keep the merge graph clean.`
-3. Click `Close pull request`.
-
-### Step 4: Merge #140 (`fix/setup-hints-pr128-test-regression`)
-
-Removes `with_spawn_notice` from `lib.rs` (same as #137) AND rewrites the
-`first_three_launches_can_include_hotkey_notice_too` test in
-`setup_hints_tests.rs` to assert the now-retired behaviour.
-
-**Operator action (UI):**
-
-1. Open PR #140. Diff: 2 files, ~30 lines changed. The `lib.rs` change is
-   a 7-line deletion; the `setup_hints_tests.rs` change is a net rewrite
-   of the `first_three_launches_can_include_hotkey_notice_too` test.
-2. Click `Merge pull request` → `Squash and merge`.
-
-**Verification after merge:**
-
-```bash
-git pull --ff-only origin master
-git show origin/master:crates/jcode-setup-hints/src/lib.rs | grep -c 'with_spawn_notice'
-# expect 0
-cargo test -p jcode-setup-hints --lib
-```
-
-Wait for `Quality Guardrails`. Expected: GREEN — the
-`Quality Guardrails` job no longer fails on the orphaned
-`with_spawn_notice` reference.
-
-### Step 5: Merge #148 (`fix/sdk-test-paths-kcode-prefix`)
-
-Renames 14 `jcode-`-prefixed tmp-path fixtures in
-`sdk/typescript/test/{client.test.ts,launch.test.ts,live-options.mjs,mock-harness.ts}`
-to `kcode-` prefix so `assertKcodePath` stops rejecting them. The
-`TypeScript SDK` CI job had been timing out at 10 minutes because every
-test fixture had been rejected at the path-isolation guard, leaving the
-job with nothing to do but wait.
-
-**Operator action (UI):**
-
-1. Open PR #148. Diff: 4 files, all TypeScript test fixtures. No
-   production code changes. No semantic changes (the path prefix is the
-   only thing changing — the test logic is untouched).
-2. Click `Merge pull request` → `Squash and merge`.
-
-**Verification after merge:**
-
-```bash
-git pull --ff-only origin master
-grep -rn 'os.tmpdir(), `jcode-' sdk/typescript/test/ | head
-# expect 0 hits
-```
-
-Wait for `TypeScript SDK`. Expected: GREEN within 10 minutes (previously
-cancelled at 10m).
-
-### Step 6: Merge #129 (`fix/repo-ci-pre-existing-drift`)
-
-Repo-wide rustfmt drift + 2 clippy fixes in `sockets.rs` + the
-**wrong** `cli_exit_status.rs` fix.
-
-**Operator action (UI, two-stage because of the wrong fix):**
-
-1. Open PR #129. Diff: 10 files, 66 insertions, 45 deletions.
-2. Note in the review comment: the `cli_exit_status.rs` change is wrong
-   (the `std::env::var("CARGO_BIN_EXE_jcode")` form panics at runtime).
-   Step 1 already merged #152 which corrected this in a different commit
-   on master. After this PR lands, master will contain BOTH the wrong
-   fix (in #129) and the correct fix (in #152) — they will conflict.
-3. Click `Merge pull request` → `Squash and merge`. After the merge,
-   expect a `Quality Guardrails` failure on the now-double-fixed file.
-
-**Verification after merge (manual conflict resolution required):**
-
-```bash
-git pull --ff-only origin master
-cargo check --workspace --all-targets --all-features
-# expected: compile error on tests/cli_exit_status.rs because #129
-# re-introduces the wrong std::env::var line and #152's correct env!
-# line is now also in master.
-```
-
-The operator (or a follow-up subagent, dispatched from this plan) must
-resolve this conflict by reverting #129's `cli_exit_status.rs` hunk to
-match #152's `env!("CARGO_BIN_EXE_kcode")` form. The recommended
-mechanics are described in §5 as the **"post-#129 fix-forward patch"**.
-
-### Step 7: merge #132 (`fix/tui-decollision-test-expectations`)
-
-#132 is the "merge in #129's content + add 2 TUI fix commits" branch.
-After #129 is in master, #132's accumulated-merge commits become a
-no-op fast-forward (the content is already in master from #129), and
-only #132's two specific commits (`9ead3963e`, `1922c0f56`) need to
-apply.
-
-**Operator action (UI):**
-
-1. Open PR #132. Diff: 13 files.
-2. Click `Merge pull request` → `Squash and merge`.
-
-**Verification after merge:**
-
-```bash
-git pull --ff-only origin master
-git show origin/master:crates/jcode-tui/src/tui/app/helpers.rs | grep -A 1 'launch_client_executable'
-# expect PathBuf::from("kcode") not PathBuf::from("jcode")
-cargo check -p jcode-tui --all-targets --all-features
-```
-
-Wait for `Quality Guardrails`. Expected: GREEN — the 7 leftover
-kcode/jcode decollision mismatches are now correct.
-
-### Step 8: Merge #134 (`fix/cache-estimate-not-evidence`)
-
-#134 is the "merge in #129+#132 + add 1 semantic fix" branch. After #129
-and #132 are in master, #134's accumulated-merge commits are a no-op
-fast-forward, and only the lone commit `c182fcb7c` (the
-`cache_expected_warm` semantics fix) needs to apply.
-
-The commit also reorders `pub(crate) use kv_cache_problem::cache_expected_warm;`
-in `tui/mod.rs` from position A to position B. This will conflict with
-#150 (see §3.3); the conflict is resolved in step 9, not here.
-
-**Operator action (UI):**
-
-1. Open PR #134. Diff: 14 files.
-2. Click `Merge pull request` → `Squash and merge`.
-
-**Verification after merge (preparing for §3.3 conflict):**
-
-```bash
-git pull --ff-only origin master
-git show origin/master:crates/jcode-tui/src/tui/mod.rs | sed -n '1067,1075p'
-# expect:
-#   mod kv_cache_problem;
-#   #[cfg(test)]
-#   pub(crate) use kv_cache_problem::KvCacheProblemKind;
-#   pub(crate) use kv_cache_problem::cache_expected_warm;     <-- no cfg(test) yet
-#   pub(crate) use kv_cache_problem::detect_kv_cache_problem;
-```
-
-### Step 9: Merge #150 with manual conflict resolution
-
-PR #150 (`fix/tui-cache-expected-warm-unused-import`) is the smallest
-change in the stack (1 commit, 1 file, 2 line changes) but it conflicts
-textually with #134's reordering of the same line.
-
-**Operator action (local merge, not UI — UI cannot resolve this):**
-
-```bash
-git fetch origin
-git checkout master
-git pull --ff-only origin master
-git merge --no-ff origin/fix/tui-cache-expected-warm-unused-import
-# expect a CONFLICT in crates/jcode-tui/src/tui/mod.rs
-```
-
-When the conflict reports:
+### 10.2 Confirming the merge list
 
 ```
-Auto-merging crates/jcode-tui/src/tui/mod.rs
-CONFLICT (content): Merge conflict in crates/jcode-tui/src/tui/mod.rs
+gh pr list --repo KooshaPari/KCode --state open \
+  --json number,title,headRefName,mergeable
 ```
 
-Open the file and resolve. The conflict will be:
+Always pass `--repo KooshaPari/KCode` explicitly. In a fork, `gh` resolves to the
+upstream remote by default.
 
-```diff
-  mod kv_cache_problem;
-  #[cfg(test)]
-  pub(crate) use kv_cache_problem::KvCacheProblemKind;
-<<<<<<< HEAD (after #134)
-  pub(crate) use kv_cache_problem::cache_expected_warm;
-=======
-  #[cfg(test)]
-  pub(crate) use kv_cache_problem::cache_expected_warm;
->>>>>>> origin/fix/tui-cache-expected-warm-unused-import
-  pub(crate) use kv_cache_problem::detect_kv_cache_problem;
+### 10.3 Rust
+
+```
+cargo test -p jcode-tui
+cargo test -p jcode-tui session_picker
+cargo test -p jcode-tui app::tests
+cargo test -p jcode-tui ui_prefs
 ```
 
-**Resolution: take the `=======` side** (PR #150's version). This is
-the desired final state — `cache_expected_warm` gated behind
-`#[cfg(test)]`, matching `KvCacheProblemKind` above it.
+### 10.4 TypeScript SDK
 
-After resolving:
-
-```bash
-git add crates/jcode-tui/src/tui/mod.rs
-git commit -m "merge: PR #150 — gate cache_expected_warm re-export behind #[cfg(test)] (#149)
-
-Conflict resolved by taking PR #150's version. #134 reordered the
-re-export from position A to position B (without the attribute); #150
-reorders AND adds the #[cfg(test)] attribute. #150's stricter form is
-the desired final state.
-
-Resolves the textual conflict between #134 and #150 in
-crates/jcode-tui/src/tui/mod.rs.
-
-tx-agent: jcode
-tx-validated: manual
-tx-task: 05_MERGE_INTEGRATION_PLAN
-tx-intent: ship cache_expected_warm gating forward
-tx-scope: crates/jcode-tui/src/tui/mod.rs"
-git push origin master
+```
+cd sdk/typescript
+npm test
+npm run typecheck
 ```
 
-**Verification after merge:**
+Expected: 82 tests, 81 pass, 1 fail. The single failure is macOS-only
+(`login inheritance creates file links, never credential directory links`) and passes
+on Linux CI.
 
-```bash
-git pull --ff-only origin master
-git show origin/master:crates/jcode-tui/src/tui/mod.rs | sed -n '1067,1076p'
-# expect:
-#   mod kv_cache_problem;
-#   #[cfg(test)]
-#   pub(crate) use kv_cache_problem::KvCacheProblemKind;
-#   #[cfg(test)]
-#   pub(crate) use kv_cache_problem::cache_expected_warm;
-#   pub(crate) use kv_cache_problem::detect_kv_cache_problem;
-cargo check -p jcode-tui --all-targets --all-features
-cargo test -p jcode-tui --lib cache_expected_warm
+### 10.5 Verifying no stray `JCODE_HOME` in Rust
+
+```
+git grep -n 'JCODE_HOME' -- '*.rs'
 ```
 
-Wait for `Quality Guardrails`. Expected: GREEN — the unused-import
-warning is gone, the test still passes because `#[cfg(test)]` is on.
-
-### Step 10: Merge #145 (`docs/orchestration-governance-docs-only`)
-
-Pure documentation PR. Adds a single 276-line Markdown file with the
-operator-asked orchestration-governance proposal. No Rust, no
-TypeScript, no scripts.
-
-**Operator action (UI):**
-
-1. Open PR #145. Diff: 1 file (new), 276 lines.
-2. Click `Merge pull request` → `Squash and merge`.
-
-**Verification after merge:**
-
-```bash
-git pull --ff-only origin master
-test -f docs/sessions/2026-10-19-orchestration-governance/04_ORCHESTRATION_GOVERNANCE_PROPOSAL.md
-wc -l docs/sessions/2026-10-19-orchestration-governance/04_ORCHESTRATION_GOVERNANCE_PROPOSAL.md
-# expect 276
-```
-
-No CI gating change expected.
-
-### Step 11: Close #144 (operator action — superseded)
-
-PR #144 carries the same docs file as #145 (276 lines) PLUS the two
-setup-hints files that #140 already ships.
-
-**Operator action (UI):**
-
-1. Open PR #144.
-2. Post a comment: `Superseded by #145 (docs only) and #140 (the
-   setup-hints files this PR also touched). The docs in this PR are
-   identical to #145's; the setup-hints change is in #140. Closing.`
-3. Click `Close pull request`.
-
-### Step 12: post-#129 fix-forward patch (see §5)
-
-If the operator accepted step 6 as-is, master now has BOTH #152's
-correct fix and #129's wrong `std::env::var` form. A follow-up commit
-must remove the wrong line. This is dispatched as a separate
-`fix-forward` PR; details in §5.
-
-### End-state summary
-
-After all steps, master should pass:
-
-- `cargo fmt --all -- --check` → exit 0
-- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-  → exit 0
-- `cargo check --workspace --all-targets --all-features` → exit 0
-  (specifically `tests/cli_exit_status.rs` compiles)
-- `Quality Guardrails` → GREEN
-- `Format` → GREEN
-- `TypeScript SDK` → GREEN within 10m (previously cancelled)
-
-The remaining failures (macOS provider-matrix, Windows setup-hints,
-Ubuntu TUI test failures tracked by #135) are pre-existing and not in
-the scope of this stack.
-
----
-
-## 5. PR-by-PR disposition table
-
-| PR   | Disposition             | Reason (one line)                                                                                                  |
-|----:|------------------------|------------------------------------------------------------------------------------------------------------------|
-| #127 | MERGE (step 2)         | Suppresses 7 dead_code warnings on `update_product.rs`; correct CI-unblock; #141 follow-up tracks real defects. |
-| #129 | MERGE (step 6) + fix-forward patch (step 12) | Repo-wide rustfmt + 2 clippy fixes; the cli_exit_status.rs fix is wrong but is corrected by #152 which is already on master; a post-merge fix-forward patch removes the wrong line. |
-| #132 | MERGE (step 7)         | 2 TUI fix commits (`9ead3963e`, `1922c0f56`); after #129 is in master, #132's accumulated-merge commits are a no-op fast-forward. |
-| #134 | MERGE (step 8)         | 1 semantic fix (`c182fcb7c`) to `cache_expected_warm`; after #129 and #132 are in master, #134's accumulated-merge is a no-op. |
-| #137 | CLOSE (step 3)         | Strict subset of #140; merging both would create a redundant `with_spawn_notice` removal conflict on `lib.rs`. |
-| #140 | MERGE (step 4)         | Strict superset of #137 plus a regression guard in `setup_hints_tests.rs`. |
-| #144 | CLOSE (step 11)        | SUPERSEDED — its docs file is identical to #145's, and its setup-hints files are #140.                            |
-| #145 | MERGE (step 10)        | Clean docs-only re-land of #144's docs portion.                                                                  |
-| #148 | MERGE (step 5)         | Renames 14 jcode-prefixed test paths so the `TypeScript SDK` job stops timing out.                                |
-| #150 | MERGE (step 9)         | Gates `cache_expected_warm` re-export behind `#[cfg(test)]`; conflicts with #134, resolved by taking #150's side. |
-| #152 | MERGE (step 1)         | The correct `env!("CARGO_BIN_EXE_kcode")` fix; supersedes #129's wrong `std::env::var` attempt on this one file. |
-
-**Critical cli verdict (see §3.1):** #129's `cli_exit_status.rs` change is
-wrong (uses `std::env::var` on a compile-time-only variable). The
-correct fix is already on master as PR #152. The plan lands #152 first
-(step 1), then #129 (step 6) which will re-introduce the wrong line on
-top of #152's correct line — a textual conflict that is resolved by the
-post-merge fix-forward patch (step 12, detailed below).
-
-**Conflict verdict #134 vs #150 (see §3.3):** textual conflict, YES.
-Both branches modify the same line in `crates/jcode-tui/src/tui/mod.rs`
-(position A of the `cache_expected_warm` re-export). #134 removes from
-position A and re-adds at position B without `#[cfg(test)]`. #150
-removes from position A and re-adds at position B with `#[cfg(test)]`
-attribute. Three-way merge will report a conflict on the position-B
-insertion. Resolution: take #150's side (stricter gating).
-
-### Step 12 details: post-#129 fix-forward patch
-
-After step 6, master has:
-
-```rust
-let output = Command::new(env!("CARGO_BIN_EXE_kcode"))                <- from #152
-// plus, somewhere, the wrong std::env::var line from #129
-```
-
-Wait — #152 only touches 4 lines and only modifies `tests/cli_exit_status.rs`.
-#129 also only touches the same file with 2 lines (1 +, 1 -). After both
-land, the file will have one of two outcomes:
-
-- **Outcome A (most likely):** git's squash-merge of #129 sees that #152
-  already fixed the same line; squash collapses to a no-op or to a
-  partial revert. In this case, the fix-forward patch is unnecessary.
-- **Outcome B (also likely):** #129's squash lands a commit that
-  reverts #152's fix back to the wrong form. The fix-forward patch is
-  required.
-
-Either way, the operator (or a subagent dispatched after step 6) must
-verify the file state and apply a fix-forward if needed:
-
-```bash
-git pull --ff-only origin master
-grep -n 'CARGO_BIN_EXE' tests/cli_exit_status.rs | head -5
-```
-
-If the grep shows `std::env::var("CARGO_BIN_EXE_jcode")`:
-
-```bash
-# Fix-forward: restore #152's correct line
-git checkout origin/fix/cli-exit-status-kcode-bin -- tests/cli_exit_status.rs
-git add tests/cli_exit_status.rs
-git commit -m "fix(tests): restore CARGO_BIN_EXE_kcode form after #129 re-introduced wrong std::env::var (#129 follow-up)
-
-PR #129's attempt at fixing tests/cli_exit_status.rs:6 used
-std::env::var(\"CARGO_BIN_EXE_jcode\").expect(...), which fails at runtime
-because CARGO_BIN_EXE_* is set only at compile time. PR #152 shipped
-the correct env!(\"CARGO_BIN_EXE_kcode\") form, but #129's squash reverts
-that to the broken form. This commit restores the correct form.
-
-tx-agent: jcode
-tx-validated: manual
-tx-task: cli-exit-status-kcode-bin
-tx-intent: keep #152's correct fix on master"
-git push origin master
-```
-
-If the grep shows `env!("CARGO_BIN_EXE_kcode")`:
-
-The squash merge auto-resolved cleanly; no fix-forward needed.
-
-**Verification after step 12:**
-
-```bash
-grep -n 'CARGO_BIN_EXE' tests/cli_exit_status.rs | head -5
-# expect: env!("CARGO_BIN_EXE_kcode")  (no skip, no std::env::var)
-cargo test --test cli_exit_status --no-run
-```
-
-Expected: GREEN. This file now compiles cleanly on master.
-
----
-
-## 6. Verification gates
-
-After every step, the operator runs a subset of the following. After the
-final step, all of them must pass.
-
-```bash
-cd /Users/kooshapari/CodeProjects/Phenotype/repos/jcode
-git checkout master
-git pull --ff-only origin master
-
-# 1. cli_exit_status.rs is correct on master
-grep -rn "CARGO_BIN_EXE_jcode" tests/ src/ crates/
-# expected: 0 hits (the wrong file is gone)
-
-grep -rn "CARGO_BIN_EXE_kcode" tests/ src/ crates/
-# expected: 1 hit (tests/cli_exit_status.rs:6)
-
-# 2. update_product.rs carries 7 #[allow(dead_code)] markers
-grep -c '#\[allow(dead_code)\]' crates/jcode-app-core/src/update_product.rs
-# expected: 7
-
-# 3. setup-hints no longer carries the orphaned with_spawn_notice helper
-grep -c 'fn with_spawn_notice' crates/jcode-setup-hints/src/lib.rs
-# expected: 0
-
-# 4. SDK test fixtures have no jcode-prefixed tmpdir paths
-grep -rn 'os.tmpdir(), `jcode-' sdk/typescript/test/
-# expected: 0 hits
-
-grep -rn 'os.tmpdir(), `kcode-' sdk/typescript/test/ | wc -l
-# expected: 14 hits (was 14 jcode-, now 14 kcode-)
-
-# 5. cache_expected_warm re-export is gated behind #[cfg(test)]
-sed -n '1067,1076p' crates/jcode-tui/src/tui/mod.rs
-# expected:
-#   mod kv_cache_problem;
-#   #[cfg(test)]
-#   pub(crate) use kv_cache_problem::KvCacheProblemKind;
-#   #[cfg(test)]
-#   pub(crate) use kv_cache_problem::cache_expected_warm;
-#   pub(crate) use kv_cache_problem::detect_kv_cache_problem;
-
-# 6. Whole-workspace compile + lint pass
-cargo fmt --all -- --check
-# expected: exit 0
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-# expected: exit 0
-cargo check --workspace --all-targets --all-features
-# expected: exit 0
-
-# 7. CI checks (GitHub Actions)
-gh pr checks --repo KooshaPari/KCode $(git rev-parse origin/master)
-# expected on the latest master SHA:
-#   Quality Guardrails     pass
-#   Format                 pass
-#   TypeScript SDK         pass  (no longer cancelled at 10m)
-#   Build & Test (ubuntu)  pass  (or pre-existing #135 failures remain)
-```
-
-If any of (1)-(6) fails after step 12, the plan has a gap; revert to
-step 11 and dispatch a triage subagent.
-
----
-
-## 7. Pre-existing / out-of-scope failures
-
-The following PRs are open on `KooshaPari/KCode` but are unrelated to
-the CI stack above. Verified by reading their titles and bodies via
-`gh pr view <n> --json title,body,headRefName`.
-
-| PR  | Title                                                              | Scope                                                                              | Disposition                                                                                                  |
-|----:|--------------------------------------------------------------------|------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
-| #138 | fix(portal): XJ-03 bridge — `--host 127.0.0.1`                     | `scripts/*` and `docs/sessions/2026-10-15-portal-xirp-resume/STATE.md` (Portal OAuth bridge). | OUT OF SCOPE. Touches no Rust or TypeScript; CI failures on this PR are explicitly tracked as pre-existing. |
-| #124 | fix(tui): keep Windows keyboard negotiation on native console input | `crates/jcode-tui/src/` — cherry-pick of #97.                                       | OUT OF SCOPE. Windows-specific; not on the macOS/Linux path that this stack unblocks.                      |
-| #123 | fix(provider-core): opt out of proxy discovery for qualification   | `crates/jcode-provider-core/` — cherry-pick of #122.                                | OUT OF SCOPE. Provider qualification change; not on the CI-fix path.                                       |
-| #121 | fix(setup-hints): align launch-hotkey markers with the kcode decollation | `crates/jcode-setup-hints/` — cherry-pick of #120.                              | OUT OF SCOPE. Touches different files than #140 (#140 covers `with_spawn_notice`; #121 covers Linux keymap). |
-| #119 | feat(tui): /poke context recovery (PR #25, closes #26)              | `crates/jcode-tui/src/tui/app/commands_poke_context.rs` (new 118 LoC file).        | OUT OF SCOPE. Feature PR, not a CI fix. Independent test runs required before merging.                    |
-| #107 | Native wake receipts on Jcode 0.98.1 source baseline                | `codex/native-wake-receipts-20261016` (draft, base is `codex/native-wake-base-1c7426e`, NOT master). | OUT OF SCOPE. Targets a non-master base branch; will not affect `KooshaPari/KCode` master unless rebased.   |
-| #10  | feat(acp): discover sessions and broker remote interactions        | DRAFT, base is `feature/herdr-plugin-manifest`, NOT master.                        | OUT OF SCOPE. Long-running draft; unrelated to CI.                                                          |
-| #8   | fix(openrouter): stop double-polling dead unfold after EOF (panic) + CI/lefthook coverage + herdr plugin manifest | Mixed features + herdr plugin manifest; already merged into a feature branch. | OUT OF SCOPE. No path to master without a separate decision.                                              |
-
-**Setup Friction Eval** is pre-existing on master because `scripts/install.sh`
-is an intentional KCode release-download stub (release-policy). Do not
-attempt to fix it; it is not caused by any open PR.
-
-**macOS provider-matrix** failures are credential/environment failures,
-not code. They will continue to fail until the CI environment is
-reconfigured.
-
-**Windows setup-hints** failures are pre-existing platform/fork-residue
-failures. Out of scope for this stack.
-
-**Ubuntu TUI test failures** beyond the 4 fixed by #132 and #134 are
-tracked by issue #135 (21 failures across fork-command, session-picker,
-terminal-mode, overscroll, visual/disconnect, keyboard-enhancement).
-A worker is diagnosing these separately and may land more PRs. Those
-PRs are not in this plan and should be sequenced after this stack
-clears.
-
----
-
-## 8. Open items requiring operator decision
-
-Three decisions are deferred to the operator. None blocks this plan's
-execution; all are post-merge follow-ups.
-
-### Decision 1: #137 vs #140 (decide in step 3)
-
-**Question:** the plan closes #137 and merges #140. Operator may
-prefer to merge both and let git auto-resolve (the `with_spawn_notice`
-removal is identical between the two branches, so git would auto-merge
-without conflict). The plan's recommendation is **close #137, merge
-#140** to keep the merge graph minimal and avoid a redundant merge
-commit. Operator action: confirm in step 3.
-
-### Decision 2: #127 blanket `#[allow(dead_code)]` vs #141 proper fix
-
-**Question:** #127 silences 7 dead_code warnings with a blanket
-`#[allow(dead_code)]`. This is correct for CI unblock but hides real
-defects:
-
-1. `fork_update_disallowed_error` (line ~115) is unwired — should be
-   surfaced in `/update` error paths.
-2. `is_inside_git_repo` (line ~167) duplicates `update.rs:160` —
-   should be deleted and `update.rs` should call the canonical helper.
-3. `resolve_update_repo` (line ~155) is dead with a stale doc comment
-   that claims "the call sites in `super::update` do not each repeat
-   the resolve-or-bail boilerplate" — but no such call sites exist
-   any more after the #128 `refactor(setup-hints): remove unreachable
-   startup spawn notice` merge landed.
-4. `GITHUB_REPO`, `update_repo`, `update_repo_for` are unreachable
-   because `mod update_product;` is private with no `pub use` in
-   `mod.rs`. The allow-list masks this. Either delete them or wire
-   them up via a `pub use` re-export.
-
-**Recommendation: merge #127 now (CI unblock), open issue #141 (already
-exists per the prompt) as a follow-up.** The four defects above are
-real but each is contained within `update_product.rs` (no external
-behaviour changes). They can be cleaned up in a follow-up PR.
-
-**Alternative:** refuse to land the blanket allow and write a proper
-fix PR first (would close all 4 defects and remove the allow-list). The
-risk is that the proper fix is a 50-100 line PR across `update_product.rs`,
-`update.rs`, and `mod.rs`, and it would block all the other PRs in this
-stack from clearing CI.
-
-### Decision 3: step 12 fix-forward patch
-
-**Question:** after step 6, master may have BOTH #152's correct line
-and #129's wrong line in `tests/cli_exit_status.rs`. The plan's
-recommendation is **detect the conflict after step 6 and dispatch a
-fix-forward patch if needed**.
-
-**Alternative:** the operator could pre-emptively close PR #129 in
-favour of a clean re-land that excludes the `cli_exit_status.rs`
-change. This would require opening a new branch off master, applying
-only #129's rustfmt/clippy commits (excluding the wrong env! change),
-and landing that. The risk is more work (a new branch + PR) for the
-same final outcome.
-
-The plan's recommendation is the **detect-and-patch** approach because
-it preserves the operator's authority over the merge order (close vs
-land) and isolates the corrective commit to one file.
-
----
-
-## 9. Appendix: command reference
-
-These commands are the exact ones used to verify the plan and can be
-re-run by a future agent.
-
-```bash
-# Repo state
-cd /Users/kooshapari/CodeProjects/Phenotype/repos/jcode
-git rev-parse origin/master
-# expected: b9886143c13e683111aaf73d7f3ceab655860685
-
-# Ancestry per PR
-for branch in \
-  fix/update-product-warnings \
-  fix/repo-ci-pre-existing-drift \
-  fix/tui-decollision-test-expectations \
-  fix/cache-estimate-not-evidence \
-  fix/setup-hints-orphan-spawn-notice \
-  fix/setup-hints-pr128-test-regression \
-  fix/sdk-test-paths-kcode-prefix \
-  fix/tui-cache-expected-warm-unused-import \
-  docs/orchestration-governance-docs-only \
-  docs/orchestration-governance-proposal \
-  fix/cli-exit-status-kcode-bin ; do
-  ahead=$(git rev-list --count origin/master..origin/$branch)
-  head_sha=$(git rev-parse origin/$branch)
-  echo "$branch: $ahead ahead, $head_sha"
-done
-
-# Diff stats per PR
-for n in 127 129 132 134 137 140 144 145 148 150 152 ; do
-  echo "=== PR #$n ==="
-  gh pr view $n --repo KooshaPari/KCode --json title,headRefName,isDraft,createdAt
-  gh pr diff $n --repo KooshaPari/KCode --name-only
-done
-
-# Verify the wrong fix in #129
-gh pr diff 129 --repo KooshaPari/KCode --patch | grep -A 4 "tests/cli_exit_status.rs"
-
-# Verify the correct fix in #152
-gh pr diff 152 --repo KooshaPari/KCode
-
-# Verify #140 is a strict superset of #137
-gh pr diff 137 --repo KooshaPari/KCode > /tmp/137.diff
-gh pr diff 140 --repo KooshaPari/KCode > /tmp/140.diff
-grep -E "^diff --git" /tmp/137.diff
-grep -E "^diff --git" /tmp/140.diff
-
-# Verify the textual conflict between #134 and #150
-git diff origin/master origin/fix/cache-estimate-not-evidence -- crates/jcode-tui/src/tui/mod.rs
-git diff origin/master origin/fix/tui-cache-expected-warm-unused-import -- crates/jcode-tui/src/tui/mod.rs
-git diff origin/fix/cache-estimate-not-evidence origin/fix/tui-cache-expected-warm-unused-import -- crates/jcode-tui/src/tui/mod.rs
-
-# Verify Cargo.toml [[bin]] target name
-grep -E '^\[\[bin\]\]|^name' Cargo.toml | head
-
-# Final verification gates (after step 12)
-grep -rn "CARGO_BIN_EXE_jcode" tests/ src/ crates/   # expect 0
-grep -rn "CARGO_BIN_EXE_kcode" tests/ src/ crates/   # expect 1
-grep -c '#\[allow(dead_code)\]' crates/jcode-app-core/src/update_product.rs  # expect 7
-grep -c 'fn with_spawn_notice' crates/jcode-setup-hints/src/lib.rs  # expect 0
-grep -rn 'os.tmpdir(), `jcode-' sdk/typescript/test/   # expect 0
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo check --workspace --all-targets --all-features
-```
-
----
-
-## Stop condition met
-
-- All 9 sections populated.
-- Every claim traceable to a command actually run in this session.
-- Stack state re-verified at 2026-10-19T23:09Z (after PR #152 appeared).
-- Conflict verdict for #134 vs #150 derived from three explicit
-  `git diff` invocations.
-- Critical cli verdict derived from `Cargo.toml` `[[bin]]` name check
-  and the textual diff of `tests/cli_exit_status.rs` across master, #132,
-  #134, and #152.
-- No source edits made. No commits made. No pushes made.
+Expected on master: exactly one hit, `tests/cli_exit_status.rs`. Expected after
+merging #152: zero hits.
