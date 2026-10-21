@@ -51,7 +51,7 @@ test("removing an instance home never follows links to real credentials", async 
 });
 
 test("cleanup refuses arbitrary directories even when asked directly", async () => {
-  const arbitrary = fs.mkdtempSync(path.join(os.tmpdir(), "not-a-jcode-instance-"));
+  const arbitrary = fs.mkdtempSync(path.join(os.tmpdir(), "not-a-kcode-instance-"));
   fs.writeFileSync(path.join(arbitrary, "keep"), "safe");
 
   const { removeInstanceHomeForTest } = await import("../dist/launch.js");

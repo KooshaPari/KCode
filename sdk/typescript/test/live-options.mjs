@@ -7,7 +7,7 @@
  * with nothing behind it. Neither shows up in a suite that only ever launches
  * a fresh instance.
  *
- * Usage: node test/live-options.mjs [path-to-jcode-binary]
+ * Usage: node test/live-options.mjs [path-to-kcode-binary]
  */
 
 import { JcodeClient } from "../dist/index.js";
@@ -15,7 +15,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const binary = process.argv[2] ?? "jcode";
+const binary = process.argv[2] ?? "kcode";
 // A binary that ignores its arguments and never opens a socket, for the
 // startup-timeout check.
 const slowBinary = path.join(os.tmpdir(), `kcode-slow-${process.pid}.sh`);
