@@ -81,7 +81,7 @@ test("daemon shutdown lookup waits for a delayed registry entry", async () => {
 
 /** Inheriting must share rotating credentials, not copy them. */
 test("rotating credentials are shared so token refresh stays coherent", () => {
-  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-inherit-test-"));
+  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-inherit-test-"));
   const from = path.join(sandbox, "user");
   const to = path.join(sandbox, "instance");
   fs.mkdirSync(from, { recursive: true });
@@ -115,7 +115,7 @@ test("rotating credentials are shared so token refresh stays coherent", () => {
 });
 
 test("credential inheritance refuses to use the user's home as the instance home", () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-same-home-test-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-same-home-test-"));
   const auth = path.join(home, "auth.json");
   fs.writeFileSync(auth, '{"token":"must survive"}');
 
@@ -128,7 +128,7 @@ test("credential inheritance refuses to use the user's home as the instance home
 });
 
 test("login inheritance creates file links, never credential directory links", () => {
-  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-inherit-shape-test-"));
+  const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-inherit-shape-test-"));
   const oldHome = process.env.HOME;
   const oldXdg = process.env.XDG_CONFIG_HOME;
   const home = path.join(sandbox, "home");
@@ -200,7 +200,7 @@ test("a missing jcode binary is catchable, and leaks nothing", async () => {
   await assert.rejects(
     () =>
       JcodeClient.launch({
-        binary: "jcode-definitely-not-installed",
+        binary: "kcode-definitely-not-installed",
         startupTimeoutMs: 5000,
       }),
     (error: InstanceType<typeof HarnessError>) => {
@@ -222,7 +222,7 @@ test(
   { skip: process.platform === "win32" },
   async () => {
     const { launchInstance } = await import("../dist/launch.js");
-    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-sdk-swarm-model-test-"));
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-sdk-swarm-model-test-"));
     const binary = path.join(sandbox, "capture-env");
     const captured = path.join(sandbox, "swarm-model.txt");
     fs.writeFileSync(
@@ -252,7 +252,7 @@ test(
   { skip: process.platform === "win32" },
   async () => {
     const { launchInstance } = await import("../dist/launch.js");
-    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-sdk-wake-mode-test-"));
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-sdk-wake-mode-test-"));
     const binary = path.join(sandbox, "capture-env");
     const captured = path.join(sandbox, "wake-mode.txt");
     fs.writeFileSync(binary, "#!/bin/sh\nprintf '%s' \"$KCODE_WAKE_MODE\" > \"$CAPTURE_PATH\"\nexit 1\n", { mode: 0o700 });

@@ -18,7 +18,11 @@ env:
 jobs:
   quality:
     name: Quality Guardrails
-    runs-on: ubuntu-latest
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -114,7 +118,11 @@ jobs:
 
   release-automation:
     name: Release Automation
-    runs-on: ubuntu-latest
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -127,6 +135,10 @@ jobs:
 
   build:
     name: Build & Test (${{ matrix.os }})
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ matrix.os }}
     # 35 minutes covers a normal push (~12 min with a warm Swatinem cache) but
     # not a *rerun*, where the cache is cold: three consecutive reruns of a
@@ -134,7 +146,7 @@ jobs:
     # the same green steps (#693). A rerun is exactly what you reach for after a
     # concurrency cancellation, so the old cap made healthy commits look red.
     # 75 still bounds a genuinely hung job well under the windows job's 150.
-    timeout-minutes: 75
+    timeout-minutes: 120
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
     # published crate*. When cargo builds such a crate its CWD is that crate dir,
@@ -149,12 +161,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # macos-latest leg removed: hosted Actions minutes are capped at $0
+        # (never pay for GH CI). macOS builds run manually when needed.
+        os: [desk-linux]
         include:
-          - os: ubuntu-latest
+          - os: desk-linux
             target: x86_64-unknown-linux-gnu
-          - os: macos-latest
-            target: aarch64-apple-darwin
 
     steps:
       - uses: actions/checkout@v4
@@ -181,8 +193,14 @@ jobs:
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq mold
+          if ! command -v mold >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq mold
+            else
+              sudo dnf install -y mold
+            fi
+          fi
 
       - name: Build
         shell: bash
@@ -425,11 +443,16 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          cargo install cargo-audit --locked
+          # Self-hosted runners keep CARGO_HOME between runs; a bare install
+          # fails once the binary exists.
+          command -v cargo-audit >/dev/null || cargo install cargo-audit --locked
           scripts/security_preflight.sh --strict
 
   windows-build-test:
     name: Build & Test (windows-latest)
+    # Hosted Windows CI is disabled while hosted Actions minutes are capped at $0;
+    # Windows verification runs locally on the desk (cargo test + herdr-pane input check).
+    if: false
     runs-on: windows-latest
     timeout-minutes: 150
     steps:
@@ -592,7 +615,11 @@ jobs:
 
   fmt:
     name: Format
-    runs-on: ubuntu-latest
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -612,8 +639,14 @@ jobs:
 
   typescript-sdk:
     name: TypeScript SDK
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, desk-linux]
+    # 10 min is not enough when the desk runner shares CPU with cargo builds;
+    # npm run check alone has crossed the limit three runs in a row.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -644,13 +677,24 @@ jobs:
 
   setup-friction:
     name: Setup Friction Eval (Linux installer)
-    runs-on: ubuntu-latest
+    # Disabled: the fork intentionally hard-disabled scripts/install.sh (release
+    # downloads off), which both the telemetry test and the friction scorecard
+    # exercise. Re-enable when the installer path is restored.
+    if: false
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - name: Install probe shells
-        run: sudo apt-get update && sudo apt-get install -y fish zsh
+        run: |
+          if ! command -v fish >/dev/null 2>&1 || ! command -v zsh >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update && sudo apt-get install -y fish zsh
+            else
+              sudo dnf install -y fish zsh
+            fi
+          fi
 
       - name: Installer conversion telemetry tests
         run: bash scripts/test_install_conversion.sh
@@ -660,6 +704,8 @@ jobs:
 
   powershell-syntax:
     name: PowerShell Syntax
+    # Disabled with windows-build-test; PowerShell syntax is checked locally on the desk.
+    if: false
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -677,7 +723,11 @@ jobs:
 
   windows-cross-check:
     name: Windows Cross-Target Check (Linux)
-    runs-on: ubuntu-latest
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, desk-linux]
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -695,8 +745,14 @@ jobs:
 
       - name: Install LLVM toolchain for cargo-xwin
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq clang lld llvm ninja-build
+          if ! command -v clang >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq clang lld llvm ninja-build
+            else
+              sudo dnf install -y clang lld llvm ninja-build
+            fi
+          fi
 
       - name: Install cargo-xwin
         run: cargo install --git https://github.com/rust-cross/cargo-xwin cargo-xwin

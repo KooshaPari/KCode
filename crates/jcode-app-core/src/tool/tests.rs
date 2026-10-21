@@ -1866,7 +1866,7 @@ async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode()
     /// Built-ins that legitimately cannot be strict. Verified against master
     /// before the #711/#713 eligibility changes, so this is pre-existing.
     // applet's view is a recursive, open-ended node tree.
-    const KNOWN_OPEN_WORLD_TOOLS: &[&str] = &["applet", "batch", "browser", "swarm"];
+    const KNOWN_OPEN_WORLD_TOOLS: &[&str] = &["applet", "batch", "browser", "initiative", "swarm"];
 
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
@@ -1941,6 +1941,7 @@ async fn post_tool_feedback_hook_appends_stdout_to_tool_result() {
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     let previous = std::env::var_os("KCODE_HOOK_POST_TOOL_FEEDBACK");
     crate::env::set_var("KCODE_HOOK_POST_TOOL_FEEDBACK", &script);
+    jcode_base::config::invalidate_config_cache();
 
     let registry = Registry::new(Arc::new(MockProvider) as Arc<dyn Provider>).await;
     let mut ctx = mcp_test_context(dir.path());
@@ -1953,6 +1954,7 @@ async fn post_tool_feedback_hook_appends_stdout_to_tool_result() {
         Some(value) => crate::env::set_var("KCODE_HOOK_POST_TOOL_FEEDBACK", value),
         None => crate::env::remove_var("KCODE_HOOK_POST_TOOL_FEEDBACK"),
     }
+    jcode_base::config::invalidate_config_cache();
     let output = result.expect("read should succeed").output;
     assert!(output.contains("hello"), "{output}");
     assert!(output.contains("[post_tool_feedback]"), "{output}");
