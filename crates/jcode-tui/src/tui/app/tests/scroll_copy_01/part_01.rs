@@ -1345,7 +1345,14 @@ fn status_line_is_always_pinned_with_pink_model_on_real_app() {
         let pink = ratatui::style::Color::Rgb(255, 135, 200);
         let last_row_pink_cells = |terminal: &ratatui::Terminal<ratatui::backend::TestBackend>| {
             let buf = terminal.backend().buffer();
-            let y = buf.area.height - 1;
+            // The overscroll/status line is one row above the compact status bar
+            // (present when width >= 80) or the last row otherwise.
+            let status_bar_present = buf.area.width >= 80;
+            let y = if status_bar_present {
+                buf.area.height.saturating_sub(2)
+            } else {
+                buf.area.height.saturating_sub(1)
+            };
             (0..buf.area.width)
                 .filter(|&x| buf[(x, y)].fg == pink && buf[(x, y)].symbol().trim() != "")
                 .count()

@@ -268,11 +268,13 @@ mod terminal_mode_tests {
     fn tmux_keyboard_lifecycle_requests_and_resets_extended_keys() {
         let mut output = Vec::new();
         enable_keyboard_enhancement_to(&mut output, true).unwrap();
-        assert_eq!(output, b"\x1b[>4;2m\x1b[>7u");
+        // Flag 1 = DISAMBIGUATE_ESCAPE_CODES only (REPORT_EVENT_TYPES omitted
+        // because herdr/conpty panes leak release events into the prompt).
+        assert_eq!(output, b"\x1b[>4;2m\x1b[>1u");
 
         output.clear();
         reapply_keyboard_enhancement_to(&mut output, true).unwrap();
-        assert_eq!(output, b"\x1b[>4;2m\x1b[=7u");
+        assert_eq!(output, b"\x1b[>4;2m\x1b[=1u");
 
         output.clear();
         disable_keyboard_enhancement_to(&mut output, true).unwrap();
@@ -283,11 +285,11 @@ mod terminal_mode_tests {
     fn outside_tmux_keyboard_lifecycle_keeps_kitty_protocol_only() {
         let mut output = Vec::new();
         enable_keyboard_enhancement_to(&mut output, false).unwrap();
-        assert_eq!(output, b"\x1b[>7u");
+        assert_eq!(output, b"\x1b[>1u");
 
         output.clear();
         reapply_keyboard_enhancement_to(&mut output, false).unwrap();
-        assert_eq!(output, b"\x1b[=7u");
+        assert_eq!(output, b"\x1b[=1u");
 
         output.clear();
         disable_keyboard_enhancement_to(&mut output, false).unwrap();
@@ -351,7 +353,7 @@ mod terminal_mode_tests {
                     "must keep focus reporting enabled"
                 );
                 assert_eq!(output.contains("\x1b[?1000h"), mouse_capture);
-                assert_eq!(output.contains("\x1b[=7u"), keyboard_enhanced);
+                assert_eq!(output.contains("\x1b[=1u"), keyboard_enhanced);
                 assert!(
                     !output.contains("\x1b[>7u"),
                     "must not push the Kitty keyboard stack (tmux modifyOtherKeys is allowed)"
@@ -2108,9 +2110,12 @@ mod tests {
     fn keyboard_enhancement_flags_avoid_report_all_keys_escape_mode() {
         let flags = keyboard_enhancement_flags();
 
+        // Only DISAMBIGUATE_ESCAPE_CODES is set. REPORT_EVENT_TYPES and
+        // REPORT_ALTERNATE_KEYS are deliberately omitted: herdr/conpty panes
+        // leak release events into the prompt as "[<code>;1:3u".
         assert!(flags.contains(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES));
-        assert!(flags.contains(KeyboardEnhancementFlags::REPORT_EVENT_TYPES));
-        assert!(flags.contains(KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS));
+        assert!(!flags.contains(KeyboardEnhancementFlags::REPORT_EVENT_TYPES));
+        assert!(!flags.contains(KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS));
         assert!(!flags.contains(KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES));
     }
 }

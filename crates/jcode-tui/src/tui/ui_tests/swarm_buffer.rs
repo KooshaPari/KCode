@@ -552,8 +552,16 @@ fn overscroll_line_row(state: &TestState, width: u16) -> String {
         .draw(|frame| crate::tui::ui::draw(frame, state))
         .expect("overscroll frame");
     let rows = buffer_rows(&terminal);
-    // The overscroll line is the last row of the frame.
-    rows.last().cloned().unwrap_or_default()
+    // The overscroll line sits above the compact status bar. When the status
+    // bar is present (width >= 80) it occupies the last row; otherwise the
+    // overscroll line IS the last row.
+    let status_bar_present = width >= 80;
+    let idx = if status_bar_present {
+        rows.len().saturating_sub(2)
+    } else {
+        rows.len().saturating_sub(1)
+    };
+    rows.get(idx).cloned().unwrap_or_default()
 }
 
 #[test]
@@ -626,7 +634,9 @@ fn overscroll_model_is_pink() {
         .draw(|frame| crate::tui::ui::draw(frame, &state))
         .expect("overscroll frame");
     let buf = terminal.backend().buffer();
-    let y = buf.area.height - 1;
+    // The overscroll line is one row above the status bar (last row when
+    // width >= 80).
+    let y = buf.area.height - 2;
     let row: String = (0..buf.area.width)
         .map(|x| buf[(x, y)].symbol().to_string())
         .collect();
