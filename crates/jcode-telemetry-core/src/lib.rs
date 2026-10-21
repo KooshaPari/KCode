@@ -4,6 +4,11 @@ mod concurrency;
 mod delivery;
 mod lifecycle;
 pub use concurrency::{ConcurrencySession, begin_concurrency_session};
+// The live HTTP delivery path is inert under `cfg(test)`: payloads are captured
+// into `TEST_EMITTED_PAYLOADS` instead of being queued or posted. Re-exporting
+// these three unconditionally left the import unused in the `--all-targets`
+// test build. Non-test builds are unaffected.
+#[cfg(not(test))]
 pub(crate) use delivery::{background_sender, post_payload, transcript_background_sender};
 // Only the test module reaches for these two; re-exporting them unconditionally
 // leaves production builds with unused-import warnings.
@@ -28,25 +33,37 @@ use lifecycle::emit_lifecycle_event;
 use serde_json::Value;
 use state_support::*;
 use std::collections::HashSet;
+use std::sync::Mutex;
+#[cfg(not(test))]
+use std::sync::OnceLock;
+// Only the `#[cfg(not(test))]` delivery paths read the atomic flags and the
+// non-blocking send errors; the test build asserts on fully-qualified paths.
+#[cfg(not(test))]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(test))]
 use std::sync::mpsc::{SyncSender, TrySendError};
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const TELEMETRY_ENDPOINT: &str = "https://telemetry.jcode.sh/v1/event";
 const TRANSCRIPT_ENDPOINT: &str = "https://telemetry.jcode.sh/v1/transcript";
+#[cfg(not(test))]
 const ASYNC_SEND_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(not(test))]
 const BACKGROUND_QUEUE_CAPACITY: usize = 2048;
 const BLOCKING_INSTALL_TIMEOUT: Duration = Duration::from_millis(1200);
 const BLOCKING_LIFECYCLE_TIMEOUT: Duration = Duration::from_millis(800);
 const BLOCKING_FIRST_PROMPT_TIMEOUT: Duration = Duration::from_millis(500);
 const TELEMETRY_SCHEMA_VERSION: u32 = 6;
 const DEFAULT_DISCOVERY_ENDPOINT: &str = "https://api.jcode.sh/v1/discovery";
+#[cfg(not(test))]
 static TELEMETRY_PERMANENTLY_REJECTED: AtomicBool = AtomicBool::new(false);
 #[cfg(not(test))]
 static TELEMETRY_QUEUE_OVERFLOW_WARNED: AtomicBool = AtomicBool::new(false);
+#[cfg(not(test))]
 static TELEMETRY_BACKGROUND_SENDER: OnceLock<Option<SyncSender<Value>>> = OnceLock::new();
+#[cfg(not(test))]
 static TRANSCRIPT_BACKGROUND_SENDER: OnceLock<Option<SyncSender<Value>>> = OnceLock::new();
+#[cfg(not(test))]
 static TELEMETRY_HTTP_CLIENT: OnceLock<Option<reqwest::blocking::Client>> = OnceLock::new();
 #[cfg(test)]
 static TEST_EMITTED_PAYLOADS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -1305,7 +1322,9 @@ fn send_transcript_payload(payload: Value) -> bool {
         if let Ok(mut emitted) = TEST_EMITTED_PAYLOADS.lock() {
             emitted.push(payload);
         }
-        return true;
+        // Tail expression rather than `return true;`: this block is the function
+        // body in a test build, where `return` would be a needless return.
+        true
     }
     #[cfg(not(test))]
     let Some(sender) = transcript_background_sender() else {
