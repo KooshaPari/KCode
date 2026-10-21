@@ -66,6 +66,13 @@ INIT_LOG="$WORK_DIR/init.log"
 STUB_PID=""
 # Cold `npx` resolution can take well over 30s and writes nothing meanwhile.
 BRIDGE_TIMEOUT="${BRIDGE_TIMEOUT:-120}"
+# GNU timeout treats 0 as "no deadline" and a non-integer is a usage error, so a
+# stray BRIDGE_TIMEOUT could either hang forever or fail opaquely. Require a
+# positive integer and fall back loudly rather than silently changing meaning.
+if ! [[ "$BRIDGE_TIMEOUT" =~ ^[0-9]+$ ]] || (( BRIDGE_TIMEOUT < 1 )); then
+    echo "WARNING: BRIDGE_TIMEOUT='$BRIDGE_TIMEOUT' is not a positive integer; using 120s." >&2
+    BRIDGE_TIMEOUT=120
+fi
 
 cleanup() {
     [[ -n "$STUB_PID" ]] && kill "$STUB_PID" 2>/dev/null || true
@@ -211,6 +218,11 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 # --host 127.0.0.1 must match the redirect_uri registered in the CIMD
 # (the stub publishes 127.0.0.1; mcp-remote defaults to localhost on
 # non-Windows). Fixed 2026-10-19.
+# Capture the exit status. 124 is GNU timeout's "deadline reached" code. It is
+# NOT swallowed: a timed-out bridge is an infrastructure failure even when it
+# managed to write partial stderr before being killed, and without this the
+# assertions below could mistake a truncated log for a real CIMD rejection.
+BRIDGE_RC=0
 timeout "$BRIDGE_TIMEOUT" bash -c "
     cat '$WORK_DIR/init-request.json' | \
     NODE_EXTRA_CA_CERTS='$TLS_DIR/cert.pem' \
@@ -222,9 +234,18 @@ timeout "$BRIDGE_TIMEOUT" bash -c "
         --host 127.0.0.1 \
         --debug \
         2>'$BRIDGE_LOG' > '$INIT_LOG'
-" || true
+" || BRIDGE_RC=$?
 
 echo "  Bridge exited (expected — no real MCP server or OAuth AS)"
+
+if (( BRIDGE_RC == 124 )); then
+    echo "FAIL: the bridge hit the ${BRIDGE_TIMEOUT}s timeout (exit 124)."
+    echo "      This is an infrastructure failure, not a CIMD rejection: a cold"
+    echo "      \`npx -y mcp-remote@0.15.1\` resolve writes nothing to stderr while"
+    echo "      it downloads, so a truncated log is not evidence about the CIMD."
+    echo "      Retry, or raise the budget: BRIDGE_TIMEOUT=300 $0"
+    exit 1
+fi
 
 # An empty bridge log means the harness never observed anything: a cold npx
 # resolve, a crash before the first write, or a timeout kill. That is an
