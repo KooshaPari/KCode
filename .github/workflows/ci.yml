@@ -192,9 +192,48 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Key suffix `-notarget` is load-bearing: it changes the
+          # PRIMARY key and the SINGLE restore-key prefix simultaneously
+          # (Swatinem/rust-cache@v2 src/config.ts reads `core.getInput("key")`
+          # at the top of key construction -- before `cache-targets` is read
+          # at line 274 -- and propagates the suffix into both).
+          #
+          # Why the suffix has to be HERE, not just `cache-targets: "false"`:
+          #
+          # 1. `cache-targets` does NOT participate in the key. Per
+          #    Swatinem/rust-cache@v2 src/config.ts: `self.cacheKey = key` at
+          #    line 263 seals the key from any later input, and
+          #    `cache-targets` is only read at line 274 where it merely mutates
+          #    `cachePaths`. So PR #168's `cache-targets: "false"` does not
+          #    produce a new key.
+          #
+          # 2. Without the suffix, actions/cache's "fall back to base branch"
+          #    restores master's `v0-rust-desk-linux-stablepin-build-...` blob
+          #    (~2.02 GB). The download is bounded at ~600s by the step and
+          #    aborts at 37-44%, then falls through to "No cache found" -- so
+          #    the job is cold anyway. (CodeRabbit independently flagged this:
+          #    inline on this file at the cache-targets line, "Provision a new
+          #    master-branch build cache using cache-targets: \"false\" before
+          #    relying on pull-request cache restores...")
+          #
+          # 3. GitHub caches are IMMUTABLE per (key, ref) once written. The
+          #    post-step `save` step is SKIPPED when the key already exists for
+          #    that ref. So even after `cache-targets: "false"` flips the path
+          #    set, the master's key continues to pin the 2 GB blob forever,
+          #    and every fresh PR build still pays the doomed download.
+          #
+          # 4. The new primary key is
+          #    `v0-rust-desk-linux-stablepin-notarget-build-Linux-x64-62b60f75-212eda4f`
+          #    and the new restore prefix is
+          #    `v0-rust-desk-linux-stablepin-notarget-build-Linux-x64-62b60f75`.
+          #    Neither matches any legacy entry (verified against the live
+          #    cache inventory), so (a) the broken 2 GB blob is never even
+          #    attempted for restore, and (b) the post-step `save` finds no
+          #    conflict in any ref and writes a fresh, registry-only entry.
+          #
           # Suffix bumped to evict caches that held 1.83.0 / <unknown rustc>
           # artifacts produced before RUSTUP_TOOLCHAIN=stable pinned the job.
-          key: ${{ matrix.os }}-stablepin
+          key: ${{ matrix.os }}-stablepin-notarget
           # `cache-targets: "false"` keeps $CARGO_HOME (registry + git + bin) in
           # the cache and drops the workspace `target/` directory from it.
           # (Swatinem/rust-cache action.yml: "Determines whether workspace
