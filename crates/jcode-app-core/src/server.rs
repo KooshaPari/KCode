@@ -887,7 +887,7 @@ fn publish_socket_identity(&self) {
                 // client can compare against: `Provider::display_name()` is a
                 // human label ("NVIDIA NIM", "OpenRouter") that diverges from
                 // both `as_arg_value()` and the runtime key.
-                provider: std::env::var("JCODE_RUNTIME_PROVIDER")
+                provider: std::env::var("KCODE_RUNTIME_PROVIDER")
                     .unwrap_or_else(|_| self.provider.display_name()),
             model: Some(self.provider.model()),
         };
