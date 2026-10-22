@@ -638,9 +638,10 @@ pub use self::socket::spawn_server_notify;
 use self::socket::{acquire_daemon_lock_for, mark_close_on_exec};
 pub use self::socket::{
     cleanup_socket_pair, connect_socket, debug_socket_path, default_socket_path, has_live_listener,
-    scrub_inherited_provider_identity, SocketIdentity, INHERITED_PROVIDER_IDENTITY_VARS,
-    is_server_ready, is_shared_socket, reap_stale_socket_if_dead, set_socket_path, socket_path,
-    socket_path_is_custom, wait_for_server_ready,
+    read_socket_identity, scrub_inherited_provider_identity, SocketIdentity,
+    INHERITED_PROVIDER_IDENTITY_VARS, is_server_ready, is_shared_socket,
+    reap_stale_socket_if_dead, set_socket_path, socket_path, socket_path_is_custom,
+    wait_for_server_ready,
 };
 use self::socket::{signal_ready_fd, socket_has_live_listener};
 
