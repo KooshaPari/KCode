@@ -616,14 +616,14 @@ pub use self::reload_state::{
 pub use self::lifecycle::configure_temporary_server;
 #[cfg(unix)]
 pub use self::socket::spawn_server_notify;
+pub use self::socket::{
+    INHERITED_PROVIDER_IDENTITY_VARS, SocketIdentity, cleanup_socket_pair, connect_socket,
+    debug_socket_path, default_socket_path, has_live_listener, is_server_ready, is_shared_socket,
+    read_socket_identity, reap_stale_socket_if_dead, scrub_inherited_provider_identity,
+    set_socket_path, socket_path, socket_path_is_custom, wait_for_server_ready,
+};
 #[cfg(unix)]
 use self::socket::{acquire_daemon_lock, mark_close_on_exec};
-pub use self::socket::{
-    cleanup_socket_pair, connect_socket, debug_socket_path, default_socket_path, has_live_listener,
-    is_server_ready, is_shared_socket, reap_stale_socket_if_dead, read_socket_identity,
-    scrub_inherited_provider_identity, set_socket_path, socket_path, socket_path_is_custom,
-    wait_for_server_ready, SocketIdentity, INHERITED_PROVIDER_IDENTITY_VARS,
-};
 use self::socket::{signal_ready_fd, socket_has_live_listener};
 
 pub use self::util::ServerIdentity;
@@ -877,18 +877,18 @@ impl Server {
     /// Write the identity this daemon actually resolved to, beside its socket.
     ///
     /// Written from the live provider, never from the `--provider` launch flag: a
-/// daemon started with `--provider auto` can resolve to anything, and publishing
+    /// daemon started with `--provider auto` can resolve to anything, and publishing
     /// the flag is exactly what let a stale daemon masquerade as a match for a
     /// client that asked for a specific provider.
-fn publish_socket_identity(&self) {
+    fn publish_socket_identity(&self) {
         let identity = SocketIdentity {
-                // `activation.rs` already writes the canonical runtime key here
-                // (`RuntimeProviderId::key()`). It is the only vocabulary the
-                // client can compare against: `Provider::display_name()` is a
-                // human label ("NVIDIA NIM", "OpenRouter") that diverges from
-                // both `as_arg_value()` and the runtime key.
-                provider: std::env::var("KCODE_RUNTIME_PROVIDER")
-                    .unwrap_or_else(|_| self.provider.display_name()),
+            // `activation.rs` already writes the canonical runtime key here
+            // (`RuntimeProviderId::key()`). It is the only vocabulary the
+            // client can compare against: `Provider::display_name()` is a
+            // human label ("NVIDIA NIM", "OpenRouter") that diverges from
+            // both `as_arg_value()` and the runtime key.
+            provider: std::env::var("KCODE_RUNTIME_PROVIDER")
+                .unwrap_or_else(|_| self.provider.display_name()),
             model: Some(self.provider.model()),
         };
         if let Err(error) = socket::write_socket_identity(&self.socket_path, &identity) {
@@ -898,9 +898,9 @@ fn publish_socket_identity(&self) {
                 error
             ));
         }
-}
+    }
 
-fn spawn_registry_prewarm(&self) {
+    fn spawn_registry_prewarm(&self) {
         let registry_warm_provider = Arc::clone(&self.provider);
         tokio::spawn(async move {
             let start = Instant::now();
