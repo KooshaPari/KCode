@@ -38,7 +38,7 @@
 
 use crate::cli::provider_init::{login_provider_for_choice, ProviderChoice};
 use crate::provider_catalog::LoginProviderTarget;
-use crate::server::socket::{read_socket_identity, SocketIdentity};
+use crate::server::{read_socket_identity, SocketIdentity};
 use std::path::PathBuf;
 
 /// What the client should do about an already-running daemon.
