@@ -104,7 +104,9 @@ mod shared_socket_path_tests {
     impl VarGuard {
         fn set(key: &'static str, value: &OsStr) -> Self {
             let prior = std::env::var_os(key);
-            std::env::set_var(key, value);
+            // `crate::env` centralizes the Rust 2024 `unsafe` requirement for
+            // process-global environment mutation.
+            crate::env::set_var(key, value);
             Self { key, prior }
         }
     }
@@ -112,8 +114,8 @@ mod shared_socket_path_tests {
     impl Drop for VarGuard {
         fn drop(&mut self) {
             match self.prior.take() {
-                Some(prior) => std::env::set_var(self.key, prior),
-                None => std::env::remove_var(self.key),
+                Some(prior) => crate::env::set_var(self.key, prior),
+                None => crate::env::remove_var(self.key),
             }
         }
     }
