@@ -75,7 +75,7 @@ echo "Embedding git metadata: hash=${git_hash:-<none>} tag=${git_tag:-<none>} di
 docker run --rm \
   -e CARGO_TERM_COLOR=always \
   -e KCODE_RELEASE_BUILD="${KCODE_RELEASE_BUILD:-1}" \
-  -e KCODE_BUILD_SEMVER="${KCODE_BUILD_SEMVER:-}" \
+  -e KCODE_BUILD_SEMVER \
   -e KCODE_BUILD_METADATA_FILE=/jcode-build-meta \
   -e KCODE_BUILD_GIT_HASH="$git_hash" \
   -e KCODE_BUILD_GIT_DATE="$git_date" \
