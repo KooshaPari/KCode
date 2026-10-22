@@ -16,15 +16,23 @@
 //!
 //! The daemon publishes the canonical runtime key that `provider::activation`
 //! already writes to `JCODE_RUNTIME_PROVIDER` (`RuntimeProviderId::key()`).
-//! The client must therefore *derive* that same key from its `--provider` value
-//! rather than comparing the raw CLI spelling against it. The two vocabularies
-//! genuinely diverge: `ProviderChoice::ClaudeApiKey` spells `anthropic-api`
-//! while the runtime key is `claude-api`, and `ProviderChoice::Azure` spells
-//! `azure` while the runtime key is `azure-openai`.
+//! The client must therefore *derive* that same key from its `--provider`
+//! value rather than comparing the raw CLI spelling against it. The two
+//! vocabularies genuinely diverge, and in two different ways:
 //!
-//! [`canonical_provider_key`] does that derivation by going through
-//! `login_provider_for_choice`, which is the *same* target the daemon uses to
-//! build its provider, so both sides agree by construction.
+//! * **CLI spelling vs runtime key.** `ProviderChoice::Azure` spells `azure`
+//!   while the runtime key is `azure-openai`.
+//! * **Login target vs published key.** `ProviderChoice::AnthropicApi` maps
+//!   to the `ClaudeApiKey` login target, but the daemon's serve path
+//!   publishes `claude` for it (it calls
+//!   `select_initial_model_provider("claude")`, the same call as
+//!   `ProviderChoice::Claude`). Likewise `ProviderChoice::OpenaiApi` maps to
+//!   `OpenAiApiKey` but the daemon publishes `openai`.
+//!
+//! [`canonical_provider_key`] therefore delegates to
+//! `provider_init::serve_published_provider_key`, which lives next to the
+//! daemon's serve path and reproduces exactly the strings that path writes.
+//! Both sides then agree by construction.
 //!
 //! # Known limitation: vendor-level selection is unverifiable
 //!
@@ -36,8 +44,7 @@
 //! them. Publishing the resolved vendor name is the follow-up that would close
 //! it.
 
-use crate::cli::provider_init::{login_provider_for_choice, ProviderChoice};
-use crate::provider_catalog::LoginProviderTarget;
+use crate::cli::provider_init::ProviderChoice;
 use crate::server::{read_socket_identity, SocketIdentity};
 use std::path::PathBuf;
 
@@ -54,6 +61,25 @@ pub(crate) enum AttachPlan {
 
 /// The canonical runtime key the daemon will publish for `choice`.
 ///
+/// This mirrors the daemon's **serve path** in
+/// `provider_init::init_provider_with_options`, not the `LoginProviderTarget`
+/// name. Those two vocabularies are *not* the same, and assuming they are
+/// caused a permanent-isolation bug:
+///
+/// * `--provider anthropic-api` and `--provider claude` both take the
+///   `ClaudeApiKey`/`Claude` login targets, but the daemon's serve path calls
+///   `select_initial_model_provider("claude")` for *both*, so the daemon
+///   publishes `claude` — not `claude-api`.
+/// * `--provider openai-api` likewise publishes `openai`, not `openai-api`.
+/// * `--provider azure` goes through `apply_azure_openai_runtime()`, which
+///   calls `ProviderActivation::azure_openai(..).apply_env()` and publishes
+///   `azure-openai`.
+///
+/// The daemon publishes `JCODE_RUNTIME_PROVIDER`, which is set from
+/// `RuntimeProviderId::key()` by `ProviderActivation::apply_env()` and from
+/// `select_initial_runtime_provider_key()` by the serve path. This function
+/// reproduces exactly those values so both sides agree by construction.
+///
 /// Returns `None` when no exact key can be derived, which includes `auto` (no
 /// specific identity was requested) and any target with no `RuntimeProviderId`
 /// counterpart. Callers must treat `None` as "cannot verify" and isolate, never
@@ -62,27 +88,13 @@ pub(crate) fn canonical_provider_key(choice: &ProviderChoice) -> Option<&'static
     if matches!(choice, ProviderChoice::Auto) {
         return None;
     }
-    let descriptor = login_provider_for_choice(choice)?;
-    let key = match descriptor.target {
-        LoginProviderTarget::AutoImport => "auto-import",
-        LoginProviderTarget::Jcode => "jcode",
-        LoginProviderTarget::Claude => "claude",
-        LoginProviderTarget::ClaudeApiKey => "claude-api",
-        LoginProviderTarget::OpenAi => "openai",
-        LoginProviderTarget::OpenAiApiKey => "openai-api",
-        LoginProviderTarget::OpenRouter => "openrouter",
-        LoginProviderTarget::Bedrock => "bedrock",
-        LoginProviderTarget::Azure => "azure-openai",
-        LoginProviderTarget::OpenAiCompatible(_) => "openai-compatible",
-        LoginProviderTarget::Cursor => "cursor",
-        LoginProviderTarget::GrokBuild => "grok-build",
-        LoginProviderTarget::Copilot => "copilot",
-        LoginProviderTarget::Gemini => "gemini",
-        LoginProviderTarget::Antigravity => "antigravity",
-        // There is no `RuntimeProviderId` for Google, so no key can be derived.
-        // Returning `None` forces isolation rather than a false match.
-        LoginProviderTarget::Google => return None,
-    };
+    // The daemon's own serve path is the source of truth for what it publishes.
+    // `provider_init::serve_published_provider_key` lives next to that path so
+    // the two cannot drift.
+    let key = crate::cli::provider_init::serve_published_provider_key(choice);
+    if key.is_empty() {
+        return None;
+    }
     Some(key)
 }
 
@@ -107,9 +119,17 @@ pub(crate) fn attach_plan(
     requested: Option<&ProviderChoice>,
     daemon: Option<&SocketIdentity>,
 ) -> AttachPlan {
+    // An `auto` request claims no identity, so it must attach rather than
+    // spawn. `Auto` is a real variant of `ProviderChoice`, not `None`, so it
+    // has to be checked explicitly: routing it through
+    // `canonical_provider_key` would return `None` ("cannot verify") and
+    // isolate, which is the opposite of what an unclaimed request means.
     let Some(requested) = requested else {
         return AttachPlan::Attach;
     };
+    if matches!(requested, ProviderChoice::Auto) {
+        return AttachPlan::Attach;
+    }
 
     let Some(want) = canonical_provider_key(requested) else {
         return AttachPlan::Isolate;
@@ -265,6 +285,69 @@ mod tests {
         );
     }
 
+    /// Regression: the API-key provider spellings must resolve to the key the
+    /// daemon *actually publishes*, not to their `LoginProviderTarget` name.
+    ///
+    /// The daemon's serve path calls `select_initial_model_provider("claude")`
+    /// for BOTH `--provider claude` and `--provider anthropic-api`, and
+    /// `select_initial_model_provider("openai")` for BOTH `--provider openai`
+    /// and `--provider openai-api`. A client that expected `claude-api` /
+    /// `openai-api` would isolate onto a private daemon on *every* launch,
+    /// which is worse than the bug being fixed.
+    #[test]
+    fn api_key_spellings_match_the_published_runtime_key() {
+        assert_eq!(
+            canonical_provider_key(&ProviderChoice::AnthropicApi),
+            Some("claude"),
+            "the daemon publishes `claude` for --provider anthropic-api"
+        );
+        assert_eq!(
+            canonical_provider_key(&ProviderChoice::Claude),
+            Some("claude"),
+            "--provider claude and --provider anthropic-api share a runtime"
+        );
+        assert_eq!(
+            canonical_provider_key(&ProviderChoice::OpenaiApi),
+            Some("openai"),
+            "the daemon publishes `openai` for --provider openai-api"
+        );
+        assert_eq!(
+            canonical_provider_key(&ProviderChoice::Openai),
+            Some("openai")
+        );
+    }
+
+    /// The API-key spellings must therefore *attach* to a daemon that serves
+    /// the shared runtime, not isolate forever.
+    #[test]
+    fn api_key_spellings_attach_to_a_matching_daemon() {
+        let claude = daemon("claude", Some("claude-sonnet-4"));
+        assert_eq!(
+            attach_plan(Some(&ProviderChoice::AnthropicApi), Some(&claude)),
+            AttachPlan::Attach
+        );
+        let openai = daemon("openai", Some("gpt-5"));
+        assert_eq!(
+            attach_plan(Some(&ProviderChoice::OpenaiApi), Some(&openai)),
+            AttachPlan::Attach
+        );
+    }
+
+    /// Azure goes through `apply_azure_openai_runtime()`, which publishes the
+    /// `azure-openai` runtime key, not the CLI spelling `azure`.
+    #[test]
+    fn azure_matches_the_azure_openai_runtime_key() {
+        assert_eq!(
+            canonical_provider_key(&ProviderChoice::Azure),
+            Some("azure-openai")
+        );
+        let azure = daemon("azure-openai", Some("gpt-4o"));
+        assert_eq!(
+            attach_plan(Some(&ProviderChoice::Azure), Some(&azure)),
+            AttachPlan::Attach
+        );
+    }
+
     /// The exact failure mode of the original bug: an `openai-compatible`
     /// request must never canonicalise to a neighbouring runtime.
     #[test]
@@ -279,6 +362,36 @@ mod tests {
     #[test]
     fn auto_has_no_canonical_key() {
         assert_eq!(canonical_provider_key(&ProviderChoice::Auto), None);
+    }
+
+    /// Every provider choice must produce *some* key. A `None` means "cannot
+    /// verify", which forces isolation, so a missing arm would silently make
+    /// that provider isolate on every launch.
+    #[test]
+    fn every_non_auto_provider_choice_yields_a_key() {
+        let choices = [
+            ProviderChoice::Jcode,
+            ProviderChoice::Claude,
+            ProviderChoice::AnthropicApi,
+            ProviderChoice::Openai,
+            ProviderChoice::OpenaiApi,
+            ProviderChoice::Openrouter,
+            ProviderChoice::Bedrock,
+            ProviderChoice::Azure,
+            ProviderChoice::OpenaiCompatible,
+            ProviderChoice::Cursor,
+            ProviderChoice::Copilot,
+            ProviderChoice::Gemini,
+            ProviderChoice::GrokBuild,
+            ProviderChoice::Antigravity,
+        ];
+        for choice in choices {
+            let key = canonical_provider_key(&choice);
+            assert!(
+                key.is_some_and(|k| !k.is_empty()),
+                "{choice:?} produced no publishable runtime key"
+            );
+        }
     }
 
     #[test]
