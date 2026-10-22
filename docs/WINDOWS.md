@@ -48,6 +48,21 @@ Record the resolved client executable and the separately running server's
 executable, version, and IPC address. Changing PATH alone does not prove the
 long-lived server has changed. Preserve existing jcode data and processes.
 
+## Required remote topology
+
+The Mac is the remote client viewing or controlling the Windows HERDR host:
+
+```text
+Mac client --> remote transport --> Windows HERDR host --> Windows KCode server
+```
+
+Standard Windows Terminal and local Windows HERDR behavior are independent
+controls. Remote acceptance must verify Windows server transport and HERDR
+integration from the Mac, including input, paste, resize, reconnect and session
+continuity. Record client and host server identities separately. Native Unix
+SSH-client support is not the primary blocker for this deployment. A
+Windows-to-Mac test does not satisfy this acceptance route.
+
 ## Inherited upstream security and release reference
 
 The sections below describe upstream capabilities and acceptance requirements.

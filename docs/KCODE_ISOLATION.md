@@ -89,11 +89,13 @@ remain separate stacked changes.
 Audit anchor: `master` at `2aea04dd871f21da5c5b21800d156a2c9b0830b1`,
 2026-10-21. Hosted source/release inspection is evidence about repository state;
 it is not a local build, device install, CI pass, or remote-session receipt.
-The Windows execution helper failed before command execution with
+The initial Windows execution helper failed before command execution with
 `orchestrator_helper_incomplete: setup helper exited successfully before setup completed`.
-Local repo location, command resolution, running server identity, and Mac
-runtime state therefore remain UNKNOWN. Restore the execution transport before
-running the blocked checks; do not repeatedly probe it or kill shared agents.
+The execution transport was subsequently restored. Standalone native metadata
+checks passed: nine build-script tests, three runtime tests, and actual generated
+identity/override/rejection assertions. Home checkout access and a complete
+application build remain pending; no install, live-server or remote-session
+acceptance is implied. Mac runtime state remains UNKNOWN. Preserve shared agents.
 
 ### Findings and existing work
 
@@ -101,8 +103,9 @@ running the blocked checks; do not repeatedly probe it or kill shared agents.
   The build metadata script parsed the fork-bearing patch as an integer,
   defaulted the numeric base to zero, and dropped the fork suffix while deriving
   a development version. This change uses its existing channel-aware parser,
-  preserves the suffix, fails on missing/zero root identity, and rejects zero
-  runtime release overrides. This is source reasoning; the old installed
+  preserves the suffix and requires nonzero `BASE-kFORK_SEMVER` identity for
+  root metadata and build overrides. Invalid runtime overrides preserve compiled
+  KCode identity. A shared parser rejects bare stock, empty and malformed suffixes. This is source reasoning; the old installed
   Jaguar client's origin has not been demonstrated.
 - `docs/sessions/20260917-herdr-pwsh-triage/FINDINGS.md` is historical
   source-based triage with estimated reproduction steps. Its OSC/PowerShell
@@ -148,25 +151,25 @@ running the blocked checks; do not repeatedly probe it or kill shared agents.
 ```text
 W1 transport + exact identity
   -> W2 version + existing convergence -> W3 native terminal matrix
-  -> W4 HERDR and remote Mac matrix
+  -> W4 Mac client -> Windows HERDR host matrix
   -> W5 fork artifacts -> W6 coexistence install -> W7 update channel
 ```
 
 | Work | Owner lane | Current state | Exit evidence |
 | --- | --- | --- | --- |
-| W1 | Windows/Mac runtime | BLOCKED: execution transport | Resolve repo/branch/dirty state and all PATH candidates. Record client and long-lived server executable, SHA-256, fork version, runtime directory, socket/pipe/port, lock and launch owner independently on both hosts. Preserve stock processes/data. |
-| W2 | KCode metadata/convergence | Proposed source fix; execution UNEXECUTED | Run metadata build-script tests, crate tests, product-isolation tests, formatting and required local gates; require nonzero discovered/passed test counts at the exact candidate SHA. Built client and daemon must report a nonzero BASEVERSION-kSEMVER; reject zero, malformed or mismatched release identity. Reuse open fixes after review. |
+| W1 | Windows/Mac runtime | Transport restored; complete runtime receipt pending | Resolve repo/branch/dirty state and all PATH candidates. Record client and long-lived server executable, SHA-256, fork version, runtime directory, socket/pipe/port, lock and launch owner independently on both hosts. Preserve stock processes/data. |
+| W2 | KCode metadata/convergence | Focused native metadata gate passed; broader gates pending | Run metadata build-script tests, crate tests, product-isolation tests, formatting and required local gates; require nonzero discovered/passed test counts at the exact candidate SHA. Built client and daemon must report a nonzero BASEVERSION-kSEMVER; reject zero, malformed or mismatched release identity. Reuse open fixes after review. |
 | W3 | Windows terminal | UNKNOWN live behavior | Standard Windows Terminal with PowerShell, then HERDR-local: test ordinary typing, Enter, Shift+Enter, paste, resize, reconnect, Ctrl+C and exit using process-owned input/output logs. Independent negative control outside HERDR. No screenshots/recordings. |
-| W4 | Remote Mac | UNKNOWN supported route | Resolve the actual winterm-herdr deployment/transport from docs/config before testing Windows -> HERDR -> Mac. Inspect fork NATIVE_SSH restrictions; do not treat Unix-client SSH support or REMOTE_HANDOFF design as Windows attach implementation. Verify server identity/IPC separation and reconnect/session continuity on each supported route. |
+| W4 | Mac client / Windows HERDR host | UNKNOWN live behavior | The Mac is the remote client viewing/controlling the Windows HERDR host. Resolve the actual deployed transport from docs/config, then verify Windows host server transport and HERDR remote-view integration, including typing, paste, resize, reconnect and session continuity from the Mac. Record host server identity/IPC separation and client identity independently. Native Unix SSH-client support is not the primary blocker for this route. Do not substitute a Windows-to-Mac route. |
 | W5 | Build/release | BLOCKED by validation | Use suitable existing self-hosted/free compute; record placement. Produce KCode-only Windows x64/ARM64 and supported Mac assets from exact tested SHA, fork versions, hashes, signing/provenance and nonzero client/server output. Add fork-specific workflow/installer-smoke paths; preserve upstream guard until replacement is validated. |
 | W6 | Device install/coexistence | BLOCKED: no verified artifact/transport | Install trusted local artifact with scripts/install.ps1; verify user/process PATH in a fresh shell, executable hash/version, and correct server attachment. Stock jcode must remain separately launchable. Compare stock state bytes/mtimes/permissions before and after imports and KCode operations. |
 | W7 | Maintained channel | Disabled intentionally | Publish only verified fork artifacts and correct release notes. Then enable fork-only authenticated/checksummed update discovery/install and test upgrade, failed download, wrong product/version/hash and rollback without touching jcode. |
 
-W2 focused commands (UNEXECUTED in this audit):
+W2 focused commands (standalone metadata gate executed on Windows in the
+2026-10-21 follow-up; remaining workspace/isolation gates still unexecuted):
 
 ```text
-rustc --edition 2024 --test crates/jcode-build-meta/build.rs -o <temporary-test-executable>
-<temporary-test-executable>
+pwsh -NoProfile -File scripts/test_build_meta.ps1
 cargo test -p jcode-build-meta
 python -m unittest discover -s tests -p test_kcode_product_isolation.py
 cargo fmt --all -- --check
