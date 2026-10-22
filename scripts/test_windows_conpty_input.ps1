@@ -2,6 +2,8 @@
 # Run in a fresh PowerShell process; only synthetic input enters this private ConPTY.
 # No desktop capture, user console injection or configuration reads.
 # shortcut: expected records describe this Windows backend; revise only with new native mapping receipts.
+# Use -CompareVT to compare the console VT-input bit and key-record versus byte readers.
+param([switch]$CompareVT)
 $ErrorActionPreference = 'Stop'
 $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('kcode-conpty-' + [Guid]::NewGuid())
 New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
@@ -44,12 +46,16 @@ public static class ConPtyFixture {
  [DllImport("kernel32",SetLastError=true)] static extern bool GetNumberOfConsoleInputEvents(IntPtr h,out uint count);
  [DllImport("kernel32",CharSet=CharSet.Unicode,SetLastError=true)] static extern bool ReadConsoleInputW(IntPtr h,[Out] RECORD[] records,uint length,out uint count);
  static void Check(bool ok,string name){if(!ok)throw new Exception(name+": "+Marshal.GetLastWin32Error());}
- public static void Child(){
+ public static void Child(string backend){
   IntPtr h=CreateFileW("CONIN$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);childOutput=CreateFileW("CONOUT$",0xC0000000,3,IntPtr.Zero,3,0,IntPtr.Zero);uint original;Check(GetConsoleMode(h,out original),"GetConsoleMode");
-  uint mode=(original & ~(uint)(1|2|4|0x200))|0x80;Check(SetConsoleMode(h,mode),"SetConsoleMode");
+  uint mode=(original & ~(uint)(1|2|4|0x200))|0x80;if(backend.StartsWith("vt-"))mode|=0x200;Check(SetConsoleMode(h,mode),"SetConsoleMode");
   uint effective;Check(GetConsoleMode(h,out effective),"GetConsoleMode effective");
   Log("\x1b[?2004h");
   Log("READY original="+original+" effective="+effective);
+  if(backend.EndsWith("-bytes")){
+   var readTask=Task.Run(()=>{byte[] data=new byte[512];int n;int bytes=0;while(ReadFile(h,data,data.Length,out n,IntPtr.Zero)&&n>0){Log("BYTES "+BitConverter.ToString(data,0,n));bytes+=n;if(bytes>4096)throw new Exception("byte cap");}});
+   Thread.Sleep(1400);Log("DONE bytes");return;
+  }
   var watch=Stopwatch.StartNew();int total=0;
   while(watch.ElapsedMilliseconds<1400){
    uint count;Check(GetNumberOfConsoleInputEvents(h,out count),"GetNumberOfConsoleInputEvents");
@@ -59,7 +65,7 @@ public static class ConPtyFixture {
   }
   Log("DONE "+total);
  }
- public static string Run(string pwsh,string dll,string[] chunks,int delay){
+ public static string Run(string pwsh,string dll,string[] chunks,int delay,string backend){
   IntPtr ir=IntPtr.Zero,iw=IntPtr.Zero,or=IntPtr.Zero,ow=IntPtr.Zero,pc=IntPtr.Zero,attrs=IntPtr.Zero;
   PI pi=new PI();Task pump=null;var output=new StringBuilder();Exception pumpError=null;
   try{
@@ -70,7 +76,7 @@ public static class ConPtyFixture {
    Check(InitializeProcThreadAttributeList(attrs,1,0,ref bytes),"Initialize attributes");
    Check(UpdateProcThreadAttribute(attrs,0,new IntPtr(0x20016),pc,new IntPtr(IntPtr.Size),IntPtr.Zero,IntPtr.Zero),"Update HPCON");
    SIX sx=new SIX();sx.si.cb=Marshal.SizeOf(typeof(SIX));sx.attrs=attrs;
-   string child="Add-Type -Path '"+dll.Replace("'","''")+"'; [ConPtyFixture]::Child()";
+   string child="Add-Type -Path '"+dll.Replace("'","''")+"'; [ConPtyFixture]::Child('"+backend+"')";
    string encoded=Convert.ToBase64String(Encoding.Unicode.GetBytes(child));
    Check(CreateProcessW(pwsh,new StringBuilder("\""+pwsh+"\" -NoLogo -NoProfile -EncodedCommand "+encoded),IntPtr.Zero,IntPtr.Zero,false,0x80000,IntPtr.Zero,null,ref sx,out pi),"Create child");
    IntPtr outputHandle=or;
@@ -112,29 +118,39 @@ $cases = @(
  @{Name='split-frame'; Chunks=@($esc,'[200~a',($lf+'b'+$lf),$esc,'[201~'); Delay=30; Expected=@(27,91,50,48,48,126,97,10,98,10,27,91,50,48,49,126)},
  @{Name='delayed-frame'; Chunks=@(($esc+'[200~a'),($lf+'b'+$lf),($esc+'[201~')); Delay=250; Expected=@(97,10,98,10)}
 )
-foreach ($case in $cases) {
- $result = [ConPtyFixture]::Run($pwsh,$dll,[string[]]$case.Chunks,$case.Delay)
- [IO.File]::WriteAllText((Join-Path $fixtureRoot ($case.Name+'.log')),$result)
- $records = [regex]::Matches($result,'KEY (\d+) (\d+) (\d+) (\d+) (\d+)')
- if ($records.Count -eq 0) { throw "No key records: $($case.Name)" }
- $down = @($records | Where-Object {$_.Groups[1].Value -eq '1' -and $_.Groups[4].Value -ne '0'} | ForEach-Object {[int]$_.Groups[4].Value})
- if (($down -join ',') -ne ($case.Expected -join ',')) {
-     throw ("Unexpected native mapping "+$case.Name+": "+($down -join ','))
+
+$backends = if ($CompareVT) { @('native-records','vt-records','native-bytes','vt-bytes') } else { @('native-records') }
+foreach ($backend in $backends) {
+ foreach ($case in $cases) {
+  $result = [ConPtyFixture]::Run($pwsh,$dll,[string[]]$case.Chunks,$case.Delay,$backend)
+  [IO.File]::WriteAllText((Join-Path $fixtureRoot ($backend+'-'+$case.Name+'.log')),$result)
+  if ($result -notmatch 'READY original=(\d+) effective=(\d+)') { throw 'Missing native mode receipt' }
+  $expectedMode = ([int]$Matches[1] -band (-bnot 519)) -bor 128
+  if ($backend.StartsWith('vt-')) { $expectedMode = $expectedMode -bor 512 }
+  if ([int]$Matches[2] -ne $expectedMode) { throw 'Native console mode mismatch' }
+  $records = [regex]::Matches($result,'KEY (\d+) (\d+) (\d+) (\d+) (\d+)')
+  $keyDown = @($records | Where-Object {$_.Groups[1].Value -eq '1' -and $_.Groups[4].Value -ne '0'})
+  $down = @($keyDown | ForEach-Object {[int]$_.Groups[4].Value})
+  if ($backend.EndsWith('-records')) {
+   if ($records.Count -eq 0) { throw "No key records: $backend/$($case.Name)" }
+   $expected = if ($backend -eq 'vt-records') { @(($case.Chunks -join '').ToCharArray() | ForEach-Object {[int]$_}) } else {$case.Expected}
+   if (($down -join ',') -ne ($expected -join ',')) { throw ("Unexpected native mapping "+$backend+'/'+$case.Name+": "+($down -join ',')) }
+   foreach ($record in $keyDown) {
+    $u = [int]$record.Groups[4].Value
+    $expectedState = if ($backend -eq 'vt-records') {0} elseif ($u -eq 10) {8} elseif ($u -eq 126) {16} else {0}
+    $expectedVk = if ($backend -eq 'vt-records') {0} else {switch ($u) {97 {65} 98 {66} 10 {13} 13 {13} 27 {27} 8 {8} 91 {219} 126 {192} default {$u}}}
+    if ([int]$record.Groups[2].Value -ne 1 -or [int]$record.Groups[3].Value -ne $expectedVk -or [int]$record.Groups[5].Value -ne $expectedState) { throw ('Unexpected repeat/VKey/control state: '+$record.Value) }
+   }
+   Write-Output ('NATIVE_DOWN '+(($keyDown | ForEach-Object {$_.Groups[3].Value+':'+$_.Groups[4].Value+':'+$_.Groups[5].Value}) -join ','))
+  } else {
+   $hex = (([regex]::Matches($result,'BYTES ([A-F0-9-]+)') | ForEach-Object {$_.Groups[1].Value}) -join '-') -replace '-',''
+   $expectedText = if ($backend -eq 'vt-bytes') {($case.Chunks -join '')} else {-join ($case.Expected | Where-Object {$_ -notin @(10,27)} | ForEach-Object {[char]$_})}
+   $expectedHex = [Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes($expectedText))
+   if ($hex -ne $expectedHex) { throw "Unexpected bytes $backend/$($case.Name): $hex expected $expectedHex" }
+   Write-Output ("BYTES "+$hex)
+  }
+  Write-Output ("PASS "+$backend+'/'+$case.Name+" RECORDS="+$records.Count+" DOWN_UTF16="+($down -join ','))
  }
- if ($result -notmatch 'READY original=(\d+) effective=(\d+)') { throw 'Missing native mode receipt' }
- $expectedMode = ([int]$Matches[1] -band (-bnot 519)) -bor 128
- if ([int]$Matches[2] -ne $expectedMode) { throw 'Native console mode mismatch' }
- $keyDown = @($records | Where-Object {$_.Groups[1].Value -eq '1' -and $_.Groups[4].Value -ne '0'})
- foreach ($record in $keyDown) {
-     $u = [int]$record.Groups[4].Value
-     $expectedState = if ($u -eq 10) {8} elseif ($u -eq 126) {16} else {0}
-     $expectedVk = switch ($u) {97 {65} 98 {66} 10 {13} 13 {13} 27 {27} 8 {8} 91 {219} 126 {192} default {$u}}
-     if ([int]$record.Groups[2].Value -ne 1 -or [int]$record.Groups[3].Value -ne $expectedVk -or [int]$record.Groups[5].Value -ne $expectedState) {
-         throw ('Unexpected repeat/VKey/control state: '+$record.Value)
-     }
- }
- Write-Output ('NATIVE_DOWN '+(($keyDown | ForEach-Object {$_.Groups[3].Value+':'+$_.Groups[4].Value+':'+$_.Groups[5].Value}) -join ','))
- Write-Output ("PASS "+$case.Name+" RECORDS="+$records.Count+" DOWN_UTF16="+($down -join ','))
 }
-Write-Output "LIMIT: maps this Windows ConPTY backend only; does not exercise crossterm, app submission, focus/resume, HERDR or Mac."
+Write-Output "LIMIT: maps this Windows ConPTY backend only; does not exercise crossterm, app submission, focus/resume or HERDR."
 Write-Output "RECEIPTS $fixtureRoot"
