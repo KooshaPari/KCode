@@ -7,7 +7,7 @@
  * instance returned the real transcripts of the jcode the user runs
  * interactively.
  *
- * Usage: node test/live-isolation.mjs [path-to-jcode-binary]
+ * Usage: node test/live-isolation.mjs [path-to-kcode-binary]
  */
 
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { JcodeClient, userJcodeHome } from "../dist/index.js";
 
-const binary = process.argv[2] ?? "jcode";
+const binary = process.argv[2] ?? "kcode";
 const failures = [];
 async function step(name, fn) {
   try {
