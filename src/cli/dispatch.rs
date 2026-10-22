@@ -244,6 +244,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                         args.model.as_deref(),
                         args.provider_profile.as_deref(),
                         Some(std::env::current_exe()?),
+                        false,
                     ),
                 )
                 .await
@@ -1094,13 +1095,17 @@ async fn run_default_command(args: Args) -> Result<()> {
                 ));
                 // Every later socket lookup honors this, so the client dials the
                 // server it just asked for instead of the shared one.
+                //
                 // Use the server module's own setter rather than naming the
-                // environment variable here: the variable was renamed from
-                // `KCODE_SOCKET` to `KCODE_SOCKET`, and hardcoding the old
+                // environment variable here: the fork renamed the variable
+                // from `JCODE_SOCKET` to `KCODE_SOCKET`, and hardcoding the old
                 // spelling would silently make isolation a no-op (the client
                 // would keep dialing the shared daemon it was trying to avoid).
+                //
+                // The spawned server inherits this variable, so it binds the
+                // private socket rather than the shared one.
                 server::set_socket_path(&private_socket.to_string_lossy());
-                spawn_owned_server(
+                spawn_temporary_server(
                     &args.provider,
                     args.model.as_deref(),
                     args.provider_profile.as_deref(),
@@ -1447,7 +1452,21 @@ pub(crate) async fn spawn_server(
     model: Option<&str>,
     provider_profile: Option<&str>,
 ) -> Result<()> {
-    spawn_server_with_executable(provider_choice, model, provider_profile, None).await
+    spawn_server_with_executable(provider_choice, model, provider_profile, None, false).await
+}
+
+/// Start a server that belongs to this process and self-destructs when it exits.
+///
+/// Used for the isolated case: a client that asked for a provider the running
+/// daemon cannot be shown to serve starts its own server on a private socket.
+/// That server must not outlive the client, and it must not take the shared
+/// socket down with it when it goes.
+async fn spawn_temporary_server(
+    provider_choice: &ProviderChoice,
+    model: Option<&str>,
+    provider_profile: Option<&str>,
+) -> Result<()> {
+    spawn_server_with_executable(provider_choice, model, provider_profile, None, true).await
 }
 
 async fn spawn_server_with_executable(
@@ -1455,6 +1474,7 @@ async fn spawn_server_with_executable(
     model: Option<&str>,
     provider_profile: Option<&str>,
     executable: Option<std::path::PathBuf>,
+    temporary: bool,
 ) -> Result<()> {
     let socket_path = server::socket_path();
     if server_is_running_at(&socket_path).await {
@@ -1524,6 +1544,16 @@ async fn spawn_server_with_executable(
     cmd.arg("serve")
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
+
+    if temporary {
+        // A server owned by this process must not outlive it, and it must not
+        // take the shared socket down with it when it goes. `--owner-pid` makes
+        // the server self-destruct once this client exits.
+        cmd.arg("--temporary-server");
+        if let Ok(pid) = std::process::id().to_string().parse::<u32>() {
+            cmd.arg("--owner-pid").arg(pid.to_string());
+        }
+    }
 
     #[cfg(unix)]
     {
