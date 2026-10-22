@@ -244,6 +244,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                         args.model.as_deref(),
                         args.provider_profile.as_deref(),
                         Some(std::env::current_exe()?),
+                        false,
                     ),
                 )
                 .await
@@ -947,6 +948,11 @@ async fn run_default_command(args: Args) -> Result<()> {
     let explicit_provider_or_model = args.provider != ProviderChoice::Auto
         || args.model.is_some()
         || args.provider_profile.is_some();
+    // Tracked separately: an explicit `--model` alone is not a request for a
+    // particular provider, so it must not be compared against the daemon's
+    // provider or it would read as a mismatch and isolate needlessly.
+    let explicit_provider = args.provider != ProviderChoice::Auto;
+    let explicit_model = args.model.is_some();
     let explicit_tool_options = args.tool_profile.is_some()
         || args.tools.is_some()
         || args.disabled_tools.is_some()
@@ -1051,18 +1057,83 @@ async fn run_default_command(args: Args) -> Result<()> {
         .await;
     }
 
+    // Track whether *this* process brought the server up, so the TUI is told the
+    // truth even when we isolate onto a private socket (see below).
+    let mut spawned_by_us = false;
+
     if server_running && explicit_provider_or_model {
-        output::stderr_info(
-            "Server already running; provider/model flags only apply when starting a new server.",
-        );
-        output::stderr_info(format!(
-            "Current server settings control `/model`. Restart server to apply: --provider {}{}",
-            args.provider.as_arg_value(),
-            args.model
-                .as_ref()
-                .map(|m| format!(" --model {}", m))
-                .unwrap_or_default()
-        ));
+        // An explicit --provider is a request for an identity, not a hint. The
+        // running daemon's identity used to win unconditionally and the only
+        // feedback was a stderr note that scrolled away, so a pane launched with
+        // `--provider openai-compatible --model MiniMax-M3.1-Flash` silently got
+        // whatever the stale daemon happened to serve.
+        let socket = server::socket_path();
+        let daemon = crate::cli::daemon_identity::running_daemon_identity(&socket);
+        let requested_provider = explicit_provider.then_some(&args.provider);
+        let requested_model = explicit_model.then(|| args.model.as_deref()).flatten();
+        let plan = crate::cli::daemon_identity::attach_plan(requested_provider, daemon.as_ref());
+
+        // The model is advisory only: a daemon on the right provider but a
+        // different model is shared, with the difference surfaced.
+        if let Some(note) =
+            crate::cli::daemon_identity::model_advisory(requested_model, daemon.as_ref())
+        {
+            output::stderr_info(note);
+        }
+
+        match plan {
+            crate::cli::daemon_identity::AttachPlan::Isolate => {
+                let private_socket = crate::cli::daemon_identity::private_client_socket();
+                output::stderr_info(format!(
+                    "Running server cannot be verified to serve --provider {}{}; starting a private server on {}.",
+                    args.provider.as_arg_value(),
+                    args.model
+                        .as_ref()
+                        .map(|m| format!(" --model {}", m))
+                        .unwrap_or_default(),
+                    private_socket.display(),
+                ));
+                // Every later socket lookup honors this, so the client dials the
+                // server it just asked for instead of the shared one.
+                //
+                // Use the server module's own setter rather than naming the
+                // environment variable here: the fork renamed the variable
+                // from `JCODE_SOCKET` to `KCODE_SOCKET`, and hardcoding the old
+                // spelling would silently make isolation a no-op (the client
+                // would keep dialing the shared daemon it was trying to avoid).
+                //
+                // The spawned server inherits this variable, so it binds the
+                // private socket rather than the shared one.
+                server::set_socket_path(&private_socket.to_string_lossy());
+                spawn_temporary_server(
+                    &args.provider,
+                    args.model.as_deref(),
+                    args.provider_profile.as_deref(),
+                )
+                .await?;
+                spawned_by_us = true;
+                server_running = true;
+            }
+            crate::cli::daemon_identity::AttachPlan::Attach => {
+                if daemon.is_none() {
+                    output::stderr_info(
+                        "Server already running and its provider could not be verified; \
+                         --provider/--model will not be applied. Restart the server to change them.",
+                    );
+                } else {
+                    let daemon = daemon.as_ref().expect("checked above");
+                    output::stderr_info(format!(
+                        "Server already running with --provider {}{}; reusing it.",
+                        daemon.provider,
+                        daemon
+                            .model
+                            .as_deref()
+                            .map(|m| format!(" --model {}", m))
+                            .unwrap_or_default()
+                    ));
+                }
+            }
+        }
     }
 
     if server_running && explicit_tool_options {
@@ -1089,6 +1160,7 @@ async fn run_default_command(args: Args) -> Result<()> {
             args.provider_profile.as_deref(),
         )
         .await?;
+        spawned_by_us = true;
     }
 
     startup_profile::mark("pre_tui_client");
@@ -1098,7 +1170,7 @@ async fn run_default_command(args: Args) -> Result<()> {
     tui_launch::run_tui_client(
         args.resume,
         startup_hints,
-        !server_running,
+        spawned_by_us,
         args.fresh_spawn,
         args.remote_working_dir,
         args.onboarding_sim,
@@ -1380,7 +1452,21 @@ pub(crate) async fn spawn_server(
     model: Option<&str>,
     provider_profile: Option<&str>,
 ) -> Result<()> {
-    spawn_server_with_executable(provider_choice, model, provider_profile, None).await
+    spawn_server_with_executable(provider_choice, model, provider_profile, None, false).await
+}
+
+/// Start a server that belongs to this process and self-destructs when it exits.
+///
+/// Used for the isolated case: a client that asked for a provider the running
+/// daemon cannot be shown to serve starts its own server on a private socket.
+/// That server must not outlive the client, and it must not take the shared
+/// socket down with it when it goes.
+async fn spawn_temporary_server(
+    provider_choice: &ProviderChoice,
+    model: Option<&str>,
+    provider_profile: Option<&str>,
+) -> Result<()> {
+    spawn_server_with_executable(provider_choice, model, provider_profile, None, true).await
 }
 
 async fn spawn_server_with_executable(
@@ -1388,6 +1474,7 @@ async fn spawn_server_with_executable(
     model: Option<&str>,
     provider_profile: Option<&str>,
     executable: Option<std::path::PathBuf>,
+    temporary: bool,
 ) -> Result<()> {
     let socket_path = server::socket_path();
     if server_is_running_at(&socket_path).await {
@@ -1424,6 +1511,21 @@ async fn spawn_server_with_executable(
         .ok_or_else(|| anyhow::anyhow!("Could not determine executable path for server spawn"))?;
     let mut cmd = ProcessCommand::new(&exe);
     cmd.env_remove(selfdev::CLIENT_SELFDEV_ENV);
+    // This client already resolved a provider for its own run. Those ambient
+    // identity variables must not follow the daemon across the process
+    // boundary: the daemon re-derives its own provider from config and
+    // auto-detection, and inheriting ours lets a session get stamped with a
+    // provider that is not the one actually serving it.
+    server::scrub_inherited_provider_identity(&mut cmd);
+    // Re-assert this launch's identity *after* the scrub. The scrub drops
+    // whatever the client happened to have in its own environment; the values set
+    // here are the ones the daemon is actually being asked to serve, and the
+    // daemon publishes them in `~/.jcode/servers.json` so a later client can
+    // detect that it is attached to a daemon serving someone else's provider.
+    cmd.env("KCODE_RUNTIME_PROVIDER", provider_choice.as_arg_value());
+    if let Some(model) = model {
+        cmd.env("KCODE_RUNTIME_MODEL", model);
+    }
     if client_requested_selfdev {
         cmd.env("KCODE_DEBUG_CONTROL", "1");
     }
@@ -1442,6 +1544,16 @@ async fn spawn_server_with_executable(
     cmd.arg("serve")
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
+
+    if temporary {
+        // A server owned by this process must not outlive it, and it must not
+        // take the shared socket down with it when it goes. `--owner-pid` makes
+        // the server self-destruct once this client exits.
+        cmd.arg("--temporary-server");
+        if let Ok(pid) = std::process::id().to_string().parse::<u32>() {
+            cmd.arg("--owner-pid").arg(pid.to_string());
+        }
+    }
 
     #[cfg(unix)]
     {

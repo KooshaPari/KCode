@@ -8,7 +8,121 @@ pub fn socket_path() -> PathBuf {
     if let Ok(custom) = std::env::var("KCODE_SOCKET") {
         return PathBuf::from(custom);
     }
-    crate::storage::runtime_dir().join("kcode.sock")
+    default_socket_path()
+}
+
+/// The shared-daemon socket for this user, ignoring any
+/// `--socket`/`KCODE_SOCKET` override.
+///
+/// Deliberately resolved from a stable per-user directory rather than
+/// `runtime_dir()`: the latter honors `TMPDIR` on macOS, so two launchers of the
+/// same user could address two different shared sockets and a client would
+/// silently attach to whichever stale daemon its `TMPDIR` happened to name.
+pub fn default_socket_path() -> PathBuf {
+    crate::storage::shared_runtime_dir().join("jcode.sock")
+}
+
+/// Path of the identity sidecar that sits beside `socket`.
+///
+/// The daemon publishes the provider/model it actually resolved to at this path
+/// on startup. A client reads it to find out who is on the other end of a
+/// socket *before* deciding to attach.
+///
+/// The sidecar is deliberately derived from the socket path rather than kept in
+/// the server registry: `servers.json` is a single shared JSON map that
+/// concurrent daemons load-modify-save, so one daemon silently overwrites
+/// another's entry, and a client then cannot tell who it is about to attach to.
+/// Anything reachable at the socket path is reachable here by construction.
+pub fn identity_file_for_socket(socket: &std::path::Path) -> PathBuf {
+    let mut name = socket
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_else(|| std::ffi::OsString::from("jcode.sock"));
+    name.push(".identity");
+    socket.with_file_name(name)
+}
+
+/// The identity the daemon at `socket` publishes, when it publishes one.
+///
+/// `None` means "unknown": too old a build, not a jcode daemon, or unreadable.
+/// Callers must treat that as "cannot verify", never as "matches".
+pub fn read_socket_identity(socket: &std::path::Path) -> Option<SocketIdentity> {
+    let raw = std::fs::read_to_string(identity_file_for_socket(socket)).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// Provider/model identity a daemon publishes beside its socket.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SocketIdentity {
+    /// The provider the daemon actually resolved to, e.g. "cursor" or
+    /// "openai-compatible". This is the *resolved* identity, never the launch
+    /// flag: a daemon started with `--provider auto` can resolve to anything.
+    pub provider: String,
+    /// The model the daemon actually resolved to, when it has one.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+/// Publish this daemon's resolved identity beside its socket.
+pub fn write_socket_identity(
+    socket: &std::path::Path,
+    identity: &SocketIdentity,
+) -> std::io::Result<()> {
+    let path = identity_file_for_socket(socket);
+    std::fs::write(path, serde_json::to_vec_pretty(identity)?)
+}
+
+/// Resolve a socket path to a comparable identity: absolute, with its parent
+/// directory's symlinks collapsed.
+///
+/// `KCODE_SOCKET` carries a user-supplied *spelling*, and several spellings
+/// name the same socket: `jcode.sock` relative to the runtime dir, a path
+/// through a symlinked parent, a `..` segment. Comparing spellings would call
+/// those "custom" and hand the shared socket to a process-scoped server that
+/// then takes it down with the run, disconnecting every other client.
+///
+/// Only the *parent* is resolved; the final component is kept as written, even
+/// when it currently exists as a symlink to another socket. Binding always
+/// unlinks and recreates that last component (see `Server::run`), so the
+/// socket a server ends up owning is the one named here: not whatever the
+/// name happened to point at beforehand. Following the final link would pin
+/// the daemon lock to the old target and then publish a different socket,
+/// locking a path nobody is listening on (review of #1768, finding 2).
+///
+/// Falls back to the plain absolute path when the parent is absent too: two
+/// absent paths still compare consistently with each other.
+fn resolved_socket_identity(path: &std::path::Path) -> PathBuf {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    };
+
+    match (absolute.parent(), absolute.file_name()) {
+        (Some(parent), Some(file_name)) => match std::fs::canonicalize(parent) {
+            Ok(canonical_parent) => canonical_parent.join(file_name),
+            Err(_) => absolute,
+        },
+        _ => absolute,
+    }
+}
+
+/// True when `path` is the shared daemon socket for this runtime dir, however
+/// it happens to be spelled.
+pub fn is_shared_socket(path: &std::path::Path) -> bool {
+    resolved_socket_identity(path) == resolved_socket_identity(&default_socket_path())
+}
+
+/// True when `--socket`/`KCODE_SOCKET` points somewhere other than the shared
+/// daemon socket for this runtime dir.
+///
+/// A custom socket means "this process wants its own server", which is what
+/// lets an isolated server be started for it without disturbing the shared
+/// daemon (issue #1748).
+pub fn socket_path_is_custom() -> bool {
+    !is_shared_socket(&socket_path())
 }
 
 /// Debug socket path for testing/introspection
@@ -222,6 +336,42 @@ pub(super) fn mark_close_on_exec<T: std::os::fd::AsRawFd>(io: &T) {
 
 pub fn set_socket_path(path: &str) {
     crate::env::set_var("KCODE_SOCKET", path);
+}
+
+/// Parent-process identity variables that must never be inherited by a server
+/// process.
+///
+/// A CLI client resolves its provider *before* it spawns the daemon, and that
+/// resolution writes `KCODE_RUNTIME_PROVIDER` / `KCODE_ACTIVE_PROVIDER` (plus
+/// the resuming/session flags) into its own environment. Because
+/// [`std::process::Command`] inherits the parent environment by default, those
+/// values leak into the daemon, whose own provider init then reads them as if
+/// they were its own resolved identity. The result is a session stamped with a
+/// provider that is not actually serving it — e.g. `provider_key = "openai"`
+/// while the live provider serves an OpenAI-compatible model.
+///
+/// Genuine daemon configuration (`KCODE_OPENROUTER_*`, `KCODE_SCRATCH_DIR`,
+/// `KCODE_DEFERRED_AUTH_BOOTSTRAP`, `KCODE_RELOAD_FAST_START`, `KCODE_READY_FD`,
+/// `KCODE_RELOAD_AUTH_STATUS`) is deliberately left alone: the daemon needs it
+/// and it does not describe a competing provider identity.
+pub const INHERITED_PROVIDER_IDENTITY_VARS: &[&str] = &[
+    "KCODE_RUNTIME_PROVIDER",
+    "KCODE_ACTIVE_PROVIDER",
+    "KCODE_INITIAL_PROVIDER_EXPLICIT",
+    "KCODE_RESUMING",
+    "KCODE_SESSION_ID",
+];
+
+/// Strip the parent client's provider identity from a server child command.
+///
+/// Applied on both spawn paths — the initial `spawn_server_with_lifetime`
+/// handoff and the reload `exec` — so no daemon generation inherits the
+/// previous process's identity. The replacement daemon re-derives its provider
+/// from configuration and auto-detection instead.
+pub fn scrub_inherited_provider_identity(cmd: &mut std::process::Command) {
+    for var in INHERITED_PROVIDER_IDENTITY_VARS {
+        cmd.env_remove(var);
+    }
 }
 
 /// Spawn a server child process and wait until it signals readiness.
