@@ -1070,10 +1070,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         let daemon = crate::cli::daemon_identity::running_daemon_identity(&socket);
         let requested_provider = explicit_provider.then_some(&args.provider);
         let requested_model = explicit_model.then(|| args.model.as_deref()).flatten();
-        let plan = crate::cli::daemon_identity::attach_plan(
-            requested_provider,
-            daemon.as_ref(),
-        );
+        let plan = crate::cli::daemon_identity::attach_plan(requested_provider, daemon.as_ref());
 
         // The model is advisory only: a daemon on the right provider but a
         // different model is shared, with the difference surfaced.

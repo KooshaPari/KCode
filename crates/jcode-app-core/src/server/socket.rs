@@ -64,7 +64,10 @@ pub struct SocketIdentity {
 }
 
 /// Publish this daemon's resolved identity beside its socket.
-pub fn write_socket_identity(socket: &std::path::Path, identity: &SocketIdentity) -> std::io::Result<()> {
+pub fn write_socket_identity(
+    socket: &std::path::Path,
+    identity: &SocketIdentity,
+) -> std::io::Result<()> {
     let path = identity_file_for_socket(socket);
     std::fs::write(path, serde_json::to_vec_pretty(identity)?)
 }

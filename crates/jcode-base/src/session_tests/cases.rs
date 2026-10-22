@@ -109,7 +109,10 @@ fn derive_session_provider_key_live_concrete_provider_beats_ambient_profile() {
 
     // A concrete live provider is authoritative. Ambient profile refinement only
     // applies to the OpenAI-compatible transport family, never to Claude.
-    assert_eq!(derive_session_provider_key("claude").as_deref(), Some("claude"));
+    assert_eq!(
+        derive_session_provider_key("claude").as_deref(),
+        Some("claude")
+    );
 }
 
 #[test]
@@ -120,7 +123,10 @@ fn derive_session_provider_key_still_honors_explicit_jcode_identity() {
     let _active = EnvVarGuard::remove("KCODE_ACTIVE_PROVIDER");
 
     // The subscription provider is an explicit identity that outranks ambient.
-    assert_eq!(derive_session_provider_key("jcode").as_deref(), Some("jcode"));
+    assert_eq!(
+        derive_session_provider_key("jcode").as_deref(),
+        Some("jcode")
+    );
 }
 
 #[test]
