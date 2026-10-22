@@ -16,8 +16,10 @@ use std::process::Command;
 fn main() {
     let repo_root = repo_root();
 
-    let pkg_version = root_package_version(&repo_root).expect("KCode root package version is required");
-    let base_version = parse_semver(&pkg_version).expect("KCode root package version must be nonzero");
+    let pkg_version =
+        root_package_version(&repo_root).expect("KCode root package version is required");
+    let base_version =
+        parse_semver(&pkg_version).expect("KCode root package version must be nonzero");
     let build_semver = resolve_build_semver(
         base_version,
         pkg_version.split_once('-').map(|(_, suffix)| suffix),
@@ -327,7 +329,10 @@ fn resolve_build_semver(
     let patch = base_version.2.saturating_add(offset);
     Ok(format!(
         "{}.{}.{}{}",
-        base_version.0, base_version.1, patch, channel_suffix(channel)
+        base_version.0,
+        base_version.1,
+        patch,
+        channel_suffix(channel)
     ))
 }
 
