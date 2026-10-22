@@ -23,13 +23,12 @@ pub fn parse(value: &str) -> Option<String> {
         None => (fork, None),
     };
     numeric(fork_version, false)?;
-    if let Some(channel) = channel {
-        if channel
+    if let Some(channel) = channel
+        && channel
             .split(['.', '-'])
             .any(|part| part.is_empty() || !part.bytes().all(|c| c.is_ascii_alphanumeric()))
-        {
-            return None;
-        }
+    {
+        return None;
     }
     Some(value.to_string())
 }
