@@ -197,6 +197,23 @@ pub(super) async fn await_reload_signal(
                 );
                 let mut cmd = ProcessCommand::new(&binary);
                 cmd.arg("serve").arg("--socket").arg(socket.as_os_str());
+                // The previous generation resolved a provider and stamped its
+                // identity into this process's environment. Without an explicit
+                // model the replacement would inherit that ambient identity and
+                // silently keep serving (and stamping) the previous generation's
+                // provider. Carry the configured default model forward
+                // explicitly -- the same channel `spawn_server_with_lifetime`
+                // uses -- and drop the stale ambient identity so the new
+                // generation re-derives its provider from scratch.
+                let effective_model = crate::config::config().provider.default_model.clone();
+                if let Some(effective_model) = effective_model
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|model| !model.is_empty())
+                {
+                    cmd.arg("--model").arg(effective_model);
+                }
+                crate::server::scrub_inherited_provider_identity(&mut cmd);
                 // Auto provider detection is dominated by credential-file probes.
                 // The replacement process is the same trusted daemon with the same
                 // environment, so carry the already-resolved, non-secret status

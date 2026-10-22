@@ -638,6 +638,7 @@ pub use self::socket::spawn_server_notify;
 use self::socket::{acquire_daemon_lock_for, mark_close_on_exec};
 pub use self::socket::{
     cleanup_socket_pair, connect_socket, debug_socket_path, default_socket_path, has_live_listener,
+    scrub_inherited_provider_identity, SocketIdentity, INHERITED_PROVIDER_IDENTITY_VARS,
     is_server_ready, is_shared_socket, reap_stale_socket_if_dead, set_socket_path, socket_path,
     socket_path_is_custom, wait_for_server_ready,
 };
@@ -658,6 +659,9 @@ pub(crate) use self::file_touch_service::FileTouchService;
 
 #[cfg(test)]
 mod socket_tests;
+
+#[cfg(test)]
+mod socket_identity_tests;
 
 #[cfg(test)]
 mod startup_tests;
@@ -925,7 +929,33 @@ impl Server {
         }
     }
 
-    fn spawn_registry_prewarm(&self) {
+    /// Write the identity this daemon actually resolved to, beside its socket.
+    ///
+    /// Written from the live provider, never from the `--provider` launch flag: a
+/// daemon started with `--provider auto` can resolve to anything, and publishing
+    /// the flag is exactly what let a stale daemon masquerade as a match for a
+    /// client that asked for a specific provider.
+fn publish_socket_identity(&self) {
+        let identity = SocketIdentity {
+                // `activation.rs` already writes the canonical runtime key here
+                // (`RuntimeProviderId::key()`). It is the only vocabulary the
+                // client can compare against: `Provider::display_name()` is a
+                // human label ("NVIDIA NIM", "OpenRouter") that diverges from
+                // both `as_arg_value()` and the runtime key.
+                provider: std::env::var("JCODE_RUNTIME_PROVIDER")
+                    .unwrap_or_else(|_| self.provider.display_name()),
+            model: Some(self.provider.model()),
+        };
+        if let Err(error) = socket::write_socket_identity(&self.socket_path, &identity) {
+            crate::logging::warn(&format!(
+                "Failed to publish socket identity at {}: {}",
+                socket::identity_file_for_socket(&self.socket_path).display(),
+                error
+            ));
+        }
+}
+
+fn spawn_registry_prewarm(&self) {
         let registry_warm_provider = Arc::clone(&self.provider);
         tokio::spawn(async move {
             let start = Instant::now();
@@ -1284,6 +1314,7 @@ impl Server {
         tokio::task::JoinHandle<()>,
     ) {
         self.spawn_registry_prewarm();
+        self.publish_socket_identity();
         worker_revive::register_context(worker_revive::WorkerReviveContext {
             provider: Arc::clone(&self.provider),
             sessions: Arc::clone(&self.sessions),

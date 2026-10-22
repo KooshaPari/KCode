@@ -7,6 +7,7 @@ pub mod cloud_managed;
 pub mod cloud_move;
 pub mod commands;
 pub mod compatible_runtime;
+pub mod daemon_identity;
 pub mod debug;
 pub mod dispatch;
 pub mod hibernate_wait;
