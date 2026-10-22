@@ -1313,7 +1313,7 @@ pub fn serve_published_provider_key(choice: &ProviderChoice) -> &'static str {
         ProviderChoice::Copilot => "copilot",
         ProviderChoice::Azure => "azure-openai",
         ProviderChoice::OpenaiCompatible => "openai-compatible",
-        // These clear the initial provider and only set `JCODE_ACTIVE_PROVIDER`,
+        // These clear the initial provider and only set `KCODE_ACTIVE_PROVIDER`,
         // so the daemon falls back to `provider.display_name()`.
         ProviderChoice::Cursor => "cursor",
         ProviderChoice::Gemini => "gemini",

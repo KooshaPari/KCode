@@ -147,9 +147,9 @@ pub fn runtime_dir() -> PathBuf {
 /// launched by somebody else while the daemon it asked for was never dialed.
 ///
 /// The shared socket must be stable per user, so it lives under the jcode home
-/// and only honors an explicit `$JCODE_SOCKET` override, never `TMPDIR`.
+/// and only honors an explicit `$KCODE_SOCKET` override, never `TMPDIR`.
 pub fn shared_runtime_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("JCODE_SHARED_RUNTIME_DIR") {
+    if let Ok(dir) = std::env::var("KCODE_SHARED_RUNTIME_DIR") {
         return PathBuf::from(dir);
     }
     match jcode_dir() {

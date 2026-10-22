@@ -12,7 +12,7 @@ pub fn socket_path() -> PathBuf {
 }
 
 /// The shared-daemon socket for this user, ignoring any
-/// `--socket`/`JCODE_SOCKET` override.
+/// `--socket`/`KCODE_SOCKET` override.
 ///
 /// Deliberately resolved from a stable per-user directory rather than
 /// `runtime_dir()`: the latter honors `TMPDIR` on macOS, so two launchers of the
@@ -72,7 +72,7 @@ pub fn write_socket_identity(socket: &std::path::Path, identity: &SocketIdentity
 /// Resolve a socket path to a comparable identity: absolute, with its parent
 /// directory's symlinks collapsed.
 ///
-/// `JCODE_SOCKET` carries a user-supplied *spelling*, and several spellings
+/// `KCODE_SOCKET` carries a user-supplied *spelling*, and several spellings
 /// name the same socket: `jcode.sock` relative to the runtime dir, a path
 /// through a symlinked parent, a `..` segment. Comparing spellings would call
 /// those "custom" and hand the shared socket to a process-scoped server that
@@ -112,7 +112,7 @@ pub fn is_shared_socket(path: &std::path::Path) -> bool {
     resolved_socket_identity(path) == resolved_socket_identity(&default_socket_path())
 }
 
-/// True when `--socket`/`JCODE_SOCKET` points somewhere other than the shared
+/// True when `--socket`/`KCODE_SOCKET` points somewhere other than the shared
 /// daemon socket for this runtime dir.
 ///
 /// A custom socket means "this process wants its own server", which is what
@@ -339,7 +339,7 @@ pub fn set_socket_path(path: &str) {
 /// process.
 ///
 /// A CLI client resolves its provider *before* it spawns the daemon, and that
-/// resolution writes `JCODE_RUNTIME_PROVIDER` / `JCODE_ACTIVE_PROVIDER` (plus
+/// resolution writes `KCODE_RUNTIME_PROVIDER` / `KCODE_ACTIVE_PROVIDER` (plus
 /// the resuming/session flags) into its own environment. Because
 /// [`std::process::Command`] inherits the parent environment by default, those
 /// values leak into the daemon, whose own provider init then reads them as if
@@ -347,16 +347,16 @@ pub fn set_socket_path(path: &str) {
 /// provider that is not actually serving it — e.g. `provider_key = "openai"`
 /// while the live provider serves an OpenAI-compatible model.
 ///
-/// Genuine daemon configuration (`JCODE_OPENROUTER_*`, `JCODE_SCRATCH_DIR`,
-/// `JCODE_DEFERRED_AUTH_BOOTSTRAP`, `JCODE_RELOAD_FAST_START`, `JCODE_READY_FD`,
-/// `JCODE_RELOAD_AUTH_STATUS`) is deliberately left alone: the daemon needs it
+/// Genuine daemon configuration (`KCODE_OPENROUTER_*`, `KCODE_SCRATCH_DIR`,
+/// `KCODE_DEFERRED_AUTH_BOOTSTRAP`, `KCODE_RELOAD_FAST_START`, `KCODE_READY_FD`,
+/// `KCODE_RELOAD_AUTH_STATUS`) is deliberately left alone: the daemon needs it
 /// and it does not describe a competing provider identity.
 pub const INHERITED_PROVIDER_IDENTITY_VARS: &[&str] = &[
-    "JCODE_RUNTIME_PROVIDER",
-    "JCODE_ACTIVE_PROVIDER",
-    "JCODE_INITIAL_PROVIDER_EXPLICIT",
-    "JCODE_RESUMING",
-    "JCODE_SESSION_ID",
+    "KCODE_RUNTIME_PROVIDER",
+    "KCODE_ACTIVE_PROVIDER",
+    "KCODE_INITIAL_PROVIDER_EXPLICIT",
+    "KCODE_RESUMING",
+    "KCODE_SESSION_ID",
 ];
 
 /// Strip the parent client's provider identity from a server child command.

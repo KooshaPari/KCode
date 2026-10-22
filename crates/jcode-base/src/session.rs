@@ -311,7 +311,7 @@ fn default_fork_max_depth() -> u8 {
 /// Provider identities that name a *specific* provider rather than refining
 /// the OpenAI-compatible transport family.
 ///
-/// Ambient `JCODE_RUNTIME_PROVIDER` / `JCODE_ACTIVE_PROVIDER` legitimately
+/// Ambient `KCODE_RUNTIME_PROVIDER` / `KCODE_ACTIVE_PROVIDER` legitimately
 /// refine a generic OpenAI-compatible transport with the profile actually in
 /// use (`"azure-openai"`, `"zai"`, ...). But when the value names one of these
 /// concrete providers, it describes a *different* provider than the one

@@ -12,15 +12,15 @@ use std::path::PathBuf;
 mod identity_scrub_tests {
 
     const PRESERVED_DAEMON_CONFIG: &[&str] = &[
-        "JCODE_OPENROUTER_API_BASE",
-        "JCODE_OPENROUTER_API_KEY_NAME",
-        "JCODE_OPENROUTER_ENV_FILE",
-        "JCODE_OPENROUTER_TRANSPORT_STATE",
-        "JCODE_OPENROUTER_PROVIDER_FEATURES",
-        "JCODE_SCRATCH_DIR",
-        "JCODE_DEFERRED_AUTH_BOOTSTRAP",
-        "JCODE_RELOAD_FAST_START",
-        "JCODE_READY_FD",
+        "KCODE_OPENROUTER_API_BASE",
+        "KCODE_OPENROUTER_API_KEY_NAME",
+        "KCODE_OPENROUTER_ENV_FILE",
+        "KCODE_OPENROUTER_TRANSPORT_STATE",
+        "KCODE_OPENROUTER_PROVIDER_FEATURES",
+        "KCODE_SCRATCH_DIR",
+        "KCODE_DEFERRED_AUTH_BOOTSTRAP",
+        "KCODE_RELOAD_FAST_START",
+        "KCODE_READY_FD",
     ];
 
     /// `Command::get_envs` reports only the delta from the parent environment,
@@ -69,11 +69,11 @@ mod identity_scrub_tests {
     #[test]
     fn scrub_covers_every_documented_identity_var() {
         for var in [
-            "JCODE_RUNTIME_PROVIDER",
-            "JCODE_ACTIVE_PROVIDER",
-            "JCODE_INITIAL_PROVIDER_EXPLICIT",
-            "JCODE_RESUMING",
-            "JCODE_SESSION_ID",
+            "KCODE_RUNTIME_PROVIDER",
+            "KCODE_ACTIVE_PROVIDER",
+            "KCODE_INITIAL_PROVIDER_EXPLICIT",
+            "KCODE_RESUMING",
+            "KCODE_SESSION_ID",
         ] {
             assert!(
                 INHERITED_PROVIDER_IDENTITY_VARS.contains(&var),
@@ -133,9 +133,9 @@ mod shared_socket_path_tests {
         let _lock = env_lock();
         let home = std::env::temp_dir().join("jcode-socket-home-test");
         std::fs::create_dir_all(&home).expect("create fake home");
-        let _home = VarGuard::set("JCODE_HOME", home.as_os_str());
+        let _home = VarGuard::set("KCODE_HOME", home.as_os_str());
         // An explicit override would mask the default we are exercising here.
-        std::env::remove_var("JCODE_SOCKET");
+        std::env::remove_var("KCODE_SOCKET");
 
         let first = default_socket_path();
         let _tmp = VarGuard::set("TMPDIR", OsStr::new("/nonexistent-tmp-a"));
@@ -152,11 +152,11 @@ mod shared_socket_path_tests {
         );
     }
 
-    /// An explicit `--socket`/`JCODE_SOCKET` still wins over the shared default.
+    /// An explicit `--socket`/`KCODE_SOCKET` still wins over the shared default.
     #[test]
     fn explicit_socket_override_still_wins() {
         let _lock = env_lock();
-        let _socket = VarGuard::set("JCODE_SOCKET", OsStr::new("/tmp/custom-jcode.sock"));
+        let _socket = VarGuard::set("KCODE_SOCKET", OsStr::new("/tmp/custom-jcode.sock"));
         assert_eq!(socket_path(), PathBuf::from("/tmp/custom-jcode.sock"));
     }
 }

@@ -15,7 +15,7 @@
 //! # Vocabulary
 //!
 //! The daemon publishes the canonical runtime key that `provider::activation`
-//! already writes to `JCODE_RUNTIME_PROVIDER` (`RuntimeProviderId::key()`).
+//! already writes to `KCODE_RUNTIME_PROVIDER` (`RuntimeProviderId::key()`).
 //! The client must therefore *derive* that same key from its `--provider`
 //! value rather than comparing the raw CLI spelling against it. The two
 //! vocabularies genuinely diverge, and in two different ways:
@@ -75,7 +75,7 @@ pub(crate) enum AttachPlan {
 ///   calls `ProviderActivation::azure_openai(..).apply_env()` and publishes
 ///   `azure-openai`.
 ///
-/// The daemon publishes `JCODE_RUNTIME_PROVIDER`, which is set from
+/// The daemon publishes `KCODE_RUNTIME_PROVIDER`, which is set from
 /// `RuntimeProviderId::key()` by `ProviderActivation::apply_env()` and from
 /// `select_initial_runtime_provider_key()` by the serve path. This function
 /// reproduces exactly those values so both sides agree by construction.

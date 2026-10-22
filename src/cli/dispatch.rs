@@ -1097,7 +1097,12 @@ async fn run_default_command(args: Args) -> Result<()> {
                 ));
                 // Every later socket lookup honors this, so the client dials the
                 // server it just asked for instead of the shared one.
-                crate::env::set_var("JCODE_SOCKET", &private_socket);
+                // Use the server module's own setter rather than naming the
+                // environment variable here: the variable was renamed from
+                // `KCODE_SOCKET` to `KCODE_SOCKET`, and hardcoding the old
+                // spelling would silently make isolation a no-op (the client
+                // would keep dialing the shared daemon it was trying to avoid).
+                server::set_socket_path(&private_socket.to_string_lossy());
                 spawn_owned_server(
                     &args.provider,
                     args.model.as_deref(),
@@ -1500,9 +1505,9 @@ async fn spawn_server_with_executable(
     // here are the ones the daemon is actually being asked to serve, and the
     // daemon publishes them in `~/.jcode/servers.json` so a later client can
     // detect that it is attached to a daemon serving someone else's provider.
-    cmd.env("JCODE_RUNTIME_PROVIDER", provider_choice.as_arg_value());
+    cmd.env("KCODE_RUNTIME_PROVIDER", provider_choice.as_arg_value());
     if let Some(model) = model {
-        cmd.env("JCODE_RUNTIME_MODEL", model);
+        cmd.env("KCODE_RUNTIME_MODEL", model);
     }
     if client_requested_selfdev {
         cmd.env("KCODE_DEBUG_CONTROL", "1");
