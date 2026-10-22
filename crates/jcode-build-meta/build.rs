@@ -1,3 +1,6 @@
+#[path = "src/fork_version.rs"]
+mod fork_version;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -18,6 +21,8 @@ fn main() {
 
     let pkg_version =
         root_package_version(&repo_root).expect("KCode root package version is required");
+    let pkg_version = fork_version::parse(&pkg_version)
+        .expect("KCode root version must use nonzero BASE-kFORK_SEMVER identity");
     let base_version =
         parse_semver(&pkg_version).expect("KCode root package version must be nonzero");
     let build_semver = resolve_build_semver(
@@ -299,10 +304,14 @@ fn channel_suffix(channel: Option<&str>) -> String {
 }
 
 fn explicit_build_semver_override() -> Option<String> {
-    std::env::var("KCODE_BUILD_SEMVER")
-        .ok()
-        .map(|value| value.trim().trim_start_matches('v').to_string())
-        .filter(|value| parse_semver_with_channel(value).is_some())
+    match std::env::var("KCODE_BUILD_SEMVER") {
+        Ok(value) => Some(
+            fork_version::parse(&value)
+                .expect("KCODE_BUILD_SEMVER must use nonzero BASE-kFORK_SEMVER identity"),
+        ),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(err) => panic!("invalid KCODE_BUILD_SEMVER: {err}"),
+    }
 }
 
 fn resolve_build_semver(

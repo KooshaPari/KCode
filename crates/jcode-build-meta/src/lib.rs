@@ -7,6 +7,8 @@
 //! tagged release identity without recompiling the dependency graph solely to
 //! change version strings.
 
+mod fork_version;
+
 use std::sync::OnceLock;
 
 /// Compile-time human-readable version string, e.g. `v0.14.6-dev (abc1234)`.
@@ -34,36 +36,9 @@ static RUNTIME_GIT_HASH: OnceLock<Option<String>> = OnceLock::new();
 static RUNTIME_GIT_DATE: OnceLock<Option<String>> = OnceLock::new();
 static RUNTIME_GIT_TAG: OnceLock<Option<String>> = OnceLock::new();
 
-/// Parse a semver value supplied by the fast-release wrapper at process start.
-///
-/// Accepts the same `v1.2.3` and ` 1.2.3 ` shapes the previous version
-/// did, but additionally preserves an optional channel suffix (everything
-/// after the first `-`) so the fast-release wrapper can also override the
-/// reported identity for a channel-bearing build. The fork's channel
-/// scheme is `MAJOR.MINOR.PATCH-kFORK_SEMVER-CHANNEL` (e.g.
-/// `0.91.0-k0.1.2-channel`); SemVer-style prerelease tags such as
-/// `1.0.0-alpha.1` are also accepted and the `-alpha.1` portion is
-/// carried through unchanged.
+/// Runtime wrappers may only replace identity with a valid KCode fork version.
 fn parse_release_semver(value: &str) -> Option<String> {
-    let value = value.trim().trim_start_matches('v');
-    // Split on the first `-` only. Anything before is the version part;
-    // anything after is the channel (which may itself contain `-`).
-    let (version_part, channel_part) = match value.split_once('-') {
-        Some((v, c)) => (v, Some(c)),
-        None => (value, None),
-    };
-    let mut parts = version_part.split('.');
-    let major = parts.next()?.parse::<u32>().ok()?;
-    let minor = parts.next()?.parse::<u32>().ok()?;
-    let patch = parts.next()?.parse::<u32>().ok()?;
-    if parts.next().is_some() || (major, minor, patch) == (0, 0, 0) {
-        return None;
-    }
-    let channel_suffix = match channel_part.map(str::trim) {
-        Some(c) if !c.is_empty() => format!("-{c}"),
-        _ => String::new(),
-    };
-    Some(format!("{major}.{minor}.{patch}{channel_suffix}"))
+    fork_version::parse(value)
 }
 
 /// Optional release semver supplied by the fast-release wrapper at process start.
@@ -148,57 +123,13 @@ mod tests {
     use super::parse_release_semver;
 
     #[test]
-    fn runtime_release_semver_strict_three_numeric_components() {
-        // Existing behavior — three numeric components, no channel.
-        assert_eq!(parse_release_semver("v1.2.3").as_deref(), Some("1.2.3"));
-        assert_eq!(parse_release_semver(" 1.2.3 ").as_deref(), Some("1.2.3"));
-        assert_eq!(parse_release_semver("0.0.0"), None);
-        assert_eq!(parse_release_semver("0.0.0-k0.1.0-dev"), None);
-    }
-
-    #[test]
-    fn runtime_release_semver_rejects_malformed() {
-        // Too few / too many numeric parts.
-        assert_eq!(parse_release_semver("1.2"), None);
-        assert_eq!(parse_release_semver("1.2.3.4"), None);
-        // Non-numeric patch with no `-` to trigger the channel path.
-        assert_eq!(parse_release_semver("1.2.beta"), None);
-        // Total junk.
-        assert_eq!(parse_release_semver(""), None);
-        assert_eq!(parse_release_semver("not.a.semver"), None);
-    }
-
-    #[test]
-    fn runtime_release_semver_preserves_simple_channel() {
-        // The fast-release wrapper can override the reported identity for
-        // a channel-bearing build, e.g. a fork on the `dev` channel.
+    fn runtime_release_requires_fork_identity() {
         assert_eq!(
-            parse_release_semver("1.2.3-channel").as_deref(),
-            Some("1.2.3-channel")
+            parse_release_semver("v0.93.0-k0.1.0").as_deref(),
+            Some("0.93.0-k0.1.0")
         );
-        assert_eq!(
-            parse_release_semver("v1.2.3-channel").as_deref(),
-            Some("1.2.3-channel")
-        );
-    }
-
-    #[test]
-    fn runtime_release_semver_preserves_dashed_channel() {
-        // The fork's full channel scheme is `MAJOR.MINOR.PATCH-kFORK-CHANNEL`;
-        // both halves of the channel must survive the parse.
-        assert_eq!(
-            parse_release_semver("0.91.0-k0.1.2-channel").as_deref(),
-            Some("0.91.0-k0.1.2-channel")
-        );
-        assert_eq!(
-            parse_release_semver("0.91.0-k0.1.2").as_deref(),
-            Some("0.91.0-k0.1.2")
-        );
-    }
-
-    #[test]
-    fn runtime_release_semver_treats_empty_channel_as_no_channel() {
-        // `1.2.3-` has nothing after the dash, so it's not a real channel.
-        assert_eq!(parse_release_semver("1.2.3-").as_deref(), Some("1.2.3"));
+        for value in ["1.2.3", "1.2.3-", "1.2.3-kbad", "0.0.0-k0.1.0-dev"] {
+            assert_eq!(parse_release_semver(value), None, "{value}");
+        }
     }
 }
