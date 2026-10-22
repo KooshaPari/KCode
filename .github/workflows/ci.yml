@@ -145,8 +145,12 @@ jobs:
     # known-good commit were cancelled at the cap, each getting further through
     # the same green steps (#693). A rerun is exactly what you reach for after a
     # concurrency cancellation, so the old cap made healthy commits look red.
-    # 75 still bounds a genuinely hung job well under the windows job's 150.
-    timeout-minutes: 120
+    # 240 minutes is the ceiling that lets the cold-cache step budgets below fit
+    # inside the job: the release Build, the lib/bins test compile, and each
+    # cohort step each carry their own run_with_timeout.py budget, and a cache
+    # miss makes the cargo-backed ones cost tens of minutes. It still bounds a
+    # genuinely hung job well under the windows job's 150-minute equivalent.
+    timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
     # published crate*. When cargo builds such a crate its CWD is that crate dir,
@@ -233,10 +237,16 @@ jobs:
       - name: Run deterministic retention-readiness cohort
         shell: bash
         run: |
-          # A cold jcode-app-core test harness compiles heavy optional provider
-          # dependencies and can exceed three minutes on hosted runners. The
-          # cohort itself runs in under a second once the lib test is built.
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # A COLD jcode-app-core test harness compiles heavy optional provider
+          # dependencies and blows past ten minutes on hosted runners — observed
+          # in run 39672218586 / job 119472777140, where this step died with
+          # "Command exceeded timeout after 600s" and exit code 124 while the
+          # sibling `Compile library and binary tests` step needed 23m07s for the
+          # full workspace. The cohort itself still runs in under a second once
+          # the harness is built, so the budget only has to cover the one-time
+          # cold compile. 1800s is comfortably above the observed cold cost while
+          # staying inside the job's timeout-minutes ceiling.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-app-core --lib retention_readiness -- --nocapture
 
