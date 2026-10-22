@@ -182,6 +182,14 @@ Preserve shared agents and the separate stock jcode installation.
   snapshot does not by itself preserve ownership across a replacement process.
   Split opening escapes and unbounded unterminated paste remain explicit
   review gates; do not treat this candidate as a complete fix.
+  The subsequent actual-Crossterm-event ConPTY probe passed 13 of 15 cases
+  and failed both cases that split the opening escape by 30 ms: it emitted
+  an Escape press and literal marker/payload key presses instead of one paste.
+  Complete CR/LF/CRLF, leading-newline, delayed payload, trailing-escape split,
+  ordinary controls, focus and resize cases passed. The exact candidate is
+  rejected for a production dependency pin in this pass. Its successful
+  transport cases do not clear the failing application-input boundary.
+  Qualify the narrower console-isolation artifact before expanding backend work.
 
 The observed failure domains are separate; failures are intermittent within
 their reported ranges, not guaranteed message-count triggers:
