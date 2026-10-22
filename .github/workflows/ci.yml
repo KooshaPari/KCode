@@ -151,7 +151,8 @@ jobs:
     # "false"` note below). Measured on this runner: Build cold = 2453s,
     # `cargo test --lib --bins --no-run` cold ~= 2990s. That pair alone is 5443s,
     # so the previous 120-minute (7200s) cap left under 30 minutes for checkout,
-    # toolchain, mold, and the nine cohort/e2e steps after the compile.
+    # toolchain, mold, and the nine cohort/e2e steps after the compile -- and the
+    # retention-readiness cohort alone now carries a 1800s cold-compile budget.
     timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
@@ -297,10 +298,15 @@ jobs:
       - name: Run deterministic retention-readiness cohort
         shell: bash
         run: |
-          # A cold jcode-app-core test harness compiles heavy optional provider
-          # dependencies and can exceed three minutes on hosted runners. The
-          # cohort itself runs in under a second once the lib test is built.
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: the jcode-app-core lib-test harness is a *cold*
+          # compile that exceeded 600s on this runner (run 39672218586, job
+          # 119472777140, exit 124). It stays cold here because the workspace
+          # declares no `default-members`, so `cargo test --lib --bins --no-run`
+          # builds only the default member `kcode` and never pre-builds this
+          # crate's harness. The cohort itself still runs in under a second
+          # once the harness is built, so 1800s covers that one-time cold
+          # compile and nothing more.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-app-core --lib retention_readiness -- --nocapture
 
