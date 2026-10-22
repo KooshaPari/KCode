@@ -7,7 +7,7 @@
  * cannot see the user's sessions, it inherits credentials well enough to reach
  * a model, and it leaves nothing behind.
  *
- * Usage: node test/live-launch.mjs [path-to-jcode-binary]
+ * Usage: node test/live-launch.mjs [path-to-kcode-binary]
  */
 
 import assert from "node:assert/strict";
@@ -15,7 +15,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { JcodeClient, userJcodeHome } from "../dist/index.js";
 
-const binary = process.argv[2] ?? "jcode";
+// The default must be a name `assertKcodePath` accepts: a bare `jcode` resolves
+// to a path segment the guard rejects, so the script would throw
+// `cross_product_path` before it checked a single property.
+const binary = process.argv[2] ?? "kcode";
 const failures = [];
 async function step(name, fn) {
   try {
@@ -62,8 +65,8 @@ await step("the instance can reach a model", async () => {
   // CI and developer machines often retain a stale default provider alongside
   // another valid login. Let the validation choose a known-good route so this
   // tests inherited credentials rather than unrelated historical selection.
-  if (process.env.JCODE_SDK_TEST_MODEL) {
-    await client.setModel(session.session_id, process.env.JCODE_SDK_TEST_MODEL);
+  if (process.env.KCODE_SDK_TEST_MODEL) {
+    await client.setModel(session.session_id, process.env.KCODE_SDK_TEST_MODEL);
   }
   const turn = await client.run(session.session_id, "Reply with exactly: ISOLATED", {
     autoApprove: true,

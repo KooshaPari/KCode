@@ -23,7 +23,7 @@ test("platform runtime packages map to npm platform conventions", async () => {
  */
 test("removing an instance home never follows links to real credentials", async () => {
   const instance = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-sdk-instance-"));
-  const precious = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-precious-test-"));
+  const precious = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-precious-test-"));
   fs.mkdirSync(precious, { recursive: true });
   fs.writeFileSync(path.join(precious, "auth.json"), '{"token":"keep me"}');
 
@@ -62,7 +62,7 @@ test("cleanup refuses arbitrary directories even when asked directly", async () 
 });
 
 test("daemon shutdown lookup waits for a delayed registry entry", async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-daemon-race-test-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-daemon-race-test-"));
   const runtimeDir = path.join(home, "run");
   fs.mkdirSync(runtimeDir);
   const { waitForDaemonPidForTest } = await import("../dist/launch.js");
