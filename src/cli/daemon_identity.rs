@@ -46,7 +46,7 @@
 
 use crate::cli::provider_init::ProviderChoice;
 use crate::server::{SocketIdentity, read_socket_identity};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// What the client should do about an already-running daemon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,7 +171,7 @@ pub(crate) fn model_advisory(
 }
 
 /// The provider/model the daemon listening on `socket` says it is serving.
-pub(crate) fn running_daemon_identity(socket: &PathBuf) -> Option<SocketIdentity> {
+pub(crate) fn running_daemon_identity(socket: &Path) -> Option<SocketIdentity> {
     read_socket_identity(socket)
 }
 
