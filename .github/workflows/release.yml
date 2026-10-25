@@ -21,14 +21,26 @@ permissions:
 jobs:
   create-release:
     name: Create release
-    # Publish only from the canonical repository. A fork that runs this
-    # workflow on a `v*` tag would otherwise create a release carrying that
-    # upstream version number with binaries built from the fork, which is the
-    # same class of accidental-publication path as a fork pushing a package.
+    # Publish only from the canonical repository, or from this fork under its
+    # own fork-version identity.
+    #
+    # A fork that runs this workflow on a `v*` tag would otherwise create a
+    # release carrying that upstream version number with binaries built from
+    # the fork, which is the same class of accidental-publication path as a
+    # fork pushing a package.
     # Every other job in this workflow needs `create-release`, directly or
     # transitively, so gating this one job skips the whole workflow: a skipped
     # dependency skips its dependents.
-    if: github.repository == '1jehuang/jcode'
+    #
+    # The fork path is narrower than the upstream path in two ways:
+    #   1. It only runs for the known fork repository, so a third-party fork
+    #      of KCode still cannot publish through this workflow.
+    #   2. It refuses to publish unless the tag carries a fork-version
+    #      channel (e.g. `v0.93.398-k0.1.0`), so a fork release can never
+    #      claim an upstream-looking version number.
+    if: >-
+      github.repository == '1jehuang/jcode' ||
+      (github.repository == 'KooshaPari/KCode' && contains(github.ref_name, '-k'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -181,7 +193,7 @@ jobs:
         if: matrix.compat_container != true
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/jcode dist/${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/kcode dist/${{ matrix.artifact }}
           chmod +x dist/${{ matrix.artifact }}
           cd dist && tar czf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
 
@@ -281,7 +293,9 @@ jobs:
       - name: Verify built Windows binary launches
         shell: pwsh
         run: |
-          & "target/${{ matrix.target }}/release/jcode.exe" --version
+          # The root package builds a `kcode` binary (see [[bin]] in Cargo.toml),
+          # so the release artifact is kcode.exe.
+          & "target/${{ matrix.target }}/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw "Built Windows binary failed to run --version"
           }
@@ -290,14 +304,14 @@ jobs:
         shell: pwsh
         run: |
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath "target/${{ matrix.target }}/release/jcode.exe" `
+            -ArtifactExePath "target/${{ matrix.target }}/release/kcode.exe" `
             -Version "${{ github.ref_name }}"
 
       - name: Stage unsigned binary for signing
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/jcode.exe" "dist/${{ matrix.artifact }}.exe"
+          Copy-Item "target/${{ matrix.target }}/release/kcode.exe" "dist/${{ matrix.artifact }}.exe"
 
       - name: Upload unsigned binary for signing
         uses: actions/upload-artifact@v4
