@@ -3,11 +3,7 @@
 //!
 //! Split out of `socket.rs` to keep that module within the file-size limit.
 
-use super::socket::{
-    INHERITED_PROVIDER_IDENTITY_VARS, default_socket_path, scrub_inherited_provider_identity,
-    socket_path,
-};
-use std::path::PathBuf;
+use super::socket::{INHERITED_PROVIDER_IDENTITY_VARS, scrub_inherited_provider_identity};
 
 mod identity_scrub_tests {
 
@@ -84,7 +80,9 @@ mod identity_scrub_tests {
 }
 
 mod shared_socket_path_tests {
+    use super::super::socket::{default_socket_path, socket_path};
     use std::ffi::OsStr;
+    use std::path::PathBuf;
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
     /// Environment mutation is process-global, so these tests serialize.
