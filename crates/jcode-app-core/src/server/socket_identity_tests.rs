@@ -130,13 +130,30 @@ mod shared_socket_path_tests {
     #[test]
     fn shared_socket_path_ignores_tmpdir() {
         let _lock = env_lock();
-        let home = std::env::temp_dir().join("jcode-socket-home-test");
+        // The fake home must NOT contain "jcode" in any path component:
+        // `storage::require_kcode_path` rejects a `KCODE_HOME` that looks like a
+        // jcode directory (it exists so jcode storage cannot be redirected
+        // into another product's data). A rejected `KCODE_HOME` makes
+        // `jcode_dir()` fail, and `shared_runtime_dir()` then falls back to
+        // `std::env::temp_dir()` - which honors `TMPDIR` and is exactly what
+        // this test asserts must not happen. So the directory name has to be
+        // one `require_kcode_path` accepts, or the test would be measuring the
+        // fallback rather than the shared-socket path.
+        let home = std::env::temp_dir().join("kcode-shared-socket-home-test");
         std::fs::create_dir_all(&home).expect("create fake home");
         let _home = VarGuard::set("KCODE_HOME", home.as_os_str());
         // An explicit override would mask the default we are exercising here.
         // `crate::env` centralizes the Rust 2024 `unsafe` requirement for
         // process-global environment mutation.
         crate::env::remove_var("KCODE_SOCKET");
+
+        // Guard the premise: if this home were rejected, the assertions below
+        // would silently pass for the wrong reason.
+        assert!(
+            crate::storage::shared_runtime_dir().starts_with(&home),
+            "the shared runtime dir must live under the accepted KCODE_HOME, got {:?}",
+            crate::storage::shared_runtime_dir()
+        );
 
         let first = default_socket_path();
         let _tmp = VarGuard::set("TMPDIR", OsStr::new("/nonexistent-tmp-a"));
