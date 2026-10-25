@@ -3,9 +3,10 @@
 //!
 //! Split out of `socket.rs` to keep that module within the file-size limit.
 
-use super::socket::{INHERITED_PROVIDER_IDENTITY_VARS, scrub_inherited_provider_identity};
-
 mod identity_scrub_tests {
+    use super::super::socket::{
+        INHERITED_PROVIDER_IDENTITY_VARS, scrub_inherited_provider_identity,
+    };
 
     const PRESERVED_DAEMON_CONFIG: &[&str] = &[
         "KCODE_OPENROUTER_API_BASE",
@@ -133,7 +134,9 @@ mod shared_socket_path_tests {
         std::fs::create_dir_all(&home).expect("create fake home");
         let _home = VarGuard::set("KCODE_HOME", home.as_os_str());
         // An explicit override would mask the default we are exercising here.
-        std::env::remove_var("KCODE_SOCKET");
+        // `crate::env` centralizes the Rust 2024 `unsafe` requirement for
+        // process-global environment mutation.
+        crate::env::remove_var("KCODE_SOCKET");
 
         let first = default_socket_path();
         let _tmp = VarGuard::set("TMPDIR", OsStr::new("/nonexistent-tmp-a"));
