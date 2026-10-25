@@ -146,7 +146,10 @@ jobs:
     # the same green steps (#693). A rerun is exactly what you reach for after a
     # concurrency cancellation, so the old cap made healthy commits look red.
     # 75 still bounds a genuinely hung job well under the windows job's 150.
-    timeout-minutes: 120
+    # 240 minutes, not 120: the cold-cache compile of the full workspace was
+    # observed at 23m07s in run 39672218586 / job 119472777140, and the
+    # retention-readiness cohort adds a second cold compile after it.
+    timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
     # published crate*. When cargo builds such a crate its CWD is that crate dir,
@@ -227,16 +230,20 @@ jobs:
       - name: Compile library and binary tests
         shell: bash
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          # The cold-cache compile of the full workspace was observed at 23m07s
+          # ("Finished `test` profile ... in 23m 07s") in run 39672218586 /
+          # job 119472777140, so the previous 900s budget could not be met.
+          python3 .github/scripts/run_with_timeout.py 3300 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --lib --bins --no-run
 
       - name: Run deterministic retention-readiness cohort
         shell: bash
         run: |
-          # A cold jcode-app-core test harness compiles heavy optional provider
-          # dependencies and can exceed three minutes on hosted runners. The
-          # cohort itself runs in under a second once the lib test is built.
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # The cohort compiles the jcode-app-core lib-test harness itself. Cargo
+          # metadata shows workspace_default_members = 1 (only `kcode`), so
+          # `cargo test --lib --bins --no-run` never pre-builds that harness.
+          # It exceeded 600s (exit 124) in run 39672218586 / job 119472777140.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-app-core --lib retention_readiness -- --nocapture
 
