@@ -218,7 +218,7 @@ W1 transport + exact identity
 | W2 | KCode metadata/convergence | Focused native metadata gate passed; broader gates pending | Run metadata build-script tests, crate tests, product-isolation tests, formatting and required local gates; require nonzero discovered/passed test counts at the exact candidate SHA. Built client and daemon must report a nonzero BASEVERSION-kSEMVER; reject zero, malformed or mismatched release identity. Reuse open fixes after review. |
 | W3 | Windows Terminal | Native mechanism fixtures passed; live application pending | Test direct Windows Terminal with PowerShell: ordinary typing, deliberate Enter/Esc/Backspace, Shift+Enter, short and leading-newline paste, delayed chunks, resize, reconnect, Ctrl+C and exit. Repeat within the observed failure ranges. Use process-owned input/output logs only; no screenshots/recordings. |
 | W4 | Windows HERDR | UNKNOWN live application behavior | Repeat the Windows terminal matrix inside HERDR, including pane exit and session continuity; compare with the direct Windows Terminal control. Resolve the actual host/pane process and launch owner. Mac client, build and remote-view acceptance are outside this pass. |
-| W5 | Build/release | BLOCKED by validation | Use suitable existing self-hosted/free compute; record placement. Produce a KCode-only Windows x64 artifact for this device from the exact tested SHA (qualify ARM64 separately before publishing an ARM64 asset), fork versions, hashes, signing/provenance and nonzero client/server output. Add fork-specific workflow/installer-smoke paths; preserve upstream guard until replacement is validated. |
+| W5 | Build/release | Windows x64 artifact DELIVERED and natively verified; workflow patch staged, not merged | Use suitable existing self-hosted/free compute; record placement. Produce a KCode-only Windows x64 artifact for this device from the exact tested SHA (qualify ARM64 separately before publishing an ARM64 asset), fork versions, hashes, signing/provenance and nonzero client/server output. Add fork-specific workflow/installer-smoke paths; preserve upstream guard until replacement is validated. |
 | W6 | Device install/coexistence | BLOCKED: no verified artifact/transport | Install trusted local artifact with scripts/install.ps1; verify user/process PATH in a fresh shell, executable hash/version, and correct server attachment. Stock jcode must remain separately launchable. Compare stock state bytes/mtimes/permissions before and after imports and KCode operations. |
 | W7 | Maintained channel | Disabled intentionally | Publish only verified fork artifacts and correct release notes. Then enable fork-only authenticated/checksummed update discovery/install and test upgrade, failed download, wrong product/version/hash and rollback without touching jcode. |
 
@@ -237,6 +237,41 @@ precedence, zero overrides cannot produce zero output, missing/invalid root
 metadata fails instead of manufacturing a version, and the selected Windows
 release build preserves the full fork suffix. A test build alone does not
 replace the W1 client/server runtime receipt.
+
+### W5 delivery receipt (2026-10-25)
+
+Windows x64 artifact for this device, built from the exact PR #173 head
+`9476f47824f648cd6f61055a7793e04ac33858e6` (398 commits past `v0.93.0`, so
+the fork version resolves to `0.93.398-k0.1.0`):
+
+| Field | Value |
+| --- | --- |
+| macOS arm64 artifact | `kcode` (Mach-O 64-bit arm64), SHA-256 `bcc936b3296af6fc3a4e9d72c4f9350b9e78fe17d50cb776632a1e8f15eca5b7` |
+| Windows x64 artifact | `kcode.exe` (PE32+ x86-64 console), SHA-256 `ea9eac909a83a3436978f478b56bd2c22d0ffe82b1db980e005d4bf7bf2c8182` |
+| Reported version | `kcode v0.93.398-k0.1.0-dev (9476f478)` on both platforms |
+| Reported semver | `0.93.398-k0.1.0` (fork channel preserved; no `0.0.0` collapse) |
+| Native Windows run | `kcode.exe --version` and `kcode.exe version --json` both exit 0 on Windows |
+| Placement | macOS host: native arm64 build plus `cargo xwin` MSVC cross-build; desk: native execution validation only |
+| Preserved copies | `~/.kcode/builds/versions/9476f478/{kcode,kcode.exe}` |
+
+Placement note: the desk's Fedora WSL vhdx lives on `D:` (physical disk 0,
+931 GB total, ~22 GB free). The first cross-compile attempt exhausted `D:`
+and killed WSL mid-build, which also cost the `desk-linux` self-hosted CI
+runner its connection and cancelled the remaining CI jobs. The Windows build
+was therefore moved to the macOS host, which has the
+`x86_64-pc-windows-msvc` target and `cargo-xwin` installed, leaving the
+desk free for native execution validation only.
+
+Workflow patch (branch `feature/fork-workflow-kcode-binaries`, commit
+`6af8ff790`, not merged): the Windows verification steps referenced
+`jcode.exe` while the root package builds a `kcode` binary, so the launch
+check failed on a missing path instead of validating the built artifact.
+Those references are corrected, and the release gate now admits this fork
+only when the tag carries a fork-version channel, leaving the upstream guard
+and third-party forks unchanged.
+
+Still outstanding for W5: ARM64 qualification before publishing an ARM64
+asset, and signing/provenance for the published Windows binary.
 
 The operator confirmed the one-way boundary: Jcode data may be imported into
 KCode only. Imports remain explicit and opt-in; KCode must never write back
