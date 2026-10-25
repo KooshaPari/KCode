@@ -262,11 +262,13 @@ was therefore moved to the macOS host, which has the
 `x86_64-pc-windows-msvc` target and `cargo-xwin` installed, leaving the
 desk free for native execution validation only.
 
-Workflow patch (branch `feature/fork-workflow-kcode-binaries`, commit
-`6af8ff790`, not merged): the Windows verification steps referenced
-`jcode.exe` while the root package builds a `kcode` binary, so the launch
-check failed on a missing path instead of validating the built artifact.
-Those references are corrected, and the release gate now admits this fork
+Workflow patch (branch `feature/fork-workflow-kcode-binaries`, PR #187,
+issue #192, not merged): the workflows referenced `jcode.exe` and built with
+`-p jcode --bin jcode`, while the root package is `kcode` and its only bin
+target of that name is `kcode` (`jcode` is the library target). Those steps
+therefore failed on a missing path instead of validating the binary that was
+actually produced. Corrected in `ci.yml`, `release.yml`, `windows-smoke.yml`
+(x64 and ARM64) and `freebsd-smoke.yml`. The release gate now admits this fork
 only when the tag carries a fork-version channel, leaving the upstream guard
 and third-party forks unchanged.
 
