@@ -139,7 +139,9 @@ jobs:
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          & "target/x86_64-pc-windows-msvc/release/jcode.exe" --version
+          # The root package builds a `kcode` binary (see [[bin]] in Cargo.toml),
+          # so the release artifact is kcode.exe.
+          & "target/x86_64-pc-windows-msvc/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows binary failed to run --version'
           }
@@ -148,7 +150,7 @@ jobs:
         shell: pwsh
         run: |
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/jcode.exe'
+            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/kcode.exe'
 
   smoke-arm64:
     name: Windows Smoke (ARM64)
@@ -191,7 +193,7 @@ jobs:
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          & "target/aarch64-pc-windows-msvc/release/jcode.exe" --version
+          & "target/aarch64-pc-windows-msvc/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows ARM64 binary failed to run --version'
           }
@@ -200,4 +202,4 @@ jobs:
         shell: pwsh
         run: |
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath 'target/aarch64-pc-windows-msvc/release/jcode.exe'
+            -ArtifactExePath 'target/aarch64-pc-windows-msvc/release/kcode.exe'

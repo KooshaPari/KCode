@@ -502,18 +502,18 @@ jobs:
             export JCODE_CI_BUILD=1
             export JCODE_BUILD_SEMVER="${{ github.ref_name }}"
 
-            echo "::group::cargo build (jcode binary)"
-            cargo build --locked --release -p jcode --bin jcode
+            echo "::group::cargo build (kcode binary)"
+            cargo build --locked --release --bin kcode
             echo "::endgroup::"
 
             echo "::group::Verify binary launches"
-            ./target/release/jcode --version
+            ./target/release/kcode --version
             echo "::endgroup::"
 
             mkdir -p dist
-            cp target/release/jcode dist/jcode-freebsd-x86_64
-            chmod +x dist/jcode-freebsd-x86_64
-            cd dist && tar czf jcode-freebsd-x86_64.tar.gz jcode-freebsd-x86_64
+            cp target/release/kcode dist/kcode-freebsd-x86_64
+            chmod +x dist/kcode-freebsd-x86_64
+            cd dist && tar czf kcode-freebsd-x86_64.tar.gz kcode-freebsd-x86_64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
