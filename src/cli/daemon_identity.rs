@@ -412,3 +412,7 @@ mod tests {
         assert_ne!(socket, crate::server::default_socket_path());
     }
 }
+
+#[cfg(test)]
+#[path = "daemon_identity_socket_tests.rs"]
+mod daemon_identity_socket_tests;
