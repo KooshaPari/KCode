@@ -421,7 +421,12 @@ jobs:
         env:
           COLORTERM: truecolor
         run: |
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: on a cold cargo build this step spends most of its
+          # budget compiling the `jcode-tui` lib-test binary; the suite itself
+          # costs ~30s once built (see the note above). Killed at exactly 600s
+          # with exit 124 in CI job 121349210430 on 2026-10-26 while compiling;
+          # 1800s covers that one-time cold compile plus the serial suite.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-tui --lib -- --test-threads=1 \
             --skip test_prompt_entry_shimmer_color_moves_across_positions \
