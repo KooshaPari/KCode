@@ -916,11 +916,8 @@ async fn run_default_command(args: Args) -> Result<()> {
         let socket = server::socket_path();
         let daemon = crate::cli::daemon_identity::running_daemon_identity(&socket);
         let requested_provider = explicit_provider.then_some(&args.provider);
-        let requested_model = explicit_model.then(|| args.model.as_deref()).flatten();
-        let plan = crate::cli::daemon_identity::attach_plan(
-            requested_provider,
-            daemon.as_ref(),
-        );
+        let requested_model = explicit_model.then_some(args.model.as_deref()).flatten();
+        let plan = crate::cli::daemon_identity::attach_plan(requested_provider, daemon.as_ref());
 
         // The model is advisory only: a daemon on the right provider but a
         // different model is shared, with the difference surfaced.
@@ -954,14 +951,14 @@ async fn run_default_command(args: Args) -> Result<()> {
                 spawned_by_us = true;
                 server_running = true;
             }
-            crate::cli::daemon_identity::AttachPlan::Attach => {
-                if daemon.is_none() {
+            crate::cli::daemon_identity::AttachPlan::Attach => match daemon.as_ref() {
+                None => {
                     output::stderr_info(
                         "Server already running and its provider could not be verified; \
-                         --provider/--model will not be applied. Restart the server to change them.",
+                             --provider/--model will not be applied. Restart the server to change them.",
                     );
-                } else {
-                    let daemon = daemon.as_ref().expect("checked above");
+                }
+                Some(daemon) => {
                     output::stderr_info(format!(
                         "Server already running with --provider {}{}; reusing it.",
                         daemon.provider,
@@ -972,7 +969,7 @@ async fn run_default_command(args: Args) -> Result<()> {
                             .unwrap_or_default()
                     ));
                 }
-            }
+            },
         }
     }
 

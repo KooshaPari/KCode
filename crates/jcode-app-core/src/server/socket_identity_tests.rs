@@ -2,14 +2,13 @@
 //! identity scrub applied when spawning a server.
 //!
 //! Split out of `socket.rs` to keep that module within the file-size limit.
-
-use super::socket::{
-    INHERITED_PROVIDER_IDENTITY_VARS, default_socket_path, scrub_inherited_provider_identity,
-    socket_path,
-};
-use std::path::PathBuf;
+//!
+//! Each test module imports what it uses from `crate::server`: a `use` at
+//! file scope is not visible inside a nested module, and the socket module
+//! itself is private to `server`.
 
 mod identity_scrub_tests {
+    use crate::server::{INHERITED_PROVIDER_IDENTITY_VARS, scrub_inherited_provider_identity};
 
     const PRESERVED_DAEMON_CONFIG: &[&str] = &[
         "JCODE_OPENROUTER_API_BASE",
@@ -84,7 +83,9 @@ mod identity_scrub_tests {
 }
 
 mod shared_socket_path_tests {
+    use crate::server::{default_socket_path, socket_path};
     use std::ffi::OsStr;
+    use std::path::PathBuf;
     use std::sync::{Mutex, MutexGuard, OnceLock};
 
     /// Environment mutation is process-global, so these tests serialize.
@@ -135,7 +136,7 @@ mod shared_socket_path_tests {
         std::fs::create_dir_all(&home).expect("create fake home");
         let _home = VarGuard::set("JCODE_HOME", home.as_os_str());
         // An explicit override would mask the default we are exercising here.
-        std::env::remove_var("JCODE_SOCKET");
+        crate::env::remove_var("JCODE_SOCKET");
 
         let first = default_socket_path();
         let _tmp = VarGuard::set("TMPDIR", OsStr::new("/nonexistent-tmp-a"));

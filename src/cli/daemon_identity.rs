@@ -45,7 +45,7 @@
 //! it.
 
 use crate::cli::provider_init::ProviderChoice;
-use crate::server::{read_socket_identity, SocketIdentity};
+use crate::server::{SocketIdentity, read_socket_identity};
 use std::path::PathBuf;
 
 /// What the client should do about an already-running daemon.
@@ -171,7 +171,7 @@ pub(crate) fn model_advisory(
 }
 
 /// The provider/model the daemon listening on `socket` says it is serving.
-pub(crate) fn running_daemon_identity(socket: &PathBuf) -> Option<SocketIdentity> {
+pub(crate) fn running_daemon_identity(socket: &std::path::Path) -> Option<SocketIdentity> {
     read_socket_identity(socket)
 }
 
@@ -240,7 +240,10 @@ mod tests {
     #[test]
     fn auto_request_attaches_and_never_isolates() {
         let daemon = daemon("cursor", Some("GPT-5"));
-        assert_eq!(attach_plan(Some(&ProviderChoice::Auto), Some(&daemon)), AttachPlan::Attach);
+        assert_eq!(
+            attach_plan(Some(&ProviderChoice::Auto), Some(&daemon)),
+            AttachPlan::Attach
+        );
         assert_eq!(attach_plan(None, Some(&daemon)), AttachPlan::Attach);
     }
 
