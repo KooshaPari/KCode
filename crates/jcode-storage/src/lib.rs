@@ -137,12 +137,23 @@ pub fn runtime_dir() -> PathBuf {
 ///
 /// The shared socket must be stable per user, so it lives under the jcode home
 /// and only honors an explicit `$JCODE_SOCKET` override, never `TMPDIR`.
+///
+/// The directory is created owner-only, exactly like `runtime_dir()` above. It
+/// holds the daemon socket and the identity sidecar beside it, and a Unix
+/// socket accepts a `connect()` from any process that can reach the file, so a
+/// world-traversable directory would let another local user drive this user's
+/// daemon. The path moved out of the TMPDIR-derived directory that was already
+/// owner-only, so it has to carry the same protection.
 pub fn shared_runtime_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("JCODE_SHARED_RUNTIME_DIR") {
         return PathBuf::from(dir);
     }
     match jcode_dir() {
-        Ok(dir) => dir.join("run"),
+        Ok(dir) => {
+            let dir = dir.join("run");
+            ensure_private_runtime_dir(&dir);
+            dir
+        }
         Err(_) => fallback_runtime_dir(),
     }
 }
@@ -795,6 +806,72 @@ mod windows_hardening_tests {
 
         assert!(!state.enqueue(&file, false, now));
         assert!(state.pending_files.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod runtime_dir_tests {
+    use super::*;
+    use jcode_core::env as test_env;
+
+    /// Environment mutation is process-global, so serialize against every other
+    /// test in this crate that touches `JCODE_HOME`, not just against itself.
+    fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+        crate::test_jcode_home_lock()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shared_runtime_dir_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _lock = env_lock();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let home = temp.path().join("jcode-home");
+        let previous_home = std::env::var_os("JCODE_HOME");
+        let previous_shared = std::env::var_os("JCODE_SHARED_RUNTIME_DIR");
+
+        test_env::set_var("JCODE_HOME", &home);
+        test_env::remove_var("JCODE_SHARED_RUNTIME_DIR");
+        let dir = shared_runtime_dir();
+
+        match previous_home {
+            Some(value) => test_env::set_var("JCODE_HOME", value),
+            None => test_env::remove_var("JCODE_HOME"),
+        }
+        match previous_shared {
+            Some(value) => test_env::set_var("JCODE_SHARED_RUNTIME_DIR", value),
+            None => test_env::remove_var("JCODE_SHARED_RUNTIME_DIR"),
+        }
+
+        assert_eq!(dir, home.join("run"));
+        assert!(dir.is_dir(), "the shared runtime dir must exist");
+        let mode = std::fs::metadata(&dir).expect("stat").permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o700,
+            "the shared runtime dir holds the daemon socket and must be owner-only"
+        );
+    }
+
+    #[test]
+    fn shared_runtime_dir_honors_an_explicit_override() {
+        let _lock = env_lock();
+        let temp = tempfile::tempdir().expect("temp dir");
+        let override_dir = temp.path().join("explicit-shared-runtime");
+        let previous_shared = std::env::var_os("JCODE_SHARED_RUNTIME_DIR");
+
+        test_env::set_var("JCODE_SHARED_RUNTIME_DIR", &override_dir);
+        let dir = shared_runtime_dir();
+        match previous_shared {
+            Some(value) => test_env::set_var("JCODE_SHARED_RUNTIME_DIR", value),
+            None => test_env::remove_var("JCODE_SHARED_RUNTIME_DIR"),
+        }
+
+        assert_eq!(dir, override_dir);
+        assert!(
+            !override_dir.exists(),
+            "an explicit override is the caller's directory and must not be created or chmod-ed"
+        );
     }
 }
 

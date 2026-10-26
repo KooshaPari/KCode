@@ -161,3 +161,87 @@ mod shared_socket_path_tests {
         assert_eq!(socket_path(), PathBuf::from("/tmp/custom-jcode.sock"));
     }
 }
+
+/// The sidecar the daemon publishes beside its socket.
+///
+/// This is the whole contract in one file: what the daemon writes is what the
+/// client reads, and every failure to read it must surface as "unknown" so
+/// the client isolates instead of attaching to the wrong provider.
+mod sidecar_tests {
+    use crate::server::socket::{identity_file_for_socket, write_socket_identity};
+    use crate::server::{SocketIdentity, read_socket_identity};
+
+    fn identity(provider: &str, model: Option<&str>) -> SocketIdentity {
+        SocketIdentity {
+            provider: provider.to_string(),
+            model: model.map(|model| model.to_string()),
+        }
+    }
+
+    #[test]
+    fn sidecar_round_trips_the_resolved_identity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let socket = dir.path().join("jcode.sock");
+        let published = identity("openai-compatible", Some("MiniMax-M3.1-Flash"));
+
+        write_socket_identity(&socket, &published).expect("write sidecar");
+
+        assert_eq!(read_socket_identity(&socket), Some(published.clone()));
+        assert_eq!(
+            identity_file_for_socket(&socket),
+            dir.path().join("jcode.sock.identity"),
+            "the sidecar sits beside the socket, never inside it"
+        );
+    }
+
+    #[test]
+    fn identity_without_a_model_round_trips() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let socket = dir.path().join("jcode.sock");
+        let published = identity("cursor", None);
+
+        write_socket_identity(&socket, &published).expect("write sidecar");
+
+        assert_eq!(read_socket_identity(&socket), Some(published));
+    }
+
+    #[test]
+    fn missing_sidecar_reads_as_unknown() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let socket = dir.path().join("jcode.sock");
+
+        assert_eq!(
+            read_socket_identity(&socket),
+            None,
+            "no sidecar means the daemon's identity cannot be verified"
+        );
+    }
+
+    #[test]
+    fn malformed_sidecar_reads_as_unknown() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let socket = dir.path().join("jcode.sock");
+        // A sidecar that was only half written must read as "unknown". Reading
+        // it as a match would attach to a daemon whose provider is not the one
+        // that was asked for.
+        std::fs::write(identity_file_for_socket(&socket), "{\"provider\": \"curs")
+            .expect("write malformed sidecar");
+
+        assert_eq!(read_socket_identity(&socket), None);
+    }
+
+    #[test]
+    fn sidecars_do_not_leak_between_sockets() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let first = dir.path().join("jcode.sock");
+        let second = dir.path().join("other.sock");
+
+        write_socket_identity(&first, &identity("cursor", None)).expect("write sidecar");
+
+        assert_eq!(
+            read_socket_identity(&second),
+            None,
+            "one daemon's identity must never answer for another socket"
+        );
+    }
+}
