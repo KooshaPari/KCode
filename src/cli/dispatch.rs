@@ -21,8 +21,7 @@ use super::{
 };
 use provider_init::ProviderChoice;
 pub(crate) use server_spawn::{
-    acquire_spawn_lock_or_wait, server_is_running_at, spawn_server_with_executable,
-    wait_for_existing_reload_server,
+    server_is_running_at, spawn_server_with_executable, wait_for_existing_reload_server,
 };
 
 #[cfg(any(target_os = "linux", test))]
@@ -1177,77 +1176,6 @@ pub(crate) async fn wait_for_resuming_server(context: &str, timeout: std::time::
     }
 
     false
-}
-
-pub(crate) async fn wait_for_reloading_server() -> bool {
-    match server::await_reload_handoff(&server::socket_path(), std::time::Duration::from_secs(30))
-        .await
-    {
-        server::ReloadWaitStatus::Ready => true,
-        server::ReloadWaitStatus::Failed(detail) => {
-            crate::logging::warn(&format!(
-                "Reload handoff failed while waiting for server on {}: {}; recent_state={}",
-                server::socket_path().display(),
-                detail.unwrap_or_else(|| "unknown reload failure".to_string()),
-                server::reload_state_summary(std::time::Duration::from_secs(60))
-            ));
-            false
-        }
-        server::ReloadWaitStatus::Idle => false,
-        server::ReloadWaitStatus::Waiting { .. } => false,
-    }
-}
-
-#[cfg(unix)]
-fn spawn_lock_path(socket_path: &std::path::Path) -> std::path::PathBuf {
-    std::path::PathBuf::from(format!("{}.spawning", socket_path.display()))
-}
-
-#[cfg(unix)]
-struct SpawnLockGuard {
-    _file: std::fs::File,
-    path: std::path::PathBuf,
-}
-
-#[cfg(unix)]
-impl Drop for SpawnLockGuard {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
-    }
-}
-
-#[cfg(unix)]
-fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuard>> {
-    use std::fs::OpenOptions;
-    use std::os::fd::AsRawFd;
-
-    // The client acquires this lock before the daemon creates its socket directory.
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent).with_context(|| {
-            format!(
-                "Failed to create JCode runtime directory {}",
-                parent.display()
-            )
-        })?;
-    }
-    let file = OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(false)
-        .open(path)?;
-    let fd = file.as_raw_fd();
-    let ret = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
-    if ret == 0 {
-        Ok(Some(SpawnLockGuard {
-            _file: file,
-            path: path.to_path_buf(),
-        }))
-    } else {
-        Ok(None)
-    }
 }
 
 #[cfg(unix)]

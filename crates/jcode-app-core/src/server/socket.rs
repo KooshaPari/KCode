@@ -168,6 +168,19 @@ fn resolved_socket_identity(path: &std::path::Path) -> PathBuf {
 
 /// True when `path` is the shared daemon socket for this runtime dir, however
 /// it happens to be spelled.
+/// Bind the daemon's main socket and publish its identity beside it.
+///
+/// The identity is written as part of preparing the socket: a client that
+/// finds the socket must be able to learn who is serving it.
+pub fn bind_and_publish(
+    socket: &std::path::Path,
+    provider: &dyn crate::provider::Provider,
+) -> std::io::Result<crate::transport::Listener> {
+    let listener = crate::transport::Listener::bind(socket)?;
+    publish_daemon_identity(socket, provider);
+    Ok(listener)
+}
+
 pub fn is_shared_socket(path: &std::path::Path) -> bool {
     resolved_socket_identity(path) == resolved_socket_identity(&default_socket_path())
 }

@@ -43,7 +43,7 @@ mod reload_recovery;
 mod reload_state;
 mod reload_trace;
 mod runtime;
-pub mod socket;
+mod socket;
 mod swarm;
 mod swarm_channels;
 mod swarm_labels;
@@ -614,13 +614,15 @@ pub use self::reload_state::{
 };
 
 pub use self::lifecycle::configure_temporary_server;
+pub use self::socket::scrub_inherited_provider_identity as scrub_provider_identity;
 #[cfg(unix)]
 pub use self::socket::spawn_server_notify;
 pub use self::socket::{
-    cleanup_socket_pair, connect_socket, debug_socket_path, has_live_listener, is_server_ready,
-    reap_stale_socket_if_dead, scrub_inherited_provider_identity, set_socket_path, socket_path,
-    wait_for_server_ready,
+    SocketIdentity, connect_socket, debug_socket_path, default_socket_path, has_live_listener,
+    is_server_ready, read_socket_identity, reap_stale_socket_if_dead, set_socket_path, socket_path,
 };
+#[cfg(unix)]
+use self::socket::{acquire_daemon_lock, mark_close_on_exec};
 use self::socket::{signal_ready_fd, socket_has_live_listener};
 
 pub use self::util::ServerIdentity;
@@ -1227,7 +1229,6 @@ impl Server {
         tokio::task::JoinHandle<()>,
     ) {
         self.spawn_registry_prewarm();
-        socket::publish_daemon_identity(&self.socket_path, &self.provider);
         let registry_info = self.build_registry_info();
 
         let runtime = self.runtime();
@@ -2292,8 +2293,7 @@ impl Server {
         // Remove existing sockets (uses transport abstraction for cross-platform cleanup)
         crate::transport::remove_socket(&self.socket_path);
         crate::transport::remove_socket(&self.debug_socket_path);
-
-        let main_listener = Listener::bind(&self.socket_path)?;
+        let main_listener = socket::bind_and_publish(&self.socket_path, self.provider.as_ref())?;
         let debug_listener = Listener::bind(&self.debug_socket_path)?;
 
         #[cfg(unix)]

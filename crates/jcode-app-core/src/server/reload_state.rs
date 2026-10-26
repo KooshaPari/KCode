@@ -1,4 +1,4 @@
-use super::{has_live_listener, is_server_ready};
+use super::socket::{has_live_listener, is_server_ready};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;

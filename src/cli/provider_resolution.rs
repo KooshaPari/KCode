@@ -14,11 +14,11 @@
 //! read on its own, and `dispatch.rs` is already over the repository's
 //! file-size threshold, so growing it is not allowed.
 
+use super::output;
+use super::provider_init::ProviderChoice;
 use crate::cli::daemon_identity::{
     AttachPlan, attach_plan, model_advisory, private_client_socket, running_daemon_identity,
 };
-use crate::cli::provider_init::ProviderChoice;
-use crate::output;
 use crate::server;
 use anyhow::Result;
 use std::path::PathBuf;
@@ -73,7 +73,7 @@ pub(crate) async fn resolve_provider_identity(
                 private_socket.display(),
             ));
             start_private_server(&private_socket, provider, model, provider_profile).await?;
-            ProviderResolution::Isolated
+            Ok(ProviderResolution::Isolated)
         }
         AttachPlan::Attach => match daemon.as_ref() {
             None => {
@@ -81,7 +81,7 @@ pub(crate) async fn resolve_provider_identity(
                     "Server already running and its provider could not be verified; \
                      --provider/--model will not be applied. Restart the server to change them.",
                 );
-                ProviderResolution::Unverified
+                Ok(ProviderResolution::Unverified)
             }
             Some(daemon) => {
                 output::stderr_info(format!(
@@ -89,7 +89,7 @@ pub(crate) async fn resolve_provider_identity(
                     daemon.provider,
                     model_suffix(daemon.model.as_deref())
                 ));
-                ProviderResolution::Attach
+                Ok(ProviderResolution::Attach)
             }
         },
     }

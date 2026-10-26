@@ -45,7 +45,7 @@
 //! it.
 
 use crate::cli::provider_init::ProviderChoice;
-use crate::server::socket::{SocketIdentity, read_socket_identity};
+use crate::server::{SocketIdentity, read_socket_identity};
 use std::path::{Path, PathBuf};
 
 /// What the client should do about an already-running daemon.
@@ -179,7 +179,7 @@ pub(crate) fn running_daemon_identity(socket: &Path) -> Option<SocketIdentity> {
 ///
 /// Scoped to this process so two simultaneously-isolated clients cannot collide.
 pub(crate) fn private_client_socket() -> PathBuf {
-    crate::server::socket::default_socket_path()
+    crate::server::default_socket_path()
         .with_file_name(format!("jcode-client-{}.sock", std::process::id()))
 }
 
@@ -409,6 +409,6 @@ mod tests {
             "isolated clients get a private socket, got {}",
             socket.display()
         );
-        assert_ne!(socket, crate::server::socket::default_socket_path());
+        assert_ne!(socket, crate::server::default_socket_path());
     }
 }

@@ -4,12 +4,13 @@
 //! file because `dispatch.rs` is already over the repository's file-size
 //! threshold, so growing it is not allowed.
 
-use super::startup_profile;
+use super::output;
+use super::provider_init::ProviderChoice;
+use super::selfdev;
 use crate::build;
-use crate::cli::provider_init::ProviderChoice;
-use crate::output;
 use crate::server;
-use anyhow::Result;
+use crate::startup_profile;
+use anyhow::{Context, Result};
 use std::process::{Command as ProcessCommand, Stdio};
 
 pub(crate) async fn spawn_server_with_executable(
@@ -53,13 +54,18 @@ pub(crate) async fn spawn_server_with_executable(
         .or_else(|| {
             // A failure to read the current executable path is not fatal on its
             // own: the shared-server candidate above may still supply one, and
-            // the error below reports it if nothing does.
-            std::env::current_exe().map_err(|error| {
-                anyhow::anyhow!(
-                    "Could not determine executable path for server spawn: {}",
-                    error
-                )
-            })
+            // the error below reports it if nothing does. Record it rather than
+            // discarding it, so the failure is diagnosable.
+            match std::env::current_exe() {
+                Ok(path) => Some(path),
+                Err(error) => {
+                    crate::logging::warn(&format!(
+                        "Could not read the current executable path for server spawn: {}",
+                        error
+                    ));
+                    None
+                }
+            }
         })
         .ok_or_else(|| anyhow::anyhow!("Could not determine executable path for server spawn"))?;
     let mut cmd = ProcessCommand::new(&exe);
@@ -69,7 +75,7 @@ pub(crate) async fn spawn_server_with_executable(
     // boundary: the daemon re-derives its own provider from config and
     // auto-detection, and inheriting ours lets a session get stamped with a
     // provider that is not the one actually serving it.
-    server::scrub_inherited_provider_identity(&mut cmd);
+    server::scrub_provider_identity(&mut cmd);
     // Re-assert this launch's identity *after* the scrub. The scrub drops
     // whatever the client happened to have in its own environment; the values set
     // here are the ones the daemon is actually being asked to serve, and the
@@ -192,14 +198,14 @@ async fn acquire_spawn_lock_or_wait(
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 }
-async fn server_is_running_at(path: &std::path::Path) -> bool {
+pub(crate) async fn server_is_running_at(path: &std::path::Path) -> bool {
     // Check liveness before performing a protocol handshake. On Windows the
     // named pipe may be busy while another client is connecting; that already
     // proves a daemon exists, while a handshake connect can otherwise wait in
     // the transport's ERROR_PIPE_BUSY retry loop and block server startup.
     server::has_live_listener(path).await || server::is_server_ready(path).await
 }
-async fn wait_for_existing_reload_server(context: &str) -> bool {
+pub(crate) async fn wait_for_existing_reload_server(context: &str) -> bool {
     if let Some(state) = server::recent_reload_state(std::time::Duration::from_secs(30)) {
         match state.phase {
             server::ReloadPhase::Starting => {
@@ -225,4 +231,62 @@ async fn wait_for_existing_reload_server(context: &str) -> bool {
     }
 
     false
+}
+
+pub(crate) async fn wait_for_reloading_server() -> bool {
+    match server::await_reload_handoff(&server::socket_path(), std::time::Duration::from_secs(30))
+        .await
+    {
+        server::ReloadWaitStatus::Ready => true,
+        server::ReloadWaitStatus::Failed(detail) => {
+            crate::logging::warn(&format!(
+                "Reload handoff failed while waiting for server on {}: {}; recent_state={}",
+                server::socket_path().display(),
+                detail.unwrap_or_else(|| "unknown reload failure".to_string()),
+                server::reload_state_summary(std::time::Duration::from_secs(60))
+            ));
+            false
+        }
+        server::ReloadWaitStatus::Idle => false,
+        server::ReloadWaitStatus::Waiting { .. } => false,
+    }
+}
+fn spawn_lock_path(socket_path: &std::path::Path) -> std::path::PathBuf {
+    std::path::PathBuf::from(format!("{}.spawning", socket_path.display()))
+}
+struct SpawnLockGuard {
+    _file: std::fs::File,
+    path: std::path::PathBuf,
+}
+fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuard>> {
+    use std::fs::OpenOptions;
+    use std::os::fd::AsRawFd;
+
+    // The client acquires this lock before the daemon creates its socket directory.
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create JCode runtime directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    let file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path)?;
+    let fd = file.as_raw_fd();
+    let ret = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
+    if ret == 0 {
+        Ok(Some(SpawnLockGuard {
+            _file: file,
+            path: path.to_path_buf(),
+        }))
+    } else {
+        Ok(None)
+    }
 }
