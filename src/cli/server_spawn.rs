@@ -256,7 +256,6 @@ pub(crate) fn spawn_lock_path(socket_path: &std::path::Path) -> std::path::PathB
 }
 pub(crate) struct SpawnLockGuard {
     _file: std::fs::File,
-    path: std::path::PathBuf,
 }
 pub(crate) fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuard>> {
     use std::fs::OpenOptions;
@@ -282,10 +281,7 @@ pub(crate) fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<Sp
     let fd = file.as_raw_fd();
     let ret = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
     if ret == 0 {
-        Ok(Some(SpawnLockGuard {
-            _file: file,
-            path: path.to_path_buf(),
-        }))
+        Ok(Some(SpawnLockGuard { _file: file }))
     } else {
         Ok(None)
     }

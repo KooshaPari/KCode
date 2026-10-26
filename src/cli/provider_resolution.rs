@@ -21,7 +21,6 @@ use crate::cli::daemon_identity::{
 };
 use crate::server;
 use anyhow::Result;
-use std::path::PathBuf;
 
 /// What the client should do about the running daemon.
 pub(crate) enum ProviderResolution {
@@ -121,7 +120,7 @@ pub(crate) async fn resolve_provider_identity(
 /// The server is marked temporary, so it self-destructs when this client
 /// exits instead of outliving it or taking the shared socket down with it.
 async fn start_private_server(
-    private_socket: &PathBuf,
+    private_socket: &std::path::Path,
     provider: &ProviderChoice,
     model: Option<&str>,
     provider_profile: Option<&str>,

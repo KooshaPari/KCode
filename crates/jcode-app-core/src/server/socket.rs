@@ -184,10 +184,11 @@ pub fn bind_and_publish(
     socket: &std::path::Path,
     provider: &dyn crate::provider::Provider,
 ) -> std::io::Result<crate::transport::Listener> {
-    if let Some(parent) = socket.parent() {
-        if !parent.as_os_str().is_empty() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = socket
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent)?;
     }
     let listener = crate::transport::Listener::bind(socket)?;
     publish_daemon_identity(socket, provider);
