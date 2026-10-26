@@ -961,17 +961,20 @@ async fn run_default_command(args: Args) -> Result<()> {
                     );
                 }
                 Some(daemon) => {
-                    output::stderr_info(format!(
-                        "Server already running with --provider {}{}; reusing it.",
-                        daemon.provider,
-                        daemon
-                            .model
-                            .as_deref()
-                            .map(|m| format!(" --model {}", m))
-                            .unwrap_or_default()
-                    ));
+                    output::stderr_info(crate::cli::daemon_identity::attach_notice(daemon));
                 }
             },
+        }
+    } else if server_running {
+        // No identity was requested, so the shared daemon is the right one to
+        // attach to. Its identity is still worth stating: the shared daemon
+        // may have been started with a provider this client would not have
+        // chosen, and silence there is the same trap this whole path exists
+        // to close. An unknown identity is not reported, because there is
+        // nothing honest to say about it.
+        let socket = server::socket_path();
+        if let Some(daemon) = crate::cli::daemon_identity::running_daemon_identity(&socket) {
+            output::stderr_info(crate::cli::daemon_identity::attach_notice(&daemon));
         }
     }
 
