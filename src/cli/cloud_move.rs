@@ -2800,7 +2800,7 @@ pub(crate) fn exec_handoff(handoff: crate::tui::CloudHandoff) -> Result<()> {
         "JCODE_SSH_LOCAL_IS_SOURCE",
         "JCODE_SSH_LAST_TRANSFER_AT",
         "JCODE_SSH_CONFIG",
-        "JCODE_SOCKET",
+        crate::server::SOCKET_ENV_VAR,
         "JCODE_CLOUD_HANDOFF_PREVIEW_SESSION",
     ] {
         command.env_remove(var);

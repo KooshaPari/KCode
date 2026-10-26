@@ -240,6 +240,10 @@ pub fn launch_instance(options: &LaunchOptions) -> Result<LaunchedInstance> {
         .env("JCODE_HOME", &jcode_home)
         .env("JCODE_RUNTIME_DIR", &runtime_dir)
         .env("JCODE_API_SOCKET", &socket_path)
+        // The canonical spelling of this variable lives in
+        // `jcode_app_core::server::SOCKET_ENV_VAR`. This crate does not depend
+        // on `jcode-app-core`, so it repeats the literal and must be updated
+        // together with that constant if the variable is ever renamed.
         .env("JCODE_SOCKET", runtime_dir.join("jcode.sock"))
         // An empty private home always looks out of date, so the release updater
         // would replace and restart the runtime mid-session: the client's turn fails

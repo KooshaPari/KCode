@@ -534,7 +534,7 @@ Do not force-push or discard local commits without confirming they are already u
             .filter(|path| path.is_dir())
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_else(|| std::path::PathBuf::from("."));
-        let socket = std::env::var("JCODE_SOCKET").ok();
+        let socket = std::env::var(jcode_app_core::server::SOCKET_ENV_VAR).ok();
         super::spawn_in_new_terminal(&exe, session_id, &cwd, socket.as_deref())
     }
 }

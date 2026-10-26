@@ -173,6 +173,11 @@ pub fn send_transcript_blocking(
 }
 
 /// Mirrors the server's socket naming (`JCODE_SOCKET`, else the runtime dir).
+///
+/// This crate deliberately does not depend on `jcode-app-core`, so it cannot
+/// import `jcode_app_core::server::SOCKET_ENV_VAR`. That constant is the
+/// canonical spelling of the variable and must be updated here together with
+/// it if the variable is ever renamed.
 #[cfg(unix)]
 fn debug_socket_path() -> std::path::PathBuf {
     let main = std::env::var_os("JCODE_SOCKET")

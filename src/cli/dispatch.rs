@@ -940,8 +940,10 @@ async fn run_default_command(args: Args) -> Result<()> {
                     private_socket.display(),
                 ));
                 // Every later socket lookup honors this, so the client dials the
-                // server it just asked for instead of the shared one.
-                crate::env::set_var("JCODE_SOCKET", &private_socket);
+                // server it just asked for instead of the shared one. The
+                // accessor is used rather than a literal env var name so the
+                // writer can never drift from the name `socket_path` reads.
+                server::set_socket_path(&private_socket);
                 spawn_owned_server(
                     &args.provider,
                     args.model.as_deref(),

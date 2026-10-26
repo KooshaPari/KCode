@@ -447,7 +447,7 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
                         .filter(|path| path.is_dir())
                         .or_else(|| std::env::current_dir().ok())
                         .unwrap_or_else(|| std::path::PathBuf::from("."));
-                    let socket = std::env::var("JCODE_SOCKET").ok();
+                    let socket = std::env::var(jcode_app_core::server::SOCKET_ENV_VAR).ok();
                     match super::spawn_in_new_terminal(
                         &exe,
                         &prepared.session_id,

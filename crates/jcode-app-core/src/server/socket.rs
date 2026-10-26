@@ -4,8 +4,15 @@ use anyhow::Result;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+/// The environment variable that overrides the daemon socket path.
+///
+/// This is the single source of truth for the spelling. Every writer MUST go
+/// through [`set_socket_path`] rather than setting the variable directly, so a
+/// rename can never leave a writer pointing at a name the reader ignores.
+pub const SOCKET_ENV_VAR: &str = "JCODE_SOCKET";
+
 pub fn socket_path() -> PathBuf {
-    if let Ok(custom) = std::env::var("JCODE_SOCKET") {
+    if let Ok(custom) = std::env::var(SOCKET_ENV_VAR) {
         return PathBuf::from(custom);
     }
     default_socket_path()
@@ -383,8 +390,8 @@ pub(super) fn mark_close_on_exec<T: std::os::fd::AsRawFd>(io: &T) {
     }
 }
 
-pub fn set_socket_path(path: &str) {
-    crate::env::set_var("JCODE_SOCKET", path);
+pub fn set_socket_path(path: impl AsRef<std::path::Path>) {
+    crate::env::set_var(SOCKET_ENV_VAR, path.as_ref());
 }
 
 /// Parent-process identity variables that must never be inherited by a server

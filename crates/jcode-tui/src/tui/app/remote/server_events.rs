@@ -3308,7 +3308,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 .filter(|path| path.is_dir())
                 .or_else(|| std::env::current_dir().ok())
                 .unwrap_or_else(|| std::path::PathBuf::from("."));
-            let socket = std::env::var("JCODE_SOCKET").ok();
+            let socket = std::env::var(jcode_app_core::server::SOCKET_ENV_VAR).ok();
             match spawn_in_new_terminal(&exe, &new_session_id, &cwd, socket.as_deref()) {
                 Ok(true) => {
                     if let Some(label) = split_label.as_deref() {

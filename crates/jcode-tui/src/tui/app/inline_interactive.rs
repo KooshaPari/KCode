@@ -2956,7 +2956,7 @@ impl App {
         }
 
         let default_cwd = std::env::current_dir().unwrap_or_default();
-        let socket = std::env::var("JCODE_SOCKET").ok();
+        let socket = std::env::var(jcode_app_core::server::SOCKET_ENV_VAR).ok();
         let mut spawned = 0usize;
         let mut failed = Vec::new();
         let mut names = Vec::with_capacity(targets.len());
@@ -3214,7 +3214,7 @@ impl App {
 
         let exe = launch_client_executable();
         let cwd = std::env::current_dir().unwrap_or_default();
-        let socket = std::env::var("JCODE_SOCKET").ok();
+        let socket = std::env::var(jcode_app_core::server::SOCKET_ENV_VAR).ok();
         let mut spawned = 0usize;
         let mut failed = Vec::new();
 

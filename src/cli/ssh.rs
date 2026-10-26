@@ -114,12 +114,7 @@ async fn run_unix(args: Args) -> Result<()> {
     } else {
         crate::env::remove_var(super::selfdev::CLIENT_SELFDEV_ENV);
     }
-    crate::server::set_socket_path(
-        connection
-            .socket_path()
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("SSH adapter socket is not UTF-8"))?,
-    );
+    crate::server::set_socket_path(connection.socket_path());
     super::output::stderr_info(format!(
         "Remote: {} | workspace: {} | {}",
         connection.host(),

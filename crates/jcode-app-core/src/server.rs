@@ -635,10 +635,11 @@ pub use self::lifecycle::configure_temporary_server;
 #[cfg(unix)]
 pub use self::socket::spawn_server_notify;
 pub use self::socket::{
-    INHERITED_PROVIDER_IDENTITY_VARS, SocketIdentity, cleanup_socket_pair, connect_socket,
-    debug_socket_path, default_socket_path, has_live_listener, is_server_ready, is_shared_socket,
-    read_socket_identity, reap_stale_socket_if_dead, scrub_inherited_provider_identity,
-    set_socket_path, socket_path, socket_path_is_custom, wait_for_server_ready,
+    INHERITED_PROVIDER_IDENTITY_VARS, SOCKET_ENV_VAR, SocketIdentity, cleanup_socket_pair,
+    connect_socket, debug_socket_path, default_socket_path, has_live_listener, is_server_ready,
+    is_shared_socket, read_socket_identity, reap_stale_socket_if_dead,
+    scrub_inherited_provider_identity, set_socket_path, socket_path, socket_path_is_custom,
+    wait_for_server_ready,
 };
 #[cfg(unix)]
 use self::socket::{acquire_daemon_lock_for, mark_close_on_exec};

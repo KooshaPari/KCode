@@ -860,7 +860,7 @@ pub(super) fn spawn_fresh_session_in_new_terminal(cwd: &Path) -> anyhow::Result<
         // Never launch real terminal windows from unit tests.
         return Ok(false);
     }
-    let socket = std::env::var("JCODE_SOCKET").ok();
+    let socket = std::env::var(jcode_app_core::server::SOCKET_ENV_VAR).ok();
     let command = build_fresh_session_command(socket.as_deref());
     crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)
 }

@@ -73,6 +73,11 @@ pub fn api_socket_path() -> PathBuf {
 
 /// Path of the internal daemon socket the bridge translates onto.
 /// `JCODE_SOCKET` overrides it.
+///
+/// The canonical spelling of that variable lives in
+/// `jcode_app_core::server::SOCKET_ENV_VAR`. This crate does not depend on
+/// `jcode-app-core`, so it repeats the literal and must be updated together
+/// with that constant if the variable is ever renamed.
 pub fn legacy_socket_path() -> PathBuf {
     if let Ok(custom) = std::env::var("JCODE_SOCKET") {
         return PathBuf::from(custom);
