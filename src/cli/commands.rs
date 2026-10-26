@@ -3629,4 +3629,4 @@ use model_routes::*;
 
 #[cfg(test)]
 #[path = "commands_tests.rs"]
-mod tests;
+pub(crate) mod tests;

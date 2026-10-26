@@ -252,12 +252,12 @@ async fn memory_cli_semantic_requires_jev_but_keyword_search_remains_local() {
         .expect("an empty project must not leak another project's candidates");
 }
 
-struct SavedEnv {
+pub(crate) struct SavedEnv {
     vars: Vec<(String, Option<String>)>,
 }
 
 impl SavedEnv {
-    fn capture(keys: &[&str]) -> Self {
+    pub(crate) fn capture(keys: &[&str]) -> Self {
         Self {
             vars: keys
                 .iter()

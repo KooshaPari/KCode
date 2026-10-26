@@ -1,22 +1,19 @@
 //! Socket-level integration coverage for the daemon identity seam.
 //!
 //! The unit tests in `daemon_identity.rs` decide with in-memory identities.
-//! These tests cover the layer underneath, with the artifacts a running daemon
-//! really produces: a real Unix socket carrying the real ping/pong liveness
-//! handshake, and a real identity sidecar file on disk, written and read by
-//! the production helpers.
-//!
-//! The peer is a minimal stand-in that speaks the production wire protocol
-//! (`{"type":"ping","id":N}` answered with `{"type":"pong","id":N}`) and
-//! nothing else, so a test can tell a liveness probe apart from real client
-//! traffic by counting the pings it answered.
+//! These tests cover the layer underneath with what a running daemon really
+//! produces: a real Unix socket carrying the real ping/pong liveness handshake,
+//! and a real identity sidecar written and read by the production helpers.
+//! The peer speaks the production wire protocol and nothing else, so a test can
+//! tell a liveness probe apart from session traffic by counting pings.
 
 #![cfg(unix)]
 
 use super::{AttachPlan, attach_plan, canonical_provider_key, running_daemon_identity};
+use crate::cli::commands::tests::SavedEnv;
 use crate::cli::provider_init::ProviderChoice;
 use crate::server::{
-    SOCKET_ENV_VAR, SocketIdentity, identity_file_for_socket, is_server_ready,
+    SOCKET_ENV_VAR, SocketIdentity, has_live_listener, identity_file_for_socket, is_server_ready,
     read_socket_identity, write_socket_identity,
 };
 use std::io::{BufRead, BufReader, Write};
@@ -46,6 +43,9 @@ impl Fixture {
     fn start(tag: &str) -> Self {
         // The socket path must stay under the 104-byte sun_path limit.
         let dir = std::env::temp_dir().join(format!("jid-{}-{tag}", std::process::id()));
+        // A run that died mid-test leaves the directory behind, and binding
+        // over a live socket file would fail.
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create the peer socket directory");
         let socket = dir.join("s.sock");
         assert!(socket.as_os_str().len() < 100, "socket path too long");
@@ -114,10 +114,8 @@ fn serve_peer(listener: UnixListener, state: Arc<Mutex<PeerState>>, stop: Arc<At
             // The throwaway connection that unblocks the accept loop.
             break;
         }
-        {
-            let mut state = state.lock().expect("the peer state lock");
-            state.connections += 1;
-        }
+        let mut state = state.lock().expect("the peer state lock");
+        state.connections += 1;
         let Ok(write_half) = stream.try_clone() else {
             continue;
         };
@@ -133,11 +131,9 @@ fn serve_peer(listener: UnixListener, state: Arc<Mutex<PeerState>>, stop: Arc<At
             let Some(id) = parse_request_id(&line) else {
                 continue;
             };
-            {
-                let mut state = state.lock().expect("the peer state lock");
-                state.pings += 1;
-                state.last_ping_id = Some(id);
-            }
+            let mut state = state.lock().expect("the peer state lock");
+            state.pings += 1;
+            state.last_ping_id = Some(id);
             let reply = format!("{{\"type\":\"pong\",\"id\":{id}}}\n");
             if writer.write_all(reply.as_bytes()).is_err() {
                 break;
@@ -288,12 +284,17 @@ async fn isolates_when_the_sidecar_is_missing_or_malformed() {
 async fn the_production_liveness_path_finds_the_peer() {
     let _env_lock = crate::storage::lock_test_env();
     let fixture = Fixture::start("liveness");
-    let previous = std::env::var_os(SOCKET_ENV_VAR);
+    // The guard restores the variable even when an assertion panics.
+    let _saved = SavedEnv::capture(&[SOCKET_ENV_VAR]);
     crate::env::set_var(SOCKET_ENV_VAR, &fixture.socket);
 
     assert!(
         is_server_ready(fixture.socket()).await,
         "the production ping/pong handshake must reach the peer"
+    );
+    assert!(
+        has_live_listener(fixture.socket()).await,
+        "the production listener probe must find the peer"
     );
     assert!(
         crate::cli::dispatch::server_is_running().await,
@@ -303,11 +304,6 @@ async fn the_production_liveness_path_finds_the_peer() {
         fixture.observed().pings >= 1,
         "the peer must have answered the liveness ping"
     );
-
-    match previous {
-        Some(value) => crate::env::set_var(SOCKET_ENV_VAR, value),
-        None => crate::env::remove_var(SOCKET_ENV_VAR),
-    }
 }
 
 /// Isolating a client must never take the shared daemon down with it.
@@ -334,6 +330,10 @@ async fn the_shared_daemon_survives_every_decision() {
     assert!(
         fixture.handle.is_some(),
         "the shared daemon must still be running"
+    );
+    assert!(
+        is_server_ready(fixture.socket()).await,
+        "the shared daemon must still answer the production liveness handshake"
     );
     assert!(
         ping_peer(fixture.socket(), 42),
