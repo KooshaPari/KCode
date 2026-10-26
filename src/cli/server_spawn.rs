@@ -251,14 +251,14 @@ pub(crate) async fn wait_for_reloading_server() -> bool {
         server::ReloadWaitStatus::Waiting { .. } => false,
     }
 }
-fn spawn_lock_path(socket_path: &std::path::Path) -> std::path::PathBuf {
+pub(crate) fn spawn_lock_path(socket_path: &std::path::Path) -> std::path::PathBuf {
     std::path::PathBuf::from(format!("{}.spawning", socket_path.display()))
 }
-struct SpawnLockGuard {
+pub(crate) struct SpawnLockGuard {
     _file: std::fs::File,
     path: std::path::PathBuf,
 }
-fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuard>> {
+pub(crate) fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuard>> {
     use std::fs::OpenOptions;
     use std::os::fd::AsRawFd;
 

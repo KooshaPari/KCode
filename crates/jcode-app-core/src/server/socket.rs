@@ -185,14 +185,53 @@ pub fn is_shared_socket(path: &std::path::Path) -> bool {
     resolved_socket_identity(path) == resolved_socket_identity(&default_socket_path())
 }
 
-/// True when `--socket`/`KCODE_SOCKET` points somewhere other than the shared
-/// daemon socket for this runtime dir.
+/// True when `path` is not the shared daemon socket for this runtime dir.
 ///
 /// A custom socket means "this process wants its own server", which is what
 /// lets an isolated server be started for it without disturbing the shared
 /// daemon (issue #1748).
-pub fn socket_path_is_custom() -> bool {
-    !is_shared_socket(&socket_path())
+///
+/// The comparison is on resolved identities, so two spellings of one path
+/// (relative, symlinked parent, `..` segment) are recognized as the same
+/// socket.
+pub fn is_private_socket(path: &std::path::Path) -> bool {
+    !is_shared_socket(path)
+}
+
+/// Clear a stale reload marker for `socket_path`, honoring marker ownership.
+///
+/// The marker is runtime-dir scoped, so a custom-socket server and the shared
+/// daemon share the file without sharing its ownership. A custom-socket server
+/// must not clear a marker it does not own: doing so would strand the shared
+/// daemon in `Starting` and make it reject messages until the marker expired.
+pub(super) fn clear_stale_reload_marker_for(socket_path: &std::path::Path) {
+    super::reload_state::clear_reload_marker_if_stale_for_pid(
+        std::process::id(),
+        reload_marker_policy(socket_path),
+    );
+}
+
+/// Who owns the runtime-dir reload marker, given the socket this server binds.
+///
+/// The marker path is runtime-dir scoped, so a custom-socket server and the
+/// shared daemon share the same file. They do not share its *ownership*: the
+/// shared daemon owns the marker and cleans up after stale predecessors, while
+/// a custom-socket server must leave a marker it does not own alone.
+///
+/// Note what is *not* restricted: a custom-socket server still reloads itself
+/// (`await_reload_signal` runs on every server), and on Unix the exec keeps
+/// the same pid, so it must still advance its own marker to `SocketReady`.
+/// Suppressing the publish outright left that marker stuck in `Starting` and
+/// the server rejecting messages until it expired. The policy is therefore by
+/// marker owner, not by socket.
+pub(super) fn reload_marker_policy(
+    socket_path: &std::path::Path,
+) -> super::reload_state::ForeignMarkerPolicy {
+    if is_shared_socket(socket_path) {
+        super::reload_state::ForeignMarkerPolicy::MayClear
+    } else {
+        super::reload_state::ForeignMarkerPolicy::Preserve
+    }
 }
 
 /// Debug socket path for testing/introspection
@@ -299,7 +338,11 @@ pub async fn reap_stale_socket_if_dead(path: &std::path::Path) -> bool {
 
     // Try to grab the daemon lock. If a live daemon holds it, this fails and we
     // leave everything alone (the daemon may just be slow to answer).
-    let lock_path = daemon_lock_path();
+    //
+    // The lock is scoped to the socket being reaped, so a live daemon on a
+    // *different* socket (an isolated private server, say) never blocks the
+    // reap of a socket it does not own.
+    let lock_path = daemon_lock_path_for(path);
     let Ok(Some(_lock)) = try_acquire_daemon_lock(&lock_path) else {
         return false;
     };
@@ -338,6 +381,33 @@ pub async fn reap_stale_socket_if_dead(_path: &std::path::Path) -> bool {
 /// duplicate daemon should prefer this check over a ping-only probe.
 pub async fn has_live_listener(path: &std::path::Path) -> bool {
     socket_has_live_listener(path).await
+}
+
+/// Lock path that enforces "one daemon per socket".
+///
+/// The shared socket keeps the historical runtime-dir-scoped name, so a daemon
+/// from an older build that only knows that name is still respected across an
+/// upgrade. A custom `--socket` path gets its own sibling lock, so an isolated
+/// server can bind it while the shared daemon keeps running: a runtime-wide
+/// lock made the second server impossible, which is why an isolated client
+/// could never get a listener on its private socket (issue #1748). The spawn
+/// lock (`cli::dispatch::spawn_lock_path`) has always been socket-scoped; this
+/// aligns the daemon lock with it.
+#[cfg(unix)]
+pub(super) fn daemon_lock_path_for(socket: &std::path::Path) -> PathBuf {
+    if is_shared_socket(socket) {
+        return daemon_lock_path();
+    }
+
+    // Derive the lock from the resolved identity, not the spelling: two
+    // spellings of one custom socket must contend for the same lock, or two
+    // daemons could bind the same socket.
+    let resolved = resolved_socket_identity(socket);
+    let filename = resolved
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("jcode.sock");
+    resolved.with_file_name(format!("{filename}.daemon.lock"))
 }
 
 #[cfg(unix)]
@@ -385,12 +455,12 @@ pub(super) fn try_acquire_daemon_lock(path: &std::path::Path) -> Result<Option<D
 }
 
 #[cfg(unix)]
-pub(super) fn acquire_daemon_lock() -> Result<DaemonLockGuard> {
-    let path = daemon_lock_path();
+pub(super) fn acquire_daemon_lock(socket: &std::path::Path) -> Result<DaemonLockGuard> {
+    let path = daemon_lock_path_for(socket);
     try_acquire_daemon_lock(&path)?.ok_or_else(|| {
         anyhow::anyhow!(
-            "Another jcode server process is already running for runtime dir {}",
-            crate::storage::runtime_dir().display()
+            "Another jcode server process is already running for socket {}",
+            socket.display()
         )
     })
 }
@@ -672,3 +742,7 @@ pub(super) fn signal_ready_fd() {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "socket_identity_tests.rs"]
+mod socket_identity_tests;

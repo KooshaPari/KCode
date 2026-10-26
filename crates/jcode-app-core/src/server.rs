@@ -602,7 +602,6 @@ use self::state::{
 pub use crate::plan::{SwarmTaskProgress, VersionedPlan};
 
 pub use self::await_members_state::pending_await_members_for_session;
-use self::reload_state::clear_reload_marker_if_stale_for_pid;
 #[cfg(test)]
 pub(crate) use self::reload_state::subscribe_reload_signal_for_tests;
 pub use self::reload_state::{
@@ -619,7 +618,8 @@ pub use self::socket::scrub_inherited_provider_identity as scrub_provider_identi
 pub use self::socket::spawn_server_notify;
 pub use self::socket::{
     SocketIdentity, connect_socket, debug_socket_path, default_socket_path, has_live_listener,
-    is_server_ready, read_socket_identity, reap_stale_socket_if_dead, set_socket_path, socket_path,
+    is_private_socket, is_server_ready, read_socket_identity, reap_stale_socket_if_dead,
+    set_socket_path, socket_path,
 };
 #[cfg(unix)]
 use self::socket::{acquire_daemon_lock, mark_close_on_exec};
@@ -2281,7 +2281,7 @@ impl Server {
         }
 
         #[cfg(unix)]
-        let _daemon_lock = acquire_daemon_lock()?;
+        let _daemon_lock = acquire_daemon_lock(&self.socket_path)?;
 
         if socket_has_live_listener(&self.socket_path).await {
             anyhow::bail!(
@@ -2306,7 +2306,7 @@ impl Server {
 
         // Preserve an in-flight reload marker for exec-based reloads owned by this
         // process, but clear stale markers from unrelated/stale processes.
-        clear_reload_marker_if_stale_for_pid(std::process::id());
+        self::socket::clear_stale_reload_marker_for(&self.socket_path);
 
         // Reclaim disk from stale agent scratch work (old cargo target dirs,
         // repo clones) and superseded binaries in builds/versions. This runs in

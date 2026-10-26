@@ -66,14 +66,28 @@ pub(crate) async fn resolve_provider_identity(
     match plan {
         AttachPlan::Isolate => {
             let private_socket = private_client_socket();
-            output::stderr_info(format!(
-                "Running server cannot be verified to serve --provider {}{}; starting a private server on {}.",
-                provider.as_arg_value(),
-                model_suffix(model),
-                private_socket.display(),
-            ));
-            start_private_server(&private_socket, provider, model, provider_profile).await?;
-            Ok(ProviderResolution::Isolated)
+            // The private socket must not collide with the shared one, or the
+            // "isolation" would re-attach to the very daemon it is trying to
+            // avoid. The comparison is on resolved identities, so a
+            // differently *spelled* shared socket is still caught.
+            if server::is_private_socket(&private_socket) {
+                output::stderr_info(format!(
+                    "Running server cannot be verified to serve --provider {}{}; starting a private server on {}.",
+                    provider.as_arg_value(),
+                    model_suffix(model),
+                    private_socket.display(),
+                ));
+                start_private_server(&private_socket, provider, model, provider_profile).await?;
+                Ok(ProviderResolution::Isolated)
+            } else {
+                // The private socket resolved to the shared daemon's socket, so
+                // there is nowhere to isolate to. Attach rather than pretend:
+                // starting a server there would take the shared socket down.
+                output::stderr_info(
+                    "Could not derive a private socket path; reusing the running server.",
+                );
+                Ok(ProviderResolution::Unverified)
+            }
         }
         AttachPlan::Attach => match daemon.as_ref() {
             None => {

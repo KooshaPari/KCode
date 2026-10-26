@@ -3,8 +3,26 @@
 //!
 //! Split out of `socket.rs` to keep that module within the file-size limit.
 
+/// The system temp root, ignoring `TMPDIR`.
+///
+/// `std::env::temp_dir()` honors `TMPDIR`, and `TMPDIR` is commonly a
+/// directory inside the jcode home (for example `~/.jcode/scratch`). A
+/// `KCODE_HOME` under such a path is rejected by
+/// `storage::require_kcode_path`, because it is, or resolves into, a jcode
+/// directory. A test that needs an accepted `KCODE_HOME` therefore cannot use
+/// `std::env::temp_dir()`.
+fn system_temp_root() -> std::path::PathBuf {
+    for candidate in ["/tmp", "/var/tmp"] {
+        let path = std::path::PathBuf::from(candidate);
+        if path.is_dir() {
+            return path;
+        }
+    }
+    std::env::temp_dir()
+}
+
 mod identity_scrub_tests {
-    use super::super::socket::{
+    use crate::server::socket::{
         INHERITED_PROVIDER_IDENTITY_VARS, scrub_inherited_provider_identity,
     };
 
@@ -81,7 +99,8 @@ mod identity_scrub_tests {
 }
 
 mod shared_socket_path_tests {
-    use super::super::socket::{default_socket_path, socket_path};
+    use super::system_temp_root;
+    use crate::server::socket::{default_socket_path, socket_path};
     use std::ffi::OsStr;
     use std::path::PathBuf;
     use std::sync::{Mutex, MutexGuard, OnceLock};
@@ -130,16 +149,24 @@ mod shared_socket_path_tests {
     #[test]
     fn shared_socket_path_ignores_tmpdir() {
         let _lock = env_lock();
-        // The fake home must NOT contain "jcode" in any path component:
-        // `storage::require_kcode_path` rejects a `KCODE_HOME` that looks like a
-        // jcode directory (it exists so jcode storage cannot be redirected
-        // into another product's data). A rejected `KCODE_HOME` makes
-        // `jcode_dir()` fail, and `shared_runtime_dir()` then falls back to
-        // `std::env::temp_dir()` - which honors `TMPDIR` and is exactly what
-        // this test asserts must not happen. So the directory name has to be
-        // one `require_kcode_path` accepts, or the test would be measuring the
-        // fallback rather than the shared-socket path.
-        let home = std::env::temp_dir().join("kcode-shared-socket-home-test");
+        // The fake home must live outside every jcode directory, INCLUDING its
+        // ancestors: `storage::require_kcode_path` rejects a `KCODE_HOME` that
+        // is, or resolves into, a jcode directory (it exists so jcode storage
+        // cannot be redirected into another product's data). A rejected
+        // `KCODE_HOME` makes `jcode_dir()` fail, and `shared_runtime_dir()`
+        // then falls back to `std::env::temp_dir()` - which honors `TMPDIR`
+        // and is exactly what this test asserts must not happen. So the
+        // directory name has to be one `require_kcode_path` accepts, or the
+        // test would be measuring the fallback rather than the shared-socket
+        // path.
+        //
+        // `std::env::temp_dir()` is not usable for that: it honors `TMPDIR`,
+        // and `TMPDIR` is commonly a directory inside the jcode home (for
+        // example `~/.jcode/scratch`). The premise assert below would then
+        // fail for a reason unrelated to the socket path. The home is built
+        // under the system temp root instead, which no ancestor can be
+        // mistaken for a jcode directory.
+        let home = system_temp_root().join("kcode-shared-socket-home-test");
         std::fs::create_dir_all(&home).expect("create fake home");
         let _home = VarGuard::set("KCODE_HOME", home.as_os_str());
         // An explicit override would mask the default we are exercising here.

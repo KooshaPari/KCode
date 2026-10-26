@@ -21,7 +21,8 @@ use super::{
 };
 use provider_init::ProviderChoice;
 pub(crate) use server_spawn::{
-    server_is_running_at, spawn_server_with_executable, wait_for_existing_reload_server,
+    server_is_running_at, spawn_lock_path, spawn_server_with_executable, try_acquire_spawn_lock,
+    wait_for_existing_reload_server, wait_for_reloading_server,
 };
 
 #[cfg(any(target_os = "linux", test))]
