@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
 use super::socket::cleanup_socket_pair;
+use super::socket::daemon_lock_path_for;
 use super::socket::sibling_socket_path;
 #[cfg(unix)]
 use super::socket::{
@@ -115,7 +116,10 @@ async fn reap_stale_socket_removes_dead_socket_pair_and_lock() {
 
     let socket = temp.path().join("kcode.sock");
     let debug = temp.path().join("kcode-debug.sock");
-    let lock = daemon_lock_path();
+    // The lock that guards this socket is the socket-scoped one: a custom
+    // socket gets its own sibling lock, so a daemon on it does not block the
+    // reap of an unrelated socket.
+    let lock = daemon_lock_path_for(&socket);
 
     // Simulate the post-upgrade/crash state: socket + debug + lock files left
     // behind, but no process is listening on the socket.
@@ -173,7 +177,7 @@ async fn reap_stale_socket_spares_socket_when_lock_is_held() {
 
     // Hold the daemon lock, emulating a live daemon whose socket probe happens
     // to be momentarily unanswerable. The reaper must not unlink the socket.
-    let lock_path = daemon_lock_path();
+    let lock_path = daemon_lock_path_for(&socket);
     let held = try_acquire_daemon_lock(&lock_path)
         .expect("acquire lock")
         .expect("lock should be free");

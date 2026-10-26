@@ -172,10 +172,23 @@ fn resolved_socket_identity(path: &std::path::Path) -> PathBuf {
 ///
 /// The identity is written as part of preparing the socket: a client that
 /// finds the socket must be able to learn who is serving it.
+///
+/// The socket's parent directory is created here. The shared socket lives
+/// under `KCODE_HOME/run`, a path that no other component creates: the
+/// server's own run path creates it, but a caller that binds the socket
+/// directly (a test, or a caller that only needs the listener) would
+/// otherwise fail with "No such file or directory". Creating it at the bind
+/// site rather than in the path resolver keeps the resolver free of side
+/// effects, which matters because `KCODE_HOME` may be a symlink.
 pub fn bind_and_publish(
     socket: &std::path::Path,
     provider: &dyn crate::provider::Provider,
 ) -> std::io::Result<crate::transport::Listener> {
+    if let Some(parent) = socket.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
     let listener = crate::transport::Listener::bind(socket)?;
     publish_daemon_identity(socket, provider);
     Ok(listener)

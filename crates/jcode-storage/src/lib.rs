@@ -148,6 +148,11 @@ pub fn runtime_dir() -> PathBuf {
 ///
 /// The shared socket must be stable per user, so it lives under the jcode home
 /// and only honors an explicit `$KCODE_SOCKET` override, never `TMPDIR`.
+///
+/// The directory is NOT created here. Resolving a path must not have the
+/// side effect of creating it: `KCODE_HOME` may be a symlink, and creating a
+/// directory through one is not the same operation as creating it directly.
+/// The caller that binds the socket creates the parent it needs.
 pub fn shared_runtime_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("KCODE_SHARED_RUNTIME_DIR") {
         return PathBuf::from(dir);
