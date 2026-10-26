@@ -47,11 +47,40 @@ pub fn identity_file_for_socket(socket: &std::path::Path) -> PathBuf {
 /// `None` means "unknown": too old a build, not a jcode daemon, or unreadable.
 /// Callers must treat that as "cannot verify", never as "matches".
 pub fn read_socket_identity(socket: &std::path::Path) -> Option<SocketIdentity> {
-    let raw = std::fs::read_to_string(identity_file_for_socket(socket)).ok()?;
-    serde_json::from_str(&raw).ok()
+    let path = identity_file_for_socket(socket);
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(error) => {
+            // A missing sidecar is the normal case for an older daemon, so this
+            // is not worth a warning; anything else is worth recording, because
+            // a corrupt sidecar makes the client isolate instead of attaching.
+            if error.kind() != std::io::ErrorKind::NotFound {
+                crate::logging::warn(&format!(
+                    "Failed to read socket identity at {}: {}",
+                    path.display(),
+                    error
+                ));
+            }
+            return None;
+        }
+    };
+    match serde_json::from_str(&raw) {
+        Ok(identity) => Some(identity),
+        Err(error) => {
+            crate::logging::warn(&format!(
+                "Failed to parse socket identity at {}: {}",
+                path.display(),
+                error
+            ));
+            None
+        }
+    }
 }
 
 /// Provider/model identity a daemon publishes beside its socket.
+///
+/// Re-exported from this module so a client outside this crate can read the
+/// sidecar without going through the server registry.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct SocketIdentity {
     /// The provider the daemon actually resolved to, e.g. "cursor" or
@@ -70,6 +99,34 @@ pub fn write_socket_identity(
 ) -> std::io::Result<()> {
     let path = identity_file_for_socket(socket);
     std::fs::write(path, serde_json::to_vec_pretty(identity)?)
+}
+
+/// Publish the identity this daemon actually resolved to, beside its socket.
+///
+/// Written from the live provider, never from the `--provider` launch flag: a
+/// daemon started with `--provider auto` can resolve to anything, and publishing
+/// the flag is exactly what let a stale daemon masquerade as a match for a
+/// client that asked for a specific provider.
+///
+/// `KCODE_RUNTIME_PROVIDER` already holds the canonical runtime key
+/// (`activation.rs` writes `RuntimeProviderId::key()` there), so it is
+/// preferred; the provider's own display name is a human label
+/// (`Provider::display_name()` - "NVIDIA NIM", "OpenRouter") that diverges from
+/// both `as_arg_value()` and the runtime key, so it is only a last resort.
+pub fn publish_daemon_identity(socket: &std::path::Path, provider: &dyn crate::provider::Provider) {
+    let runtime_provider =
+        std::env::var("KCODE_RUNTIME_PROVIDER").unwrap_or_else(|_| provider.display_name());
+    let identity = SocketIdentity {
+        provider: runtime_provider,
+        model: Some(provider.model()),
+    };
+    if let Err(error) = write_socket_identity(socket, &identity) {
+        crate::logging::warn(&format!(
+            "Failed to publish socket identity at {}: {}",
+            identity_file_for_socket(socket).display(),
+            error
+        ));
+    }
 }
 
 /// Resolve a socket path to a comparable identity: absolute, with its parent

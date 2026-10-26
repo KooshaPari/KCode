@@ -16,10 +16,14 @@ use crate::{
 };
 
 use super::{
-    account, acp, commands, debug, hot_exec, login, output, provider_init, selfdev, terminal,
-    tui_launch,
+    account, acp, commands, debug, hot_exec, login, output, provider_init, selfdev, server_spawn,
+    terminal, tui_launch,
 };
 use provider_init::ProviderChoice;
+pub(crate) use server_spawn::{
+    acquire_spawn_lock_or_wait, server_is_running_at, spawn_server_with_executable,
+    wait_for_existing_reload_server,
+};
 
 #[cfg(any(target_os = "linux", test))]
 fn is_file_controlled_debug_client() -> bool {
@@ -244,7 +248,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                         args.model.as_deref(),
                         args.provider_profile.as_deref(),
                         Some(std::env::current_exe()?),
-                        false,
+                        &[],
                     ),
                 )
                 .await
@@ -1067,68 +1071,21 @@ async fn run_default_command(args: Args) -> Result<()> {
         // feedback was a stderr note that scrolled away, so a pane launched with
         // `--provider openai-compatible --model MiniMax-M3.1-Flash` silently got
         // whatever the stale daemon happened to serve.
-        let socket = server::socket_path();
-        let daemon = crate::cli::daemon_identity::running_daemon_identity(&socket);
-        let requested_provider = explicit_provider.then_some(&args.provider);
-        let requested_model = explicit_model.then_some(args.model.as_deref()).flatten();
-        let plan = crate::cli::daemon_identity::attach_plan(requested_provider, daemon.as_ref());
-
-        // The model is advisory only: a daemon on the right provider but a
-        // different model is shared, with the difference surfaced.
-        if let Some(note) =
-            crate::cli::daemon_identity::model_advisory(requested_model, daemon.as_ref())
+        match crate::cli::provider_resolution::resolve_provider_identity(
+            &args.provider,
+            args.model.as_deref(),
+            args.provider_profile.as_deref(),
+            explicit_provider,
+            explicit_model,
+        )
+        .await?
         {
-            output::stderr_info(note);
-        }
-
-        match plan {
-            crate::cli::daemon_identity::AttachPlan::Isolate => {
-                let private_socket = crate::cli::daemon_identity::private_client_socket();
-                output::stderr_info(format!(
-                    "Running server cannot be verified to serve --provider {}{}; starting a private server on {}.",
-                    args.provider.as_arg_value(),
-                    args.model
-                        .as_ref()
-                        .map(|m| format!(" --model {}", m))
-                        .unwrap_or_default(),
-                    private_socket.display(),
-                ));
-                // Every later socket lookup honors this, so the client dials the
-                // server it just asked for instead of the shared one.
-                //
-                // Use the server module's own setter rather than naming the
-                // environment variable here: the fork renamed the variable
-                // from `JCODE_SOCKET` to `KCODE_SOCKET`, and hardcoding the old
-                // spelling would silently make isolation a no-op (the client
-                // would keep dialing the shared daemon it was trying to avoid).
-                //
-                // The spawned server inherits this variable, so it binds the
-                // private socket rather than the shared one.
-                server::set_socket_path(&private_socket.to_string_lossy());
-                spawn_temporary_server(
-                    &args.provider,
-                    args.model.as_deref(),
-                    args.provider_profile.as_deref(),
-                )
-                .await?;
+            crate::cli::provider_resolution::ProviderResolution::Isolated => {
                 spawned_by_us = true;
                 server_running = true;
             }
-            crate::cli::daemon_identity::AttachPlan::Attach => match daemon.as_ref() {
-                None => output::stderr_info(
-                    "Server already running and its provider could not be verified; \
-                         --provider/--model will not be applied. Restart the server to change them.",
-                ),
-                Some(daemon) => output::stderr_info(format!(
-                    "Server already running with --provider {}{}; reusing it.",
-                    daemon.provider,
-                    daemon
-                        .model
-                        .as_deref()
-                        .map(|m| format!(" --model {}", m))
-                        .unwrap_or_default()
-                )),
-            },
+            crate::cli::provider_resolution::ProviderResolution::Attach
+            | crate::cli::provider_resolution::ProviderResolution::Unverified => {}
         }
     }
 
@@ -1192,34 +1149,6 @@ pub(crate) async fn server_is_running() -> bool {
     server_is_running_at(&server::socket_path()).await
 }
 
-async fn wait_for_existing_reload_server(context: &str) -> bool {
-    if let Some(state) = server::recent_reload_state(std::time::Duration::from_secs(30)) {
-        match state.phase {
-            server::ReloadPhase::Starting => {
-                crate::logging::info(&format!(
-                    "Reload state=starting during {}; waiting for existing server to return",
-                    context
-                ));
-                return wait_for_reloading_server().await;
-            }
-            server::ReloadPhase::Failed => {
-                crate::logging::warn(&format!(
-                    "Reload state=failed during {} on {}: {}; recent_state={}",
-                    context,
-                    server::socket_path().display(),
-                    state
-                        .detail
-                        .unwrap_or_else(|| "unknown reload failure".to_string()),
-                    server::reload_state_summary(std::time::Duration::from_secs(60))
-                ));
-            }
-            server::ReloadPhase::SocketReady => {}
-        }
-    }
-
-    false
-}
-
 pub(crate) async fn wait_for_resuming_server(context: &str, timeout: std::time::Duration) -> bool {
     let socket_path = server::socket_path();
     let start = std::time::Instant::now();
@@ -1267,14 +1196,6 @@ pub(crate) async fn wait_for_reloading_server() -> bool {
         server::ReloadWaitStatus::Idle => false,
         server::ReloadWaitStatus::Waiting { .. } => false,
     }
-}
-
-async fn server_is_running_at(path: &std::path::Path) -> bool {
-    // Check liveness before performing a protocol handshake. On Windows the
-    // named pipe may be busy while another client is connecting; that already
-    // proves a daemon exists, while a handshake connect can otherwise wait in
-    // the transport's ERROR_PIPE_BUSY retry loop and block server startup.
-    server::has_live_listener(path).await || server::is_server_ready(path).await
 }
 
 #[cfg(unix)]
@@ -1330,38 +1251,6 @@ fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuar
 }
 
 #[cfg(unix)]
-async fn acquire_spawn_lock_or_wait(
-    socket_path: &std::path::Path,
-) -> Result<Option<SpawnLockGuard>> {
-    let lock_path = spawn_lock_path(socket_path);
-    let wait_start = std::time::Instant::now();
-    let wait_timeout = std::time::Duration::from_secs(10);
-    let mut announced_wait = false;
-
-    loop {
-        if let Some(lock) = try_acquire_spawn_lock(&lock_path)? {
-            return Ok(Some(lock));
-        }
-
-        if server_is_running_at(socket_path).await {
-            return Ok(None);
-        }
-
-        if !announced_wait {
-            output::stderr_info("Another client is starting the server, waiting...");
-            announced_wait = true;
-        }
-
-        if wait_start.elapsed() >= wait_timeout {
-            anyhow::bail!(
-                "Timed out waiting for another client to start server at {}",
-                socket_path.display()
-            );
-        }
-
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
-}
 
 pub(crate) async fn maybe_prompt_server_bootstrap_login(
     provider_choice: &ProviderChoice,
@@ -1448,161 +1337,7 @@ pub(crate) async fn spawn_server(
     model: Option<&str>,
     provider_profile: Option<&str>,
 ) -> Result<()> {
-    spawn_server_with_executable(provider_choice, model, provider_profile, None, false).await
-}
-
-/// Start a server that belongs to this process and self-destructs when it exits.
-///
-/// Used for the isolated case: a client that asked for a provider the running
-/// daemon cannot be shown to serve starts its own server on a private socket.
-/// That server must not outlive the client, and it must not take the shared
-/// socket down with it when it goes.
-async fn spawn_temporary_server(
-    provider_choice: &ProviderChoice,
-    model: Option<&str>,
-    provider_profile: Option<&str>,
-) -> Result<()> {
-    spawn_server_with_executable(provider_choice, model, provider_profile, None, true).await
-}
-
-async fn spawn_server_with_executable(
-    provider_choice: &ProviderChoice,
-    model: Option<&str>,
-    provider_profile: Option<&str>,
-    executable: Option<std::path::PathBuf>,
-    temporary: bool,
-) -> Result<()> {
-    let socket_path = server::socket_path();
-    if server_is_running_at(&socket_path).await {
-        startup_profile::mark("server_ready");
-        return Ok(());
-    }
-
-    if wait_for_existing_reload_server("server spawn").await {
-        startup_profile::mark("server_ready");
-        return Ok(());
-    }
-
-    #[cfg(unix)]
-    let _spawn_lock = acquire_spawn_lock_or_wait(&socket_path).await?;
-
-    if server_is_running_at(&socket_path).await {
-        startup_profile::mark("server_ready");
-        return Ok(());
-    }
-
-    if wait_for_existing_reload_server("server spawn after lock").await {
-        startup_profile::mark("server_ready");
-        return Ok(());
-    }
-
-    startup_profile::mark("server_spawn_start");
-    output::stderr_info("Starting server...");
-    let client_requested_selfdev = selfdev::client_selfdev_requested();
-    let exe = executable
-        .or_else(|| {
-            build::shared_server_update_candidate(client_requested_selfdev).map(|(path, _)| path)
-        })
-        .or_else(|| std::env::current_exe().ok())
-        .ok_or_else(|| anyhow::anyhow!("Could not determine executable path for server spawn"))?;
-    let mut cmd = ProcessCommand::new(&exe);
-    cmd.env_remove(selfdev::CLIENT_SELFDEV_ENV);
-    // This client already resolved a provider for its own run. Those ambient
-    // identity variables must not follow the daemon across the process
-    // boundary: the daemon re-derives its own provider from config and
-    // auto-detection, and inheriting ours lets a session get stamped with a
-    // provider that is not the one actually serving it.
-    server::scrub_inherited_provider_identity(&mut cmd);
-    // Re-assert this launch's identity *after* the scrub. The scrub drops
-    // whatever the client happened to have in its own environment; the values set
-    // here are the ones the daemon is actually being asked to serve, and the
-    // daemon publishes them in `~/.jcode/servers.json` so a later client can
-    // detect that it is attached to a daemon serving someone else's provider.
-    cmd.env("KCODE_RUNTIME_PROVIDER", provider_choice.as_arg_value());
-    if let Some(model) = model {
-        cmd.env("KCODE_RUNTIME_MODEL", model);
-    }
-    if client_requested_selfdev {
-        cmd.env("KCODE_DEBUG_CONTROL", "1");
-    }
-    cmd.arg("--provider").arg(provider_choice.as_arg_value());
-    // The interactive TUI owns first-run onboarding/login. Let the spawned
-    // server boot with a deferred (credential-less) provider when nothing is
-    // configured yet, instead of bailing; the TUI activates a provider via the
-    // in-TUI `/login` flow. See init_provider_with_options.
-    cmd.env("KCODE_DEFERRED_AUTH_BOOTSTRAP", "1");
-    if let Some(provider_profile) = provider_profile {
-        cmd.arg("--provider-profile").arg(provider_profile);
-    }
-    if let Some(model) = model {
-        cmd.arg("--model").arg(model);
-    }
-    cmd.arg("serve")
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped());
-
-    if temporary {
-        // A server owned by this process must not outlive it, and it must not
-        // take the shared socket down with it when it goes. `--owner-pid` makes
-        // the server self-destruct once this client exits.
-        cmd.arg("--temporary-server");
-        if let Ok(pid) = std::process::id().to_string().parse::<u32>() {
-            cmd.arg("--owner-pid").arg(pid.to_string());
-        }
-    }
-
-    #[cfg(unix)]
-    {
-        let _child = server::spawn_server_notify(&mut cmd).await?;
-        startup_profile::mark("server_ready");
-    }
-    #[cfg(not(unix))]
-    {
-        use std::io::Read;
-
-        let mut child = cmd.spawn()?;
-        let start = std::time::Instant::now();
-        // Windows server bootstrap can legitimately take tens of seconds on
-        // slow hosts (auth preflights + provider init were observed at 15-60s
-        // on a Windows Server VPS, issue #503). The child's liveness is
-        // checked every poll, so a generous budget only delays the error for
-        // a genuinely hung server, while a crashed server still fails fast
-        // with its stderr.
-        let timeout = std::time::Duration::from_secs(120);
-        while start.elapsed() < timeout {
-            if server::has_live_listener(&socket_path).await {
-                startup_profile::mark("server_ready");
-                return Ok(());
-            }
-
-            if let Some(status) = child.try_wait()? {
-                let mut stderr = String::new();
-                if let Some(mut pipe) = child.stderr.take() {
-                    let _ = pipe.read_to_string(&mut stderr);
-                }
-                let detail = stderr.trim();
-                if detail.is_empty() {
-                    anyhow::bail!("Server exited before becoming ready (status: {})", status);
-                }
-                anyhow::bail!(
-                    "Server exited before becoming ready (status: {}). {}",
-                    status,
-                    detail
-                );
-            }
-
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-
-        anyhow::bail!(
-            "Timed out waiting for server to become ready at {} after {}ms",
-            server::socket_path().display(),
-            timeout.as_millis()
-        );
-    }
-
-    #[cfg(unix)]
-    Ok(())
+    spawn_server_with_executable(provider_choice, model, provider_profile, None, &[]).await
 }
 
 async fn run_server_keepalive(

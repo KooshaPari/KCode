@@ -30,7 +30,7 @@
 //!   `OpenAiApiKey` but the daemon publishes `openai`.
 //!
 //! [`canonical_provider_key`] therefore delegates to
-//! `provider_init::serve_published_provider_key`, which lives next to the
+//! `provider_runtime_key::serve_published_provider_key`, which lives next to the
 //! daemon's serve path and reproduces exactly the strings that path writes.
 //! Both sides then agree by construction.
 //!
@@ -45,7 +45,7 @@
 //! it.
 
 use crate::cli::provider_init::ProviderChoice;
-use crate::server::{SocketIdentity, read_socket_identity};
+use crate::server::socket::{SocketIdentity, read_socket_identity};
 use std::path::{Path, PathBuf};
 
 /// What the client should do about an already-running daemon.
@@ -89,9 +89,9 @@ pub(crate) fn canonical_provider_key(choice: &ProviderChoice) -> Option<&'static
         return None;
     }
     // The daemon's own serve path is the source of truth for what it publishes.
-    // `provider_init::serve_published_provider_key` lives next to that path so
+    // `provider_runtime_key::serve_published_provider_key` lives next to that path so
     // the two cannot drift.
-    let key = crate::cli::provider_init::serve_published_provider_key(choice);
+    let key = crate::cli::provider_runtime_key::serve_published_provider_key(choice);
     if key.is_empty() {
         return None;
     }
@@ -179,7 +179,7 @@ pub(crate) fn running_daemon_identity(socket: &Path) -> Option<SocketIdentity> {
 ///
 /// Scoped to this process so two simultaneously-isolated clients cannot collide.
 pub(crate) fn private_client_socket() -> PathBuf {
-    crate::server::default_socket_path()
+    crate::server::socket::default_socket_path()
         .with_file_name(format!("jcode-client-{}.sock", std::process::id()))
 }
 
@@ -409,6 +409,6 @@ mod tests {
             "isolated clients get a private socket, got {}",
             socket.display()
         );
-        assert_ne!(socket, crate::server::default_socket_path());
+        assert_ne!(socket, crate::server::socket::default_socket_path());
     }
 }
