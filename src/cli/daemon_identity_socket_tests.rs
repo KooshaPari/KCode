@@ -114,8 +114,7 @@ fn serve_peer(listener: UnixListener, state: Arc<Mutex<PeerState>>, stop: Arc<At
             // The throwaway connection that unblocks the accept loop.
             break;
         }
-        let mut state = state.lock().expect("the peer state lock");
-        state.connections += 1;
+        state.lock().expect("the peer state lock").connections += 1;
         let Ok(write_half) = stream.try_clone() else {
             continue;
         };
