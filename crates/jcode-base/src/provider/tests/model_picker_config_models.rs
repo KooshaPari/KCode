@@ -10,8 +10,8 @@
 //!    it from `GET /v1/models`, so a declared model was invisible in the picker
 //!    even though the config explicitly names it.
 //! 2. The cache namespace is process-global, so `~/.kcode/cache/minimax_models.json`
-//! could hold another provider's catalog (the report found NVIDIA NIM models
-//! under `source_api_base`) and silently decide the picker.
+//!    could hold another provider's catalog (the report found NVIDIA NIM models
+//!    under `source_api_base`) and silently decide the picker.
 
 use super::*;
 

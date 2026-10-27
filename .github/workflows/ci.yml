@@ -35,8 +35,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: quality-ubuntu
+          # The ~881 MB `quality-ubuntu` blob hung for 26+ minutes in CI job
+          # 121317250103 (2026-10-26), blocking the self-hosted runner the
+          # whole time. The `-notarget` key + `cache-targets: "false"` make the
+          # restore miss fast; PR #183 already applies this to the Build job.
+          key: quality-ubuntu-notarget
           cache-all-crates: "true"
+          cache-targets: "false"
 
       - name: Check module declarations resolve
         # A `mod x;` with no file makes rustfmt fail with "Error writing files:
@@ -115,7 +120,7 @@ jobs:
         run: cargo check --all-targets --all-features
 
       - name: Run clippy with warnings denied
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Enforce Cargo.lock is up to date
         shell: bash
@@ -198,7 +203,14 @@ jobs:
     # the same green steps (#693). A rerun is exactly what you reach for after a
     # concurrency cancellation, so the old cap made healthy commits look red.
     # 75 still bounds a genuinely hung job well under the windows job's 150.
-    timeout-minutes: 120
+    #
+    # 240 because this job now runs intentionally cold (see the `cache-targets:
+    # "false"` note below). Measured on this runner: Build cold = 2453s,
+    # `cargo test --lib --bins --no-run` cold ~= 2990s. That pair alone is 5443s,
+    # so the previous 120-minute (7200s) cap left under 30 minutes for checkout,
+    # toolchain, mold, and the nine cohort/e2e steps after the compile -- and the
+    # retention-readiness cohort alone now carries a 1800s cold-compile budget.
+    timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
     # published crate*. When cargo builds such a crate its CWD is that crate dir,
@@ -238,9 +250,67 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Key suffix `-notarget` is load-bearing: it changes the
+          # PRIMARY key and the SINGLE restore-key prefix simultaneously
+          # (Swatinem/rust-cache@v2 src/config.ts reads `core.getInput("key")`
+          # at the top of key construction -- before `cache-targets` is read
+          # at line 274 -- and propagates the suffix into both).
+          #
+          # Why the suffix has to be HERE, not just `cache-targets: "false"`:
+          #
+          # 1. `cache-targets` does NOT participate in the key. Per
+          #    Swatinem/rust-cache@v2 src/config.ts: `self.cacheKey = key` at
+          #    line 263 seals the key from any later input, and
+          #    `cache-targets` is only read at line 274 where it merely mutates
+          #    `cachePaths`. So PR #168's `cache-targets: "false"` does not
+          #    produce a new key.
+          #
+          # 2. Without the suffix, actions/cache's "fall back to base branch"
+          #    restores master's `v0-rust-desk-linux-stablepin-build-...` blob
+          #    (~2.02 GB). The download is bounded at ~600s by the step and
+          #    aborts at 37-44%, then falls through to "No cache found" -- so
+          #    the job is cold anyway. (CodeRabbit independently flagged this:
+          #    inline on this file at the cache-targets line, "Provision a new
+          #    master-branch build cache using cache-targets: \"false\" before
+          #    relying on pull-request cache restores...")
+          #
+          # 3. GitHub caches are IMMUTABLE per (key, ref) once written. The
+          #    post-step `save` step is SKIPPED when the key already exists for
+          #    that ref. So even after `cache-targets: "false"` flips the path
+          #    set, the master's key continues to pin the 2 GB blob forever,
+          #    and every fresh PR build still pays the doomed download.
+          #
+          # 4. The new primary key is
+          #    `v0-rust-desk-linux-stablepin-notarget-build-Linux-x64-62b60f75-212eda4f`
+          #    and the new restore prefix is
+          #    `v0-rust-desk-linux-stablepin-notarget-build-Linux-x64-62b60f75`.
+          #    Neither matches any legacy entry (verified against the live
+          #    cache inventory), so (a) the broken 2 GB blob is never even
+          #    attempted for restore, and (b) the post-step `save` finds no
+          #    conflict in any ref and writes a fresh, registry-only entry.
+          #
           # Suffix bumped to evict caches that held 1.83.0 / <unknown rustc>
           # artifacts produced before RUSTUP_TOOLCHAIN=stable pinned the job.
-          key: ${{ matrix.os }}-stablepin
+          key: ${{ matrix.os }}-stablepin-notarget
+          # `cache-targets: "false"` keeps $CARGO_HOME (registry + git + bin) in
+          # the cache and drops the workspace `target/` directory from it.
+          # (Swatinem/rust-cache action.yml: "Determines whether workspace
+          # targets are cached. If `false`, only the cargo registry will be
+          # cached." src/config.ts pushes `workspaces.map(ws => ws.target)` onto
+          # cachePaths only when this input is true.)
+          #
+          # Why this job and not the others: this is the only job that runs a
+          # full `cargo build --release` AND `cargo test --lib --bins --no-run`
+          # AND eight integration/e2e compiles into the same target dir, so its
+          # third-party dependency rlibs for *both* profiles dominate the blob.
+          # The measured blob was 2,029,470,155 bytes; the restore step aborts
+          # at a ~600s cap after 37-44% and falls through to "No cache found",
+          # which makes the job cold anyway -- so caching target/ buys this job
+          # nothing it actually gets, and costs 641s of doomed download on every
+          # attempt. Registry-only is also provably restorable: it is a strict
+          # subset of this repo's other jobs' blobs, and job 119062133759
+          # restored a 687,972,881-byte blob successfully inside the same window.
+          cache-targets: "false"
 
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
@@ -279,16 +349,21 @@ jobs:
       - name: Compile library and binary tests
         shell: bash
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          python3 .github/scripts/run_with_timeout.py 3300 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --lib --bins --no-run
 
       - name: Run deterministic retention-readiness cohort
         shell: bash
         run: |
-          # A cold jcode-app-core test harness compiles heavy optional provider
-          # dependencies and can exceed three minutes on hosted runners. The
-          # cohort itself runs in under a second once the lib test is built.
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: the jcode-app-core lib-test harness is a *cold*
+          # compile that exceeded 600s on this runner (run 39672218586, job
+          # 119472777140, exit 124). It stays cold here because the workspace
+          # declares no `default-members`, so `cargo test --lib --bins --no-run`
+          # builds only the default member `kcode` and never pre-builds this
+          # crate's harness. The cohort itself still runs in under a second
+          # once the harness is built, so 1800s covers that one-time cold
+          # compile and nothing more.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-app-core --lib retention_readiness -- --nocapture
 
@@ -403,7 +478,12 @@ jobs:
         env:
           COLORTERM: truecolor
         run: |
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: on a cold cargo build this step spends most of its
+          # budget compiling the `jcode-tui` lib-test binary; the suite itself
+          # costs ~30s once built (see the note above). Killed at exactly 600s
+          # with exit 124 in CI job 121349210430 on 2026-10-26 while compiling;
+          # 1800s covers that one-time cold compile plus the serial suite.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-tui --lib -- --test-threads=1 \
             --skip test_prompt_entry_shimmer_color_moves_across_positions \
@@ -526,8 +606,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: windows-latest
+          # The old blob's restore hung for 26+ minutes in CI job 121317250103
+          # (2026-10-26), blocking the self-hosted runner the whole time. The
+          # `-notarget` key + `cache-targets: "false"` make the restore miss
+          # fast; PR #183 already applies this to the Build job.
+          key: windows-latest-notarget
           cache-all-crates: "true"
+          cache-targets: "false"
 
       - name: Build release binary
         shell: pwsh
@@ -792,8 +877,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: windows-cross-check
+          # The ~688 MB `windows-cross-check` blob hung for 26+ minutes in CI
+          # job 121317250103 (2026-10-26), blocking the self-hosted runner the
+          # whole time. The `-notarget` key + `cache-targets: "false"` make the
+          # restore miss fast; PR #183 already applies this to the Build job.
+          key: windows-cross-check-notarget
           cache-all-crates: "true"
+          cache-targets: "false"
 
       - name: Install LLVM toolchain for cargo-xwin
         run: |
