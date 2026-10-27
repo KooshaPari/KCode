@@ -4,14 +4,23 @@
 //! failure path degrades to dropping the payload rather than panicking: a
 //! host must never crash because an endpoint was unreachable.
 
+// `telemetry_status_is_permanent`, `spawn_background_worker`, and
+// `payload_is_breaker_exempt` are the only items the test module reaches for, so
+// the live delivery surface below — and every import it alone needs — is compiled
+// out of test builds instead of tripping `dead_code`/`unused_imports`.
+#[cfg(not(test))]
 use jcode_logging as logging;
+#[cfg(not(test))]
 use std::sync::OnceLock;
+#[cfg(not(test))]
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{SyncSender, sync_channel};
+#[cfg(not(test))]
 use std::time::Duration;
 
 use serde_json::Value;
 
+#[cfg(not(test))]
 use super::{
     ASYNC_SEND_TIMEOUT, BACKGROUND_QUEUE_CAPACITY, TELEMETRY_BACKGROUND_SENDER, TELEMETRY_ENDPOINT,
     TELEMETRY_HTTP_CLIENT, TELEMETRY_PERMANENTLY_REJECTED, TRANSCRIPT_BACKGROUND_SENDER,
@@ -20,6 +29,7 @@ use super::{
 
 /// Lazily initialize and borrow the shared telemetry HTTP client. Returns `None`
 /// when the builder fails, keeping telemetry optional rather than crashing.
+#[cfg(not(test))]
 pub(crate) fn http_client() -> Option<&'static reqwest::blocking::Client> {
     TELEMETRY_HTTP_CLIENT
         .get_or_init(|| {
@@ -37,6 +47,7 @@ pub(crate) fn http_client() -> Option<&'static reqwest::blocking::Client> {
         .as_ref()
 }
 
+#[cfg(not(test))]
 pub(crate) fn post_payload(payload: serde_json::Value, timeout: Duration) -> bool {
     if TELEMETRY_PERMANENTLY_REJECTED.load(Ordering::Relaxed) {
         return false;
@@ -74,6 +85,7 @@ pub(crate) fn post_payload(payload: serde_json::Value, timeout: Duration) -> boo
     }
 }
 
+#[cfg(not(test))]
 pub(crate) fn post_payload_with_retry(payload: serde_json::Value, timeout: Duration) -> bool {
     const RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(200), Duration::from_millis(800)];
     if post_payload(payload.clone(), timeout) {
@@ -91,6 +103,7 @@ pub(crate) fn post_payload_with_retry(payload: serde_json::Value, timeout: Durat
     false
 }
 
+#[cfg(not(test))]
 pub(crate) fn post_transcript_payload(payload: serde_json::Value, timeout: Duration) -> bool {
     let Some(client) = http_client() else {
         logging::warn("telemetry HTTP client failed to build; dropping transcript");
@@ -142,6 +155,7 @@ where
 /// Lazily start a telemetry background sender, returning `None` when the
 /// worker thread cannot be spawned. The fallback lets callers drop payloads
 /// rather than crash the host on thread-creation failure.
+#[cfg(not(test))]
 pub(crate) fn init_background_sender<F>(capacity: usize, deliver: F) -> Option<SyncSender<Value>>
 where
     F: FnMut(Value) + Send + 'static,
@@ -159,6 +173,7 @@ where
 
 /// Shared shape for the telemetry and transcript background senders: lazily
 /// initialize one OnceLock-held worker and borrow it.
+#[cfg(not(test))]
 pub(crate) fn sender<F>(
     slot: &OnceLock<Option<SyncSender<Value>>>,
     capacity: usize,
@@ -171,6 +186,7 @@ where
         .as_ref()
 }
 
+#[cfg(not(test))]
 pub(crate) fn background_sender() -> Option<&'static SyncSender<Value>> {
     // A worker thread has no caller to report to: the delivery result is
     // deliberately not inspected here, and both callees already log their
@@ -185,6 +201,7 @@ pub(crate) fn background_sender() -> Option<&'static SyncSender<Value>> {
     )
 }
 
+#[cfg(not(test))]
 pub(crate) fn transcript_background_sender() -> Option<&'static SyncSender<Value>> {
     sender(&TRANSCRIPT_BACKGROUND_SENDER, 64, |payload| {
         post_transcript_payload(payload, ASYNC_SEND_TIMEOUT);
