@@ -64,17 +64,33 @@ deadlocked, so none of them is the cause:
 Switching the socket identity test from a **private** environment lock to the
 **shared** `lock_test_env` made the suite block on 9 tests instead of 3: the
 test joined the queue of waiters behind the holder instead of running
-alongside it. That change was never committed; the branch keeps the private
-lock, and the branch's blocked set matches the base's.
+alongside it.
 
-The private lock is not obviously wrong: the variables it mutates
-(`KCODE_HOME`, `KCODE_SOCKET`, `TMPDIR`) are restored on drop, and the test
-asserts on values it computed itself. But `KCODE_HOME` now decides the shared
-socket path, so a test that sets it while another test reads the shared
-socket can see a different socket. The honest statement is that this test
-mutates process-global state that other tests read, and that the crate
-already has a pre-existing deadlock among the tests that take the shared
-lock. Both facts are true, and neither is this branch's to fix.
+## The private lock was a race, not a fix
+
+That revert was wrong, and measurement caught it. With the **private** lock,
+the socket identity test set `KCODE_HOME` concurrently with
+`server::reload_trace::tests::record_value_appends_jsonl_trace_event`, which
+sets the same variable under the **shared** lock. The two stomped each other's
+`KCODE_HOME`, and the trace test then wrote its jsonl into a temp home that
+was about to be deleted.
+
+Measured over repeated runs of `cargo test -p jcode-app-core --lib server::`:
+
+| Tree | Lock in the socket identity test | Failures |
+|---|---|---|
+| fork master `0d95c41e7` | n/a (no such test) | 0 of 9 |
+| branch, private lock | private | 2 of 9 |
+| branch, shared lock | shared `lock_test_env` | 0 of 12 |
+
+So the private lock traded a *deterministic* deadlock (pre-existing, in the
+base too) for a *nondeterministic* data race that only this branch
+introduced. The shared lock is the correct choice: it removes the race, and
+the deadlock it joins is not this branch's to fix.
+
+The shared lock does not remove the pre-existing deadlock - the base still
+hangs with or without this test. It only stops this branch from adding a
+new failure mode on top of it.
 
 ## Why it was not fixed here
 

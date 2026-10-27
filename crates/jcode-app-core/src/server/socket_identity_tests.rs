@@ -103,14 +103,25 @@ mod shared_socket_path_tests {
     use crate::server::socket::{default_socket_path, socket_path};
     use std::ffi::OsStr;
     use std::path::PathBuf;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use std::sync::MutexGuard;
 
     /// Environment mutation is process-global, so these tests serialize.
+    ///
+    /// This is the SHARED environment lock, not a private one. `KCODE_HOME`
+    /// decides the shared socket path, and other tests in this crate set
+    /// `KCODE_HOME` to their own temp home while holding the shared lock.
+    /// A private lock here would let this test run concurrently with them,
+    /// so the two would stomp each other's `KCODE_HOME`: the other test then
+    /// resolves the shared socket under the wrong home, and the trace test
+    /// writes its jsonl into a directory that is about to be deleted.
+    ///
+    /// The suite already has a pre-existing deadlock among the tests that
+    /// hold this lock across awaits (see
+    /// `docs/acceptance/app-core-test-deadlock.md`); taking the shared lock
+    /// here adds one more waiter to that queue, which is a smaller problem
+    /// than racing on a process-global variable.
     fn env_lock() -> MutexGuard<'static, ()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+        crate::storage::lock_test_env()
     }
 
     /// Restores the named variable to its prior value (or absence) on drop.
