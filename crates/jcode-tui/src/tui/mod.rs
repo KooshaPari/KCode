@@ -1853,9 +1853,8 @@ pub fn prewarm_focused_side_panel(
 #[cfg(test)]
 mod tests {
     use super::{
-        CacheTtlInfo, KvCacheProblemKind, cache_expected_warm, connection_type_icon,
-        detect_kv_cache_problem, keyboard_enhancement_flags, resolve_subscribe_metadata,
-        scheduled_notification_text,
+        CacheTtlInfo, KvCacheProblemKind, connection_type_icon, detect_kv_cache_problem,
+        keyboard_enhancement_flags, resolve_subscribe_metadata, scheduled_notification_text,
     };
     use crate::ambient::AmbientStatus;
     use crate::tui::info_widget::AmbientWidgetData;
