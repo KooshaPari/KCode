@@ -3,7 +3,7 @@
 - Branch under test: `fix/provider-identity-inheritance-master`
 - Local repo: `/Users/kooshapari/.jcode/scratch/wt-port-master`
 - Tested binary: `/Users/kooshapari/.jcode/scratch/wt-port-master/target/debug/kcode`
-  - `kcode --version` -> `kcode v0.0.0-dev (35f2e3456)`
+  - `kcode --version` -> `kcode v0.0.0-dev (c605dbb73)`
   - The commit hash is stamped by `crates/jcode-build-meta/build.rs` at first
     build and is deliberately NOT re-derived on a later commit, so the build
     was run with `KCODE_BUILD_GIT_HASH=$(git rev-parse --short=9 HEAD)`.
@@ -33,6 +33,10 @@
 
 This matches the upstream `jcode` matrix recorded in
 `~/.jcode/scratch/acceptance-local/EVIDENCE.md`, row for row.
+
+The matrix was re-run against the final binary (`c605dbb73`) after the
+environment-lock fix in `c605dbb73` and produced the same four rows, so
+that fix is behavior-neutral for the product.
 
 ## Verbatim observations
 
