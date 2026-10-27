@@ -248,11 +248,13 @@ the fork version resolves to `0.93.398-k0.1.0`):
 | --- | --- |
 | macOS arm64 artifact | `kcode` (Mach-O 64-bit arm64), SHA-256 `bcc936b3296af6fc3a4e9d72c4f9350b9e78fe17d50cb776632a1e8f15eca5b7` |
 | Windows x64 artifact | `kcode.exe` (PE32+ x86-64 console), SHA-256 `ea9eac909a83a3436978f478b56bd2c22d0ffe82b1db980e005d4bf7bf2c8182` |
-| Reported version | `kcode v0.93.398-k0.1.0-dev (9476f478)` on both platforms |
+| Windows ARM64 artifact | `kcode-arm64.exe` (PE32+ Aarch64 console), SHA-256 `e703df2500461bb4ced5bb774b01e4a1650120aedb937d19ef81bad319a483ba` |
+| Reported version | `kcode v0.93.398-k0.1.0-dev (9476f478)` on all three artifacts |
 | Reported semver | `0.93.398-k0.1.0` (fork channel preserved; no `0.0.0` collapse) |
-| Native Windows run | `kcode.exe --version` and `kcode.exe version --json` both exit 0 on Windows |
-| Placement | macOS host: native arm64 build plus `cargo xwin` MSVC cross-build; desk: native execution validation only |
-| Preserved copies | `~/.kcode/builds/versions/9476f478/{kcode,kcode.exe}` |
+| Native Windows run | `kcode.exe --version` and `kcode.exe version --json` both exit 0 on Windows (x64) |
+| ARM64 native run | not yet executed: the desk was offline when the ARM64 artifact was produced |
+| Placement | macOS host: native arm64 build plus `cargo xwin` MSVC cross-builds; desk: native execution validation only |
+| Preserved copies | `~/.kcode/builds/versions/9476f478/{kcode,kcode.exe,kcode-arm64.exe}` |
 
 Placement note: the desk's Fedora WSL vhdx lives on `D:` (physical disk 0,
 931 GB total, ~22 GB free). The first cross-compile attempt exhausted `D:`
@@ -272,8 +274,17 @@ actually produced. Corrected in `ci.yml`, `release.yml`, `windows-smoke.yml`
 only when the tag carries a fork-version channel, leaving the upstream guard
 and third-party forks unchanged.
 
-Still outstanding for W5: ARM64 qualification before publishing an ARM64
-asset, and signing/provenance for the published Windows binary.
+Still outstanding for W5: a native ARM64 Windows run before publishing the
+ARM64 asset, and signing/provenance for the published Windows binary.
+
+The ARM64 cross-build needed three fixes to cargo-xwin's ARM64 path, since
+`ring` forces plain clang for windows+aarch64 while the clang-cl backend
+emits MSVC-style flags, and cc-rs passes those through untouched:
+`/imsvc <dir>` becomes `-I <dir>`, `/D<x>` becomes `-D<x>`, `/std:c11`
+becomes `-std=c11`, and `/experimental:*` is dropped. Switching to
+`cargo xwin --cross-compiler clang` is not a substitute: it substitutes
+windows-msvc-sysroot headers whose ARM64 NEON intrinsics clang cannot
+compile for MSVC. The real SDK headers compile cleanly with plain clang.
 
 The operator confirmed the one-way boundary: Jcode data may be imported into
 KCode only. Imports remain explicit and opt-in; KCode must never write back
