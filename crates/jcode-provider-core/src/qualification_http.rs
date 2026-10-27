@@ -16,6 +16,9 @@ pub(crate) fn builder() -> reqwest::ClientBuilder {
     }
 }
 
+/// Constructs the last-resort provider HTTP client.
+///
+/// Constructing this fallback client may panic if reqwest cannot build it.
 pub(crate) fn fallback_client() -> reqwest::Client {
     if enabled() {
         // Do not reintroduce system-proxy discovery via Client::new on a fallback.

@@ -6,7 +6,7 @@ Repository: KooshaPari/KCode; its source checkout is named `jcode`.
 Verified fork origin: `https://github.com/KooshaPari/KCode.git`.
 Baseline/default branch: `master` at
 `028ae83b769a932c013f527b305a5dbf0480ffe0`.
-Worktree: `/Users/kooshapari/CodeProjects/Phenotype/repos/kcode-wtrees/qualification-no-proxy-20261018`.
+Worktree: isolated branch worktree for this qualification change.
 Branch: `codex/qualification-no-proxy-20261018`.
 The canonical checkout, unrelated untracked documents, installed profiles,
 launchers and shared services were preserved. No upstream publication occurred.
@@ -76,7 +76,7 @@ installed artifact, hosted CI, or release gate is claimed.
 
 ## Preserved artifacts
 
-Logs under `/Users/kooshapari/.local/state/harnessdesk-heartbeat/audit/`:
+Preserved local logs, retained outside the source worktree:
 
 - `kcode-proxy-resume-red.log`: clean baseline RED.
 - `kcode-proxy-green.log`: preserved fixture failure; SHA-256
@@ -84,7 +84,7 @@ Logs under `/Users/kooshapari/.local/state/harnessdesk-heartbeat/audit/`:
 - `kcode-proxy-fixture-green.log`: final focused GREEN.
 - `kcode-proxy-check.log`: successful crate check.
 
-Local compute used one job, no GPU or remote compute. The build cache originally
-at this worktree's `.qualification/target` was moved intact after validation to
-`/Users/kooshapari/.local/state/kcode-qualification-no-proxy-20261018/build-cache/target`
-so it is retained outside the reviewable source tree. No cache data was deleted.
+Local compute used one job, no GPU or remote compute. The validation build cache
+was moved intact from the isolated worktree to a local state directory after
+validation so it remains outside the reviewable source tree. No cache data was
+deleted.
