@@ -228,9 +228,15 @@ W2 focused commands (standalone metadata gate executed on Windows in the
 ```text
 pwsh -NoProfile -File scripts/test_build_meta.ps1
 cargo test -p jcode-build-meta
-python -m unittest discover -s tests -p test_kcode_product_isolation.py
+python3.11 -m unittest discover -s tests -p test_kcode_product_isolation.py
 cargo fmt --all -- --check
 ```
+
+The isolation gate needs a **Python 3.11+** interpreter:
+`tests/test_kcode_product_isolation.py` imports `tomllib`, which joined the
+stdlib in 3.11. A bare `python` on a host that still defaults to 3.9 fails at
+import with `ModuleNotFoundError: No module named 'tomllib'`, which is a host
+artifact, not a product failure.
 
 Before declaring W2 complete, verify that valid explicit fork overrides retain
 precedence, zero overrides cannot produce zero output, missing/invalid root

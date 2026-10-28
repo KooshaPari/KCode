@@ -15,8 +15,15 @@ class ProductIdentityTests(unittest.TestCase):
         bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
         if not bash:
             self.skipTest("Bash unavailable")
+        # Use a symlink-free absolute base. On macOS /tmp is a symlink to
+        # /private/tmp, so a literal /tmp path trips the symlink guard in
+        # scripts/product_paths.sh before the jcode-component guard this test
+        # is actually asserting, and the expected stderr never appears.
+        forbidden_base = pathlib.Path(tempfile.gettempdir()).resolve()
         rejected = subprocess.run(
-            [bash, "-c", "source scripts/product_paths.sh; require_kcode_owned_path /tmp/.jcode/forbidden"],
+            [bash, "-c",
+             'source scripts/product_paths.sh; require_kcode_owned_path "$1"/.jcode/forbidden',
+             "bash", str(forbidden_base)],
             cwd=ROOT, capture_output=True, text=True, timeout=30,
         )
         self.assertNotEqual(rejected.returncode, 0)
