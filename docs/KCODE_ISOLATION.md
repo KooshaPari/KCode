@@ -274,8 +274,7 @@ actually produced. Corrected in `ci.yml`, `release.yml`, `windows-smoke.yml`
 only when the tag carries a fork-version channel, leaving the upstream guard
 and third-party forks unchanged.
 
-Still outstanding for W5: a native ARM64 Windows run before publishing the
-ARM64 asset, and signing/provenance for the published Windows binary.
+Still outstanding for W5: signing/provenance for the published Windows binary.
 
 The ARM64 cross-build needed three fixes to cargo-xwin's ARM64 path, since
 `ring` forces plain clang for windows+aarch64 while the clang-cl backend
@@ -285,6 +284,12 @@ becomes `-std=c11`, and `/experimental:*` is dropped. Switching to
 `cargo xwin --cross-compiler clang` is not a substitute: it substitutes
 windows-msvc-sysroot headers whose ARM64 NEON intrinsics clang cannot
 compile for MSVC. The real SDK headers compile cleanly with plain clang.
+
+The ARM64 binary also needs the ARM64 VC++ runtime next to it. The test
+image had no ARM64 VC++ runtime (`C:\Windows\SysArm64` was empty), so the
+first native run failed with `STATUS_DLL_NOT_FOUND` on `VCRUNTIME140.dll`
+until the ARM64 `vcruntime140.dll` was placed alongside it. A published
+ARM64 asset must ship the redistributable or link the runtime statically.
 
 The operator confirmed the one-way boundary: Jcode data may be imported into
 KCode only. Imports remain explicit and opt-in; KCode must never write back
