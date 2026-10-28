@@ -47,20 +47,13 @@ mod windows_setup;
 use macos_launcher::{install_macos_app_launcher, should_refresh_macos_app_launcher};
 #[cfg(any(test, target_os = "macos"))]
 use macos_terminal::MacTerminalKind;
-#[cfg(target_os = "macos")]
-use macos_terminal::launch_script_for_macos_terminal;
-#[cfg(target_os = "macos")]
-use macos_terminal::load_preferred_macos_terminal;
 #[cfg(test)]
 use macos_terminal::paused_jcode_shell_command;
 #[cfg(target_os = "macos")]
-use macos_terminal::save_preferred_macos_terminal;
-// `MacTerminalKind` is reachable from the `#[cfg(any(test, target_os = "macos"))]`
-// notice helper and its tests, but every `effective_macos_terminal()` caller sits
-// behind `#[cfg(target_os = "macos")]`. Keeping the two names on one gate left
-// this import unused in a non-macOS `--all-targets` test build.
-#[cfg(target_os = "macos")]
-use macos_terminal::effective_macos_terminal;
+use macos_terminal::{
+    effective_macos_terminal, launch_script_for_macos_terminal, load_preferred_macos_terminal,
+    save_preferred_macos_terminal,
+};
 #[cfg(windows)]
 use windows_setup::{
     create_windows_desktop_shortcut, maybe_show_windows_setup_hints, run_setup_hotkey_windows,
