@@ -59,6 +59,8 @@ jobs:
             }
           }
 
+          # Static CRT: the shipped exe must not require VCRUNTIME140.dll.
+          $env:RUSTFLAGS = '-C target-feature=+crt-static'
           & cargo build --locked --release --target x86_64-pc-windows-msvc
 
       - name: Compile library and binary tests
@@ -146,6 +148,23 @@ jobs:
             throw 'Built Windows binary failed to run --version'
           }
 
+      - name: Verify no VC++ runtime dependency (static CRT)
+        shell: pwsh
+        run: |
+          # A published Windows asset must run on a bare install with no VC++
+          # redistributable installed. The PE import table IS the acceptance
+          # surface: if VCRUNTIME*/MSVCP* and the api-ms-win-crt-* UCRT
+          # forwarders are absent, the loader cannot require them.
+          $exe = "target/x86_64-pc-windows-msvc/release/kcode.exe"
+          if (-not (Test-Path $exe)) { throw "Missing binary: $exe" }
+          $deps = & dumpbin /nologo /dependents $exe
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin failed on $exe" }
+          $bad = $deps | Select-String -Pattern 'VCRUNTIME|MSVCP|api-ms-win-crt'
+          if ($bad) {
+            throw "Dynamic CRT dependency in $exe (needs static CRT):`n$($bad -join "`n")"
+          }
+          Write-Host "static CRT confirmed (no VC++ runtime import): $exe"
+
       - name: Verify installer using local artifact
         shell: pwsh
         run: |
@@ -188,6 +207,9 @@ jobs:
             }
           }
 
+          # Static CRT: Windows ARM64 images ship an empty SysArm64, so a
+          # dynamically linked CRT fails at load with STATUS_DLL_NOT_FOUND.
+          $env:RUSTFLAGS = '-C target-feature=+crt-static'
           & cargo build --locked --release --target aarch64-pc-windows-msvc --no-default-features --features pdf
 
       - name: Verify built binary launches
@@ -197,6 +219,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows ARM64 binary failed to run --version'
           }
+
+      - name: Verify no VC++ runtime dependency (static CRT)
+        shell: pwsh
+        run: |
+          # A published Windows asset must run on a bare install with no VC++
+          # redistributable installed. The PE import table IS the acceptance
+          # surface: if VCRUNTIME*/MSVCP* and the api-ms-win-crt-* UCRT
+          # forwarders are absent, the loader cannot require them.
+          $exe = "target/aarch64-pc-windows-msvc/release/kcode.exe"
+          if (-not (Test-Path $exe)) { throw "Missing binary: $exe" }
+          $deps = & dumpbin /nologo /dependents $exe
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin failed on $exe" }
+          $bad = $deps | Select-String -Pattern 'VCRUNTIME|MSVCP|api-ms-win-crt'
+          if ($bad) {
+            throw "Dynamic CRT dependency in $exe (needs static CRT):`n$($bad -join "`n")"
+          }
+          Write-Host "static CRT confirmed (no VC++ runtime import): $exe"
 
       - name: Verify installer using local artifact
         shell: pwsh
