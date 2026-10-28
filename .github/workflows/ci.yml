@@ -538,7 +538,11 @@ jobs:
         # (burst-spawn concurrency), and folding compilation into its 900s run
         # budget was pushing slower hosted ubuntu/macos runners over the limit.
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          # 2400s, not 900s: covers the one-time cold compile of the kcode
+          # integration-test binary, which links the full binary and every
+          # provider runtime. Observed: killed at exactly 900s (exit 124) while
+          # compiling (CI job 122084008601, 2026-10-27), zero binaries built.
+          python3 .github/scripts/run_with_timeout.py 2400 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             --test provider_matrix --test e2e --no-run
 
