@@ -90,10 +90,14 @@ jobs:
               actual="$(sha256sum "${tmpdir}/sc.tar.xz" | cut -d' ' -f1)"
               if [ "${actual}" = "${SHELLCHECK_SHA256}" ]; then
                 tar -xJf "${tmpdir}/sc.tar.xz" -C "${tmpdir}"
-                install -m 0755 "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck 2>/dev/null \
-                  || cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
                 mkdir -p "${HOME}/.local/bin"
-                [ -x /usr/local/bin/shellcheck ] || cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                if ! install -m 0755 "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck 2>/dev/null; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                if [ ! -x /usr/local/bin/shellcheck ]; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                chmod +x "${HOME}/.local/bin/shellcheck" 2>/dev/null || true
                 export PATH="${HOME}/.local/bin:${PATH}"
                 echo "installed shellcheck ${SHELLCHECK_VERSION} (sha256 verified)"
               else
