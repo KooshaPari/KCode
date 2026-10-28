@@ -166,6 +166,11 @@ pub(crate) async fn spawn_server_with_executable(
     #[cfg(unix)]
     Ok(())
 }
+/// Wait for another client's spawn lock to clear, or for the server to come up.
+///
+/// `#[cfg(unix)]` because it drives the `flock`-based spawn lock, which
+/// Windows does not have.
+#[cfg(unix)]
 async fn acquire_spawn_lock_or_wait(
     socket_path: &std::path::Path,
 ) -> Result<Option<SpawnLockGuard>> {
@@ -251,12 +256,40 @@ pub(crate) async fn wait_for_reloading_server() -> bool {
         server::ReloadWaitStatus::Waiting { .. } => false,
     }
 }
+/// The spawn lock is Unix-only: it uses `flock`, which Windows does not have.
+///
+/// The whole block is `#[cfg(unix)]` because the lock path, the guard and the
+/// acquire helper are all one unit. The Windows client does not take a spawn
+/// lock at all; its call site is `#[cfg(unix)]` too.
+#[cfg(unix)]
 pub(crate) fn spawn_lock_path(socket_path: &std::path::Path) -> std::path::PathBuf {
     std::path::PathBuf::from(format!("{}.spawning", socket_path.display()))
 }
+
+/// A held spawn lock. Holding it keeps the lock file open, and the `flock`
+/// stays held until the file is closed.
+#[cfg(unix)]
 pub(crate) struct SpawnLockGuard {
     _file: std::fs::File,
+    path: std::path::PathBuf,
 }
+
+/// Remove the lock file when the guard drops.
+///
+/// Without this the lock file outlives the lock: `flock` is released when the
+/// file is closed, but the file itself stays on disk, so a later client sees a
+/// stale lock file and the runtime directory grows one file per spawn.
+#[cfg(unix)]
+impl Drop for SpawnLockGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Try to take the spawn lock without blocking.
+///
+/// `flock` is Unix-only, so this is `#[cfg(unix)]`.
+#[cfg(unix)]
 pub(crate) fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuard>> {
     use std::fs::OpenOptions;
     use std::os::fd::AsRawFd;
@@ -281,7 +314,10 @@ pub(crate) fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<Sp
     let fd = file.as_raw_fd();
     let ret = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
     if ret == 0 {
-        Ok(Some(SpawnLockGuard { _file: file }))
+        Ok(Some(SpawnLockGuard {
+            _file: file,
+            path: path.to_path_buf(),
+        }))
     } else {
         Ok(None)
     }

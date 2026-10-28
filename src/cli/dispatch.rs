@@ -22,10 +22,15 @@ use provider_init::ProviderChoice;
 pub(crate) use server_spawn::{
     server_is_running_at, spawn_server_with_executable, wait_for_existing_reload_server,
 };
-// The spawn-lock helpers are re-exported for the dispatch tests, which live in
-// a sibling module and reach them through this path.
+// The spawn-lock helpers are Unix-only (they use `flock`), and they are
+// re-exported for the dispatch tests, which live in a sibling module and
+// reach them through this path.
+#[cfg(all(unix, test))]
+pub(crate) use server_spawn::{spawn_lock_path, try_acquire_spawn_lock};
+// `wait_for_reloading_server` is not platform-specific, and the dispatch
+// tests reach it through this path.
 #[cfg(test)]
-pub(crate) use server_spawn::{spawn_lock_path, try_acquire_spawn_lock, wait_for_reloading_server};
+pub(crate) use server_spawn::wait_for_reloading_server;
 
 #[cfg(any(target_os = "linux", test))]
 fn is_file_controlled_debug_client() -> bool {
@@ -1181,7 +1186,6 @@ pub(crate) async fn wait_for_resuming_server(context: &str, timeout: std::time::
     false
 }
 
-#[cfg(unix)]
 pub(crate) async fn maybe_prompt_server_bootstrap_login(
     provider_choice: &ProviderChoice,
 ) -> Result<()> {
