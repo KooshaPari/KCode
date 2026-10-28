@@ -382,7 +382,12 @@ jobs:
         # jcode-base lib test harness, which exceeded 300s on a hosted macOS
         # runner (run 30591536707) while the cohort itself runs in a second.
         run: |
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: this step cold-compiles the `jcode-base` lib-test
+          # target (provider runtimes aws-sdk, azure, bedrock, openrouter); no
+          # `default-members`, so `cargo test --lib --bins --no-run` never
+          # pre-builds it. Killed at exactly 600s, exit 124, while compiling
+          # (CI job 122656506857, 2026-10-28); 1800s covers that cold compile.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-base --lib secret_input -- --nocapture
 
