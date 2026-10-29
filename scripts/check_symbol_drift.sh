@@ -173,7 +173,6 @@ KNOWN_DRIFT=(
   $'scripts/test_windows_launcher_install.ps1\twindows-exe-name\tDEBT\tAsserts the launcher at LOCALAPPDATA\\jcode\\bin\\jcode.exe while scripts/install.ps1:997 writes kcode.exe. Run in windows CI; expected name is kcode.exe.'
   $'scripts/test_windows_setup_evaluation.ps1\twindows-exe-name\tDEBT\tAsserts stable\\jcode.exe and versioned jcode.exe binaries while scripts/install.ps1:1059/1123 write kcode.exe. Run in windows CI; expected name is kcode.exe.'
   $'scripts/test_install_conversion.sh\twindows-exe-name\tDEBT\tAsserts the converted Windows install tree contains jcode.exe; install.ps1 writes kcode.exe. Run in windows CI.'
-  $'scripts/prepare_sdk_runtime_packages.sh\twindows-exe-name\tDEBT\tNames the win32 npm package payload jcode.exe; sdk/typescript asserts a jcode.exe binary is rejected as cross_product_path, so the payload name should be kcode.exe.'
 )
 
 SCAN_ROOTS=(
