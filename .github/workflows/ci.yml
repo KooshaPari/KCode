@@ -63,18 +63,54 @@ jobs:
         # findings and 50 pre-existing warning-level ones. Warnings are reported
         # but not enforced; raise to `-S warning` once the backlog is cleared.
         #
-        # shellcheck is not guaranteed on the self-hosted runner. Install it if
-        # missing, and if that fails downgrade to a warning annotation rather
-        # than blocking every PR on runner provisioning.
+        # shellcheck is not guaranteed on the self-hosted runner. The runner is
+        # a Linux box WITHOUT apt-get (verified 2026-10-28: the first version of
+        # this step tried `apt-get`, found no apt-get, and degraded to a warning,
+        # so the gate silently never enforced anything). Install a pinned static
+        # binary instead, verifying the SHA256, with apt as a fallback for
+        # runners that do have a package manager. If neither works, degrade to a
+        # warning annotation rather than blocking every PR on runner
+        # provisioning.
         shell: bash
         run: |
           if ! command -v shellcheck >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -qq && sudo apt-get install -y shellcheck || true
+            # Pinned static x86_64 build. sha256 verified below; a mismatch
+            # aborts the install and falls through to the warning path.
+            SHELLCHECK_VERSION=v0.10.0
+            SHELLCHECK_SHA256=6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+            SHELLCHECK_URL="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+            tmpdir="$(mktemp -d)"
+            fetched=0
+            if command -v curl >/dev/null 2>&1; then
+              curl -sSL --retry 3 --max-time 120 -o "${tmpdir}/sc.tar.xz" "${SHELLCHECK_URL}" && fetched=1
+            elif command -v wget >/dev/null 2>&1; then
+              wget -q -T 120 -O "${tmpdir}/sc.tar.xz" "${SHELLCHECK_URL}" && fetched=1
             fi
+            if [ "${fetched}" = "1" ]; then
+              actual="$(sha256sum "${tmpdir}/sc.tar.xz" | cut -d' ' -f1)"
+              if [ "${actual}" = "${SHELLCHECK_SHA256}" ]; then
+                tar -xJf "${tmpdir}/sc.tar.xz" -C "${tmpdir}"
+                mkdir -p "${HOME}/.local/bin"
+                if ! install -m 0755 "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck 2>/dev/null; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                if [ ! -x /usr/local/bin/shellcheck ]; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                chmod +x "${HOME}/.local/bin/shellcheck" 2>/dev/null || true
+                export PATH="${HOME}/.local/bin:${PATH}"
+                echo "installed shellcheck ${SHELLCHECK_VERSION} (sha256 verified)"
+              else
+                echo "::warning::shellcheck download failed checksum (got ${actual}); not installing."
+              fi
+            fi
+            rm -rf "${tmpdir}"
+          fi
+          if ! command -v shellcheck >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y shellcheck || true
           fi
           if ! command -v shellcheck >/dev/null 2>&1; then
-            echo "::warning::shellcheck is unavailable on this runner; shell lint skipped. Install shellcheck on desk-kcode-1 to enforce it."
+            echo "::warning::shellcheck is unavailable on this runner; shell lint skipped. Install shellcheck on desk-kcode-1/2 to enforce it."
             exit 0
           fi
 
