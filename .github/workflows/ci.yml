@@ -86,6 +86,21 @@ jobs:
         shell: bash
         run: python3 scripts/check_code_size_budget.py
 
+      - name: Enforce no pre-rename symbols in build paths
+        shell: bash
+        # A build-config file is not compiled, so nothing type-checks the target
+        # names and environment variables it sets. Two real defects shipped this
+        # way: CI ran `cargo build -p jcode --bin jcode` and referenced
+        # `jcode.exe` (no such package, no such binary), and release.yml set
+        # JCODE_RELEASE_BUILD / JCODE_CI_BUILD / JCODE_BUILD_SEMVER, which
+        # crates/jcode-build-meta/build.rs never reads, so every release was a
+        # dev-mode build whose own installer rejected it. The gate scans only
+        # .github/workflows/, scripts/, install.sh, install.ps1, Cargo.toml and
+        # .cargo/; crates/, src/ and tests/ keep `jcode` crate, library and
+        # ~/.jcode data names legitimately. Known pre-existing occurrences are
+        # enumerated in the gate's ratchet register and printed each run.
+        run: bash scripts/check_symbol_drift.sh
+
       - name: Enforce oversized-test ratchet
         shell: bash
         run: python3 scripts/check_test_size_budget.py
