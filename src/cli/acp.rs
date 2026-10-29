@@ -1382,6 +1382,12 @@ const MODE_READ_ONLY: &str = "read-only";
 /// session can still read the repository and search it. The list is the
 /// dangerous half of the builtin set; everything omitted here is read-only by
 /// construction.
+///
+/// The set is deliberately over-inclusive: a tool that spawns other tools
+/// (`batch`), spawns agents (`swarm`), or opens a UI that can drive the
+/// machine is in it even though its own name does not say "write". A name that
+/// is merely unfamiliar is also in it, because an unfamiliar tool is one
+/// whose behaviour nobody has verified to be read-only.
 const READ_ONLY_DENIED_TOOLS: &[&str] = &[
     // Filesystem mutation.
     "write",
@@ -1408,6 +1414,15 @@ const READ_ONLY_DENIED_TOOLS: &[&str] = &[
     "schedule",
     "selfdev",
     "desktop_selfdev",
+    // Tools that run other tools, spawn agents, or open a machine-driving UI.
+    "batch",
+    "swarm",
+    "applet",
+    "panel",
+    "side_panel",
+    "skill_manage",
+    "integration_tools",
+    "elicitate_mcp",
 ];
 
 fn acp_available_commands() -> Vec<Value> {
