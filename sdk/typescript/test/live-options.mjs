@@ -7,7 +7,7 @@
  * with nothing behind it. Neither shows up in a suite that only ever launches
  * a fresh instance.
  *
- * Usage: node test/live-options.mjs [path-to-jcode-binary]
+ * Usage: node test/live-options.mjs [path-to-kcode-binary]
  */
 
 import { JcodeClient } from "../dist/index.js";
@@ -15,10 +15,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const binary = process.argv[2] ?? "jcode";
+const binary = process.argv[2] ?? "kcode";
 // A binary that ignores its arguments and never opens a socket, for the
 // startup-timeout check.
-const slowBinary = path.join(os.tmpdir(), `jcode-slow-${process.pid}.sh`);
+const slowBinary = path.join(os.tmpdir(), `kcode-slow-${process.pid}.sh`);
 fs.writeFileSync(slowBinary, "#!/usr/bin/env bash\nsleep 60\n", { mode: 0o755 });
 process.once("exit", () => fs.rmSync(slowBinary, { force: true }));
 
@@ -35,7 +35,7 @@ const step = async (name, fn) => {
 
 // Every option the README documents should do what it says.
 await step("jcodeHome keeps state at a fixed path across runs", async () => {
-  const home = path.join(os.tmpdir(), "jcode-sdk-option-home");
+  const home = path.join(os.tmpdir(), "kcode-sdk-option-home");
   fs.rmSync(home, { recursive: true, force: true });
   const a = await JcodeClient.launch({ binary, jcodeHome: home, workingDir: process.cwd() });
   const s = await a.createSession(process.cwd());
