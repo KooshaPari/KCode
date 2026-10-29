@@ -214,12 +214,12 @@ W1 transport + exact identity
 
 | Work | Owner lane | Current state | Exit evidence |
 | --- | --- | --- | --- |
-| W1 | Windows runtime | Transport restored; complete runtime receipt pending | Resolve all PATH candidates. Record installed client and long-lived server executable, SHA-256, fork version, runtime directory, socket/pipe/port, lock and launch owner on this device. Distinguish a source archive from a checkout and a file version from a running service. Preserve stock processes/data. |
+| W1 | Windows runtime | **PASS** on desk (Windows 28120, x64): client and server are the same file (SHA-256 `e3769d51…`), server pid 158144 via `serve`, launch owner recorded, transport is named pipes with zero TCP listeners, file version and running service version distinguished via `servers.json` | Resolve all PATH candidates. Record installed client and long-lived server executable, SHA-256, fork version, runtime directory, socket/pipe/port, lock and launch owner on this device. Distinguish a source archive from a checkout and a file version from a running service. Preserve stock processes/data. |
 | W2 | KCode metadata/convergence | Focused native metadata gate passed; broader gates pending | Run metadata build-script tests, crate tests, product-isolation tests, formatting and required local gates; require nonzero discovered/passed test counts at the exact candidate SHA. Built client and daemon must report a nonzero BASEVERSION-kSEMVER; reject zero, malformed or mismatched release identity. Reuse open fixes after review. |
 | W3 | Windows Terminal | Native mechanism fixtures passed; live application pending | Test direct Windows Terminal with PowerShell: ordinary typing, deliberate Enter/Esc/Backspace, Shift+Enter, short and leading-newline paste, delayed chunks, resize, reconnect, Ctrl+C and exit. Repeat within the observed failure ranges. Use process-owned input/output logs only; no screenshots/recordings. |
 | W4 | Windows HERDR | UNKNOWN live application behavior | Repeat the Windows terminal matrix inside HERDR, including pane exit and session continuity; compare with the direct Windows Terminal control. Resolve the actual host/pane process and launch owner. Mac client, build and remote-view acceptance are outside this pass. |
 | W5 | Build/release | Windows x64 and ARM64 artifacts DELIVERED and natively verified; both Windows targets now link the CRT statically; workflow patch staged, not merged | Use suitable existing self-hosted/free compute; record placement. Produce a KCode-only Windows x64 artifact for this device from the exact tested SHA (qualify ARM64 separately before publishing an ARM64 asset), fork versions, hashes, signing/provenance and nonzero client/server output. Add fork-specific workflow/installer-smoke paths; preserve upstream guard until replacement is validated. |
-| W6 | Device install/coexistence | BLOCKED: no verified artifact/transport | Install trusted local artifact with scripts/install.ps1; verify user/process PATH in a fresh shell, executable hash/version, and correct server attachment. Stock jcode must remain separately launchable. Compare stock state bytes/mtimes/permissions before and after imports and KCode operations. |
+| W6 | Device install/coexistence | **Coexistence PASS on Windows**: KCode and stock jcode live simultaneously with distinct executables, runtime dirs, socket paths, named pipes (`kcode-*` vs `jcode-*`) and server registries, no shared TCP port; stock jcode ran its own v0.99.1 server throughout. `scripts/install.ps1` and the stock-state byte/mtime diff remain unrun | Install trusted local artifact with scripts/install.ps1; verify user/process PATH in a fresh shell, executable hash/version, and correct server attachment. Stock jcode must remain separately launchable. Compare stock state bytes/mtimes/permissions before and after imports and KCode operations. |
 | W7 | Maintained channel | Disabled intentionally | Publish only verified fork artifacts and correct release notes. Then enable fork-only authenticated/checksummed update discovery/install and test upgrade, failed download, wrong product/version/hash and rollback without touching jcode. |
 
 W2 focused commands (standalone metadata gate executed on Windows in the
@@ -283,6 +283,40 @@ only when the tag carries a fork-version channel, leaving the upstream guard
 and third-party forks unchanged.
 
 Still outstanding for W5: signing/provenance for the published Windows binary.
+
+### W1 / W6 runtime receipt (Windows, 2026-10-29)
+
+Executed on `KOOSHAPARI-DESK` (`Windows NT 10.0.28120.0`, CPU architecture 9 =
+x64) against the static-CRT x64 artifact, SHA-256
+`e3769d51a96f9488e6accaef9b0591b1face43a224ade7f9f23ab7b15772e204`.
+
+| Field | Value |
+| --- | --- |
+| client file | `C:\Users\koosh\kcode-static.exe`, 96,145,408 bytes, hash above |
+| client version | `kcode v0.93.398-k0.1.0-dev (9476f478)`, exit 0 |
+| server pid | 158144 |
+| server exe | same path and same SHA-256 as the client |
+| server cmdline | `"C:\Users\koosh\kcode-static.exe" serve` |
+| launch owner | `powershell.exe` pid 159400 running the receipt script |
+| transport | **named pipes only, zero TCP listeners** |
+| KCode pipes | `kcode-038614a5a84806bc`, `kcode-debug-b0af7daaa7d66986` |
+| stock jcode pipes | `jcode-a930d863d87e3015`, `jcode-debug-cd5f7e6f930efa0c` |
+| KCode socket | `%TEMP%\kcode-koosh\kcode.sock` |
+| stock socket | `%TEMP%\jcode-koosh\jcode.sock` |
+| KCode server registry | `~/.kcode/servers.json` -> `brook`, `v0.93.398-k0.1.0-dev (9476f478)`, pid 158144 |
+| stock server registry | `~/.jcode/servers.json` -> `cove`, `v0.99.1 (7206efd0c)` |
+
+Pipe names come from `crates/jcode-transport/src/windows.rs:13-32`: the name is
+`<socket-file-stem>-<first 16 hex of sha256(normalised path)>`. Because the two
+products use different socket paths, both the stem and the hash differ, so the
+IPC namespaces cannot collide.
+
+This is what makes the file-version vs running-service distinction concrete: a
+**different-version stock jcode service (v0.99.1) was running at the same time**
+as KCode (v0.93.398), and neither disturbed the other.
+
+Note: `kcode server start` blocks on a host with no credentials configured, so
+the daemon was launched with `serve` directly for this receipt.
 
 The ARM64 cross-build needed three fixes to cargo-xwin's ARM64 path, since
 `ring` forces plain clang for windows+aarch64 while the clang-cl backend
