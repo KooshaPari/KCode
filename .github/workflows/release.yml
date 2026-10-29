@@ -175,18 +175,18 @@ jobs:
             cargo build --release --target ${{ matrix.target }}
           fi
         env:
-          JCODE_RELEASE_BUILD: "1"
-          JCODE_CI_BUILD: "1"
-          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
+          KCODE_RELEASE_BUILD: "1"
+          KCODE_CI_BUILD: "1"
+          KCODE_BUILD_SEMVER: ${{ github.ref_name }}
 
       - name: Build portable Linux x86_64 release binary
         if: matrix.compat_container == true
         shell: bash
         run: scripts/build_linux_compat.sh dist
         env:
-          JCODE_RELEASE_BUILD: "1"
-          JCODE_CI_BUILD: "1"
-          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
+          KCODE_RELEASE_BUILD: "1"
+          KCODE_CI_BUILD: "1"
+          KCODE_BUILD_SEMVER: ${{ github.ref_name }}
           JCODE_COMPAT_ARTIFACT: ${{ matrix.artifact }}
 
       - name: Package binary
@@ -286,9 +286,9 @@ jobs:
 
           & cargo @cargoArgs
         env:
-          JCODE_RELEASE_BUILD: "1"
-          JCODE_CI_BUILD: "1"
-          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
+          KCODE_RELEASE_BUILD: "1"
+          KCODE_CI_BUILD: "1"
+          KCODE_BUILD_SEMVER: ${{ github.ref_name }}
           # Link the MSVC CRT statically so the published asset runs on a bare
           # Windows install with no VC++ redistributable. Without this the
           # binary imports VCRUNTIME140.dll and dies at load with
@@ -520,9 +520,9 @@ jobs:
             export CARGO_TERM_COLOR=always
             # CARGO_BUILD_JOBS keeps memory in check; aws-lc-sys is memory hungry.
             export CARGO_BUILD_JOBS=3
-            export JCODE_RELEASE_BUILD=1
-            export JCODE_CI_BUILD=1
-            export JCODE_BUILD_SEMVER="${{ github.ref_name }}"
+            export KCODE_RELEASE_BUILD=1
+            export KCODE_CI_BUILD=1
+            export KCODE_BUILD_SEMVER="${{ github.ref_name }}"
 
             echo "::group::cargo build (kcode binary)"
             cargo build --locked --release --bin kcode

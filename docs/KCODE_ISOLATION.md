@@ -219,7 +219,7 @@ W1 transport + exact identity
 | W3 | Windows Terminal | Native mechanism fixtures passed; live application pending | Test direct Windows Terminal with PowerShell: ordinary typing, deliberate Enter/Esc/Backspace, Shift+Enter, short and leading-newline paste, delayed chunks, resize, reconnect, Ctrl+C and exit. Repeat within the observed failure ranges. Use process-owned input/output logs only; no screenshots/recordings. |
 | W4 | Windows HERDR | UNKNOWN live application behavior | Repeat the Windows terminal matrix inside HERDR, including pane exit and session continuity; compare with the direct Windows Terminal control. Resolve the actual host/pane process and launch owner. Mac client, build and remote-view acceptance are outside this pass. |
 | W5 | Build/release | Windows x64 and ARM64 artifacts DELIVERED and natively verified; both Windows targets now link the CRT statically; workflow patch staged, not merged | Use suitable existing self-hosted/free compute; record placement. Produce a KCode-only Windows x64 artifact for this device from the exact tested SHA (qualify ARM64 separately before publishing an ARM64 asset), fork versions, hashes, signing/provenance and nonzero client/server output. Add fork-specific workflow/installer-smoke paths; preserve upstream guard until replacement is validated. |
-| W6 | Device install/coexistence | **Coexistence PASS on Windows**: KCode and stock jcode live simultaneously with distinct executables, runtime dirs, socket paths, named pipes (`kcode-*` vs `jcode-*`) and server registries, no shared TCP port; stock jcode ran its own v0.99.1 server throughout. `scripts/install.ps1` and the stock-state byte/mtime diff remain unrun | Install trusted local artifact with scripts/install.ps1; verify user/process PATH in a fresh shell, executable hash/version, and correct server attachment. Stock jcode must remain separately launchable. Compare stock state bytes/mtimes/permissions before and after imports and KCode operations. |
+| W6 | Device install/coexistence | **Coexistence PASS on Windows**: KCode and stock jcode live simultaneously with distinct executables, runtime dirs, socket paths, named pipes (`kcode-*` vs `jcode-*`) and server registries, no shared TCP port; stock jcode ran its own v0.99.1 server throughout. `scripts/install.ps1` installs the reviewed artifact successfully (identical SHA-256, correct version, PATH persisted to `HKCU:\Environment\Path`) and correctly REFUSES a jcode destination. The stock-state byte/mtime comparison is NOT ESTABLISHED: 6 stock jcode processes had been running since 2026-10-27 and continuously write `~/.jcode/logs/memory/*`, so the snapshot cannot be stable; 0 kcode processes existed at measurement time | Install trusted local artifact with scripts/install.ps1; verify user/process PATH in a fresh shell, executable hash/version, and correct server attachment. Stock jcode must remain separately launchable. Compare stock state bytes/mtimes/permissions before and after imports and KCode operations. |
 | W7 | Maintained channel | Disabled intentionally | Publish only verified fork artifacts and correct release notes. Then enable fork-only authenticated/checksummed update discovery/install and test upgrade, failed download, wrong product/version/hash and rollback without touching jcode. |
 
 W2 focused commands (standalone metadata gate executed on Windows in the
@@ -317,6 +317,28 @@ as KCode (v0.93.398), and neither disturbed the other.
 
 Note: `kcode server start` blocks on a host with no credentials configured, so
 the daemon was launched with `serve` directly for this receipt.
+
+### Release builds were never built in release mode (fixed here)
+
+`crates/jcode-build-meta/build.rs` reads **`KCODE_RELEASE_BUILD`**,
+`KCODE_BUILD_SEMVER`, `KCODE_BUILD_GIT_DIRTY`, `KCODE_BUILD_METADATA_FILE`,
+`KCODE_BUILD_CHANGELOG_RAW`, and `KCODE_CI_BUILD` is read by the telemetry
+crates. There is **no back-compat for the `JCODE_` spellings**.
+
+`release.yml` set `JCODE_RELEASE_BUILD`, `JCODE_CI_BUILD` and
+`JCODE_BUILD_SEMVER` in four places. None of them had any effect, so every
+release asset built by this workflow was marked `release_build: false` and
+carried a `-dev` version suffix. That is not cosmetic: `install.ps1` compares
+the binary's reported version against the requested tag and refuses on
+mismatch, so a real release binary would have been rejected by its own
+installer with
+
+```
+error: Downloaded binary reports v0.93.398-k0.1.0-dev, but the installer requested v0.93.398-k0.1.0
+```
+
+All twelve occurrences are now `KCODE_*`. Verified: build.rs reads only
+`KCODE_*`; `rg 'KCODE_CI_BUILD'` matches telemetry code; YAML parses.
 
 The ARM64 cross-build needed three fixes to cargo-xwin's ARM64 path, since
 `ring` forces plain clang for windows+aarch64 while the clang-cl backend
