@@ -1298,10 +1298,7 @@ impl Agent {
 
             let mut input = String::new();
             if io::stdin().read_line(&mut input)? == 0 {
-                // `read_line` returns Ok(0) on EOF (Ctrl-D, closed pipe,
-                // /dev/null) and leaves `input` empty. Treating that as a
-                // blank line makes the loop spin forever printing the prompt,
-                // because no further input can ever arrive.
+                // EOF (Ctrl-D, closed pipe, /dev/null): break instead of re-prompting forever.
                 println!();
                 break;
             }
