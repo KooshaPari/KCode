@@ -16,7 +16,7 @@ const RELOAD_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 fn prepare_server_exec(cmd: &mut std::process::Command, socket_path: &std::path::Path) {
     // The replacement daemon must own the published socket paths. Unlink them
     // before exec so we never inherit a stale on-disk endpoint through reload.
-    crate::server::cleanup_socket_pair(socket_path);
+    crate::server::socket::cleanup_socket_pair(socket_path);
     cmd.env_remove("KCODE_READY_FD");
 
     // The shared daemon may have inherited stderr from the client process that
@@ -197,6 +197,23 @@ pub(super) async fn await_reload_signal(
                 );
                 let mut cmd = ProcessCommand::new(&binary);
                 cmd.arg("serve").arg("--socket").arg(socket.as_os_str());
+                // The previous generation resolved a provider and stamped its
+                // identity into this process's environment. Without an explicit
+                // model the replacement would inherit that ambient identity and
+                // silently keep serving (and stamping) the previous generation's
+                // provider. Carry the configured default model forward
+                // explicitly -- the same channel `spawn_server_with_lifetime`
+                // uses -- and drop the stale ambient identity so the new
+                // generation re-derives its provider from scratch.
+                let effective_model = crate::config::config().provider.default_model.clone();
+                if let Some(effective_model) = effective_model
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|model| !model.is_empty())
+                {
+                    cmd.arg("--model").arg(effective_model);
+                }
+                crate::server::socket::scrub_inherited_provider_identity(&mut cmd);
                 // Auto provider detection is dominated by credential-file probes.
                 // The replacement process is the same trusted daemon with the same
                 // environment, so carry the already-resolved, non-secret status

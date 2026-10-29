@@ -7,7 +7,7 @@
     "crates/jcode-app-core/src/server/comm_session_tests.rs": 1228,
     "crates/jcode-app-core/src/server/provider_control_tests.rs": 1426,
     "crates/jcode-app-core/src/server/swarm_persistence_tests.rs": 1232,
-    "crates/jcode-app-core/src/tool/bash_tests.rs": 1293,
+    "crates/jcode-app-core/src/tool/bash_tests.rs": 1294,
     "crates/jcode-app-core/src/tool/communicate_tests.rs": 1887,
     "crates/jcode-app-core/src/tool/selfdev/tests.rs": 1443,
     "crates/jcode-app-core/src/tool/tests.rs": 1967,

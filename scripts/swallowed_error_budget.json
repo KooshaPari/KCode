@@ -1,9 +1,9 @@
 {
-  "total": 3853,
+  "total": 3850,
   "totals_by_pattern": {
-    "dot_ok": 1466,
-    "let_underscore": 1439,
-    "unwrap_or_default": 948
+    "dot_ok": 1465,
+    "let_underscore": 1438,
+    "unwrap_or_default": 947
   },
   "tracked_files": {
     "crates/jcode-app-core/src/agent.rs": {
@@ -2757,9 +2757,9 @@
       "unwrap_or_default": 1
     },
     "src/cli/dispatch.rs": {
-      "dot_ok": 2,
-      "let_underscore": 3,
-      "unwrap_or_default": 1
+      "dot_ok": 1,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
     },
     "src/cli/hot_exec.rs": {
       "dot_ok": 5,
@@ -2792,6 +2792,11 @@
       "unwrap_or_default": 0
     },
     "src/cli/selfdev.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
+    },
+    "src/cli/server_spawn.rs": {
       "dot_ok": 0,
       "let_underscore": 1,
       "unwrap_or_default": 0

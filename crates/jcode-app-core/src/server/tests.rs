@@ -213,6 +213,12 @@ fn configure_test_env(root: &tempfile::TempDir) -> EnvGuard {
     crate::env::set_var("KCODE_HOME", &home_dir);
     crate::env::set_var("KCODE_RUNTIME_DIR", &runtime_dir);
     crate::env::remove_var("KCODE_SOCKET");
+    // The shared socket lives under `KCODE_HOME/run`, which is a different
+    // directory from the runtime dir and is not created by the path resolver.
+    // A test that binds the shared socket has to create it, or the bind fails
+    // with "No such file or directory".
+    let shared_runtime_dir = crate::storage::shared_runtime_dir();
+    std::fs::create_dir_all(&shared_runtime_dir).expect("create shared runtime dir");
     EnvGuard {
         prev_home,
         prev_runtime_dir,

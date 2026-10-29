@@ -5,6 +5,7 @@ pub mod auth_import;
 pub mod auth_test;
 pub mod cloud_move;
 pub mod commands;
+pub mod daemon_identity;
 pub mod debug;
 pub mod dispatch;
 pub mod herdr;
@@ -15,7 +16,10 @@ pub mod output;
 pub mod proctitle;
 pub mod provider_doctor;
 pub mod provider_init;
+pub mod provider_resolution;
+pub mod provider_runtime_key;
 pub mod selfdev;
+pub mod server_spawn;
 pub mod ssh;
 #[cfg(unix)]
 pub mod ssh_transport;
