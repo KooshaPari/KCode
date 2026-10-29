@@ -28,9 +28,7 @@ async fn persistent_terminal_public_case(
         // task: it owns the listener, so every later connect to this port would
         // be refused.
         let (mut ws, delta_text) = loop {
-            let Ok((tcp, _)) = listener.accept().await else {
-                continue;
-            };
+            let (tcp, _) = listener.accept().await.unwrap();
             if let Ok(mut ws) = tokio_tungstenite::accept_async(tcp).await
                 && let Some(Ok(WsMessage::Text(text))) = ws.next().await
             {
@@ -60,9 +58,7 @@ async fn persistent_terminal_public_case(
             }
         }
         let (mut ws, fresh_text) = loop {
-            let Ok((tcp, _)) = listener.accept().await else {
-                continue;
-            };
+            let (tcp, _) = listener.accept().await.unwrap();
             if let Ok(mut ws) = tokio_tungstenite::accept_async(tcp).await
                 && let Some(Ok(WsMessage::Text(text))) = ws.next().await
             {
