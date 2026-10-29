@@ -171,8 +171,8 @@ KNOWN_DRIFT=(
   $'scripts/onboarding_sandbox.sh\tcargo-bin-selector\tDEBT\tOnboarding sandbox client command; --bin jcode does not exist. Rename to --bin kcode.'
   $'scripts/test_fast.sh\tcargo-bin-selector\tDEBT\tFast test runner; --bin jcode does not exist. Rename to --bin kcode.'
   $'scripts/test_windows_launcher_install.ps1\twindows-exe-name\tDEBT\tAsserts the launcher at LOCALAPPDATA\\jcode\\bin\\jcode.exe while scripts/install.ps1:997 writes kcode.exe. Run in windows CI; expected name is kcode.exe.'
-  $'scripts/test_windows_setup_evaluation.ps1\twindows-exe-name\tDEBT\tAsserts stable\\jcode.exe and versioned jcode.exe binaries while scripts/install.ps1:1059/1123 write kcode.exe. Run in windows CI; expected name is kcode.exe.'
-  $'scripts/test_install_conversion.sh\twindows-exe-name\tDEBT\tAsserts the converted Windows install tree contains jcode.exe; install.ps1 writes kcode.exe. Run in windows CI.'
+  $'scripts/test_windows_setup_evaluation.ps1\twindows-exe-name\tDEBT\tStale assertion, not a fixture: line 272 asserts a CLEAN INSTALL populates BuildsDir\\stable\\jcode.exe and line 416 asserts that path is a managed executable, while scripts/install.ps1:1059/1123 write kcode.exe. Would fail if run. Hidden because the windows-build-test job is `if: false` in ci.yml. A rename alone is not enough - the test needs to run on a Windows host to confirm.'
+  $'scripts/test_install_conversion.sh\twindows-exe-name\tDEBT\tAsserts the converted Windows tree contains jcode.exe. Two problems, not one: (a) the name is pre-rename, and (b) the test drives scripts/install.sh expecting a release DOWNLOAD, which this fork disables - running it locally exits 1 immediately with "KCode release downloads are disabled". The whole setup-friction job is `if: false` in ci.yml for that reason, so fixing the name alone will not make it pass; the installer path has to be restored first.'
 )
 
 SCAN_ROOTS=(
