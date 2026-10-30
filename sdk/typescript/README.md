@@ -253,7 +253,7 @@ To verify message framing and concurrent history reads against a real provider
 in a private instance, run the opt-in acceptance check from the repository root:
 
 ```sh
-KCODE_SDK_TEST_MODEL="your-model-id" node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/jcode
+KCODE_SDK_TEST_MODEL="your-model-id" node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/kcode
 ```
 
 This uses your existing provider login and quota, runs one harmless bash tool,

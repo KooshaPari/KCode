@@ -7,7 +7,7 @@
  * instance returned the real transcripts of the jcode the user runs
  * interactively.
  *
- * Usage: node test/live-isolation.mjs [path-to-jcode-binary]
+ * Usage: node test/live-isolation.mjs [path-to-kcode-binary]
  */
 
 import assert from "node:assert/strict";
@@ -16,7 +16,10 @@ import os from "node:os";
 import path from "node:path";
 import { JcodeClient, userJcodeHome } from "../dist/index.js";
 
-const binary = process.argv[2] ?? "jcode";
+// The default must be a name `assertKcodePath` accepts: a bare `jcode` resolves
+// to a path segment the guard rejects, so the script would throw
+// `cross_product_path` before it checked a single property.
+const binary = process.argv[2] ?? "kcode";
 const failures = [];
 async function step(name, fn) {
   try {
