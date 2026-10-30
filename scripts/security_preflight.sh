@@ -100,6 +100,7 @@ audit_ignores=(
   # advisories with tracked remediation paths; keep them visible in the triage
   # doc while preventing unrelated CI/release work from being blocked.
   --ignore RUSTSEC-2026-0141 # lettre via notify-email, Boring TLS backend not used by jcode
+  --ignore RUSTSEC-2026-0387 # crypto-bigint via aws-sigv4 -> aws-sdk-bedrockruntime 1.136.0 (pinned); bedrock provider optional; constant-time sig verification not used in our path. Remediation: bump aws-sdk-bedrockruntime to >=1.152.0 once compatible with aws-smithy-runtime-api.
   --ignore RUSTSEC-2026-0099 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0104 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0098 # rustls-webpki via rustls stack, awaiting upstream upgrade
