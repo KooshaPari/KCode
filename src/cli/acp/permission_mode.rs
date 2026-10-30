@@ -12,7 +12,7 @@ use super::*;
 /// A mode this agent does not implement is refused rather than accepted and
 /// ignored: a host that selected it would believe the session was restricted
 /// when it was not.
-async fn apply_permission_mode(session: &Arc<DaemonSession>, value: &str) -> Result<()> {
+pub(crate) async fn apply_permission_mode(session: &Arc<DaemonSession>, value: &str) -> Result<()> {
     if value != MODE_READ_ONLY {
         anyhow::bail!(
             "Unsupported permission mode: {value}. This agent implements {MODE_READ_ONLY} only."
@@ -44,14 +44,14 @@ async fn apply_permission_mode(session: &Arc<DaemonSession>, value: &str) -> Res
 /// whose id is ``mode`` and that advertises the values the host may select.
 /// Advertising it is a PROMISE: the value must actually restrict the session,
 /// or a host that selected it would believe the session cannot write.
-const CONFIG_ID_MODE: &str = "mode";
+pub(crate) const CONFIG_ID_MODE: &str = "mode";
 
 /// The only permission mode this agent advertises.
 ///
 /// `read-only` disables every tool that can change the workspace or reach the
 /// network, and leaves the read-only ones mounted. It is the mode a host
 /// selects when it wants the agent to look but not touch.
-const MODE_READ_ONLY: &str = "read-only";
+pub(crate) const MODE_READ_ONLY: &str = "read-only";
 
 /// The permission mode a session is in when no mode has been selected.
 ///
@@ -60,7 +60,7 @@ const MODE_READ_ONLY: &str = "read-only";
 /// the advertised `currentValue` must be able to tell "restricted" from
 /// "unrestricted", and it must never read an unrestricted session as though
 /// it had been restricted.
-const MODE_UNRESTRICTED: &str = "unrestricted";
+pub(crate) const MODE_UNRESTRICTED: &str = "unrestricted";
 
 /// Tools that can change the workspace, the machine, or the outside world.
 ///
@@ -74,7 +74,7 @@ const MODE_UNRESTRICTED: &str = "unrestricted";
 /// machine is in it even though its own name does not say "write". A name that
 /// is merely unfamiliar is also in it, because an unfamiliar tool is one
 /// whose behaviour nobody has verified to be read-only.
-const READ_ONLY_DENIED_TOOLS: &[&str] = &[
+pub(crate) const READ_ONLY_DENIED_TOOLS: &[&str] = &[
     // Filesystem mutation.
     "write",
     "edit",
@@ -117,10 +117,10 @@ const READ_ONLY_DENIED_TOOLS: &[&str] = &[
     "mcp",
 ];
 
-const CONFIG_ID_MODEL: &str = "model";
-const CONFIG_ID_EFFORT: &str = "reasoning_effort";
+pub(crate) const CONFIG_ID_MODEL: &str = "model";
+pub(crate) const CONFIG_ID_EFFORT: &str = "reasoning_effort";
 
-fn acp_available_commands() -> Vec<Value> {
+pub(crate) fn acp_available_commands() -> Vec<Value> {
     vec![
         json!({
             "name": "model",
@@ -139,7 +139,7 @@ fn acp_available_commands() -> Vec<Value> {
     ]
 }
 
-fn insert_session_configuration(result: &mut Value, state: &SessionUiState) {
+pub(crate) fn insert_session_configuration(result: &mut Value, state: &SessionUiState) {
     let Some(object) = result.as_object_mut() else {
         return;
     };
@@ -152,7 +152,7 @@ fn insert_session_configuration(result: &mut Value, state: &SessionUiState) {
     }
 }
 
-fn session_models(state: &SessionUiState) -> Option<Value> {
+pub(crate) fn session_models(state: &SessionUiState) -> Option<Value> {
     let current = state.model.as_deref()?;
     let mut models = state.available_models.clone();
     if !models.iter().any(|candidate| candidate == current) {
@@ -167,7 +167,7 @@ fn session_models(state: &SessionUiState) -> Option<Value> {
     }))
 }
 
-fn available_efforts(state: &SessionUiState) -> Vec<&'static str> {
+pub(crate) fn available_efforts(state: &SessionUiState) -> Vec<&'static str> {
     crate::provider::inferred_reasoning_efforts(
         state.provider_name.as_deref(),
         state.model.as_deref(),
@@ -181,7 +181,7 @@ fn available_efforts(state: &SessionUiState) -> Vec<&'static str> {
 /// Build the ACP `configOptions` array (model selector plus reasoning effort)
 /// from the current session provider state. Empty when the daemon reported no
 /// usable model state.
-fn session_config_options(state: &SessionUiState) -> Vec<Value> {
+pub(crate) fn session_config_options(state: &SessionUiState) -> Vec<Value> {
     let mut options = Vec::new();
 
     // The permission mode is advertised FIRST and unconditionally. A host that

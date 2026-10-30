@@ -2084,8 +2084,7 @@ mod tests {
         // The value a host reads must never overstate the restriction.
         let options = session_config_options(&SessionUiState::default());
         assert_ne!(
-            options[0]["currentValue"],
-            MODE_READ_ONLY,
+            options[0]["currentValue"], MODE_READ_ONLY,
             "an unrestricted session must not advertise itself as read-only"
         );
     }
