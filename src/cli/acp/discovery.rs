@@ -21,31 +21,66 @@ pub(super) fn list(params: &Value) -> Result<Value> {
         }
         Err(error) => return Err(error.into()),
     };
-    let mut sessions = Vec::new();
+    // A session id is exactly its file stem (verified across the store), and the
+    // result order is by session id. So the ordering can be decided from the
+    // directory listing alone, and only the files inside the requested page
+    // window need to be parsed. Loading every session before filtering made this
+    // cost O(all sessions) file reads: 6k+ files took over 100s.
+    let mut ids: Vec<String> = Vec::new();
     for entry in entries {
         let path = entry?.path();
         if path.extension().and_then(|value| value.to_str()) != Some("json") {
             continue;
         }
-        let Some(id) = path.file_stem().and_then(|value| value.to_str()) else {
-            continue;
-        };
-        let Ok(session) = crate::session::Session::load_for_remote_startup(id) else {
-            continue;
-        };
-        let Some(directory) = session.working_dir.as_deref() else {
-            continue;
-        };
-        if !std::path::Path::new(directory).is_absolute() || cwd.is_some_and(|cwd| cwd != directory)
-        {
-            continue;
+        if let Some(id) = path.file_stem().and_then(|value| value.to_str()) {
+            ids.push(id.to_string());
         }
-        sessions.push(json!({"sessionId":session.id,"cwd":directory,
-            "title":session.display_title_or_name(),"updatedAt":session.updated_at.to_rfc3339()}));
     }
-    page(sessions, cursor)
+    ids.sort();
+    let index = match cursor {
+        None => 0,
+        Some(cursor) => ids
+            .iter()
+            .position(|id| id == cursor)
+            .map(|position| position + 1)
+            .ok_or_else(|| anyhow::anyhow!("invalid or expired cursor"))?,
+    };
+
+    let mut sessions = Vec::new();
+    let mut next = index;
+    while next < ids.len() && sessions.len() < PAGE_SIZE {
+        let end = (next + PAGE_SIZE).min(ids.len());
+        for id in &ids[next..end] {
+            let Ok(session) = crate::session::Session::load_for_remote_startup(id) else {
+                continue;
+            };
+            let Some(directory) = session.working_dir.as_deref() else {
+                continue;
+            };
+            if !std::path::Path::new(directory).is_absolute()
+                || cwd.is_some_and(|cwd| cwd != directory)
+            {
+                continue;
+            }
+            sessions.push(json!({"sessionId":session.id,"cwd":directory,
+                "title":session.display_title_or_name(),"updatedAt":session.updated_at.to_rfc3339()}));
+            if sessions.len() == PAGE_SIZE {
+                break;
+            }
+        }
+        next = end;
+    }
+
+    let mut result = json!({"sessions": sessions});
+    if next < ids.len() {
+        if let Some(last) = result["sessions"].as_array().and_then(|rows| rows.last()) {
+            result["nextCursor"] = last["sessionId"].clone();
+        }
+    }
+    Ok(result)
 }
 
+#[cfg(test)]
 fn page(mut sessions: Vec<Value>, cursor: Option<&str>) -> Result<Value> {
     sessions.sort_by(|a, b| a["sessionId"].as_str().cmp(&b["sessionId"].as_str()));
     let start = match cursor {
