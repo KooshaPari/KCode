@@ -142,7 +142,7 @@ fn keyboard_enhancement_flags() -> crossterm::event::KeyboardEnhancementFlags {
 /// On Windows, keep native console key records: Crossterm has no CSI-u decoder
 /// there. Focus/resume must follow the same policy even if the config enables it.
 ///
-/// Returns whether the requests were written, not whether the terminal supports them.
+/// Returns whether enhancement was requested, excluding native-console resets.
 pub fn enable_keyboard_enhancement() -> bool {
     let result = enable_keyboard_enhancement_to(&mut std::io::stdout(), inside_tmux()).is_ok();
     crate::logging::info(&format!(
