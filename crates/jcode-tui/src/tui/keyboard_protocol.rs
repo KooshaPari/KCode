@@ -29,8 +29,9 @@ fn write_mode_for_decoder(
     native_console: bool,
 ) -> io::Result<()> {
     if native_console {
-        // Startup must report that no enhancement was negotiated. Focus,
-        // resume and teardown are harmless even when handed configured=true.
+        // Clear reporting left by an older client before the native decoder reads.
+        writer.write_all(b"\x1b[=0u\x1b[>4;0m")?;
+        writer.flush()?;
         return match action {
             Action::Push => Err(io::Error::new(
                 io::ErrorKind::Unsupported,
@@ -69,10 +70,7 @@ mod tests {
                 write_mode_for_decoder(&mut output, Action::Set, tmux, 7, true).unwrap();
             }
             write_mode_for_decoder(&mut output, Action::Pop, tmux, 7, true).unwrap();
-            assert!(
-                output.is_empty(),
-                "must not request CSI-u or modifyOtherKeys"
-            );
+            assert_eq!(output, b"\x1b[=0u\x1b[>4;0m".repeat(5));
         }
     }
 
@@ -97,6 +95,10 @@ mod tests {
         let mut output = Vec::new();
         let result = write_mode(&mut output, Action::Push, false, 7);
         assert_eq!(result.is_err(), cfg!(windows));
-        assert_eq!(output.is_empty(), cfg!(windows));
+        if cfg!(windows) {
+            assert_eq!(output, b"\x1b[=0u\x1b[>4;0m");
+        } else {
+            assert_eq!(output, b"\x1b[>7u");
+        }
     }
 }

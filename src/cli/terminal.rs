@@ -468,6 +468,12 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         // stack-based keyboard enhancement flags again. A later normal exit must
         // still disable every inherited mode, so retain them in the guard.
         let modes = inherited_modes.unwrap_or(fallback_modes);
+        #[cfg(windows)]
+        let modes = InheritedTerminalModes {
+            // An older process may hand off CSI-u, which the native decoder cannot read.
+            keyboard_enhanced: tui::enable_keyboard_enhancement(),
+            ..modes
+        };
         crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
         if modes.focus_change {
             crossterm::execute!(std::io::stdout(), crossterm::event::EnableFocusChange)?;
@@ -482,7 +488,7 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         }
         modes
     } else {
-        let keyboard_enhanced = if perf_policy.enable_keyboard_enhancement {
+        let keyboard_enhanced = if cfg!(windows) || perf_policy.enable_keyboard_enhancement {
             tui::enable_keyboard_enhancement()
         } else {
             false
