@@ -21,14 +21,26 @@ permissions:
 jobs:
   create-release:
     name: Create release
-    # Publish only from the canonical repository. A fork that runs this
-    # workflow on a `v*` tag would otherwise create a release carrying that
-    # upstream version number with binaries built from the fork, which is the
-    # same class of accidental-publication path as a fork pushing a package.
+    # Publish only from the canonical repository, or from this fork under its
+    # own fork-version identity.
+    #
+    # A fork that runs this workflow on a `v*` tag would otherwise create a
+    # release carrying that upstream version number with binaries built from
+    # the fork, which is the same class of accidental-publication path as a
+    # fork pushing a package.
     # Every other job in this workflow needs `create-release`, directly or
     # transitively, so gating this one job skips the whole workflow: a skipped
     # dependency skips its dependents.
-    if: github.repository == '1jehuang/jcode'
+    #
+    # The fork path is narrower than the upstream path in two ways:
+    #   1. It only runs for the known fork repository, so a third-party fork
+    #      of KCode still cannot publish through this workflow.
+    #   2. It refuses to publish unless the tag carries a fork-version
+    #      channel (e.g. `v0.93.398-k0.1.0`), so a fork release can never
+    #      claim an upstream-looking version number.
+    if: >-
+      github.repository == '1jehuang/jcode' ||
+      (github.repository == 'KooshaPari/KCode' && contains(github.ref_name, '-k'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -163,25 +175,25 @@ jobs:
             cargo build --release --target ${{ matrix.target }}
           fi
         env:
-          JCODE_RELEASE_BUILD: "1"
-          JCODE_CI_BUILD: "1"
-          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
+          KCODE_RELEASE_BUILD: "1"
+          KCODE_CI_BUILD: "1"
+          KCODE_BUILD_SEMVER: ${{ github.ref_name }}
 
       - name: Build portable Linux x86_64 release binary
         if: matrix.compat_container == true
         shell: bash
         run: scripts/build_linux_compat.sh dist
         env:
-          JCODE_RELEASE_BUILD: "1"
-          JCODE_CI_BUILD: "1"
-          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
+          KCODE_RELEASE_BUILD: "1"
+          KCODE_CI_BUILD: "1"
+          KCODE_BUILD_SEMVER: ${{ github.ref_name }}
           JCODE_COMPAT_ARTIFACT: ${{ matrix.artifact }}
 
       - name: Package binary
         if: matrix.compat_container != true
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/jcode dist/${{ matrix.artifact }}
+          cp target/${{ matrix.target }}/release/kcode dist/${{ matrix.artifact }}
           chmod +x dist/${{ matrix.artifact }}
           cd dist && tar czf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
 
@@ -274,30 +286,56 @@ jobs:
 
           & cargo @cargoArgs
         env:
-          JCODE_RELEASE_BUILD: "1"
-          JCODE_CI_BUILD: "1"
-          JCODE_BUILD_SEMVER: ${{ github.ref_name }}
+          KCODE_RELEASE_BUILD: "1"
+          KCODE_CI_BUILD: "1"
+          KCODE_BUILD_SEMVER: ${{ github.ref_name }}
+          # Link the MSVC CRT statically so the published asset runs on a bare
+          # Windows install with no VC++ redistributable. Without this the
+          # binary imports VCRUNTIME140.dll and dies at load with
+          # STATUS_DLL_NOT_FOUND on images whose SysArm64/SysWOW64 has no CRT.
+          RUSTFLAGS: "-C target-feature=+crt-static"
 
       - name: Verify built Windows binary launches
         shell: pwsh
         run: |
-          & "target/${{ matrix.target }}/release/jcode.exe" --version
+          # The root package builds a `kcode` binary (see [[bin]] in Cargo.toml),
+          # so the release artifact is kcode.exe.
+          & "target/${{ matrix.target }}/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw "Built Windows binary failed to run --version"
           }
+
+      - name: Verify no VC++ runtime dependency (static CRT)
+        shell: pwsh
+        run: |
+          # A published Windows asset must run on a bare install with no VC++
+          # redistributable installed. The PE import table IS the acceptance
+          # surface: if VCRUNTIME*/MSVCP* are absent, the loader cannot require
+          # them. The api-ms-win-crt-* UCRT forwarders are deliberately NOT
+          # matched: they ship with Windows 10+ regardless of CRT linkage, so
+          # matching them is a false positive for +crt-static.
+          $exe = "target/${{ matrix.target }}/release/kcode.exe"
+          if (-not (Test-Path $exe)) { throw "Missing binary: $exe" }
+          $deps = & dumpbin /nologo /dependents $exe
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin failed on $exe" }
+          $bad = $deps | Select-String -Pattern 'VCRUNTIME|MSVCP'
+          if ($bad) {
+            throw "Dynamic CRT dependency in $exe (needs static CRT):`n$($bad -join "`n")"
+          }
+          Write-Host "static CRT confirmed (no VC++ runtime import): $exe"
 
       - name: Verify Windows installer with local artifact
         shell: pwsh
         run: |
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath "target/${{ matrix.target }}/release/jcode.exe" `
+            -ArtifactExePath "target/${{ matrix.target }}/release/kcode.exe" `
             -Version "${{ github.ref_name }}"
 
       - name: Stage unsigned binary for signing
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item "target/${{ matrix.target }}/release/jcode.exe" "dist/${{ matrix.artifact }}.exe"
+          Copy-Item "target/${{ matrix.target }}/release/kcode.exe" "dist/${{ matrix.artifact }}.exe"
 
       - name: Upload unsigned binary for signing
         uses: actions/upload-artifact@v4
@@ -484,22 +522,22 @@ jobs:
             export CARGO_TERM_COLOR=always
             # CARGO_BUILD_JOBS keeps memory in check; aws-lc-sys is memory hungry.
             export CARGO_BUILD_JOBS=3
-            export JCODE_RELEASE_BUILD=1
-            export JCODE_CI_BUILD=1
-            export JCODE_BUILD_SEMVER="${{ github.ref_name }}"
+            export KCODE_RELEASE_BUILD=1
+            export KCODE_CI_BUILD=1
+            export KCODE_BUILD_SEMVER="${{ github.ref_name }}"
 
-            echo "::group::cargo build (jcode binary)"
-            cargo build --locked --release -p jcode --bin jcode
+            echo "::group::cargo build (kcode binary)"
+            cargo build --locked --release --bin kcode
             echo "::endgroup::"
 
             echo "::group::Verify binary launches"
-            ./target/release/jcode --version
+            ./target/release/kcode --version
             echo "::endgroup::"
 
             mkdir -p dist
-            cp target/release/jcode dist/jcode-freebsd-x86_64
-            chmod +x dist/jcode-freebsd-x86_64
-            cd dist && tar czf jcode-freebsd-x86_64.tar.gz jcode-freebsd-x86_64
+            cp target/release/kcode dist/kcode-freebsd-x86_64
+            chmod +x dist/kcode-freebsd-x86_64
+            cd dist && tar czf kcode-freebsd-x86_64.tar.gz kcode-freebsd-x86_64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

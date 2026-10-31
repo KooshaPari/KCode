@@ -75,7 +75,7 @@ echo "Embedding git metadata: hash=${git_hash:-<none>} tag=${git_tag:-<none>} di
 docker run --rm \
   -e CARGO_TERM_COLOR=always \
   -e KCODE_RELEASE_BUILD="${KCODE_RELEASE_BUILD:-1}" \
-  -e KCODE_BUILD_SEMVER="${KCODE_BUILD_SEMVER:-}" \
+  -e KCODE_BUILD_SEMVER \
   -e KCODE_BUILD_METADATA_FILE=/jcode-build-meta \
   -e KCODE_BUILD_GIT_HASH="$git_hash" \
   -e KCODE_BUILD_GIT_DATE="$git_date" \
@@ -146,9 +146,9 @@ docker run --rm \
 	    export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 	    export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS:--C link-arg=-static-libgcc}"
 	    cargo build --profile "$KCODE_COMPAT_PROFILE" --target "$KCODE_COMPAT_TARGET" \
-	      -p jcode --bin jcode --features linux-compat-vendored-openssl
+	      -p kcode --bin kcode --features linux-compat-vendored-openssl
 
-	    cp "$CARGO_TARGET_DIR/$KCODE_COMPAT_TARGET/$KCODE_COMPAT_PROFILE/jcode" "/out/'"$artifact"'.bin"
+	    cp "$CARGO_TARGET_DIR/$KCODE_COMPAT_TARGET/$KCODE_COMPAT_PROFILE/kcode" "/out/'"$artifact"'.bin"
 	    chmod +x "/out/'"$artifact"'.bin"
 	    cat > "/out/'"$artifact"'" <<WRAPPER
 #!/usr/bin/env sh

@@ -59,6 +59,8 @@ jobs:
             }
           }
 
+          # Static CRT: the shipped exe must not require VCRUNTIME140.dll.
+          $env:RUSTFLAGS = '-C target-feature=+crt-static'
           & cargo build --locked --release --target x86_64-pc-windows-msvc
 
       - name: Compile library and binary tests
@@ -139,16 +141,37 @@ jobs:
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          & "target/x86_64-pc-windows-msvc/release/jcode.exe" --version
+          # The root package builds a `kcode` binary (see [[bin]] in Cargo.toml),
+          # so the release artifact is kcode.exe.
+          & "target/x86_64-pc-windows-msvc/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows binary failed to run --version'
           }
+
+      - name: Verify no VC++ runtime dependency (static CRT)
+        shell: pwsh
+        run: |
+          # A published Windows asset must run on a bare install with no VC++
+          # redistributable installed. The PE import table IS the acceptance
+          # surface: if VCRUNTIME*/MSVCP* are absent, the loader cannot require
+          # them. The api-ms-win-crt-* UCRT forwarders are deliberately NOT
+          # matched: they ship with Windows 10+ regardless of CRT linkage, so
+          # matching them is a false positive for +crt-static.
+          $exe = "target/x86_64-pc-windows-msvc/release/kcode.exe"
+          if (-not (Test-Path $exe)) { throw "Missing binary: $exe" }
+          $deps = & dumpbin /nologo /dependents $exe
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin failed on $exe" }
+          $bad = $deps | Select-String -Pattern 'VCRUNTIME|MSVCP'
+          if ($bad) {
+            throw "Dynamic CRT dependency in $exe (needs static CRT):`n$($bad -join "`n")"
+          }
+          Write-Host "static CRT confirmed (no VC++ runtime import): $exe"
 
       - name: Verify installer using local artifact
         shell: pwsh
         run: |
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/jcode.exe'
+            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/kcode.exe'
 
   smoke-arm64:
     name: Windows Smoke (ARM64)
@@ -186,18 +209,40 @@ jobs:
             }
           }
 
+          # Static CRT: Windows ARM64 images ship an empty SysArm64, so a
+          # dynamically linked CRT fails at load with STATUS_DLL_NOT_FOUND.
+          $env:RUSTFLAGS = '-C target-feature=+crt-static'
           & cargo build --locked --release --target aarch64-pc-windows-msvc --no-default-features --features pdf
 
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          & "target/aarch64-pc-windows-msvc/release/jcode.exe" --version
+          & "target/aarch64-pc-windows-msvc/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows ARM64 binary failed to run --version'
           }
+
+      - name: Verify no VC++ runtime dependency (static CRT)
+        shell: pwsh
+        run: |
+          # A published Windows asset must run on a bare install with no VC++
+          # redistributable installed. The PE import table IS the acceptance
+          # surface: if VCRUNTIME*/MSVCP* are absent, the loader cannot require
+          # them. The api-ms-win-crt-* UCRT forwarders are deliberately NOT
+          # matched: they ship with Windows 10+ regardless of CRT linkage, so
+          # matching them is a false positive for +crt-static.
+          $exe = "target/aarch64-pc-windows-msvc/release/kcode.exe"
+          if (-not (Test-Path $exe)) { throw "Missing binary: $exe" }
+          $deps = & dumpbin /nologo /dependents $exe
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin failed on $exe" }
+          $bad = $deps | Select-String -Pattern 'VCRUNTIME|MSVCP'
+          if ($bad) {
+            throw "Dynamic CRT dependency in $exe (needs static CRT):`n$($bad -join "`n")"
+          }
+          Write-Host "static CRT confirmed (no VC++ runtime import): $exe"
 
       - name: Verify installer using local artifact
         shell: pwsh
         run: |
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath 'target/aarch64-pc-windows-msvc/release/jcode.exe'
+            -ArtifactExePath 'target/aarch64-pc-windows-msvc/release/kcode.exe'

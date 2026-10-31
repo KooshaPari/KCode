@@ -5,6 +5,13 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  # Needed for two real cases, both observed on this fork:
+  #   1. Re-running CI for a commit that was pushed while the self-hosted
+  #      runners were offline. No run is created, so `gh run rerun` has nothing
+  #      to target, and pushing an empty commit to nudge CI is not acceptable.
+  #   2. Validating a long job (Build & Test is ~80 min) without adding a
+  #      throwaway commit to the branch under review.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -119,9 +126,6 @@ jobs:
       - name: Check all targets and all features
         run: cargo check --all-targets --all-features
 
-      - name: Run clippy with warnings denied
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
       - name: Enforce Cargo.lock is up to date
         shell: bash
         # Adding a dependency without regenerating Cargo.lock breaks every
@@ -172,6 +176,38 @@ jobs:
         run: |
           cargo install cargo-machete --locked
           cargo machete
+
+  clippy:
+    name: Clippy
+    # Decoupled from `Quality Guardrails` for the same reason `fmt` was
+    # (#1796, #1803): clippy compiles the whole workspace and took the quality
+    # job past its 45-minute limit at run 41021250873, cancelling the job at
+    # step 9 before seventeen cheap budget/ratchet gates could run. Those gates
+    # need seconds, not an hour, and must never be blinded by a compile.
+    # Clippy gets its own budget here so its cost is its own signal.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, desk-linux]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Same `-notarget` eviction as the quality and build jobs: the old
+          # ~881 MB `quality-ubuntu` blob hung the runner for 26+ minutes
+          # (job 121317250103).
+          key: quality-ubuntu-notarget
+          cache-all-crates: "true"
+          cache-targets: "false"
+
+      - name: Run clippy with warnings denied
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   release-automation:
     name: Release Automation
@@ -733,7 +769,7 @@ jobs:
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          & "target/x86_64-pc-windows-msvc/release/jcode.exe" --version
+          & "target/x86_64-pc-windows-msvc/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows binary failed to run --version'
           }
@@ -756,7 +792,7 @@ jobs:
           # this identity from the root package version and appends `-dev`.
           $version = 'v' + $cargoVersion.Matches[0].Groups[1].Value + '-dev'
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/jcode.exe' `
+            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/kcode.exe' `
             -Version $version
 
   fmt:
