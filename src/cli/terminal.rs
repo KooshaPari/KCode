@@ -507,6 +507,13 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         modes
     };
 
+    let mut guard = TuiRuntimeGuard::new(TuiRuntimeState {
+        mouse_capture: modes.mouse_capture,
+        keyboard_enhanced: modes.keyboard_enhanced,
+        focus_change: modes.focus_change,
+    });
+    guard.state.keyboard_enhanced = tui::prepare_keyboard_input(modes.keyboard_enhanced)?;
+
     crate::logging::info(&format!(
         "EVENT event=TUI_TERMINAL_MODES phase=initialized pid={} resuming={} handoff={} handoff_raw={} raw_mode={} mouse_capture={} keyboard_enhanced={} focus_change={} idempotent_modes_reasserted={}",
         std::process::id(),
@@ -515,19 +522,12 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         inherited_modes_raw.as_deref().unwrap_or("none"),
         crossterm::terminal::is_raw_mode_enabled().unwrap_or(false),
         modes.mouse_capture,
-        modes.keyboard_enhanced,
+        guard.state.keyboard_enhanced,
         modes.focus_change,
         inherited_terminal,
     ));
 
-    Ok((
-        terminal,
-        TuiRuntimeGuard::new(TuiRuntimeState {
-            mouse_capture: modes.mouse_capture,
-            keyboard_enhanced: modes.keyboard_enhanced,
-            focus_change: modes.focus_change,
-        }),
-    ))
+    Ok((terminal, guard))
 }
 
 fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {

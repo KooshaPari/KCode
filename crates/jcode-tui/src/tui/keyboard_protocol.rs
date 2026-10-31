@@ -21,6 +21,23 @@ pub(super) fn write_mode(
     write_mode_for_decoder(writer, action, inside_tmux, flags, cfg!(windows))
 }
 
+pub(super) fn prepare_input(writer: &mut impl Write, enhanced: bool) -> io::Result<bool> {
+    prepare_input_for_decoder(writer, enhanced, cfg!(windows))
+}
+
+fn prepare_input_for_decoder(
+    writer: &mut impl Write,
+    enhanced: bool,
+    native_console: bool,
+) -> io::Result<bool> {
+    if native_console {
+        // A previous client can leave reporting enabled without owning a stack push.
+        writer.write_all(b"\x1b[=0u\x1b[>4;0m")?;
+        writer.flush()?;
+    }
+    Ok(enhanced && !native_console)
+}
+
 fn write_mode_for_decoder(
     writer: &mut impl Write,
     action: Action,
@@ -32,10 +49,13 @@ fn write_mode_for_decoder(
         // Startup must report that no enhancement was negotiated. Focus,
         // resume and teardown are harmless even when handed configured=true.
         return match action {
-            Action::Push => Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "kitty keyboard reporting is incompatible with the Windows console input decoder",
-            )),
+            Action::Push => {
+                prepare_input_for_decoder(writer, false, native_console)?;
+                Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "kitty keyboard reporting is incompatible with the Windows console input decoder",
+                ))
+            }
             Action::Set | Action::Pop => Ok(()),
         };
     }
@@ -64,6 +84,8 @@ mod tests {
             let error =
                 write_mode_for_decoder(&mut output, Action::Push, tmux, 7, true).unwrap_err();
             assert_eq!(error.kind(), io::ErrorKind::Unsupported);
+            assert_eq!(output, b"\x1b[=0u\x1b[>4;0m");
+            output.clear();
             // Focus/resume uses the configured flag even after Push failed.
             for _ in 0..3 {
                 write_mode_for_decoder(&mut output, Action::Set, tmux, 7, true).unwrap();
@@ -97,6 +119,74 @@ mod tests {
         let mut output = Vec::new();
         let result = write_mode(&mut output, Action::Push, false, 7);
         assert_eq!(result.is_err(), cfg!(windows));
-        assert_eq!(output.is_empty(), cfg!(windows));
+        let expected: &[u8] = if cfg!(windows) {
+            b"\x1b[=0u\x1b[>4;0m"
+        } else {
+            b"\x1b[>7u"
+        };
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn native_startup_and_handoff_clear_stale_modes_without_popping() {
+        for inherited in [false, true] {
+            let mut output = Vec::new();
+            for _ in 0..3 {
+                assert!(!prepare_input_for_decoder(&mut output, inherited, true).unwrap());
+            }
+            assert_eq!(output, b"\x1b[=0u\x1b[>4;0m".repeat(3));
+        }
+    }
+
+    #[test]
+    fn unix_handoff_preserves_owned_keyboard_mode_without_output() {
+        for inherited in [false, true] {
+            let mut output = Vec::new();
+            assert_eq!(
+                prepare_input_for_decoder(&mut output, inherited, false).unwrap(),
+                inherited
+            );
+            assert!(output.is_empty());
+        }
+    }
+
+    #[test]
+    fn native_reset_preserves_write_and_flush_errors() {
+        struct FailingWriter(bool);
+        impl Write for FailingWriter {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if self.0 {
+                    Ok(bytes.len())
+                } else {
+                    Err(io::ErrorKind::BrokenPipe.into())
+                }
+            }
+            fn flush(&mut self) -> io::Result<()> {
+                Err(io::ErrorKind::BrokenPipe.into())
+            }
+        }
+        for fail_on_flush in [false, true] {
+            let error = write_mode_for_decoder(
+                &mut FailingWriter(fail_on_flush),
+                Action::Push,
+                false,
+                7,
+                true,
+            )
+            .unwrap_err();
+            assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
+        }
+    }
+
+    #[test]
+    fn platform_handoff_normalizes_the_actual_decoder() {
+        for inherited in [false, true] {
+            let mut output = Vec::new();
+            assert_eq!(
+                prepare_input(&mut output, inherited).unwrap(),
+                inherited && !cfg!(windows)
+            );
+            assert_eq!(output.is_empty(), !cfg!(windows));
+        }
     }
 }
