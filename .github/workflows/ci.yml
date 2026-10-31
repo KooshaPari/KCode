@@ -580,15 +580,6 @@ jobs:
         run: |
           scripts/check_warning_budget.sh
 
-      - name: Security preflight (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          # Self-hosted runners keep CARGO_HOME between runs; a bare install
-          # fails once the binary exists.
-          command -v cargo-audit >/dev/null || cargo install cargo-audit --locked
-          scripts/security_preflight.sh --strict
-
   windows-build-test:
     name: Build & Test (windows-latest)
     # Hosted Windows CI is disabled while hosted Actions minutes are capped at $0;
@@ -918,3 +909,36 @@ jobs:
       - name: Check Windows ARM64 target (advisory)
         continue-on-error: true
         run: cargo xwin check --locked --target aarch64-pc-windows-msvc --no-default-features --features pdf
+
+  # Standalone so a build abort cannot mask the security gate. Previously this
+  # step ran last inside the 12-minute `build` job, where a runner-level abort
+  # left it PENDING and the gate produced no verdict at all (run 41145617775:
+  # steps 6-22 all PENDING, job failed, no log). It needs only checkout plus
+  # cargo-audit, so it belongs in its own cheap job.
+  security-preflight:
+    name: Security preflight (Linux)
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, desk-linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Prebuilt binary, not `cargo install`. Compiling cargo-audit from source
+      # takes many minutes on this host (a cold cache built ~200 crates), which
+      # leaves little room to finish inside the gate's 20-minute budget while
+      # competing for a saturated desk runner. The action fetches a release
+      # binary in seconds, so the gate completes in the short windows where a
+      # runner is actually free.
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Run security preflight
+        shell: bash
+        run: scripts/security_preflight.sh --strict
