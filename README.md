@@ -1,3 +1,10 @@
+> **KCode fork installation:** This repository builds `kcode`, independently
+> of stock jcode. Use [KCode installation and isolation](docs/KCODE_ISOLATION.md)
+> and [Windows instructions](docs/WINDOWS.md). Download/self-update channels are
+> disabled pending fork release verification. The inherited `jcode.sh`,
+> Homebrew, Bun, and stock `jcode` instructions below are upstream reference,
+> not KCode installation commands.
+
 # KCode fork
 
 KCode uses the `kcode` executable, `KCODE_*` overrides and `.kcode` storage.

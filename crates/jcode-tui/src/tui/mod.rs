@@ -142,7 +142,7 @@ fn keyboard_enhancement_flags() -> crossterm::event::KeyboardEnhancementFlags {
 /// On Windows, keep native console key records: Crossterm has no CSI-u decoder
 /// there. Focus/resume must follow the same policy even if the config enables it.
 ///
-/// Returns whether the requests were written, not whether the terminal supports them.
+/// Returns whether enhancement was requested, excluding native-console resets.
 pub fn enable_keyboard_enhancement() -> bool {
     let result = enable_keyboard_enhancement_to(&mut std::io::stdout(), inside_tmux()).is_ok();
     crate::logging::info(&format!(
@@ -311,7 +311,8 @@ mod terminal_mode_tests {
         let output = String::from_utf8(output).unwrap();
         assert!(output.starts_with("\x1b[?2004h\x1b[?1004h"));
         assert!(!output.contains("\x1b[?1000h"));
-        assert_eq!(output.contains("\x1b[="), !cfg!(windows));
+        assert_eq!(output.contains("\x1b[=1u"), !cfg!(windows));
+        assert_eq!(output.contains("\x1b[=0u"), cfg!(windows));
     }
 
     #[test]
@@ -323,7 +324,8 @@ mod terminal_mode_tests {
         assert!(output.contains("\x1b[?2004h"));
         assert!(output.contains("\x1b[?1004h"));
         assert!(output.contains("\x1b[?1000h"));
-        assert_eq!(output.contains("\x1b[="), !cfg!(windows));
+        assert_eq!(output.contains("\x1b[=1u"), !cfg!(windows));
+        assert_eq!(output.contains("\x1b[=0u"), cfg!(windows));
         assert!(
             !output.contains("\x1b[>7u"),
             "must not push the Kitty keyboard stack"
