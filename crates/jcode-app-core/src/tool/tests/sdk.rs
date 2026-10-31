@@ -388,3 +388,58 @@ async fn sdk_nested_alias_and_deferred_mcp_use_callbacks() {
     assert!(error.to_string().contains("not allowed"));
     assert!(rx.try_recv().is_err());
 }
+
+#[tokio::test]
+async fn a_disabled_tool_list_removes_the_write_capable_tools() {
+    // This is the enforcement the ACP `mode=read-only` option promises: the
+    // daemon drops the named tools from the session's tool set, so the model
+    // is not merely told not to use them -- they are not offered at all.
+    let _lock = crate::storage::lock_test_env();
+    let home = tempfile::tempdir().unwrap();
+    let _home = TestHomeGuard::new(home.path());
+    let session = "sdk-read-only";
+    let _cleanup = Cleanup(session.into());
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let provider: Arc<dyn Provider> = Arc::new(MockProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let agent = crate::agent::Agent::new(provider, registry.clone());
+    let own_session = agent.session_id().to_owned();
+    let _own_cleanup = Cleanup(own_session.clone());
+
+    let before: Vec<String> = agent
+        .tool_definitions_for_debug()
+        .await
+        .iter()
+        .map(|d| d.name.clone())
+        .collect();
+    assert!(
+        before.iter().any(|name| name == "write"),
+        "the builtin set is expected to include write, got {before:?}"
+    );
+
+    let config = SessionToolConfig {
+        enabled: None,
+        disabled: vec!["write".into(), "edit".into(), "bash".into()],
+        custom: vec![],
+    };
+    // The overlay is keyed by session, so it has to be installed on the
+    // session whose tool set is being inspected.
+    sdk::configure(&own_session, "read-only-owner", config, tx).unwrap();
+
+    let after: Vec<String> = agent
+        .tool_definitions_for_debug()
+        .await
+        .iter()
+        .map(|d| d.name.clone())
+        .collect();
+    for denied in ["write", "edit", "bash"] {
+        assert!(
+            !after.iter().any(|name| name == denied),
+            "{denied} must not be offered in a read-only session, got {after:?}"
+        );
+    }
+    assert!(
+        after.iter().any(|name| name == "read"),
+        "the read-only tools must stay available, got {after:?}"
+    );
+}
