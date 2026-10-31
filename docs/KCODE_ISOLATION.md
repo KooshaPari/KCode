@@ -255,14 +255,55 @@ the fork version resolves to `0.93.398-k0.1.0`):
 | macOS arm64 artifact | `kcode` (Mach-O 64-bit arm64), SHA-256 `bcc936b3296af6fc3a4e9d72c4f9350b9e78fe17d50cb776632a1e8f15eca5b7` |
 | Windows x64 artifact | `kcode.exe` (PE32+ x86-64 console), SHA-256 `ea9eac909a83a3436978f478b56bd2c22d0ffe82b1db980e005d4bf7bf2c8182` |
 | Windows ARM64 artifact | `kcode-arm64.exe` (PE32+ Aarch64 console), SHA-256 `e703df2500461bb4ced5bb774b01e4a1650120aedb937d19ef81bad319a483ba` |
-| Reported version | `kcode v0.93.398-k0.1.0-dev (9476f478)` on all three artifacts |
+| Reported version (macOS arm64) | `kcode v0.93.398-k0.1.0-dev (9476f4782)` — 9-character short hash |
+| Reported version (Windows x64) | `kcode v0.93.398-k0.1.0-dev (9476f478)` — 8-character short hash |
+| Reported version (Windows ARM64) | `kcode v0.93.398-k0.1.0-dev (9476f478)` — 8-character short hash |
 | Reported semver | `0.93.398-k0.1.0` (fork channel preserved; no `0.0.0` collapse) |
 | Native Windows run | `kcode.exe --version` and `kcode.exe version --json` both exit 0 on Windows (x64) |
-| ARM64 native run | **PASS** — static-CRT artifact ran on a genuine ARM64 Windows guest (build 26100, CPU Architecture 12) with `C:\Windows\SysArm64` holding **0 files** and no `vcruntime*.dll` anywhere; `--version` and `version --json` both exit 0 |
+| ARM64 native run | **PASS** — static-CRT artifact ran on a genuine ARM64 Windows guest (build 26100, CPU Architecture 12) under QEMU with Hypervisor.framework on the Apple Silicon host (`HOST_CPU=virt-11.1`) with `C:\Windows\SysArm64` holding **0 files** and no `vcruntime*.dll` anywhere; `--version` and `version --json` both exit 0 |
+| ARM64 dynamic-CRT publication constraint | The preserved `kcode-arm64.exe` (dynamic CRT) still imports `VCRUNTIME140.dll`; publishing that exact file requires shipping the ARM64 `vcruntime140.dll` alongside it. `kcode-arm64-staticcrt.exe` is the publishable ARM64 asset and carries no such prerequisite |
 | Windows ARM64 static-CRT artifact | `kcode-arm64-staticcrt.exe`, 79,425,536 bytes, SHA-256 `f1c5e7befbf72ec1c2117c83b4be8d7a37e8206773e6c36a7078ab60637a2f3c` |
 | Windows x64 static-CRT artifact | `kcode-x64-staticcrt.exe`, 96,145,408 bytes, SHA-256 `e3769d51a96f9488e6accaef9b0591b1face43a224ade7f9f23ab7b15772e204` |
 | Placement | macOS host: native arm64 build plus `cargo xwin` MSVC cross-builds; desk: native execution validation only |
 | Preserved copies | `~/.kcode/builds/versions/9476f478/{kcode,kcode.exe,kcode-arm64.exe}` |
+
+### Cross-artifact metadata divergence (disclosed 2026-10-30)
+
+The three artifacts do **not** carry an identical metadata payload. The `version
+--json` fields that differ are `update_semver`, `git_tag`, `git_date`, and the
+short-hash length inside `version`:
+
+| Field | macOS `kcode` | Windows `kcode.exe` | Windows `kcode-arm64.exe` |
+| --- | --- | --- | --- |
+| `update_semver` | `0.93.0-k0.1.0` | `0.93.398-k0.1.0` | `0.93.398-k0.1.0` |
+| `git_tag` | `v0.85.1-k1.1.0-301-g9476f4782` | `v0.93.398-k0.1.0` | `v0.93.398-k0.1.0` |
+| `git_date` | `2026-10-22 03:23:08 -0400` | `2026-10-22 03:23:08 -0400` | `2026-10-25 16:30:08 -0700` |
+| `git_hash` / `version` hash | `9476f4782` (9) | `9476f478` (8) | `9476f478` (8) |
+
+**Why they differ.** The three artifacts were built from *different working-tree
+states*, not from one identical checkout. The macOS build's checkout descends
+from a different tag lineage (hence the `v0.85.1-k1.1.0-301-g…` describe string
+and the `0.93.0-k0.1.0` compile-time update semver, which is taken from the
+compile-time git tag, not from the commit count). The ARM64 artifact was built
+three days after the other two (`git_date` 2026-10-25 vs 2026-10-22), so its
+tree state differs as well. The short-hash length difference is a separate
+artifact of `git rev-parse --short`, whose abbreviation length adapts to the
+object count of the checkout, so the same commit abbreviates to 9 characters in
+the macOS checkout and 8 in the Windows cross-build checkout.
+
+**Impact.** `update_semver` is the compile-time semver used for update
+comparisons, so the macOS client would compare against `0.93.0-k0.1.0` while
+both Windows clients compare against `0.93.398-k0.1.0`. All three values are
+nonzero and fork-shaped, so the metadata requirement itself holds on every
+artifact; the divergence is a release-consistency defect, not a version
+collapse.
+
+**Reconciliation.** A single-tree rebuild of all three artifacts from one
+checkout at one commit would make `update_semver`, `git_tag`, `git_date`, and
+the hash abbreviation identical. No artifact was rebuilt for this receipt; the
+values above are read from the shipped binaries and their recorded native-run
+receipts, and the per-file SHA-256 digests in the table above identify exactly
+which bytes each row was measured on.
 
 Placement note: the desk's Fedora WSL vhdx lives on `D:` (physical disk 0,
 931 GB total, ~22 GB free). The first cross-compile attempt exhausted `D:`
