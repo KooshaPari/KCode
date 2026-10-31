@@ -13,7 +13,7 @@
 // platform. In a non-macOS *test* build their only production callers (the
 // `#[cfg(target_os = "macos")]` notice/install paths) are compiled out, so the
 // helpers the tests don't call directly look dead. They are real macOS code, so
-// silence dead_code only for that specific build shape instead of deleting them.
+// silence dead_code for that build shape rather than deleting them.
 #![cfg_attr(all(test, not(target_os = "macos")), allow(dead_code))]
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -45,6 +45,8 @@ mod windows_hotkeys;
 mod windows_setup;
 #[cfg(any(test, target_os = "macos"))]
 use macos_launcher::{install_macos_app_launcher, should_refresh_macos_app_launcher};
+#[cfg(any(test, target_os = "macos"))]
+use macos_terminal::MacTerminalKind;
 #[cfg(target_os = "macos")]
 use macos_terminal::launch_script_for_macos_terminal;
 #[cfg(target_os = "macos")]
@@ -53,8 +55,11 @@ use macos_terminal::load_preferred_macos_terminal;
 use macos_terminal::paused_jcode_shell_command;
 #[cfg(target_os = "macos")]
 use macos_terminal::save_preferred_macos_terminal;
-#[cfg(any(test, target_os = "macos"))]
-use macos_terminal::{MacTerminalKind, effective_macos_terminal};
+// `MacTerminalKind` is used by the notice helper and its tests, but every
+// `effective_macos_terminal()` caller is macOS-only, so the gates must differ:
+// one import was otherwise unused in a non-macOS test build.
+#[cfg(target_os = "macos")]
+use macos_terminal::effective_macos_terminal;
 #[cfg(windows)]
 use windows_setup::{
     create_windows_desktop_shortcut, maybe_show_windows_setup_hints, run_setup_hotkey_windows,
@@ -322,8 +327,8 @@ fn load_launch_hotkeys_config() -> jcode_config_types::LaunchHotkeysConfig {
     };
     let path = dir.join("config.toml");
     // Startup calls this several times (hotkey notice, resolve, install
-    // checks), each a full TOML parse of config.toml. Memoize on the file's
-    // path, mtime and length so edits are still picked up immediately.
+    // checks), each a full TOML parse. Memoize on path, mtime and length so
+    // edits are still picked up immediately.
     type Key = (
         std::path::PathBuf,
         Option<std::time::SystemTime>,
@@ -610,15 +615,10 @@ fn install_macos_hotkey_listener(
 
 fn startup_hints_for_launch(_state: &SetupHintsState) -> Option<StartupHints> {
     // The startup spawn notice was retired: nothing in the crate ever writes
-    // `startup_spawn_hint_dismissed = false`, so the prior `if !hotkey_configured
-    // || dismissed { None } else { Some(notice) }` gate always evaluated to None
-    // in practice. The function remains so callers (lib.rs:1353) and tests in
-    // setup_hints_tests.rs continue to compile against the same signature; it
+    // `startup_spawn_hint_dismissed = false`, so the prior gate always
+    // evaluated to None. The function remains so callers (lib.rs:1353) and
+    // tests in setup_hints_tests.rs compile against the same signature; it
     // simply no longer constructs the notice.
-    //
-    // Note: `SetupHintsState::startup_spawn_hint_dismissed` is intentionally kept
-    // on the struct for state-file compatibility — existing users may have
-    // `false` persisted, and the serde Deserialize path still reads it.
     let _ = _state;
     None
 }
@@ -692,10 +692,9 @@ pub fn run_setup_hotkey(
     }
     #[cfg(target_os = "macos")]
     {
-        // The background listener (`--listen-macos-hotkey`) is intercepted earlier,
-        // in `main()`, so it runs on the real main thread with a Core Foundation
-        // run loop. If we somehow reach here with that flag (e.g. invoked directly),
-        // honor it rather than running the interactive installer.
+        // The background listener (`--listen-macos-hotkey`) is intercepted earlier, in
+        // `main()`, and runs on the real main thread with a Core Foundation run loop.
+        // Reaching here with that flag anyway means honor it, not the installer.
         if _listen_macos_hotkey {
             return run_macos_hotkey_listener();
         }
@@ -929,10 +928,8 @@ pub fn run_macos_hotkey_listener_main_thread() -> Result<()> {
 mod macos_run_loop {
     // Minimal Carbon/ApplicationServices bindings to (a) make this faceless
     // launchd process eligible to receive global hotkeys and (b) run the Carbon
-    // application event loop that dispatches `RegisterEventHotKey` events.
-    //
-    // We deliberately avoid pulling in a heavier `core-foundation`/`cocoa`
-    // dependency just for these few calls.
+    // event loop that dispatches `RegisterEventHotKey` events. A heavier
+    // `core-foundation`/`cocoa` dependency is deliberately avoided for these calls.
 
     #[repr(C)]
     struct ProcessSerialNumber {
@@ -942,10 +939,9 @@ mod macos_run_loop {
 
     // `kCurrentProcess` from MacTypes / Process Manager.
     const K_CURRENT_PROCESS: u32 = 2;
-    // `kProcessTransformToUIElementApplication` from ApplicationServices.
-    // Promotes a background (faceless) process to a UIElement app so it has a
-    // connection to the window server and can receive Carbon hotkey events,
-    // without showing a Dock icon or menu bar.
+    // `kProcessTransformToUIElementApplication` promotes a background (faceless)
+    // process to a UIElement app so it can reach the window server and receive
+    // Carbon hotkey events, without showing a Dock icon or menu bar.
     const K_PROCESS_TRANSFORM_TO_UI_ELEMENT_APPLICATION: u32 = 4;
 
     #[link(name = "ApplicationServices", kind = "framework")]

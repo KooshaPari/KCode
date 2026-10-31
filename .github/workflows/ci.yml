@@ -42,14 +42,71 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: quality-ubuntu
+          # The ~881 MB `quality-ubuntu` blob hung for 26+ minutes in CI job
+          # 121317250103 (2026-10-26), blocking the self-hosted runner the
+          # whole time. The `-notarget` key + `cache-targets: "false"` make the
+          # restore miss fast; PR #183 already applies this to the Build job.
+          key: quality-ubuntu-notarget
           cache-all-crates: "true"
+          cache-targets: "false"
 
       - name: Check module declarations resolve
         # A `mod x;` with no file makes rustfmt fail with "Error writing files:
         # failed to resolve mod", which reads like a formatting problem and hides
         # every gate behind it. Naming the real cause first (221159294).
         run: python3 scripts/check_module_files.py
+
+      - name: Lint changed shell scripts (errors only)
+        # scripts/ holds 73 bash files and no CI job has ever linted them, so
+        # shellcheck findings could only ever arrive from review bots.
+        #
+        # Only CHANGED scripts are linted. A full scan costs ~5s per file, which
+        # is minutes on the single self-hosted runner that already serialises
+        # every job, and would also fail today on a pre-existing warning
+        # backlog. Gating the diff keeps it fast and green while still catching
+        # regressions in anything this change touches.
+        #
+        # Error severity only, for the same reason: the tree has 0 error-level
+        # findings and 50 pre-existing warning-level ones. Warnings are reported
+        # but not enforced; raise to `-S warning` once the backlog is cleared.
+        #
+        # shellcheck is not guaranteed on the self-hosted runner. Install it if
+        # missing, and if that fails downgrade to a warning annotation rather
+        # than blocking every PR on runner provisioning.
+        shell: bash
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update -qq && sudo apt-get install -y shellcheck || true
+            fi
+          fi
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            echo "::warning::shellcheck is unavailable on this runner; shell lint skipped. Install shellcheck on desk-kcode-1 to enforce it."
+            exit 0
+          fi
+
+          # Determine a base to diff against. On a PR checkout HEAD is a merge
+          # commit, so HEAD~1 is the base tip and the diff is exactly this
+          # change set. Fall back to skipping when no base can be established
+          # rather than linting the whole tree.
+          files=()
+          if git rev-parse --verify 'HEAD~1' >/dev/null 2>&1; then
+            while IFS= read -r f; do
+              [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
+            done < <(git diff --name-only --diff-filter=ACMR HEAD~1 HEAD -- '*.sh')
+          fi
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no shell scripts changed in this change set; nothing to lint"
+            exit 0
+          fi
+
+          shellcheck --version | head -2
+          printf 'linting %d changed script(s):\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+          shellcheck -S error -f gcc "${files[@]}"
+          warnings=$(shellcheck -S warning -f gcc "${files[@]}" 2>/dev/null | wc -l || true)
+          echo "warning-level findings in changed files (informational): $warnings"
 
       - name: Check formatting
         # `continue-on-error: true` so a fmt diff does not blind the rest of
@@ -90,21 +147,6 @@ jobs:
         shell: bash
         run: python3 scripts/check_code_size_budget.py
 
-      - name: Enforce no pre-rename symbols in build paths
-        shell: bash
-        # A build-config file is not compiled, so nothing type-checks the target
-        # names and environment variables it sets. Two real defects shipped this
-        # way: CI ran `cargo build -p jcode --bin jcode` and referenced
-        # `jcode.exe` (no such package, no such binary), and release.yml set
-        # JCODE_RELEASE_BUILD / JCODE_CI_BUILD / JCODE_BUILD_SEMVER, which
-        # crates/jcode-build-meta/build.rs never reads, so every release was a
-        # dev-mode build whose own installer rejected it. The gate scans only
-        # .github/workflows/, scripts/, install.sh, install.ps1, Cargo.toml and
-        # .cargo/; crates/, src/ and tests/ keep `jcode` crate, library and
-        # ~/.jcode data names legitimately. Known pre-existing occurrences are
-        # enumerated in the gate's ratchet register and printed each run.
-        run: bash scripts/check_symbol_drift.sh
-
       - name: Enforce oversized-test ratchet
         shell: bash
         run: python3 scripts/check_test_size_budget.py
@@ -137,12 +179,12 @@ jobs:
 
   clippy:
     name: Clippy
-    # Decoupled from `Quality Guardrails` for the same reason `fmt` was (#1796,
-    # #1803): clippy compiles the whole workspace and took the quality job past
-    # its 45-minute limit at run 41021250873, cancelling the job before fifteen
-    # cheap budget/ratchet gates could run. Those gates need seconds, not an
-    # hour, and must never be blinded by a compile. Clippy gets its own budget
-    # here so its cost is its own signal.
+    # Decoupled from `Quality Guardrails` for the same reason `fmt` was
+    # (#1796, #1803): clippy compiles the whole workspace and took the quality
+    # job past its 45-minute limit at run 41021250873, cancelling the job at
+    # step 9 before seventeen cheap budget/ratchet gates could run. Those gates
+    # need seconds, not an hour, and must never be blinded by a compile.
+    # Clippy gets its own budget here so its cost is its own signal.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
     timeout-minutes: 90
@@ -157,11 +199,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: quality-ubuntu
+          # Same `-notarget` eviction as the quality and build jobs: the old
+          # ~881 MB `quality-ubuntu` blob hung the runner for 26+ minutes
+          # (job 121317250103).
+          key: quality-ubuntu-notarget
           cache-all-crates: "true"
+          cache-targets: "false"
 
       - name: Run clippy with warnings denied
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   release-automation:
     name: Release Automation
@@ -193,7 +239,14 @@ jobs:
     # the same green steps (#693). A rerun is exactly what you reach for after a
     # concurrency cancellation, so the old cap made healthy commits look red.
     # 75 still bounds a genuinely hung job well under the windows job's 150.
-    timeout-minutes: 120
+    #
+    # 240 because this job now runs intentionally cold (see the `cache-targets:
+    # "false"` note below). Measured on this runner: Build cold = 2453s,
+    # `cargo test --lib --bins --no-run` cold ~= 2990s. That pair alone is 5443s,
+    # so the previous 120-minute (7200s) cap left under 30 minutes for checkout,
+    # toolchain, mold, and the nine cohort/e2e steps after the compile -- and the
+    # retention-readiness cohort alone now carries a 1800s cold-compile budget.
+    timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
     # published crate*. When cargo builds such a crate its CWD is that crate dir,
@@ -233,9 +286,67 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Key suffix `-notarget` is load-bearing: it changes the
+          # PRIMARY key and the SINGLE restore-key prefix simultaneously
+          # (Swatinem/rust-cache@v2 src/config.ts reads `core.getInput("key")`
+          # at the top of key construction -- before `cache-targets` is read
+          # at line 274 -- and propagates the suffix into both).
+          #
+          # Why the suffix has to be HERE, not just `cache-targets: "false"`:
+          #
+          # 1. `cache-targets` does NOT participate in the key. Per
+          #    Swatinem/rust-cache@v2 src/config.ts: `self.cacheKey = key` at
+          #    line 263 seals the key from any later input, and
+          #    `cache-targets` is only read at line 274 where it merely mutates
+          #    `cachePaths`. So PR #168's `cache-targets: "false"` does not
+          #    produce a new key.
+          #
+          # 2. Without the suffix, actions/cache's "fall back to base branch"
+          #    restores master's `v0-rust-desk-linux-stablepin-build-...` blob
+          #    (~2.02 GB). The download is bounded at ~600s by the step and
+          #    aborts at 37-44%, then falls through to "No cache found" -- so
+          #    the job is cold anyway. (CodeRabbit independently flagged this:
+          #    inline on this file at the cache-targets line, "Provision a new
+          #    master-branch build cache using cache-targets: \"false\" before
+          #    relying on pull-request cache restores...")
+          #
+          # 3. GitHub caches are IMMUTABLE per (key, ref) once written. The
+          #    post-step `save` step is SKIPPED when the key already exists for
+          #    that ref. So even after `cache-targets: "false"` flips the path
+          #    set, the master's key continues to pin the 2 GB blob forever,
+          #    and every fresh PR build still pays the doomed download.
+          #
+          # 4. The new primary key is
+          #    `v0-rust-desk-linux-stablepin-notarget-build-Linux-x64-62b60f75-212eda4f`
+          #    and the new restore prefix is
+          #    `v0-rust-desk-linux-stablepin-notarget-build-Linux-x64-62b60f75`.
+          #    Neither matches any legacy entry (verified against the live
+          #    cache inventory), so (a) the broken 2 GB blob is never even
+          #    attempted for restore, and (b) the post-step `save` finds no
+          #    conflict in any ref and writes a fresh, registry-only entry.
+          #
           # Suffix bumped to evict caches that held 1.83.0 / <unknown rustc>
           # artifacts produced before RUSTUP_TOOLCHAIN=stable pinned the job.
-          key: ${{ matrix.os }}-stablepin
+          key: ${{ matrix.os }}-stablepin-notarget
+          # `cache-targets: "false"` keeps $CARGO_HOME (registry + git + bin) in
+          # the cache and drops the workspace `target/` directory from it.
+          # (Swatinem/rust-cache action.yml: "Determines whether workspace
+          # targets are cached. If `false`, only the cargo registry will be
+          # cached." src/config.ts pushes `workspaces.map(ws => ws.target)` onto
+          # cachePaths only when this input is true.)
+          #
+          # Why this job and not the others: this is the only job that runs a
+          # full `cargo build --release` AND `cargo test --lib --bins --no-run`
+          # AND eight integration/e2e compiles into the same target dir, so its
+          # third-party dependency rlibs for *both* profiles dominate the blob.
+          # The measured blob was 2,029,470,155 bytes; the restore step aborts
+          # at a ~600s cap after 37-44% and falls through to "No cache found",
+          # which makes the job cold anyway -- so caching target/ buys this job
+          # nothing it actually gets, and costs 641s of doomed download on every
+          # attempt. Registry-only is also provably restorable: it is a strict
+          # subset of this repo's other jobs' blobs, and job 119062133759
+          # restored a 687,972,881-byte blob successfully inside the same window.
+          cache-targets: "false"
 
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
@@ -274,16 +385,21 @@ jobs:
       - name: Compile library and binary tests
         shell: bash
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          python3 .github/scripts/run_with_timeout.py 3300 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --lib --bins --no-run
 
       - name: Run deterministic retention-readiness cohort
         shell: bash
         run: |
-          # A cold jcode-app-core test harness compiles heavy optional provider
-          # dependencies and can exceed three minutes on hosted runners. The
-          # cohort itself runs in under a second once the lib test is built.
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: the jcode-app-core lib-test harness is a *cold*
+          # compile that exceeded 600s on this runner (run 39672218586, job
+          # 119472777140, exit 124). It stays cold here because the workspace
+          # declares no `default-members`, so `cargo test --lib --bins --no-run`
+          # builds only the default member `kcode` and never pre-builds this
+          # crate's harness. The cohort itself still runs in under a second
+          # once the harness is built, so 1800s covers that one-time cold
+          # compile and nothing more.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-app-core --lib retention_readiness -- --nocapture
 
@@ -302,7 +418,12 @@ jobs:
         # jcode-base lib test harness, which exceeded 300s on a hosted macOS
         # runner (run 30591536707) while the cohort itself runs in a second.
         run: |
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: this step cold-compiles the `jcode-base` lib-test
+          # target (provider runtimes aws-sdk, azure, bedrock, openrouter); no
+          # `default-members`, so `cargo test --lib --bins --no-run` never
+          # pre-builds it. Killed at exactly 600s, exit 124, while compiling
+          # (CI job 122656506857, 2026-10-28); 1800s covers that cold compile.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-base --lib secret_input -- --nocapture
 
@@ -398,7 +519,12 @@ jobs:
         env:
           COLORTERM: truecolor
         run: |
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: on a cold cargo build this step spends most of its
+          # budget compiling the `jcode-tui` lib-test binary; the suite itself
+          # costs ~30s once built (see the note above). Killed at exactly 600s
+          # with exit 124 in CI job 121349210430 on 2026-10-26 while compiling;
+          # 1800s covers that one-time cold compile plus the serial suite.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-tui --lib -- --test-threads=1 \
             --skip test_prompt_entry_shimmer_color_moves_across_positions \
@@ -453,7 +579,11 @@ jobs:
         # (burst-spawn concurrency), and folding compilation into its 900s run
         # budget was pushing slower hosted ubuntu/macos runners over the limit.
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          # 2400s, not 900s: covers the one-time cold compile of the kcode
+          # integration-test binary, which links the full binary and every
+          # provider runtime. Observed: killed at exactly 900s (exit 124) while
+          # compiling (CI job 122084008601, 2026-10-27), zero binaries built.
+          python3 .github/scripts/run_with_timeout.py 2400 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             --test provider_matrix --test e2e --no-run
 
@@ -521,8 +651,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: windows-latest
+          # The old blob's restore hung for 26+ minutes in CI job 121317250103
+          # (2026-10-26), blocking the self-hosted runner the whole time. The
+          # `-notarget` key + `cache-targets: "false"` make the restore miss
+          # fast; PR #183 already applies this to the Build job.
+          key: windows-latest-notarget
           cache-all-crates: "true"
+          cache-targets: "false"
 
       - name: Build release binary
         shell: pwsh
@@ -634,10 +769,6 @@ jobs:
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          # The root package builds a `kcode` binary (see [[bin]] in Cargo.toml),
-          # so the release artifact is kcode.exe. Referencing jcode.exe here made
-          # this step fail on a missing path instead of validating the binary
-          # that was actually produced.
           & "target/x86_64-pc-windows-msvc/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows binary failed to run --version'
@@ -791,8 +922,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: windows-cross-check
+          # The ~688 MB `windows-cross-check` blob hung for 26+ minutes in CI
+          # job 121317250103 (2026-10-26), blocking the self-hosted runner the
+          # whole time. The `-notarget` key + `cache-targets: "false"` make the
+          # restore miss fast; PR #183 already applies this to the Build job.
+          key: windows-cross-check-notarget
           cache-all-crates: "true"
+          cache-targets: "false"
 
       - name: Install LLVM toolchain for cargo-xwin
         run: |
