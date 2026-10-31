@@ -310,13 +310,15 @@ jobs:
         run: |
           # A published Windows asset must run on a bare install with no VC++
           # redistributable installed. The PE import table IS the acceptance
-          # surface: if VCRUNTIME*/MSVCP* and the api-ms-win-crt-* UCRT
-          # forwarders are absent, the loader cannot require them.
+          # surface: if VCRUNTIME*/MSVCP* are absent, the loader cannot require
+          # them. The api-ms-win-crt-* UCRT forwarders are deliberately NOT
+          # matched: they ship with Windows 10+ regardless of CRT linkage, so
+          # matching them is a false positive for +crt-static.
           $exe = "target/${{ matrix.target }}/release/kcode.exe"
           if (-not (Test-Path $exe)) { throw "Missing binary: $exe" }
           $deps = & dumpbin /nologo /dependents $exe
           if ($LASTEXITCODE -ne 0) { throw "dumpbin failed on $exe" }
-          $bad = $deps | Select-String -Pattern 'VCRUNTIME|MSVCP|api-ms-win-crt'
+          $bad = $deps | Select-String -Pattern 'VCRUNTIME|MSVCP'
           if ($bad) {
             throw "Dynamic CRT dependency in $exe (needs static CRT):`n$($bad -join "`n")"
           }
