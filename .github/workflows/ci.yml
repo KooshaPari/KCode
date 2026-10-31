@@ -5,6 +5,13 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  # Needed for two real cases, both observed on this fork:
+  #   1. Re-running CI for a commit that was pushed while the self-hosted
+  #      runners were offline. No run is created, so `gh run rerun` has nothing
+  #      to target, and pushing an empty commit to nudge CI is not acceptable.
+  #   2. Validating a long job (Build & Test is ~80 min) without adding a
+  #      throwaway commit to the branch under review.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
