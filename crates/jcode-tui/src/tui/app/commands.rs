@@ -3214,6 +3214,11 @@ fn resume_terminal_after_editor() {
     if policy.enable_keyboard_enhancement {
         crate::tui::enable_keyboard_enhancement();
     }
+    if let Err(error) = crate::tui::prepare_keyboard_input(false) {
+        crate::logging::warn(&format!(
+            "failed to prepare keyboard input after editor: {error}"
+        ));
+    }
 }
 
 #[cfg(all(test, unix))]

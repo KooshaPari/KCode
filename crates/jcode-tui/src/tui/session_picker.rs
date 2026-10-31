@@ -2383,6 +2383,11 @@ impl SessionPicker {
         } else {
             false
         };
+        let keyboard_enhanced =
+            super::prepare_keyboard_input(keyboard_enhanced).map_err(|error| {
+                jcode_tui_style::restore_terminal_quietly();
+                error
+            })?;
         let mouse_capture = perf_policy.enable_mouse_capture;
         crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
         if mouse_capture {
