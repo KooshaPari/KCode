@@ -33,7 +33,8 @@
 # Only paths where a pre-rename spelling selects a cargo target, names an
 # artifact, or sets a build variable:
 #
-#   .github/workflows/  scripts/  install.sh  install.ps1  Cargo.toml  .cargo/
+#   .github/workflows/  .github/scripts/  scripts/  install.sh  install.ps1
+#   Cargo.toml  .cargo/
 #
 # It deliberately does NOT scan crates/, src/ or tests/. The fork legitimately
 # keeps `jcode` crate names, the `jcode` library target, `~/.jcode` legacy data
@@ -76,7 +77,7 @@ Usage:
 Fails when a pre-rename `jcode` spelling appears in a build/CI/packaging path
 where it is inert or resolves to no cargo target.
 
-Scan roots: .github/workflows/ scripts/ install.sh install.ps1 Cargo.toml .cargo/
+Scan roots: .github/workflows/ .github/scripts/ scripts/ install.sh install.ps1 Cargo.toml .cargo/
 Excluded:   crates/ src/ tests/ (the fork keeps jcode crate, lib and data names)
 
 Options:
@@ -177,6 +178,7 @@ KNOWN_DRIFT=(
 
 SCAN_ROOTS=(
   .github/workflows
+  .github/scripts
   scripts
   install.sh
   install.ps1
