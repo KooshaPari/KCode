@@ -250,7 +250,30 @@ pub(crate) fn process_alive(pid: u32) -> bool {
     )
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub(crate) fn process_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER, STILL_ACTIVE};
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    if pid == 0 {
+        return false;
+    }
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return std::io::Error::last_os_error().raw_os_error()
+                != Some(ERROR_INVALID_PARAMETER as i32);
+        }
+        let mut exit_code = 0;
+        let queried = GetExitCodeProcess(handle, &mut exit_code);
+        CloseHandle(handle);
+        queried == 0 || exit_code == STILL_ACTIVE as u32
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 pub(crate) fn process_alive(_pid: u32) -> bool {
     true
 }
@@ -258,6 +281,97 @@ pub(crate) fn process_alive(_pid: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn process_liveness_tracks_own_exited_child() {
+        assert!(process_alive(std::process::id()));
+        assert!(!process_alive(0));
+        let mut child = std::process::Command::new("cmd.exe")
+            .args(["/C", "exit 0"])
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        assert!(child.wait().unwrap().success());
+        assert!(!process_alive(pid));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn temporary_monitor_exits_after_owner_exits() {
+        const OWNER: &str = "KCODE_LIFECYCLE_TEST_OWNER";
+        if let Ok(owner) = std::env::var(OWNER) {
+            let runtime = tokio::runtime::Runtime::new().unwrap();
+            runtime.block_on(async {
+                let path =
+                    std::env::temp_dir().join(format!("kcode-lifecycle-{}", std::process::id()));
+                spawn_temporary_lifecycle_monitor(
+                    Arc::new(RwLock::new(0)),
+                    Arc::new(RwLock::new(std::collections::HashMap::new())),
+                    super::super::SwarmState::new(
+                        Default::default(),
+                        Default::default(),
+                        Default::default(),
+                        Default::default(),
+                    ),
+                    path.clone(),
+                    path.with_extension("debug"),
+                    "lifecycle-test".to_string(),
+                    TemporaryServerPolicy {
+                        owner_pid: Some(owner.parse().unwrap()),
+                        idle_timeout_secs: 3600,
+                    },
+                );
+                tokio::time::sleep(Duration::from_secs(15)).await;
+            });
+            std::process::exit(1);
+        }
+
+        let mut owner = std::process::Command::new("cmd.exe")
+            .args(["/C", "exit 0"])
+            .spawn()
+            .unwrap();
+        assert!(owner.wait().unwrap().success());
+        let root = std::env::temp_dir().join(format!(
+            "kcode-lifecycle-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command.env_clear();
+        for key in ["SYSTEMROOT", "WINDIR", "PATH", "TEMP", "TMP"] {
+            if let Some(value) = std::env::var_os(key) {
+                command.env(key, value);
+            }
+        }
+        let mut child = command
+            .args([
+                "--exact",
+                "server::lifecycle::tests::temporary_monitor_exits_after_owner_exits",
+            ])
+            .env(OWNER, owner.id().to_string())
+            .env("KCODE_HOME", root.join("home"))
+            .env("KCODE_RUNTIME_DIR", root.join("runtime"))
+            .spawn()
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(25);
+        let status = loop {
+            if let Some(status) = child.try_wait().unwrap() {
+                break status;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "test child {} did not exit",
+                child.id()
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        };
+        assert_eq!(status.code(), Some(TEMP_SERVER_EXIT_CODE));
+    }
 
     struct EnvGuard {
         _lock: std::sync::MutexGuard<'static, ()>,
