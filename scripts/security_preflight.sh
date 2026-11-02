@@ -47,6 +47,12 @@ echo "=== Security Preflight ==="
 echo "[1/3] Scanning for likely secrets"
 secret_regex='(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (RSA|OPENSSH|EC|DSA|PGP) PRIVATE KEY-----|AIza[0-9A-Za-z_-]{35})'
 
+# Unique per-invocation path. A fixed /tmp name races when two runners on the
+# same host execute this script concurrently, which is now possible because the
+# gate runs as its own job on a host that hosts many runners.
+scan_out=$(mktemp "${TMPDIR:-/tmp}/jcode-secret-scan.XXXXXX")
+trap 'rm -f "$scan_out"' EXIT
+
 set +e
 mapfile -d '' tracked_files < <(git ls-files -z)
 scan_status=1
@@ -55,7 +61,7 @@ if [[ "${#tracked_files[@]}" -gt 0 ]]; then
     rg -n --color=never -e "$secret_regex" \
       --glob '!Cargo.lock' --glob '!*.snap' --glob '!*.png' --glob '!*.jpg' --glob '!*.jpeg' \
       --glob '!*.gif' --glob '!*.svg' --glob '!*.pdf' --glob '!*.woff' --glob '!*.woff2' --glob '!*.ttf' \
-      "${tracked_files[@]}" > /tmp/jcode-secret-scan.txt
+      "${tracked_files[@]}" > "$scan_out"
     scan_status=$?
   else
     scan_files=()
@@ -110,8 +116,13 @@ audit_ignores=(
   --ignore RUSTSEC-2026-0387 # crypto-bigint 0.5.5 timing variability via aws-sigv4 and RustCrypto elliptic-curve/ecdsa/primeorder; 0.5.5 is the newest 0.5.x, both dependents pin ^0.5, and the fix requires crypto-bigint >=0.7 which neither has adopted. ACCEPTED RISK, not proven unexploitable: see docs/SECURITY_DEPENDENCIES.md
 )
 if command -v cargo-audit >/dev/null 2>&1; then
-  cargo audit "${audit_ignores[@]}"
-elif cargo audit --version >/dev/null 2>&1; then
+  # Invoke the standalone binary, not the `cargo audit` subcommand. The
+  # subcommand needs `cargo` on PATH; the standalone binary does not. The
+  # prebuilt cargo-audit that taiki-e/install-action drops on PATH has no
+  # cargo next to it, so `cargo audit` died with exit 127 ("cargo: command
+  # not found") even though cargo-audit itself was installed and working.
+  cargo-audit audit "${audit_ignores[@]}"
+elif command -v cargo >/dev/null 2>&1 && cargo audit --version >/dev/null 2>&1; then
   cargo audit "${audit_ignores[@]}"
 else
   if [[ "$strict" -eq 1 ]]; then
