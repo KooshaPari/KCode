@@ -1,6 +1,6 @@
 use super::dispatch;
 use super::provider_init::ProviderChoice;
-use crate::protocol::{Request, ServerEvent};
+use crate::protocol::{Request, ServerEvent, SessionToolConfig};
 use crate::transport::{ReadHalf, WriteHalf};
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
@@ -101,6 +101,13 @@ struct SessionUiState {
     model: Option<String>,
     available_models: Vec<String>,
     reasoning_effort: Option<String>,
+    /// The permission mode this session is actually in.
+    ///
+    /// `None` means the default (unrestricted) mode; `Some(MODE_READ_ONLY)`
+    /// means the session's write-capable tools have been disabled. The value
+    /// is what the `mode` config option advertises, so it must reflect what
+    /// was applied rather than what was requested.
+    permission_mode: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -181,6 +188,8 @@ impl SessionUiState {
             model: provider_model,
             available_models,
             reasoning_effort,
+            // A freshly created session is not yet in any restricted mode.
+            permission_mode: None,
         }
     }
 
@@ -657,6 +666,7 @@ impl AcpRuntime {
                     .await?;
                 wait_for_effort_changed(&session, request_id).await
             }
+            CONFIG_ID_MODE => apply_permission_mode(&session, &value).await,
             other => Err(anyhow::anyhow!("Unknown config option id: {other}")),
         };
 
@@ -1255,6 +1265,21 @@ async fn wait_for_done(session: &DaemonSession, request_id: u64) -> Result<()> {
     }
 }
 
+/// Wait for a request the daemon answers with an ACK rather than a DONE.
+///
+/// `configure_tools` is an SDK control: the daemon validates it and answers
+/// with `Ack { id }`, and it never sends a `Done` for it. Waiting for a `Done`
+/// here would block until the session timed out.
+async fn wait_for_ack(session: &DaemonSession, request_id: u64) -> Result<()> {
+    loop {
+        match session.read_event().await? {
+            ServerEvent::Ack { id } if id == request_id => return Ok(()),
+            ServerEvent::Error { id, message, .. } if id == request_id => anyhow::bail!(message),
+            _ => {}
+        }
+    }
+}
+
 async fn request_history(session: &DaemonSession) -> Result<ServerEvent> {
     let id = session.next_id();
     session.send(&Request::GetHistory { id }).await?;
@@ -1297,123 +1322,6 @@ async fn request_model_catalog(session: &DaemonSession) -> Result<ServerEvent> {
         }
     }
 }
-
-const CONFIG_ID_MODEL: &str = "model";
-const CONFIG_ID_EFFORT: &str = "reasoning_effort";
-
-fn acp_available_commands() -> Vec<Value> {
-    vec![
-        json!({
-            "name": "model",
-            "description": "Switch the model for this session, or show the current model",
-            "input": { "hint": "model id (optional)" },
-        }),
-        json!({
-            "name": "models",
-            "description": "List models available from the active provider",
-        }),
-        json!({
-            "name": "effort",
-            "description": "Set reasoning effort, or show the current effort",
-            "input": { "hint": "none|minimal|low|medium|high|xhigh|max (optional)" },
-        }),
-    ]
-}
-
-fn insert_session_configuration(result: &mut Value, state: &SessionUiState) {
-    let Some(object) = result.as_object_mut() else {
-        return;
-    };
-    let config_options = session_config_options(state);
-    if !config_options.is_empty() {
-        object.insert("configOptions".to_string(), Value::Array(config_options));
-    }
-    if let Some(models) = session_models(state) {
-        object.insert("models".to_string(), models);
-    }
-}
-
-fn session_models(state: &SessionUiState) -> Option<Value> {
-    let current = state.model.as_deref()?;
-    let mut models = state.available_models.clone();
-    if !models.iter().any(|candidate| candidate == current) {
-        models.insert(0, current.to_string());
-    }
-    Some(json!({
-        "availableModels": models
-            .into_iter()
-            .map(|model| json!({ "modelId": model, "name": model }))
-            .collect::<Vec<_>>(),
-        "currentModelId": current,
-    }))
-}
-
-fn available_efforts(state: &SessionUiState) -> Vec<&'static str> {
-    crate::provider::inferred_reasoning_efforts(
-        state.provider_name.as_deref(),
-        state.model.as_deref(),
-    )
-    .into_iter()
-    // `swarm`/`swarm-deep` are TUI sentinels, not provider effort levels.
-    .filter(|effort| !effort.starts_with("swarm"))
-    .collect()
-}
-
-/// Build the ACP `configOptions` array (model selector plus reasoning effort)
-/// from the current session provider state. Empty when the daemon reported no
-/// usable model state.
-fn session_config_options(state: &SessionUiState) -> Vec<Value> {
-    let mut options = Vec::new();
-
-    if let Some(model) = state.model.as_deref() {
-        let mut models = state.available_models.clone();
-        if !models.iter().any(|candidate| candidate == model) {
-            models.insert(0, model.to_string());
-        }
-        let select_options: Vec<Value> = models
-            .iter()
-            .map(|name| json!({ "value": name, "name": name }))
-            .collect();
-        options.push(json!({
-            "type": "select",
-            "id": CONFIG_ID_MODEL,
-            "name": "Model",
-            "category": "model",
-            "currentValue": model,
-            "options": select_options,
-        }));
-    }
-
-    let efforts = available_efforts(state);
-    if !efforts.is_empty() {
-        let current = state
-            .reasoning_effort
-            .as_deref()
-            .filter(|effort| efforts.contains(effort))
-            .unwrap_or_else(|| {
-                if efforts.contains(&"medium") {
-                    "medium"
-                } else {
-                    efforts[0]
-                }
-            });
-        let select_options: Vec<Value> = efforts
-            .iter()
-            .map(|name| json!({ "value": name, "name": name }))
-            .collect();
-        options.push(json!({
-            "type": "select",
-            "id": CONFIG_ID_EFFORT,
-            "name": "Reasoning effort",
-            "category": "thought_level",
-            "currentValue": current,
-            "options": select_options,
-        }));
-    }
-
-    options
-}
-
 async fn wait_for_model_changed(session: &DaemonSession, request_id: u64) -> Result<()> {
     loop {
         match session.read_event().await? {
@@ -1863,6 +1771,9 @@ pub(crate) fn tool_kind(name: &str) -> &'static str {
     }
 }
 
+mod permission_mode;
+use permission_mode::*;
+
 pub(crate) async fn run_acp_command(
     provider_choice: ProviderChoice,
     model: Option<String>,
@@ -2109,18 +2020,25 @@ mod tests {
             model: Some("gpt-5.2".to_string()),
             available_models: vec!["gpt-5.2".to_string(), "gpt-5.2-codex".to_string()],
             reasoning_effort: Some("high".to_string()),
+            permission_mode: None,
         };
         let options = session_config_options(&state);
-        assert_eq!(options.len(), 2);
+        assert_eq!(options.len(), 3);
 
-        let model = &options[0];
+        let mode = &options[0];
+        assert_eq!(mode["id"], CONFIG_ID_MODE);
+        assert_eq!(mode["category"], "permission");
+        assert_eq!(mode["type"], "select");
+        assert_eq!(mode["currentValue"], MODE_UNRESTRICTED);
+
+        let model = &options[1];
         assert_eq!(model["id"], CONFIG_ID_MODEL);
         assert_eq!(model["category"], "model");
         assert_eq!(model["type"], "select");
         assert_eq!(model["currentValue"], "gpt-5.2");
         assert_eq!(model["options"].as_array().unwrap().len(), 2);
 
-        let effort = &options[1];
+        let effort = &options[2];
         assert_eq!(effort["id"], CONFIG_ID_EFFORT);
         assert_eq!(effort["category"], "thought_level");
         assert_eq!(effort["currentValue"], "high");
@@ -2138,15 +2056,91 @@ mod tests {
     }
 
     #[test]
+    fn permission_mode_is_advertised_even_without_model_state() {
+        // A host that gates tool calls through the agent's session
+        // configuration looks for this option by id. A session that only
+        // advertised it once a host had already asked would be a session the
+        // host had to trust blind, so it is present unconditionally.
+        let options = session_config_options(&SessionUiState::default());
+        assert_eq!(options.len(), 1);
+        assert_eq!(options[0]["id"], CONFIG_ID_MODE);
+
+        let mode = &options[0];
+        // An unrestricted session must SAY it is unrestricted. Advertising
+        // read-only before the restriction was applied would let a host
+        // believe a session was gated when it was not.
+        assert_eq!(mode["currentValue"], MODE_UNRESTRICTED);
+        let values: Vec<&str> = mode["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|option| option["value"].as_str().unwrap())
+            .collect();
+        assert_eq!(values, [MODE_READ_ONLY]);
+    }
+
+    #[test]
+    fn an_unrestricted_session_does_not_claim_to_be_read_only() {
+        // The value a host reads must never overstate the restriction.
+        let options = session_config_options(&SessionUiState::default());
+        assert_ne!(
+            options[0]["currentValue"], MODE_READ_ONLY,
+            "an unrestricted session must not advertise itself as read-only"
+        );
+    }
+
+    #[test]
+    fn permission_mode_option_reflects_the_mode_that_was_applied() {
+        let state = SessionUiState {
+            permission_mode: Some(MODE_READ_ONLY.to_string()),
+            ..SessionUiState::default()
+        };
+        let options = session_config_options(&state);
+        assert_eq!(options[0]["currentValue"], MODE_READ_ONLY);
+    }
+
+    #[test]
+    fn read_only_denies_the_write_capable_tools() {
+        // The denied list is the PROMISE the mode option makes, so the tools
+        // it names are the tools a read-only session must not be able to run.
+        for tool in ["write", "edit", "replace", "apply_patch", "bash"] {
+            assert!(
+                READ_ONLY_DENIED_TOOLS.contains(&tool),
+                "{tool} can change the workspace and must be denied in read-only mode"
+            );
+        }
+        // And the read-only tools stay mounted, or the mode would be useless.
+        for tool in ["read", "ls", "agentgrep"] {
+            assert!(
+                !READ_ONLY_DENIED_TOOLS.contains(&tool),
+                "{tool} only reads and must stay available in read-only mode"
+            );
+        }
+    }
+
+    #[test]
+    fn read_only_denies_every_mcp_tool() {
+        // An MCP server can change remote data, so a read-only session must
+        // not reach one. The daemon's own policy check treats the single name
+        // "mcp" as covering `mcp_call`, `mcp_search` and every
+        // `mcp__<server>__<tool>`, so one entry is what does it.
+        assert!(
+            READ_ONLY_DENIED_TOOLS.contains(&"mcp"),
+            "MCP tools must be denied in read-only mode"
+        );
+    }
+
+    #[test]
     fn config_options_current_model_prepended_when_not_listed() {
         let state = SessionUiState {
             provider_name: Some("anthropic".to_string()),
             model: Some("claude-opus-4-6".to_string()),
             available_models: vec!["claude-sonnet-4-5".to_string()],
             reasoning_effort: None,
+            permission_mode: None,
         };
         let options = session_config_options(&state);
-        let model_values: Vec<&str> = options[0]["options"]
+        let model_values: Vec<&str> = options[1]["options"]
             .as_array()
             .unwrap()
             .iter()
@@ -2163,6 +2157,7 @@ mod tests {
             model: Some("deepseek-v4-flash".to_string()),
             available_models: vec!["deepseek-v4-pro".to_string()],
             reasoning_effort: Some("high".to_string()),
+            permission_mode: None,
         };
         let mut result = json!({"sessionId": "s1"});
         insert_session_configuration(&mut result, &state);
@@ -2180,8 +2175,11 @@ mod tests {
 
     #[test]
     fn config_options_empty_without_model_state() {
+        // The permission mode is always advertised, so the array is never empty
+        // even when the daemon reported no model state.
         let options = session_config_options(&SessionUiState::default());
-        assert!(options.is_empty());
+        assert_eq!(options.len(), 1);
+        assert_eq!(options[0]["id"], CONFIG_ID_MODE);
     }
 
     #[test]
@@ -2191,6 +2189,7 @@ mod tests {
             model: Some("mystery-model-9000".to_string()),
             available_models: Vec::new(),
             reasoning_effort: None,
+            permission_mode: None,
         };
         assert_eq!(
             state.context_limit(),
