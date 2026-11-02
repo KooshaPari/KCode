@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Built-CLI credential import acceptance with synthetic secrets and isolated homes.
 
-Usage: python3 tests/test_auth_import_cli.py /absolute/path/to/kcode
+Usage: python3 tests/test_auth_import_cli.py /absolute/path/to/jcode
 No personal credentials, external provider requests, or SSH are used here.
 """
 import json
@@ -29,7 +29,7 @@ class ImportCLI(unittest.TestCase):
     def setUp(self):
         if BINARY is None:
             self.skipTest('supply a built CLI path')
-        self.tmp = tempfile.TemporaryDirectory(prefix='kcode-import-cli-')
+        self.tmp = tempfile.TemporaryDirectory(prefix='jcode-import-cli-')
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.home = self.root / 'data'

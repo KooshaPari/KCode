@@ -59,8 +59,8 @@ class CargoWorkingDirectoryTests(unittest.TestCase):
     def test_exported_shim_after_cd_in_child_shell(self):
         self.assertEqual(Path(self.metadata(self.project, child_shell=True)["workspace_root"]), self.project)
 
-    def test_kcode_root_and_member_keep_wrapper_policy(self):
-        for cwd in [REPO, REPO / "crates/kcode-tui"]:
+    def test_jcode_root_and_member_keep_wrapper_policy(self):
+        for cwd in [REPO, REPO / "crates/jcode-tui"]:
             with self.subTest(cwd=cwd):
                 self.assertEqual(Path(self.metadata(cwd)["workspace_root"]), REPO)
 

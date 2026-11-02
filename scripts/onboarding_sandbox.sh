@@ -17,13 +17,13 @@ scratch_root=${KCODE_SCRATCH_DIR:-$HOME/.kcode/scratch}
 sandbox_parent="$scratch_root/onboarding"
 sandbox_root_default="$sandbox_parent/$sandbox_name"
 sandbox_root=${KCODE_ONBOARDING_DIR:-$sandbox_root_default}
-kcode_home="$sandbox_root/home"
+jcode_home="$sandbox_root/home"
 runtime_dir="$sandbox_root/runtime"
 marker_file="$sandbox_root/.kcode-onboarding-sandbox"
 
 ensure_dirs() {
-  mkdir -p "$kcode_home" "$runtime_dir"
-  chmod 700 "$sandbox_root" "$kcode_home" "$runtime_dir"
+  mkdir -p "$jcode_home" "$runtime_dir"
+  chmod 700 "$sandbox_root" "$jcode_home" "$runtime_dir"
   : > "$marker_file"
   chmod 600 "$marker_file"
 }
@@ -38,7 +38,7 @@ run_in_sandbox() {
     # self-dev shell, which would otherwise force every sandbox session canary
     # (suppressing the new-session suggestion cards we are trying to verify).
     env -u KCODE_CLIENT_SELFDEV_MODE -u KCODE_SELFDEV -u KCODE_CANARY \
-      KCODE_HOME="$kcode_home" \
+      KCODE_HOME="$jcode_home" \
       KCODE_RUNTIME_DIR="$runtime_dir" \
       "$@"
   )
@@ -55,9 +55,9 @@ Commands:
   reset                  Delete the sandbox entirely
   purge-external         Delete copied real credentials/transcripts only
   shell                  Open a clean shell with sandbox env vars set
-  kcode [args...]        Run kcode inside the sandbox
-  auth-status            Run 'kcode auth status' inside the sandbox
-  fresh [args...]        Reset sandbox, then launch kcode with args
+  jcode [args...]        Run jcode inside the sandbox
+  auth-status            Run 'jcode auth status' inside the sandbox
+  fresh [args...]        Reset sandbox, then launch jcode with args
   seed-real-logins [--with-transcripts|--transcripts-only]
                          Copy your REAL external logins (Codex/Claude/Gemini/
                          Copilot/Cursor/OpenCode/pi) into the sandbox so the
@@ -66,13 +66,13 @@ Commands:
                          transcripts (so "continue where you left off" has data).
                          Originals are never modified.
   fresh-real [--with-transcripts]
-                         Reset sandbox, seed your real logins, then launch kcode
-  login <provider> ...   Run 'kcode --provider <provider> login ...' in sandbox
+                         Reset sandbox, seed your real logins, then launch jcode
+  login <provider> ...   Run 'jcode --provider <provider> login ...' in sandbox
   fixture-list           List saved local auth fixtures
   fixture-save <name>    Save current sandbox auth state as a local fixture
   fixture-load <name>    Load a saved auth fixture into this sandbox
   fixture-run <name> -- [args...]
-                         Load a fixture, then run kcode with args
+                         Load a fixture, then run jcode with args
   help                   Show this help
 
 Environment overrides:
@@ -94,7 +94,7 @@ EOF
 print_env() {
   ensure_dirs
   cat <<EOF
-export KCODE_HOME="$kcode_home"
+export KCODE_HOME="$jcode_home"
 export KCODE_RUNTIME_DIR="$runtime_dir"
 EOF
 }
@@ -103,16 +103,16 @@ status() {
   ensure_dirs
   echo "Sandbox name: $sandbox_name"
   echo "Sandbox root: $sandbox_root"
-  echo "KCODE_HOME:   $kcode_home"
+  echo "KCODE_HOME:   $jcode_home"
   echo "RUNTIME_DIR:  $runtime_dir"
   echo
 
-  if [[ -d "$kcode_home" ]]; then
+  if [[ -d "$jcode_home" ]]; then
     echo "Home contents:"
-    find "$kcode_home" -maxdepth 3 \( -type f -o -type d \) | sed "s#^$sandbox_root#.#" | sort
+    find "$jcode_home" -maxdepth 3 \( -type f -o -type d \) | sed "s#^$sandbox_root#.#" | sort
   fi
 
-  if [[ -d "$kcode_home/external" ]]; then
+  if [[ -d "$jcode_home/external" ]]; then
     echo
     echo "WARNING: this sandbox contains copies of real credentials or transcripts."
     echo "Remove them with: $(basename "$0") purge-external"
@@ -139,9 +139,9 @@ reset() {
 }
 
 purge_external() {
-  if [[ -d "$kcode_home/external" ]]; then
-    rm -rf "$kcode_home/external"
-    echo "Removed copied external credentials/transcripts: $kcode_home/external"
+  if [[ -d "$jcode_home/external" ]]; then
+    rm -rf "$jcode_home/external"
+    echo "Removed copied external credentials/transcripts: $jcode_home/external"
   else
     echo "No copied external credentials/transcripts found."
   fi
@@ -150,14 +150,14 @@ purge_external() {
 open_shell() {
   ensure_dirs
   echo "Opening sandbox shell"
-  echo "  KCODE_HOME=$kcode_home"
+  echo "  KCODE_HOME=$jcode_home"
   echo "  KCODE_RUNTIME_DIR=$runtime_dir"
-  env KCODE_HOME="$kcode_home" KCODE_RUNTIME_DIR="$runtime_dir" bash --noprofile --norc
+  env KCODE_HOME="$jcode_home" KCODE_RUNTIME_DIR="$runtime_dir" bash --noprofile --norc
 }
 
-run_kcode() {
+run_jcode() {
   # The sandbox should behave like a real standalone install, not a self-dev
-  # client. Because we launch from inside the repo, kcode would otherwise
+  # client. Because we launch from inside the repo, jcode would otherwise
   # auto-detect the repository and join the shared self-dev server (remote
   # mode), which both breaks isolation and skips local-only first-run behavior
   # like the new-session model validation. `--no-selfdev` keeps it standalone,
@@ -178,11 +178,11 @@ run_kcode() {
     echo "KCODE_SANDBOX_BIN=$KCODE_SANDBOX_BIN is not executable" >&2
     return 1
   fi
-  local binary_path="$repo_root/target/debug/kcode"
+  local binary_path="$repo_root/target/debug/jcode"
   if [[ -x "$binary_path" ]]; then
     run_in_sandbox "$binary_path" "${prefix[@]}" "$@"
   else
-    run_in_sandbox cargo run --bin kcode -- "${prefix[@]}" "$@"
+    run_in_sandbox cargo run --bin jcode -- "${prefix[@]}" "$@"
   fi
 }
 
@@ -193,21 +193,21 @@ run_auth_fixture() {
 }
 
 # Copy one real file from $HOME into the sandbox's external/ tree, preserving its
-# relative path. kcode resolves every external credential/transcript lookup to
+# relative path. jcode resolves every external credential/transcript lookup to
 # $KCODE_HOME/external/<same-relative-path-as-$HOME> when KCODE_HOME is set, so
 # seeding here makes your real logins/transcripts visible to the onboarding
-# import + continue steps. Copies (never symlinks: kcode rejects symlinked auth
+# import + continue steps. Copies (never symlinks: jcode rejects symlinked auth
 # files) and never touches the originals.
 seed_one_file() {
   local rel=$1
   local src="$HOME/$rel"
-  local dst="$kcode_home/external/$rel"
+  local dst="$jcode_home/external/$rel"
   if [[ ! -e "$src" ]]; then
     return 1
   fi
   mkdir -p "$(dirname "$dst")"
   cp -a "$src" "$dst"
-  chmod -R go-rwx "$kcode_home/external" 2>/dev/null || true
+  chmod -R go-rwx "$jcode_home/external" 2>/dev/null || true
   return 0
 }
 
@@ -215,13 +215,13 @@ seed_one_file() {
 seed_one_dir() {
   local rel=$1
   local src="$HOME/$rel"
-  local dst="$kcode_home/external/$rel"
+  local dst="$jcode_home/external/$rel"
   if [[ ! -d "$src" ]]; then
     return 1
   fi
   mkdir -p "$dst"
   cp -a "$src/." "$dst/"
-  chmod -R go-rwx "$kcode_home/external" 2>/dev/null || true
+  chmod -R go-rwx "$jcode_home/external" 2>/dev/null || true
   return 0
 }
 
@@ -287,7 +287,7 @@ seed_real_logins() {
   fi
 
   echo "Seeded real logins into sandbox external dir:"
-  echo "  $kcode_home/external"
+  echo "  $jcode_home/external"
   echo
   if [[ ${#seeded[@]} -gt 0 ]]; then
     echo "Copied:"
@@ -308,7 +308,7 @@ seed_real_logins() {
   echo "These are copies; your real \$HOME files are untouched."
   echo "They contain sensitive data and persist until reset or purge-external."
   echo "Onboarding will now offer to import them. Start it with:"
-  echo "  $(basename "$0") kcode"
+  echo "  $(basename "$0") jcode"
 }
 
 scenario_arg() {
@@ -335,15 +335,15 @@ case "$command" in
   shell)
     open_shell
     ;;
-  kcode)
-    run_kcode "$@"
+  jcode)
+    run_jcode "$@"
     ;;
   auth-status)
-    run_kcode auth status
+    run_jcode auth status
     ;;
   fresh)
     reset
-    run_kcode "$@"
+    run_jcode "$@"
     ;;
   seed-real-logins)
     seed_real_logins "$@"
@@ -352,8 +352,8 @@ case "$command" in
     reset
     seed_real_logins "$@"
     echo
-    echo "Launching sandbox kcode with your real logins available to import..."
-    if run_kcode; then
+    echo "Launching sandbox jcode with your real logins available to import..."
+    if run_jcode; then
       rc=0
     else
       rc=$?
@@ -372,7 +372,7 @@ case "$command" in
     fi
     provider=$1
     shift
-    run_kcode --provider "$provider" login "$@"
+    run_jcode --provider "$provider" login "$@"
     ;;
   fixture-list)
     run_auth_fixture list

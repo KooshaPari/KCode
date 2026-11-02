@@ -92,7 +92,7 @@ struct ChatView: View {
     private var header: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(model.session.sessionTitle ?? model.activeServer?.serverName ?? "kcode")
+                Text(model.session.sessionTitle ?? model.activeServer?.serverName ?? "jcode")
                     .font(Theme.mono(15, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)

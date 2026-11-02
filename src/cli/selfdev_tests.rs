@@ -200,7 +200,7 @@ async fn test_selfdev_session_and_registry() {
     assert!(result.is_ok(), "selfdev tool should execute successfully");
 
     let _ = std::fs::remove_file(
-        storage::kcode_dir()
+        storage::jcode_dir()
             .unwrap()
             .join("sessions")
             .join(format!("{}.json", session_id)),
@@ -256,15 +256,15 @@ fn set_var<T: AsRef<OsStr>>(name: &str, value: T) {
 }
 
 #[test]
-fn test_launcher_dir_uses_trimmed_install_dir_before_kcode_home() {
+fn test_launcher_dir_uses_trimmed_install_dir_before_jcode_home() {
     let (_lock, _env, temp) = isolated_launcher_env();
     let install_dir = temp.path().join("install bin");
-    let kcode_home = temp.path().join("kcode-home");
+    let jcode_home = temp.path().join("kcode-home");
     set_var(
         "KCODE_INSTALL_DIR",
         format!("  {}  ", install_dir.display()),
     );
-    set_var("KCODE_HOME", &kcode_home);
+    set_var("KCODE_HOME", &jcode_home);
 
     assert_eq!(build::launcher_dir().expect("launcher dir"), install_dir);
 }
@@ -299,9 +299,9 @@ fn test_selfdev_build_command_prefers_repo_wrapper_when_present() {
     assert_eq!(build.program, "bash");
     assert_eq!(build.args.first().map(String::as_str), Some("-lc"));
     let command = build.args.get(1).expect("shell command");
-    assert!(command.contains("dev_cargo.sh' build --profile selfdev -p kcode --bin kcode"));
+    assert!(command.contains("dev_cargo.sh' build --profile selfdev -p jcode --bin jcode"));
     assert!(!command.contains("kcode-desktop"));
-    assert!(build.display.contains("-p kcode --bin kcode"));
+    assert!(build.display.contains("-p jcode --bin jcode"));
     assert!(!build.display.contains("kcode-desktop"));
 }
 
@@ -312,7 +312,7 @@ fn test_selfdev_build_command_falls_back_to_cargo_when_wrapper_missing() {
     assert_eq!(build.program, "bash");
     assert_eq!(build.args.first().map(String::as_str), Some("-lc"));
     let command = build.args.get(1).expect("shell command");
-    assert!(command.contains("cargo build --profile selfdev -p kcode --bin kcode"));
+    assert!(command.contains("cargo build --profile selfdev -p jcode --bin jcode"));
     assert!(!command.contains("kcode-desktop"));
 }
 
@@ -321,8 +321,8 @@ fn test_selfdev_build_command_can_target_all() {
     let temp = tempfile::tempdir().expect("tempdir");
     let build =
         build::selfdev_build_command_for_target(temp.path(), build::SelfDevBuildTarget::All);
-    assert!(build.display.contains("-p kcode --bin kcode"));
-    assert!(build.display.contains("-p kcode --bin kcode"));
+    assert!(build.display.contains("-p jcode --bin jcode"));
+    assert!(build.display.contains("-p jcode --bin jcode"));
 }
 
 #[test]
@@ -330,6 +330,6 @@ fn test_selfdev_build_command_can_target_tui_only() {
     let temp = tempfile::tempdir().expect("tempdir");
     let build =
         build::selfdev_build_command_for_target(temp.path(), build::SelfDevBuildTarget::Tui);
-    assert!(build.display.contains("-p kcode --bin kcode"));
+    assert!(build.display.contains("-p jcode --bin jcode"));
     assert!(!build.display.contains("kcode-desktop"));
 }

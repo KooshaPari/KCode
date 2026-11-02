@@ -1,6 +1,6 @@
 # OpenAI Responses WebSocket v2
 
-Kcode's native OpenAI providers (`openai` and `openai-api`) prefer persistent
+Jcode's native OpenAI providers (`openai` and `openai-api`) prefer persistent
 Responses WebSockets in `auto` transport mode. Every new socket, including a
 prewarm socket, sends:
 
@@ -15,7 +15,7 @@ Chat Completions providers are unaffected.
 
 ## What prewarming does
 
-When an idle client subscribes, Kcode snapshots its tools and static instructions
+When an idle client subscribes, Jcode snapshots its tools and static instructions
 and starts preparation while the user types. This snapshot does not pin tools or
 consume late MCP discovery. Idle preparation is polled once after acknowledging
 the subscription. If local preparation would yield, it is abandoned rather than
@@ -23,7 +23,7 @@ holding the agent lock in front of user input. The agent also tries prewarming b
 context preparation. Both hooks prepare the static prefix in the background
 using `response.create` with `generate: false`, `input: []`, and `store: false`.
 The server returns a completed response ID without model
-output. If the warmup finishes before generation is needed, Kcode continues on
+output. If the warmup finishes before generation is needed, Jcode continues on
 that socket with `previous_response_id` and the actual conversation input.
 
 - Warmup never executes tools or emits assistant output into the conversation.
@@ -54,7 +54,7 @@ openai_transport = "auto" # auto | websocket | https
 ```
 
 Prewarming is enabled by default for native OpenAI WebSockets. Set
-`KCODE_OPENAI_PREWARM=0` (also `false` or `off`) in the **server process** environment
+`JCODE_OPENAI_PREWARM=0` (also `false` or `off`) in the **server process** environment
 to disable speculative warmup without disabling persistent WebSockets. Setting
 the transport to `https` disables both WebSockets and their warmup.
 
@@ -68,7 +68,7 @@ connection label. Logs do not include credential identities or warmup inputs.
 Run the runtime's offline regression suite:
 
 ```bash
-cargo test -p kcode-provider-openai-runtime --lib -- --test-threads=1
+cargo test -p jcode-provider-openai-runtime --lib -- --test-threads=1
 ```
 
 The opt-in live test uses configured credentials and a few short model requests.
@@ -76,7 +76,7 @@ It checks a cold v2 connection, warmup consumption, and subsequent continuation
 using the newly compiled provider, independently of the shared daemon:
 
 ```bash
-cargo test -p kcode-provider-openai-runtime --lib \
+cargo test -p jcode-provider-openai-runtime --lib \
   live_openai_v2_prewarm_and_continuation -- --ignored --nocapture --test-threads=1
 ```
 

@@ -9,14 +9,14 @@ from harbor.agents.base import BaseAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-IN_CONTAINER_HOME = "/tmp/kcode-home"
-IN_CONTAINER_RUNTIME = "/tmp/kcode-runtime"
-IN_CONTAINER_INPUT = "/tmp/kcode-input"
-IN_CONTAINER_OUTPUT = "/tmp/kcode-output"
-IN_CONTAINER_BINARY = "/usr/local/bin/kcode"
+IN_CONTAINER_HOME = "/tmp/jcode-home"
+IN_CONTAINER_RUNTIME = "/tmp/jcode-runtime"
+IN_CONTAINER_INPUT = "/tmp/jcode-input"
+IN_CONTAINER_OUTPUT = "/tmp/jcode-output"
+IN_CONTAINER_BINARY = "/usr/local/bin/jcode"
 IN_CONTAINER_LIB_DIR = f"{IN_CONTAINER_RUNTIME}/lib"
 IN_CONTAINER_CA_BUNDLE = f"{IN_CONTAINER_HOME}/ca-certificates.crt"
-DEFAULT_BINARY_PATH = "/tmp/kcode-compat-dist/kcode-linux-x86_64.bin"
+DEFAULT_BINARY_PATH = "/tmp/jcode-compat-dist/jcode-linux-x86_64.bin"
 DEFAULT_CLAUDE_AUTH_PATH = "~/.kcode/auth.json"
 DEFAULT_OPENROUTER_ENV_PATH = "~/.config/kcode/openrouter.env"
 DEFAULT_ANTHROPIC_ENV_PATH = "~/.config/kcode/anthropic.env"
@@ -88,7 +88,7 @@ def _load_anthropic_key() -> str | None:
 
 
 def _load_openrouter_key() -> str | None:
-    # Priority: explicit env, then the kcode openrouter.env file (raw key per line).
+    # Priority: explicit env, then the jcode openrouter.env file (raw key per line).
     direct = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("KCODE_HARBOR_OPENROUTER_KEY")
     if direct and direct.strip():
         return direct.strip()
@@ -185,7 +185,7 @@ def _load_final_payload(output_dir: Path) -> dict[str, Any] | None:
 
 
 class JcodeClaudeHarborAgent(BaseAgent):
-    """Harbor adapter that runs kcode with Opus 4.8.
+    """Harbor adapter that runs jcode with Opus 4.8.
 
     Default route is the native Anthropic API (provider=anthropic-api,
     model=claude-opus-4-8) using ANTHROPIC_API_KEY. OpenRouter
@@ -197,9 +197,9 @@ class JcodeClaudeHarborAgent(BaseAgent):
         super().__init__(logs_dir, model_name, *args, **kwargs)
         self._model_arg = model_name or "anthropic-api/claude-opus-4-8"
         if "/" in self._model_arg:
-            self._provider_arg, self._kcode_model = self._model_arg.split("/", 1)
+            self._provider_arg, self._jcode_model = self._model_arg.split("/", 1)
         else:
-            self._provider_arg, self._kcode_model = "anthropic-api", self._model_arg
+            self._provider_arg, self._jcode_model = "anthropic-api", self._model_arg
         self._openrouter_key = _load_openrouter_key() if self._provider_arg == "openrouter" else None
         self._anthropic_key = _load_anthropic_key() if self._provider_arg == "anthropic-api" else None
         self._claude_auth: Path | None = None
@@ -211,7 +211,7 @@ class JcodeClaudeHarborAgent(BaseAgent):
 
     @staticmethod
     def name() -> str:
-        return "kcode-harbor-claude"
+        return "jcode-harbor-claude"
 
     def version(self) -> str | None:
         return "compat-opus-4-8"
@@ -222,7 +222,7 @@ class JcodeClaudeHarborAgent(BaseAgent):
         # ubuntu:24.04 with no /etc/ssl/certs, and the per-task verifier runs
         # `apt-get install ca-certificates curl` then bootstraps uv over https.
         # Hijacking the system cert dir breaks the verifier's curl (error 77,
-        # "error setting certificate file") so tests never run. kcode itself
+        # "error setting certificate file") so tests never run. jcode itself
         # gets its CA bundle via SSL_CERT_FILE/OPENSSL_CERT_FILE below, so no
         # global cert override is needed.
         await environment.exec(
@@ -269,7 +269,7 @@ class JcodeClaudeHarborAgent(BaseAgent):
             "KCODE_RUNTIME_DIR": IN_CONTAINER_RUNTIME,
             "KCODE_NO_TELEMETRY": "1",
             "KCODE_PROVIDER": self._provider_arg,
-            "KCODE_MODEL": self._kcode_model,
+            "KCODE_MODEL": self._jcode_model,
             "KCODE_ANTHROPIC_REASONING_EFFORT": os.environ.get("KCODE_ANTHROPIC_REASONING_EFFORT", "high"),
             "SSL_CERT_FILE": IN_CONTAINER_CA_BUNDLE,
             "OPENSSL_CERT_FILE": IN_CONTAINER_CA_BUNDLE,
@@ -301,18 +301,18 @@ class JcodeClaudeHarborAgent(BaseAgent):
         (self.logs_dir / "exec_return_code.txt").write_text(str(result.return_code))
 
         try:
-            await environment.download_dir(IN_CONTAINER_OUTPUT, self.logs_dir / "kcode-output")
+            await environment.download_dir(IN_CONTAINER_OUTPUT, self.logs_dir / "jcode-output")
         except Exception as e:  # noqa: BLE001
             (self.logs_dir / "download_error.txt").write_text(str(e))
 
         metadata: dict[str, Any] = {
             "return_code": result.return_code,
             "provider": self._provider_arg,
-            "model": self._kcode_model,
-            "kcode_binary": str(KCODE_BINARY),
+            "model": self._jcode_model,
+            "jcode_binary": str(KCODE_BINARY),
         }
 
-        output_dir = self.logs_dir / "kcode-output"
+        output_dir = self.logs_dir / "jcode-output"
         payload = _load_final_payload(output_dir)
         if payload is not None:
             usage = payload.get("usage") or {}
@@ -324,6 +324,6 @@ class JcodeClaudeHarborAgent(BaseAgent):
                 context.n_cache_tokens = cache_read + cache_create
             elif isinstance(cache_read, int):
                 context.n_cache_tokens = cache_read
-            metadata["kcode_result"] = payload
+            metadata["jcode_result"] = payload
 
         context.metadata = metadata

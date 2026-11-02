@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Benchmark + profile the time and resource utilization of a kcode spawn.
+"""Benchmark + profile the time and resource utilization of a jcode spawn.
 
-A kcode "spawn" is the full cold-launch path of the interactive client:
+A jcode "spawn" is the full cold-launch path of the interactive client:
 
     process start -> tokio runtime -> startup setup -> arg parse
         -> (cold) spawn the background server daemon -> connect TUI client.
@@ -23,7 +23,7 @@ so it never touches the user's real shared server, logs, sessions, or creds.
 
 Two spawn shapes are profiled:
 
-  server : the background daemon (`kcode serve`) on a private socket. This is
+  server : the background daemon (`jcode serve`) on a private socket. This is
            the heavy half of a cold spawn and owns the long-lived footprint.
   client : the cold interactive client launched in a PTY, which itself spawns
            the server when none is running. We sample BOTH the client and the
@@ -355,7 +355,7 @@ def parse_startup_profile(log_path: Path) -> StartupProfile | None:
 # Server spawn profiling
 # --------------------------------------------------------------------------- #
 def profile_server_spawn(binary: str, sample_interval_s: float) -> dict | None:
-    root = tempfile.mkdtemp(prefix="kcode-spawn-server-")
+    root = tempfile.mkdtemp(prefix="jcode-spawn-server-")
     env = isolated_env(root)
     sock = env["KCODE_SOCKET"]
     proc = None
@@ -403,9 +403,9 @@ def profile_server_spawn(binary: str, sample_interval_s: float) -> dict | None:
 def profile_client_spawn(binary: str, sample_interval_s: float, hold_s: float) -> dict | None:
     if not _HAVE_PTY:
         return None
-    root = tempfile.mkdtemp(prefix="kcode-spawn-client-")
+    root = tempfile.mkdtemp(prefix="jcode-spawn-client-")
     env = isolated_env(root)
-    log_path = Path(env["KCODE_HOME"]) / "logs" / f"kcode-{time.strftime('%Y-%m-%d')}.log"
+    log_path = Path(env["KCODE_HOME"]) / "logs" / f"jcode-{time.strftime('%Y-%m-%d')}.log"
     pid = None
     master_fd = None
     try:
@@ -543,7 +543,7 @@ def print_resource_block(title: str, runs: list[dict]) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    default_bin = os.environ.get("KCODE_BENCH_BIN") or shutil.which("kcode") or "./target/release/kcode"
+    default_bin = os.environ.get("KCODE_BENCH_BIN") or shutil.which("jcode") or "./target/release/jcode"
     ap.add_argument("binary", nargs="?", default=default_bin)
     ap.add_argument("--runs", type=int, default=5)
     ap.add_argument("--sample-interval-ms", type=float, default=2.0)
@@ -566,7 +566,7 @@ def main() -> int:
 
     size = os.path.getsize(binary)
     print("=" * 64)
-    print("kcode spawn profile: time + resource utilization")
+    print("jcode spawn profile: time + resource utilization")
     print("=" * 64)
     print(f"Binary : {binary}")
     print(f"Size   : {size/1048576:.1f} MB")

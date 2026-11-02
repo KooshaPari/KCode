@@ -23,7 +23,7 @@ fn lock_env() -> std::sync::MutexGuard<'static, ()> {
 #[test]
 #[allow(deprecated)]
 fn test_provider_choice_arg_values() {
-    assert_eq!(ProviderChoice::Jcode.as_arg_value(), "kcode");
+    assert_eq!(ProviderChoice::Jcode.as_arg_value(), "jcode");
     assert_eq!(ProviderChoice::Claude.as_arg_value(), "claude");
     assert_eq!(ProviderChoice::AnthropicApi.as_arg_value(), "anthropic-api");
     assert_eq!(ProviderChoice::Openai.as_arg_value(), "openai");
@@ -239,7 +239,7 @@ fn test_server_bootstrap_login_selection_preserves_order() {
     );
     assert_eq!(
         resolve_login_selection("4", &providers).map(|provider| provider.id),
-        Some("kcode")
+        Some("jcode")
     );
     assert_eq!(
         resolve_login_selection("5", &providers).map(|provider| provider.id),
@@ -281,7 +281,7 @@ fn test_auto_init_login_selection_preserves_order() {
 }
 
 #[test]
-fn test_init_provider_kcode_delegates_runtime_profile_to_wrapper() {
+fn test_init_provider_jcode_delegates_runtime_profile_to_wrapper() {
     let _guard = lock_env();
     let _env_guard = crate::storage::lock_test_env();
     // Sandbox KCODE_HOME: with the real home, persisted auth/credential state
@@ -299,7 +299,7 @@ fn test_init_provider_kcode_delegates_runtime_profile_to_wrapper() {
     let runtime = tokio::runtime::Runtime::new().expect("tokio runtime");
     let provider = runtime
         .block_on(init_provider(&ProviderChoice::Jcode, None))
-        .expect("init kcode provider");
+        .expect("init jcode provider");
 
     // Display name is Jcode Subscription since b7b5977f8 (subscription_catalog::KCODE_PROVIDER_DISPLAY_NAME).
     assert_eq!(
@@ -317,7 +317,7 @@ fn test_init_provider_kcode_delegates_runtime_profile_to_wrapper() {
     );
     assert_eq!(
         std::env::var("KCODE_RUNTIME_PROVIDER").ok().as_deref(),
-        Some("kcode")
+        Some("jcode")
     );
     assert_eq!(
         std::env::var("KCODE_INITIAL_PROVIDER_EXPLICIT")
@@ -1110,4 +1110,27 @@ fn pending_external_auth_review_candidates_include_shared_and_legacy_sources() {
     } else {
         crate::env::remove_var("KCODE_HOME");
     }
+}
+
+#[test]
+fn env_model_for_choice_only_targets_openrouter_slot_runtimes() {
+    let env = Some("mistralai/mistral-large-4-0");
+    assert_eq!(
+        env_model_for_choice_from(&ProviderChoice::Openrouter, env),
+        env
+    );
+    assert_eq!(
+        env_model_for_choice_from(&ProviderChoice::Deepseek, env),
+        env
+    );
+    assert_eq!(
+        env_model_for_choice_from(&ProviderChoice::Claude, env),
+        None
+    );
+    assert_eq!(env_model_for_choice_from(&ProviderChoice::Auto, env), None);
+    assert_eq!(env_model_for_choice_from(&ProviderChoice::Jcode, env), None);
+    assert_eq!(
+        env_model_for_choice_from(&ProviderChoice::Openrouter, None),
+        None
+    );
 }

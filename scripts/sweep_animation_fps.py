@@ -61,7 +61,7 @@ def run(binary: str, session: str, fps: int | None, window_s: float,
         env["KCODE_ANIMATION_FPS"] = str(fps)
 
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-fps-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-fps-", dir=str(scratch)))
     cmd_path, resp_path = root / "client_cmd", root / "client_resp"
 
     client = None
@@ -127,7 +127,7 @@ def run(binary: str, session: str, fps: int | None, window_s: float,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--session", default=None)
     ap.add_argument("--fps", type=int, nargs="*", default=[60, 30, 20, 12])
     ap.add_argument("--window-s", type=float, default=5.0)

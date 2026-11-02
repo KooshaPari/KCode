@@ -6,7 +6,7 @@ prompt=${1:-"Use the bash tool to run 'pwd', then use the ls tool to list the cu
 provider=${KCODE_PROVIDER:-auto}
 cargo_exec="$repo_root/scripts/cargo_exec.sh"
 
-if [[ ! -x "$repo_root/target/release/kcode" ]]; then
+if [[ ! -x "$repo_root/target/release/jcode" ]]; then
   (cd "$repo_root" && "$cargo_exec" build --release)
 fi
 
@@ -14,4 +14,4 @@ workdir=$(mktemp -d)
 trap 'rm -rf "$workdir"' EXIT
 
 KCODE_HOME="$workdir" PATH="$repo_root/target/release:$PATH" \
-  kcode run --no-update --trace --provider "$provider" "$prompt"
+  jcode run --no-update --trace --provider "$provider" "$prompt"

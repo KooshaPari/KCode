@@ -9,7 +9,7 @@ output_dir=$(cd "$output_dir" && pwd)
 export KCODE_ONBOARDING_SCREENSHOT_DIR="$output_dir"
 
 cd "$repo_root"
-cargo test -p kcode-tui --lib onboarding_import_happy_path_images -- --ignored --nocapture
+cargo test -p jcode-tui --lib onboarding_import_happy_path_images -- --ignored --nocapture
 
 if command -v rsvg-convert >/dev/null 2>&1; then
   for svg in "$output_dir"/*.svg; do

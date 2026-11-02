@@ -1,6 +1,6 @@
 -- Sponsored-discovery funnel: browse -> select per sponsor.
 -- Usage:
---   wrangler d1 execute kcode-telemetry --remote --file=discovery.sql
+--   wrangler d1 execute jcode-telemetry --remote --file=discovery.sql
 --
 -- A `select` means the agent fetched a sponsor's setup instructions, which is
 -- the closest proxy we have for an intent-to-set-up. It is NOT a completed

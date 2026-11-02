@@ -21,8 +21,8 @@ PROBE = "jqx92"
 DEFAULT_TIMEOUT_S = 20.0
 DEFAULT_SETTLE_S = 1.0
 DEFAULT_TOOLS = [
-    "kcode_memory_off",
-    "kcode_memory_on",
+    "jcode_memory_off",
+    "jcode_memory_on",
     "pi",
     "codex",
     "opencode",
@@ -39,7 +39,7 @@ class ToolSpec:
     argv: list[str]
     version_argv: list[str]
     env: dict[str, str] | None = None
-    kcode: bool = False
+    jcode: bool = False
 
 
 @dataclass
@@ -83,7 +83,7 @@ def detect_pi_bin() -> str:
 
 
 def build_specs() -> dict[str, ToolSpec]:
-    kcode = shutil.which("kcode") or str(Path.home() / ".local/bin/kcode")
+    jcode = shutil.which("jcode") or str(Path.home() / ".local/bin/jcode")
     codex = shutil.which("codex") or "/usr/bin/codex"
     opencode = shutil.which("opencode") or "/usr/bin/opencode"
     copilot = shutil.which("copilot") or str(Path.home() / ".local/bin/copilot")
@@ -91,19 +91,19 @@ def build_specs() -> dict[str, ToolSpec]:
     claude = shutil.which("claude") or str(Path.home() / ".local/bin/claude")
     agy = shutil.which("agy") or str(Path.home() / ".local/bin/agy")
     specs = {
-        "kcode_memory_off": ToolSpec(
-            name="kcode_memory_off",
-            argv=[kcode, "--no-update", "--no-selfdev"],
-            version_argv=[kcode, "version"],
+        "jcode_memory_off": ToolSpec(
+            name="jcode_memory_off",
+            argv=[jcode, "--no-update", "--no-selfdev"],
+            version_argv=[jcode, "version"],
             env={"KCODE_NO_TELEMETRY": "1", "KCODE_MEMORY_ENABLED": "0"},
-            kcode=True,
+            jcode=True,
         ),
-        "kcode_memory_on": ToolSpec(
-            name="kcode_memory_on",
-            argv=[kcode, "--no-update", "--no-selfdev"],
-            version_argv=[kcode, "version"],
+        "jcode_memory_on": ToolSpec(
+            name="jcode_memory_on",
+            argv=[jcode, "--no-update", "--no-selfdev"],
+            version_argv=[jcode, "version"],
             env={"KCODE_NO_TELEMETRY": "1", "KCODE_MEMORY_ENABLED": "1"},
-            kcode=True,
+            jcode=True,
         ),
         "pi": ToolSpec(
             name="pi",
@@ -353,7 +353,7 @@ def run_tool(spec: ToolSpec, sessions: int, cwd: Path, timeout_s: float, settle_
     temp_root: str | None = None
     try:
         if spec.kcode:
-            temp_root = tempfile.mkdtemp(prefix="kcode-memory-bench-")
+            temp_root = tempfile.mkdtemp(prefix="jcode-memory-bench-")
             env = os.environ.copy()
             if spec.env:
                 env.update(spec.env)
@@ -374,7 +374,7 @@ def run_tool(spec: ToolSpec, sessions: int, cwd: Path, timeout_s: float, settle_
                 bench_auth = Path(env["KCODE_HOME"]) / auth_name
                 if real_auth.exists() and not bench_auth.exists():
                     bench_auth.symlink_to(real_auth)
-            if spec.name == "kcode_memory_on":
+            if spec.name == "jcode_memory_on":
                 real_models = Path.home() / ".kcode" / "models"
                 bench_models = Path(env["KCODE_HOME"]) / "models"
                 if real_models.exists() and not bench_models.exists():
@@ -391,10 +391,10 @@ def run_tool(spec: ToolSpec, sessions: int, cwd: Path, timeout_s: float, settle_
             )
             cleanup_pgids.append(os.getpgid(server_proc.pid))
             if not wait_for_socket(socket_path, timeout_s):
-                raise RuntimeError("kcode server did not become ready")
-            if spec.name == "kcode_memory_on":
+                raise RuntimeError("jcode server did not become ready")
+            if spec.name == "jcode_memory_on":
                 time.sleep(max(settle_s, 5.0))
-            per_session_settle = max(settle_s, 2.0) if spec.name == "kcode_memory_on" else settle_s
+            per_session_settle = max(settle_s, 2.0) if spec.name == "jcode_memory_on" else settle_s
             for _ in range(sessions):
                 launches.append(
                     launch_interactive(

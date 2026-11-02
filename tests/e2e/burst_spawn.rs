@@ -184,7 +184,7 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     let _env = setup_test_env()?;
 
     let runtime_dir = short_runtime_dir(format!(
-        "kcode-burst-spawn-test-{}",
+        "jcode-burst-spawn-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -225,7 +225,7 @@ async fn run_burst_resume_attach_stress(burst_size: usize) -> Result<()> {
     }
 
     let provider = Arc::new(MockProvider::with_models(vec!["burst-model"]));
-    let provider_dyn: Arc<dyn kcode::provider::Provider> = provider;
+    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider;
     let server_instance = server::Server::new_with_paths(
         provider_dyn,
         socket_path.clone(),
@@ -400,7 +400,7 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
     let _env = setup_test_env()?;
 
     let runtime_dir = short_runtime_dir(format!(
-        "kcode-burst-spawn-live-clients-{}",
+        "jcode-burst-spawn-live-clients-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -442,7 +442,7 @@ async fn burst_retry_takeover_without_local_history_keeps_existing_live_clients_
     }
 
     let provider = Arc::new(MockProvider::with_models(vec!["burst-model"]));
-    let provider_dyn: Arc<dyn kcode::provider::Provider> = provider;
+    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider;
     let server_instance = server::Server::new_with_paths(
         provider_dyn,
         socket_path.clone(),
@@ -573,7 +573,7 @@ async fn burst_attach_detach_reattach_restores_live_clients_cleanly() -> Result<
     let _env = setup_test_env()?;
 
     let runtime_dir = short_runtime_dir(format!(
-        "kcode-burst-spawn-reattach-{}",
+        "jcode-burst-spawn-reattach-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -615,7 +615,7 @@ async fn burst_attach_detach_reattach_restores_live_clients_cleanly() -> Result<
     }
 
     let provider = Arc::new(MockProvider::with_models(vec!["burst-model"]));
-    let provider_dyn: Arc<dyn kcode::provider::Provider> = provider;
+    let provider_dyn: Arc<dyn jcode::provider::Provider> = provider;
     let server_instance = server::Server::new_with_paths(
         provider_dyn,
         socket_path.clone(),

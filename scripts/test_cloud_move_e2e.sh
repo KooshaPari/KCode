@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end test for `kcode cloud move` / `kcode cloud return`.
+# End-to-end test for `jcode cloud move` / `jcode cloud return`.
 #
 # Two fully isolated "machines" on one box, neither touching the user's
 # ~/.kcode or running sessions:
@@ -9,9 +9,9 @@
 #          script standing in for `ssh <host>`.
 set -euo pipefail
 
-KCODE_BIN=${KCODE_BIN:?set KCODE_BIN to the kcode binary under test}
+KCODE_BIN=${KCODE_BIN:?set KCODE_BIN to the jcode binary under test}
 W=${W:-$(mktemp -d "${KCODE_SCRATCH_DIR:-/tmp}/cloud-e2e.XXXXXX")}
-REPO=/tmp/kcode-cloud-e2e-repo          # identical absolute path on both machines
+REPO=/tmp/jcode-cloud-e2e-repo          # identical absolute path on both machines
 CLOUD_ROOT=$W/cloud-fs                   # cloud machine's private disk
 mkdir -p "$W/local-home" "$CLOUD_ROOT/home" "$CLOUD_ROOT/repo"
 rm -rf "$REPO"
@@ -30,7 +30,7 @@ exec bwrap --die-with-parent \\
   --proc /proc --dev /dev --tmpfs /tmp \\
   --bind "$CLOUD_ROOT/home" /home/cloud \\
   --bind "$CLOUD_ROOT/repo" $REPO \\
-  --ro-bind "$KCODE_BIN" /opt/kcode/kcode-under-test \\
+  --ro-bind "$KCODE_BIN" /opt/jcode/jcode-under-test \\
   --clearenv \\
   --setenv HOME /home/cloud --setenv USER cloud --setenv PATH /usr/local/bin:/usr/bin \\
   --setenv KCODE_HOME /home/cloud/.kcode --setenv KCODE_CLOUD_HOST_LABEL cloud-e2e \\
@@ -48,7 +48,7 @@ export KCODE_NO_TELEMETRY=1
 unset KCODE_SESSION_ID KCODE_SOCKET
 J() { "$KCODE_BIN" --no-update --no-selfdev "$@"; }
 CLOUD() { "$W/cloud-transport" "KCODE_HOME=/home/cloud/.kcode $*"; }
-RB=(--host cloud-e2e --remote-binary /opt/kcode/kcode-under-test)
+RB=(--host cloud-e2e --remote-binary /opt/jcode/jcode-under-test)
 
 echo "== workspace: $W"
 
@@ -82,7 +82,7 @@ json.dump({
   "messages": [
     msg(1, "user", [{"type": "text", "text": "Please change main.rs to print v2"}]),
     msg(2, "assistant", [{"type": "text", "text": "Editing main.rs now."},
-                          {"type": "tool_use", "id": "toolu_1", "name": "bash", "input": {"command": "kcode cloud move"}}]),
+                          {"type": "tool_use", "id": "toolu_1", "name": "bash", "input": {"command": "jcode cloud move"}}]),
   ],
 }, open(path, "w"))
 PY
@@ -182,7 +182,7 @@ cat "$W/return2.json"
 check "conflict reported" grep -q '"result": "conflicts"' "$W/return2.json"
 check "conflicting file named" grep -q 'main.rs' "$W/return2.json"
 check "local file untouched on conflict" test "$(sha256sum "$REPO/main.rs")" = "$BEFORE"
-check "cloud work kept as ref" bash -c "cd $REPO && git cat-file -e refs/kcode-cloud/$SID/cloud:main.rs && git show refs/kcode-cloud/$SID/cloud:main.rs | grep -q 'CLOUD VERSION'"
+check "cloud work kept as ref" bash -c "cd $REPO && git cat-file -e refs/jcode-cloud/$SID/cloud:main.rs && git show refs/jcode-cloud/$SID/cloud:main.rs | grep -q 'CLOUD VERSION'"
 
 echo
 echo "ALL E2E CHECKS PASSED  (workspace $W)"

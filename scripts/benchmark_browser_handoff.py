@@ -444,10 +444,10 @@ def self_test():
         {'type': 'tool_input', 'delta': '"handoff"}'},
         {'type': 'tool_exec', 'id': 'x', 'name': 'browser'},
         {'type': 'tool_done', 'id': 'x', 'name': 'browser', 'error': None,
-         'output': '{"decision_provider":"kcode","status":"done","action_trace":[{"status":"executed"}]}'}]))
+         'output': '{"decision_provider":"jcode","status":"done","action_trace":[{"status":"executed"}]}'}]))
     assert trace['browser_calls'][0]['action'] == 'handoff'
     assert trace['browser_calls'][0]['executed']
-    assert trace['browser_calls'][0]['decision_provider'] == 'kcode'
+    assert trace['browser_calls'][0]['decision_provider'] == 'jcode'
     assert trace['browser_calls'][0]['handoff_status'] == 'done'
     assert trace['browser_calls'][0]['handoff_executed_steps'] == 1
     assert handoff_metrics(trace)['handoff_effective']
@@ -560,7 +560,7 @@ def self_test():
                 assert fixture.state(token)['confirmation_dom_observed']
     finally:
         fixture.close()
-    print(json.dumps({'type': 'self_test', 'passed': True, 'live_browser_or_kcode_launched': False}))
+    print(json.dumps({'type': 'self_test', 'passed': True, 'live_browser_or_jcode_launched': False}))
 
 
 _TAB_LOCK = None
@@ -577,7 +577,7 @@ def guard_tab(tab_id):
     """Read-only preflight, invoked only for explicitly requested live runs."""
     global _TAB_LOCK
     runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
-    fd = os.open(runtime / f'kcode-browser-acceptance-tab-{tab_id}.lock',
+    fd = os.open(runtime / f'jcode-browser-acceptance-tab-{tab_id}.lock',
                  os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     _TAB_LOCK = os.fdopen(fd, 'w')
     fcntl.flock(_TAB_LOCK, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -596,9 +596,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', help='Exact newly built binary, not a mutable launcher')
     parser.add_argument('--model')
-    parser.add_argument('--kcode-home', type=Path, help='Caller-prepared isolated Jcode home with required auth and browser bridge')
+    parser.add_argument('--jcode-home', type=Path, help='Caller-prepared isolated Jcode home with required auth and browser bridge')
     parser.add_argument('--provider')
-    parser.add_argument('--expected-handoff-provider', choices=('kcode', 'openrouter'), default='kcode')
+    parser.add_argument('--expected-handoff-provider', choices=('jcode', 'openrouter'), default='jcode')
     parser.add_argument('--tab-id', type=int, help='Coordinator-owned disposable tab, reused serially')
     parser.add_argument('--trials', type=int, default=3, help='Pairs per task per phase (at least 3 for acceptance)')
     parser.add_argument('--tasks', nargs='+', choices=tuple(TASKS), default=list(TASKS))
@@ -611,17 +611,17 @@ def main():
     if args.self_test:
         self_test()
         return
-    if not args.binary or not args.model or args.tab_id is None or args.output is None or args.kcode_home is None:
-        parser.error('--binary, --model, --tab-id, --kcode-home, and --output are required for live runs')
+    if not args.binary or not args.model or args.tab_id is None or args.output is None or args.jcode_home is None:
+        parser.error('--binary, --model, --tab-id, --jcode-home, and --output are required for live runs')
     if not os.environ.get('BROWSER_SESSION', '').strip():
         parser.error('An existing BROWSER_SESSION matching the disposable tab is required')
     if args.tab_id <= 0:
         parser.error('--tab-id must be positive')
     if args.trials < 1 or args.timeout <= 0:
         parser.error('--trials and --timeout must be positive')
-    isolated_home = args.kcode_home.resolve(strict=True)
+    isolated_home = args.jcode_home.resolve(strict=True)
     if not isolated_home.is_dir() or isolated_home == (Path.home() / '.kcode').resolve():
-        parser.error('--kcode-home must be a prepared isolated directory, not ~/.kcode')
+        parser.error('--jcode-home must be a prepared isolated directory, not ~/.kcode')
     os.environ['KCODE_HOME'] = str(isolated_home)
     guard_tab(args.tab_id)
     args.binary = str(Path(args.binary).resolve(strict=True))

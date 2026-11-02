@@ -9,7 +9,7 @@ to evaluate everything that can be checked locally.
 |---|------|----------------|--------|
 | 1 | JCodeKit unit tests | `cd ios && swift test` exit 0 | PASS |
 | 2 | E2E harness (mock gateway, simulator) | `./TestHarness/run_e2e.sh` exit 0 | PASS |
-| 3 | Protocol smoke vs real gateway | `protocol_smoke_test.py --port 7643` vs `kcode serve` | PASS |
+| 3 | Protocol smoke vs real gateway | `protocol_smoke_test.py --port 7643` vs `jcode serve` | PASS |
 | 4 | Interaction-graph engine deterministic | `python3 -m reward.interaction.test_engine` exit 0 | PASS |
 | 5 | Reward scorers deterministic | `python3 -m reward.test_determinism` exit 0 | PASS |
 | 6 | UX reward at or above baseline (88.7), worst cell >= 83 | `reward.aggregate --baseline --candidate` non-negative delta | PASS |
@@ -31,7 +31,7 @@ to evaluate everything that can be checked locally.
 
 ### ATS justification (App Review note)
 
-The app is a remote control for the user's own `kcode` servers, reached over
+The app is a remote control for the user's own `jcode` servers, reached over
 their private tailnet (WireGuard-encrypted) or LAN as `ws://host:7643`.
 Servers are user-owned dev machines without public CAs, so TLS is not
 available; transport privacy comes from Tailscale itself. The app never
@@ -50,7 +50,7 @@ connects to any host the user did not explicitly pair with. This is why
 
 The workflow now archives unsigned and signs at export. The remaining
 failure is `exportArchive Cloud signing permission error` + `No profiles
-for 'com.kcode.mobile' were found`, which means the App Store Connect
+for 'com.jcode.mobile' were found`, which means the App Store Connect
 API key cannot create the distribution certificate/profile. Fix once:
 
 1. Sign in at <https://developer.apple.com/account> as the Account Holder
@@ -61,9 +61,9 @@ API key cannot create the distribution certificate/profile. Fix once:
    has the **Admin** role. Cloud-managed signing does not work with
    Developer/App Manager keys.
 3. In Certificates, Identifiers & Profiles, register the App ID
-   `com.kcode.mobile` (Identifiers > + > App IDs) if it does not exist.
+   `com.jcode.mobile` (Identifiers > + > App IDs) if it does not exist.
 4. In App Store Connect > Apps, create the app record for
-   `com.kcode.mobile` (name: kcode, platform: iOS) if it does not exist.
+   `com.jcode.mobile` (name: jcode, platform: iOS) if it does not exist.
 5. Re-run the workflow: `gh workflow run "iOS TestFlight" --ref master`.
 6. After the first successful upload, complete the app privacy
    questionnaire ("Data Not Collected") and add TestFlight testers.

@@ -73,7 +73,7 @@ def run_once(binary: str, session: str, animation: bool, window_s: float,
         env["KCODE_IDLE_ANIMATION"] = "false"
 
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-animcpu-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-animcpu-", dir=str(scratch)))
     cmd_path, resp_path = root / "client_cmd", root / "client_resp"
 
     client = None
@@ -138,7 +138,7 @@ def run_once(binary: str, session: str, animation: bool, window_s: float,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--session", default=None)
     ap.add_argument("--window-s", type=float, default=5.0)
     ap.add_argument("--repeat", type=int, default=2)

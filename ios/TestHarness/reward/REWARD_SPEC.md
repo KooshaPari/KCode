@@ -1,4 +1,4 @@
-# kcode iOS UX Reward Framework
+# jcode iOS UX Reward Framework
 
 > Goal: turn "this looks ugly / inefficient" into a single, hill-climbable
 > reward in [0, 100], decomposed into weighted categories, each backed by an

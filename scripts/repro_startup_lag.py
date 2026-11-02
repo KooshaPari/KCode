@@ -4,7 +4,7 @@ Test whether early-session input lag ends when the model catalog resolves.
 
 The hypothesis
 --------------
-A freshly spawned kcode feels laggy for the first few seconds and then becomes
+A freshly spawned jcode feels laggy for the first few seconds and then becomes
 responsive. The reported cause is the model catalog: while it is still being
 fetched the client is in its remote-startup phase, and that phase pins the redraw
 loop to a 1000ms cadence (`REDRAW_REMOTE_STARTUP`). If that is the mechanism then
@@ -87,7 +87,7 @@ def main() -> int:
         print(f"binary not found: {binary}")
         return 3
 
-    root = Path(tempfile.mkdtemp(prefix="kcode-startup-lag-"))
+    root = Path(tempfile.mkdtemp(prefix="jcode-startup-lag-"))
     run = root / "run"
     run.mkdir(parents=True)
 

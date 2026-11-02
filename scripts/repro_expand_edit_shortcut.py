@@ -12,7 +12,7 @@ inject *synthetic* `crossterm::KeyEvent`s. They never exercise:
   * the kitty keyboard protocol bytes a real terminal actually sends.
 
 So a unit test can be green while the live shortcut does nothing. This harness
-closes that gap by driving the **real kcode binary** under a pseudo-terminal and
+closes that gap by driving the **real jcode binary** under a pseudo-terminal and
 feeding it the **exact bytes** a terminal emits for Alt+Shift+E, then reading the
 resulting diff state back over the debug socket.
 
@@ -73,7 +73,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # The exact bytes a terminal sends for Alt+Shift+E.
 #
 # Captured live from kitty 0.46 with the kitty keyboard protocol enabled (the
-# protocol kcode turns on at startup):
+# protocol jcode turns on at startup):
 #     press   = ESC [ 101 ; 4 u      -> b"\x1b[101;4u"
 #     release = ESC [ 101 ; 4 : 3 u  -> b"\x1b[101;4:3u"
 # (101 = 'e' codepoint, modifier mask 4 = (4-1)=3 = SHIFT|ALT.)
@@ -157,7 +157,7 @@ def wait_for_socket(path: Path, timeout_s: float = 25.0) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# A PTY-driven kcode client. This is the real live-render input path; bytes
+# A PTY-driven jcode client. This is the real live-render input path; bytes
 # written to master_fd are decoded by crossterm exactly as a terminal would.
 # ──────────────────────────────────────────────────────────────────────────────
 _TERM_REPLIES = [
@@ -429,7 +429,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    default_bin = Path.home() / ".kcode" / "builds" / "current" / "kcode"
+    default_bin = Path.home() / ".kcode" / "builds" / "current" / "jcode"
     ap.add_argument("--binary", default=str(default_bin))
     ap.add_argument("--keep", action="store_true", help="keep temp home on exit")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -440,7 +440,7 @@ def main() -> int:
         print(f"❌ binary not found: {binary}")
         return 3
 
-    root = Path(tempfile.mkdtemp(prefix="kcode-expand-edit-"))
+    root = Path(tempfile.mkdtemp(prefix="jcode-expand-edit-"))
     home = root / "home"
     run = root / "run"
     home.mkdir(parents=True, exist_ok=True)

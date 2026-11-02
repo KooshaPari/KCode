@@ -93,14 +93,14 @@ def measure(client: Client, cmd_path: Path, resp_path: Path,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--window-s", type=float, default=3.0)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
     binary = str(Path(args.binary).resolve())
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-probe-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-probe-", dir=str(scratch)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)

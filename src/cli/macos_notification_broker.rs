@@ -32,7 +32,7 @@ mod platform {
     const AUTHORIZATION_GRANTED: u8 = 1;
     const AUTHORIZATION_DENIED: u8 = 2;
     const AUTHORIZATION_RETRY_TICKS: u32 = 240;
-    const ORIGIN_METADATA_KEY: &str = "kcode_origin";
+    const ORIGIN_METADATA_KEY: &str = "jcode_origin";
 
     define_class!(
         // SAFETY: NSObject has no subclassing requirements and BrokerDelegate
@@ -151,7 +151,9 @@ mod platform {
             match authorization.load(Ordering::Acquire) {
                 AUTHORIZATION_GRANTED => drain_inbox(&center),
                 AUTHORIZATION_DENIED
-                    if ticks.fetch_add(1, Ordering::Relaxed).is_multiple_of(AUTHORIZATION_RETRY_TICKS) =>
+                    if ticks
+                        .fetch_add(1, Ordering::Relaxed)
+                        .is_multiple_of(AUTHORIZATION_RETRY_TICKS) =>
                 {
                     // Permission may be enabled while the helper is running.
                     // Re-query without dropping queued work; macOS only presents

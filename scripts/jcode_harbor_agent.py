@@ -9,14 +9,14 @@ from harbor.agents.base import BaseAgent
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
-IN_CONTAINER_HOME = "/tmp/kcode-home"
-IN_CONTAINER_RUNTIME = "/tmp/kcode-runtime"
-IN_CONTAINER_INPUT = "/tmp/kcode-input"
-IN_CONTAINER_OUTPUT = "/tmp/kcode-output"
-IN_CONTAINER_BINARY = "/usr/local/bin/kcode"
+IN_CONTAINER_HOME = "/tmp/jcode-home"
+IN_CONTAINER_RUNTIME = "/tmp/jcode-runtime"
+IN_CONTAINER_INPUT = "/tmp/jcode-input"
+IN_CONTAINER_OUTPUT = "/tmp/jcode-output"
+IN_CONTAINER_BINARY = "/usr/local/bin/jcode"
 IN_CONTAINER_LIB_DIR = f"{IN_CONTAINER_RUNTIME}/lib"
 IN_CONTAINER_CA_BUNDLE = f"{IN_CONTAINER_HOME}/ca-certificates.crt"
-DEFAULT_BINARY_PATH = "/tmp/kcode-compat-dist/kcode-linux-x86_64"
+DEFAULT_BINARY_PATH = "/tmp/jcode-compat-dist/jcode-linux-x86_64"
 DEFAULT_OPENAI_AUTH_PATH = "~/.kcode/openai-auth.json"
 CA_BUNDLE_CANDIDATES = (
     os.environ.get("KCODE_HARBOR_CA_BUNDLE"),
@@ -114,9 +114,9 @@ Task instruction follows:
 
 
 def _benchmark_instruction_preamble() -> str:
-    # Keep Harbor runs aligned with normal TUI/kcode-run prompting by default.
+    # Keep Harbor runs aligned with normal TUI/jcode-run prompting by default.
     # The legacy preamble can still be enabled explicitly for reproducing older
-    # runs, but new benchmark runs should rely on kcode's normal system prompt
+    # runs, but new benchmark runs should rely on jcode's normal system prompt
     # and the official Terminal-Bench task instruction.
     if os.environ.get("KCODE_HARBOR_LEGACY_PREAMBLE"):
         return LEGACY_BENCHMARK_INSTRUCTION_PREAMBLE
@@ -188,13 +188,13 @@ class JcodeHarborAgent(BaseAgent):
         super().__init__(logs_dir, model_name, *args, **kwargs)
         self._model_arg = model_name or "openai/gpt-5.4"
         if "/" in self._model_arg:
-            self._provider_arg, self._kcode_model = self._model_arg.split("/", 1)
+            self._provider_arg, self._jcode_model = self._model_arg.split("/", 1)
         else:
-            self._provider_arg, self._kcode_model = "openai", self._model_arg
+            self._provider_arg, self._jcode_model = "openai", self._model_arg
 
     @staticmethod
     def name() -> str:
-        return "kcode-harbor"
+        return "jcode-harbor"
 
     def version(self) -> str | None:
         return "compat-openai-oauth"
@@ -243,7 +243,7 @@ class JcodeHarborAgent(BaseAgent):
             "KCODE_RUNTIME_DIR": IN_CONTAINER_RUNTIME,
             "KCODE_NO_TELEMETRY": "1",
             "KCODE_PROVIDER": self._provider_arg,
-            "KCODE_MODEL": self._kcode_model,
+            "KCODE_MODEL": self._jcode_model,
             "KCODE_OPENAI_REASONING_EFFORT": os.environ.get("KCODE_OPENAI_REASONING_EFFORT", "high"),
             "KCODE_OPENAI_SERVICE_TIER": os.environ.get("KCODE_OPENAI_SERVICE_TIER", "priority"),
             "SSL_CERT_FILE": IN_CONTAINER_CA_BUNDLE,
@@ -272,18 +272,18 @@ class JcodeHarborAgent(BaseAgent):
         (self.logs_dir / "exec_return_code.txt").write_text(str(result.return_code))
 
         try:
-            await environment.download_dir(IN_CONTAINER_OUTPUT, self.logs_dir / "kcode-output")
+            await environment.download_dir(IN_CONTAINER_OUTPUT, self.logs_dir / "jcode-output")
         except Exception as e:  # noqa: BLE001
             (self.logs_dir / "download_error.txt").write_text(str(e))
 
         metadata: dict[str, Any] = {
             "return_code": result.return_code,
             "provider": self._provider_arg,
-            "model": self._kcode_model,
-            "kcode_binary": str(KCODE_BINARY),
+            "model": self._jcode_model,
+            "jcode_binary": str(KCODE_BINARY),
         }
 
-        output_dir = self.logs_dir / "kcode-output"
+        output_dir = self.logs_dir / "jcode-output"
         payload = _load_final_payload(output_dir)
         if payload is not None:
             usage = payload.get("usage") or {}
@@ -295,7 +295,7 @@ class JcodeHarborAgent(BaseAgent):
                 context.n_cache_tokens = cache_read + cache_create
             elif isinstance(cache_read, int):
                 context.n_cache_tokens = cache_read
-            metadata["kcode_result"] = payload
+            metadata["jcode_result"] = payload
 
         result_json_path = output_dir / "result.json"
         if payload is None and result_json_path.exists():
@@ -312,7 +312,7 @@ class JcodeHarborAgent(BaseAgent):
                         context.n_cache_tokens = cache_read + cache_create
                     elif isinstance(cache_read, int):
                         context.n_cache_tokens = cache_read
-                    metadata["kcode_result"] = payload
+                    metadata["jcode_result"] = payload
                 except Exception as e:  # noqa: BLE001
                     metadata["result_parse_error"] = str(e)
                     metadata["raw_result_prefix"] = raw[:1000]

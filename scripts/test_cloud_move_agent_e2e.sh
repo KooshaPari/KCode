@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Agent-level e2e: a real `kcode run --resume` turn locally, `cloud move`,
+# Agent-level e2e: a real `jcode run --resume` turn locally, `cloud move`,
 # a real turn on the (sandboxed) cloud host, proof the local copy refuses to
 # run, `cloud return`, and a real local turn afterward. The model is a fake
 # OpenAI-compatible server that logs what the agent sent.
 set -euo pipefail
 KCODE_BIN=${KCODE_BIN:?}
 W=$(mktemp -d "${KCODE_SCRATCH_DIR:-/tmp}/cloud-agent-e2e.XXXXXX")
-REPO=/tmp/kcode-cloud-agent-e2e-repo
+REPO=/tmp/jcode-cloud-agent-e2e-repo
 PORT=${PORT:-18911}
 mkdir -p "$W/local-home" "$W/cloud-fs/home" "$W/cloud-fs/repo"
-if [ -e "$REPO" ]; then rm -rf -- "/tmp/kcode-cloud-agent-e2e-repo"; fi
+if [ -e "$REPO" ]; then rm -rf -- "/tmp/jcode-cloud-agent-e2e-repo"; fi
 
 pass() { printf '  PASS %s\n' "$*"; }
 fail() { printf '  FAIL %s\n' "$*"; exit 1; }
@@ -27,8 +27,8 @@ exec bwrap --die-with-parent \\
   --ro-bind /usr /usr --ro-bind /etc /etc --symlink usr/lib /lib --symlink usr/lib64 /lib64 \\
   --symlink usr/bin /bin --symlink usr/bin /sbin --proc /proc --dev /dev --tmpfs /tmp \\
   --bind "$W/cloud-fs/home" /home/cloud --bind "$W/cloud-fs/repo" $REPO \\
-  --ro-bind "$KCODE_BIN" /opt/kcode/kcode \\
-  --clearenv --setenv HOME /home/cloud --setenv PATH /opt/kcode:/usr/bin \\
+  --ro-bind "$KCODE_BIN" /opt/jcode/jcode \\
+  --clearenv --setenv HOME /home/cloud --setenv PATH /opt/jcode:/usr/bin \\
   --setenv KCODE_HOME /home/cloud/.kcode --setenv KCODE_CLOUD_HOST_LABEL cloud-e2e \\
   $(printf -- '--setenv %s %s ' $(printf '%s\n' "${MODEL_ENV[@]}" | tr '=' ' ')) \\
   --unshare-pid --unshare-ipc --unshare-uts --hostname cloud-e2e \\
@@ -53,7 +53,7 @@ echo "   session $SID"
 grep -q '\[model\] ack' "$W/t1.json" && pass "local turn produced a reply" || fail "local turn"
 
 echo "== move"
-"$KCODE_BIN" --no-update --no-selfdev cloud move --session "$SID" --host cloud-e2e --remote-binary /opt/kcode/kcode --json > "$W/move.json"
+"$KCODE_BIN" --no-update --no-selfdev cloud move --session "$SID" --host cloud-e2e --remote-binary /opt/jcode/jcode --json > "$W/move.json"
 pass "moved"
 
 echo "== local copy refuses to run"
@@ -64,7 +64,7 @@ grep -q "moved to \`cloud-e2e\`" "$W/blocked.err" && pass "local run blocked wit
 REQS_BEFORE=$(wc -l < "$W/model.log")
 
 echo "== cloud turn (continues the same conversation)"
-CLOUD "cd $REPO && kcode --no-update --no-selfdev --provider openai-compatible --model fake-model --resume $SID run --json 'continue the task'" > "$W/t2.json"
+CLOUD "cd $REPO && jcode --no-update --no-selfdev --provider openai-compatible --model fake-model --resume $SID run --json 'continue the task'" > "$W/t2.json"
 grep -q 'saw_cloud_notice=True' "$W/t2.json" && pass "cloud model saw the migration notice" || { cat "$W/t2.json"; fail "cloud notice"; }
 python3 - "$W/model.log" <<'PY' || fail "cloud context"
 import json, sys

@@ -22,7 +22,7 @@ fn server_reload_report_preserves_json_fields_and_exit_status_contract() {
 
     for (had_listener, already_current, handoff_ready, should_fail) in cases {
         let report = ServerReloadReport {
-            socket: "/tmp/kcode.sock".to_string(),
+            socket: "/tmp/jcode.sock".to_string(),
             had_listener,
             forced: false,
             reloaded: had_listener && !already_current,
@@ -71,7 +71,7 @@ async fn server_reload_without_listener_is_a_successful_json_noop() {
     assert!(
         report["detail"]
             .as_str()
-            .is_some_and(|detail| { detail.contains("No running kcode server found") })
+            .is_some_and(|detail| { detail.contains("No running jcode server found") })
     );
 }
 
@@ -271,6 +271,62 @@ impl Provider for FailingTestProvider {
     fn fork(&self) -> Arc<dyn Provider> {
         Arc::new(Self)
     }
+}
+
+struct OpenRouterSlotProvider;
+
+#[async_trait]
+impl Provider for OpenRouterSlotProvider {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+        _system: &str,
+        _resume_session_id: Option<&str>,
+    ) -> Result<EventStream> {
+        Err(anyhow::anyhow!(
+            "the provider label test never sends a request"
+        ))
+    }
+
+    fn name(&self) -> &str {
+        "openrouter"
+    }
+
+    fn fork(&self) -> Arc<dyn Provider> {
+        Arc::new(Self)
+    }
+}
+
+#[test]
+fn run_report_names_local_profile_instead_of_openrouter_slot() {
+    // Ollama/LM Studio share the OpenRouter transport slot (#804).
+    assert_eq!(
+        run_report_provider_name(&OpenRouterSlotProvider, Some("ollama")),
+        "ollama"
+    );
+    assert_eq!(
+        run_report_provider_name(&OpenRouterSlotProvider, Some("lmstudio")),
+        "lmstudio"
+    );
+    // Public OpenRouter and unknown identities keep the slot id.
+    assert_eq!(
+        run_report_provider_name(&OpenRouterSlotProvider, Some("openrouter")),
+        "openrouter"
+    );
+    assert_eq!(
+        run_report_provider_name(&OpenRouterSlotProvider, None),
+        "openrouter"
+    );
+    assert_eq!(
+        run_report_provider_name(&OpenRouterSlotProvider, Some("  ")),
+        "openrouter"
+    );
+    // Other providers keep their established name.
+    assert_eq!(
+        run_report_provider_name(&TestProvider, Some("openai-api")),
+        "test"
+    );
 }
 
 fn spawn_single_response_http_server(status: u16, body: &str) -> String {
@@ -642,7 +698,7 @@ fn run_auto_poke_treats_cancelled_spelling_variants_as_finished() {
     }
 }
 
-/// Headless `kcode run` is what the benchmarks and scripted use go through, so
+/// Headless `jcode run` is what the benchmarks and scripted use go through, so
 /// the deferred quality review must reach that path too, not only the TUI.
 #[test]
 fn run_auto_poke_delivers_the_deferred_gate_digest_before_confidence() {

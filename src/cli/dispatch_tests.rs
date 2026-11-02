@@ -8,7 +8,7 @@ fn only_file_controlled_debug_clients_need_parent_lifetime_binding() {
     crate::env::remove_var("KCODE_DEBUG_CMD_PATH");
     assert!(!is_file_controlled_debug_client());
 
-    crate::env::set_var("KCODE_DEBUG_CMD_PATH", "/tmp/kcode-test-debug-command");
+    crate::env::set_var("KCODE_DEBUG_CMD_PATH", "/tmp/jcode-test-debug-command");
     assert!(is_file_controlled_debug_client());
 
     if let Some(previous) = previous {
@@ -24,7 +24,7 @@ fn init_and_systemd_are_recognized_as_orphan_adopters() {
     assert!(is_orphan_adopter_name("init\n"));
     assert!(is_orphan_adopter_name("systemd\n"));
     assert!(!is_orphan_adopter_name("bash\n"));
-    assert!(!is_orphan_adopter_name("kcode\n"));
+    assert!(!is_orphan_adopter_name("jcode\n"));
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn auth_doctor_positional_provider_wins_over_global_provider() {
     assert_eq!(
         auth_doctor_provider_arg(Some("openai"), &ProviderChoice::Cerebras),
         Some("openai"),
-        "`kcode --provider cerebras auth doctor openai` should diagnose the explicit positional provider"
+        "`jcode --provider cerebras auth doctor openai` should diagnose the explicit positional provider"
     );
 }
 
@@ -313,4 +313,54 @@ async fn server_is_running_at_treats_live_listener_as_running_without_pong() {
         server_is_running_at(&socket_path).await,
         "a live listener should prevent duplicate server spawns even if ping is slow or absent"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn spawn_lock_creates_missing_runtime_directory() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let path = root.path().join("missing/nested/jcode.sock.spawning");
+    assert!(!path.parent().unwrap().exists());
+
+    let guard = try_acquire_spawn_lock(&path)
+        .expect("create runtime directory and acquire lock")
+        .expect("first lock should succeed");
+    assert!(path.is_file());
+    assert!(try_acquire_spawn_lock(&path).unwrap().is_none());
+
+    drop(guard);
+    assert!(!path.exists());
+    assert!(path.parent().unwrap().is_dir());
+}
+
+#[test]
+fn provider_profile_transport_follows_profile_type() {
+    // Issue #1560: --provider-profile forced OpenAI-compatible for every profile.
+    let config: crate::config::Config = toml::from_str(
+        r#"
+[providers.fcc-anthropic]
+type = "anthropic-compatible"
+base_url = "http://127.0.0.1:8082/v1"
+auth = "none"
+
+[providers.local-openai]
+type = "openai-compatible"
+base_url = "http://127.0.0.1:8000/v1"
+auth = "none"
+"#,
+    )
+    .expect("valid config");
+
+    assert!(matches!(
+        provider_choice_for_named_profile_in("fcc-anthropic", &config),
+        ProviderChoice::Auto
+    ));
+    assert!(matches!(
+        provider_choice_for_named_profile_in("local-openai", &config),
+        ProviderChoice::OpenaiCompatible
+    ));
+    assert!(matches!(
+        provider_choice_for_named_profile_in("missing", &config),
+        ProviderChoice::OpenaiCompatible
+    ));
 }

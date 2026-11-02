@@ -142,11 +142,11 @@ impl TurnUsage {
             "inputTokens": self.input_tokens,
             "outputTokens": self.output_tokens,
         });
-        let object = usage.as_object_mut().expect("usage is an object");
-        if let Some(tokens) = self.cached_read_tokens {
+        // `json!({...})` always produces an object; treat absence defensively.
+        if let (Some(object), Some(tokens)) = (usage.as_object_mut(), self.cached_read_tokens) {
             object.insert("cachedReadTokens".to_string(), json!(tokens));
         }
-        if let Some(tokens) = self.cached_write_tokens {
+        if let (Some(object), Some(tokens)) = (usage.as_object_mut(), self.cached_write_tokens) {
             object.insert("cachedWriteTokens".to_string(), json!(tokens));
         }
         Some(usage)
@@ -161,11 +161,10 @@ fn add_optional_tokens(total: &mut Option<u64>, tokens: Option<u64>) {
 
 fn prompt_response(stop_reason: &str, usage: &TurnUsage) -> Value {
     let mut response = json!({ "stopReason": stop_reason });
-    if let Some(usage) = usage.to_acp() {
-        response
-            .as_object_mut()
-            .expect("prompt response is an object")
-            .insert("usage".to_string(), usage);
+    if let Some(usage) = usage.to_acp()
+        && let Some(object) = response.as_object_mut()
+    {
+        object.insert("usage".to_string(), usage);
     }
     response
 }
@@ -867,7 +866,7 @@ impl AcpRuntime {
                 }
                 other => {
                     if self.profile.is_extended() {
-                        self.write_kcode_extension_event(&attached_id, &other)
+                        self.write_jcode_extension_event(&attached_id, &other)
                             .await?;
                     }
                 }
@@ -972,7 +971,7 @@ impl AcpRuntime {
                 }
             };
             if self.profile.is_extended() {
-                self.write_kcode_extension_event(&session.session_id, &event)
+                self.write_jcode_extension_event(&session.session_id, &event)
                     .await?;
             }
             match event {
@@ -1212,13 +1211,13 @@ impl AcpRuntime {
         .await
     }
 
-    async fn write_kcode_extension_event(
+    async fn write_jcode_extension_event(
         &self,
         session_id: &str,
         event: &ServerEvent,
     ) -> Result<()> {
         self.write_notification(
-            "_kcode/server_event",
+            "_jcode/server_event",
             json!({
                 "sessionId": session_id,
                 "event": serde_json::to_value(event).unwrap_or(Value::Null),
@@ -1659,7 +1658,7 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
         object.insert(
             "_meta".to_string(),
             json!({
-                "kcode": {
+                "jcode": {
                     "profile": profile.as_str(),
                     "extensions": ["raw_server_event"]
                 }
@@ -1671,9 +1670,9 @@ fn initialize_result(params: &Value, profile: AcpProfile) -> Value {
         "protocolVersion": protocol_version,
         "agentCapabilities": agent_capabilities,
         "agentInfo": {
-            "name": "kcode",
+            "name": "jcode",
             "title": "Jcode",
-            "version": kcode_build_meta::pkg_version(),
+            "version": jcode_build_meta::pkg_version(),
         },
         "authMethods": [],
     })
@@ -1969,7 +1968,7 @@ mod tests {
     }
 
     #[test]
-    fn initialize_standard_omits_kcode_meta() {
+    fn initialize_standard_omits_jcode_meta() {
         let result = initialize_result(&json!({"protocolVersion": 1}), AcpProfile::Standard);
         assert_eq!(result["protocolVersion"], 1);
         assert!(result["agentCapabilities"].get("_meta").is_none());
@@ -1977,10 +1976,10 @@ mod tests {
     }
 
     #[test]
-    fn initialize_full_advertises_kcode_extension_meta() {
+    fn initialize_full_advertises_jcode_extension_meta() {
         let result = initialize_result(&json!({"protocolVersion": 1}), AcpProfile::Full);
         assert_eq!(
-            result["agentCapabilities"]["_meta"]["kcode"]["profile"],
+            result["agentCapabilities"]["_meta"]["jcode"]["profile"],
             "full"
         );
     }

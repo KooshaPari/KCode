@@ -1,6 +1,6 @@
 #![cfg(unix)]
 //! Native CLI boundary, using a fake daemon and fully isolated state/config.
-use kcode_harness_api::{API_VERSION_MAJOR, ApiEvent, ApiRequest, ClientFrame, ServerFrame};
+use jcode_harness_api::{API_VERSION_MAJOR, ApiEvent, ApiRequest, ClientFrame, ServerFrame};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
 use std::process::{Child, Command, Stdio};

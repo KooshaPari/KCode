@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# memory_probe.sh - Reproducible memory probe harness for kcode TUI clients.
+# memory_probe.sh - Reproducible memory probe harness for jcode TUI clients.
 #
 # Spawns a headless tester TUI via the debug socket (tester:spawn) that resumes
 # a LARGE existing session, then records RSS/PSS/rss_anon at fixed phases:
@@ -22,14 +22,14 @@
 # Options:
 #   --session <id>    Session to resume (default: session_hog_1783086065415_4ad4ae66cd43dd5b)
 #   --idle-secs <n>   Idle wait before the idle phase (default: 30)
-#   --binary <path>   Client binary (default: ~/.kcode/builds/current/kcode)
-#   --kcode <path>    kcode CLI used for `kcode debug ...` (default: ~/.local/bin/kcode)
+#   --binary <path>   Client binary (default: ~/.kcode/builds/current/jcode)
+#   --jcode <path>    jcode CLI used for `jcode debug ...` (default: ~/.local/bin/jcode)
 #   --cwd <path>      Working directory for the tester (default: $HOME)
 #   --skip-trim       Skip the forced-trim phase
 #   --keep            Do not stop the tester on exit (for manual inspection)
 #   -h | --help       Show this help
 #
-# Requirements: a running kcode server with the debug socket enabled, jq,
+# Requirements: a running jcode server with the debug socket enabled, jq,
 # and (for the trim phase) gdb. Trim prefers `sudo -n gdb` because
 # kernel.yama.ptrace_scope=1 blocks same-uid attach to non-children.
 
@@ -37,8 +37,8 @@ set -euo pipefail
 
 SESSION_ID="session_hog_1783086065415_4ad4ae66cd43dd5b"
 IDLE_SECS=30
-KCODE_BIN="${KCODE_BIN:-$HOME/.local/bin/kcode}"
-CLIENT_BIN="$HOME/.kcode/builds/current/kcode"
+KCODE_BIN="${KCODE_BIN:-$HOME/.local/bin/jcode}"
+CLIENT_BIN="$HOME/.kcode/builds/current/jcode"
 TESTER_CWD="$HOME"
 SKIP_TRIM=0
 KEEP_TESTER=0
@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
         --session)   SESSION_ID="$2"; shift 2 ;;
         --idle-secs) IDLE_SECS="$2"; shift 2 ;;
         --binary)    CLIENT_BIN="$2"; shift 2 ;;
-        --kcode)     KCODE_BIN="$2"; shift 2 ;;
+        --jcode)     KCODE_BIN="$2"; shift 2 ;;
         --cwd)       TESTER_CWD="$2"; shift 2 ;;
         --skip-trim) SKIP_TRIM=1; shift ;;
         --keep)      KEEP_TESTER=1; shift ;;
@@ -63,8 +63,8 @@ log() { printf '[memory_probe] %s\n' "$*" >&2; }
 die() { log "FATAL: $*"; exit 1; }
 
 command -v jq >/dev/null || die "jq is required"
-[[ -x "$KCODE_BIN" ]] || die "kcode CLI not found at $KCODE_BIN"
-[[ -x "$CLIENT_BIN" ]] || CLIENT_BIN="$(command -v kcode)" || die "client binary not found"
+[[ -x "$KCODE_BIN" ]] || die "jcode CLI not found at $KCODE_BIN"
+[[ -x "$CLIENT_BIN" ]] || CLIENT_BIN="$(command -v jcode)" || die "client binary not found"
 [[ -f "$HOME/.kcode/sessions/${SESSION_ID}.json" ]] \
     || log "WARN: $HOME/.kcode/sessions/${SESSION_ID}.json not found; resume may create a new session"
 
@@ -197,7 +197,7 @@ emit_phase() { # phase proc_json client_json extras_json
     ts="$(now_ms)"
     elapsed_ms=$(( ts - SPAWN_EPOCH_MS ))
     jq -c -S -n \
-        --arg probe "kcode_memory_probe" \
+        --arg probe "jcode_memory_probe" \
         --arg schema "1" \
         --arg run_id "$RUN_ID" \
         --arg phase "$phase" \
@@ -242,7 +242,7 @@ force_trim() { # pid -> prints method used ("gdb_sudo" | "gdb" | "unavailable")
 # ===========================================================================
 # 1. Spawn headless tester resuming the target session.
 # ===========================================================================
-WRAPPER="$(mktemp /tmp/kcode_memory_probe_wrapper.XXXXXX.sh)"
+WRAPPER="$(mktemp /tmp/jcode_memory_probe_wrapper.XXXXXX.sh)"
 cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash
 exec "$CLIENT_BIN" --resume "$SESSION_ID" --no-update "\$@"

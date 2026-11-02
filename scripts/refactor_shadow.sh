@@ -8,15 +8,15 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 user_name="${USER:-$(id -un)}"
 runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
 default_home="${HOME}/.kcode-refactor"
-default_socket="${runtime_dir}/kcode-refactor-${user_name}.sock"
+default_socket="${runtime_dir}/jcode-refactor-${user_name}.sock"
 
 ref_home="${KCODE_REF_HOME:-$default_home}"
 ref_socket="${KCODE_REF_SOCKET:-$default_socket}"
 ref_profile="${KCODE_REF_PROFILE:-debug}"
 
 case "$ref_profile" in
-  debug) default_bin="$repo_root/target/debug/kcode" ;;
-  release) default_bin="$repo_root/target/release/kcode" ;;
+  debug) default_bin="$repo_root/target/debug/jcode" ;;
+  release) default_bin="$repo_root/target/release/jcode" ;;
   *)
     printf 'error: unsupported KCODE_REF_PROFILE: %s (expected debug or release)\n' "$ref_profile" >&2
     exit 1
@@ -30,13 +30,13 @@ usage() {
 Usage:
   scripts/refactor_shadow.sh env
   scripts/refactor_shadow.sh build [--release]
-  scripts/refactor_shadow.sh serve [-- <kcode serve args>]
-  scripts/refactor_shadow.sh run [-- <kcode args>]
-  scripts/refactor_shadow.sh connect [-- <kcode connect args>]
+  scripts/refactor_shadow.sh serve [-- <jcode serve args>]
+  scripts/refactor_shadow.sh run [-- <jcode args>]
+  scripts/refactor_shadow.sh connect [-- <jcode connect args>]
   scripts/refactor_shadow.sh check
 
 What it does:
-  - Runs kcode in an isolated refactor environment
+  - Runs jcode in an isolated refactor environment
   - Uses separate KCODE_HOME and KCODE_SOCKET
   - Refuses to run against ~/.kcode to protect live sessions
 
@@ -44,7 +44,7 @@ Environment overrides:
   KCODE_REF_HOME      Isolated home dir (default: ~/.kcode-refactor)
   KCODE_REF_SOCKET    Isolated socket path
   KCODE_REF_PROFILE   debug|release (default: debug)
-  KCODE_REF_BIN       Explicit kcode binary path
+  KCODE_REF_BIN       Explicit jcode binary path
 USAGE
 }
 
@@ -83,7 +83,7 @@ ensure_socket_parent() {
 
 ensure_binary() {
   if [[ ! -x "$ref_bin" ]]; then
-    die "kcode binary not found or not executable: $ref_bin (run 'scripts/refactor_shadow.sh build')"
+    die "jcode binary not found or not executable: $ref_bin (run 'scripts/refactor_shadow.sh build')"
   fi
 }
 

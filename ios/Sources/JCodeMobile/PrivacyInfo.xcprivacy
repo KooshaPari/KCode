@@ -4,7 +4,7 @@
 <dict>
     <!-- App Store privacy manifest (required for submission).
          The app collects nothing and phones home to nothing: it talks only
-         to user-paired kcode servers. The single "required reason" API used
+         to user-paired jcode servers. The single "required reason" API used
          is UserDefaults (stable device identifier for pairing). -->
     <key>NSPrivacyTracking</key>
     <false/>

@@ -106,7 +106,7 @@ def _stationary_distribution(graph: ActionGraph, iters: int = 500, tol: float = 
 def run_engine(
     *,
     days: int = 7,
-    log_dir: str = "~/.kcode/logs",
+    log_dir: str = "~/.jcode/logs",
     source_root: str | None = None,
     ops: Operators = Operators(),
 ) -> EngineResult:

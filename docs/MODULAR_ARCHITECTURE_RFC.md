@@ -2,7 +2,7 @@
 
 Status: Draft
 
-This RFC describes a modular target architecture for kcode that matches the current codebase, preserves the existing product model, and gives us a safe migration path from today's mostly-monolithic root crate to a layered workspace.
+This RFC describes a modular target architecture for jcode that matches the current codebase, preserves the existing product model, and gives us a safe migration path from today's mostly-monolithic root crate to a layered workspace.
 
 It is intentionally aligned with:
 
@@ -28,9 +28,9 @@ It is intentionally aligned with:
 
 ## Executive Summary
 
-Today, kcode is best described as a **modular monolith with a growing workspace shell**:
+Today, jcode is best described as a **modular monolith with a growing workspace shell**:
 
-- The root `kcode` crate still owns most runtime orchestration and product behavior.
+- The root `jcode` crate still owns most runtime orchestration and product behavior.
 - Several heavy or relatively self-contained subsystems have already moved into workspace crates.
 - The codebase has strong module-level separation in some areas, but several broad root modules still act as architectural chokepoints.
 
@@ -39,7 +39,7 @@ The target architecture is a **layered workspace**:
 1. **Foundation layer** for stable shared types and runtime primitives.
 2. **Domain/runtime layer** for session, agent, provider, and server logic.
 3. **Interface layer** for CLI, TUI, self-dev, and optional heavy integrations.
-4. **Composition layer** where the top-level `kcode` package wires the product together.
+4. **Composition layer** where the top-level `jcode` package wires the product together.
 
 The most important design rule is this:
 
@@ -53,7 +53,7 @@ That rule serves both architecture quality and compile-speed goals.
 
 At the product level, the runtime architecture is already clear:
 
-- `kcode` is a **single-server, multi-client** application.
+- `jcode` is a **single-server, multi-client** application.
 - The server owns sessions, swarm state, background tasks, provider state, and shared services.
 - Clients are primarily TUI frontends that attach to server-owned sessions.
 - Self-dev is session-local capability on the shared server, not a separate architecture.
@@ -64,20 +64,20 @@ That model should stay intact.
 
 The current code organization is mixed:
 
-- **Root crate `kcode`** still contains most product logic.
+- **Root crate `jcode`** still contains most product logic.
 - **Workspace crates** already isolate several heavy or stable seams.
 - **Subdirectories under `src/`** increasingly reflect domain boundaries, especially for `agent`, `cli`, `server`, `tool`, and `tui`.
 
 Current workspace members from `Cargo.toml` are grouped roughly as follows:
 
-- root package: `kcode`
-- foundation/runtime support: `kcode-agent-runtime`, `kcode-core`, `kcode-storage`, `kcode-terminal-launch`, `kcode-tool-core`
-- data-contract crates: `kcode-ambient-types`, `kcode-auth-types`, `kcode-background-types`, `kcode-batch-types`, `kcode-config-types`, `kcode-gateway-types`, `kcode-memory-types`, `kcode-message-types`, `kcode-selfdev-types`, `kcode-session-types`, `kcode-side-panel-types`, `kcode-task-types`, `kcode-tool-types`, `kcode-usage-types`
-- protocol and planning: `kcode-protocol`, `kcode-plan`
-- heavy or optional integrations: `kcode-embedding`, `kcode-pdf`, `kcode-notify-email`
-- auth and providers: `kcode-azure-auth`, `kcode-provider-core`, `kcode-provider-metadata`, `kcode-provider-openrouter`, `kcode-provider-gemini`
-- TUI extraction seams: `kcode-tui-core`, `kcode-tui-markdown`, `kcode-tui-mermaid`, `kcode-tui-render`, `kcode-tui-workspace`
-- product surfaces outside the main TUI binary: `kcode-desktop`
+- root package: `jcode`
+- foundation/runtime support: `jcode-agent-runtime`, `jcode-core`, `jcode-storage`, `jcode-terminal-launch`, `jcode-tool-core`
+- data-contract crates: `jcode-ambient-types`, `jcode-auth-types`, `jcode-background-types`, `jcode-batch-types`, `jcode-config-types`, `jcode-gateway-types`, `jcode-memory-types`, `jcode-message-types`, `jcode-selfdev-types`, `jcode-session-types`, `jcode-side-panel-types`, `jcode-task-types`, `jcode-tool-types`, `jcode-usage-types`
+- protocol and planning: `jcode-protocol`, `jcode-plan`
+- heavy or optional integrations: `jcode-embedding`, `jcode-pdf`, `jcode-notify-email`
+- auth and providers: `jcode-azure-auth`, `jcode-provider-core`, `jcode-provider-metadata`, `jcode-provider-openrouter`, `jcode-provider-gemini`
+- TUI extraction seams: `jcode-tui-core`, `jcode-tui-markdown`, `jcode-tui-mermaid`, `jcode-tui-render`, `jcode-tui-workspace`
+- product surfaces outside the main TUI binary: `jcode-desktop`
 
 ### What the root crate still owns
 
@@ -87,7 +87,7 @@ The root crate still directly owns most of the following concerns:
 - server orchestration and socket lifecycle
 - session state and persistence
 - agent turn execution and tool orchestration
-- provider implementation composition and runtime provider wiring; the shared `Provider` trait now lives in `kcode-provider-core`
+- provider implementation composition and runtime provider wiring; the shared `Provider` trait now lives in `jcode-provider-core`
 - protocol/message/config types
 - tool registry and many tool implementations
 - TUI application state and rendering
@@ -101,41 +101,41 @@ These splits already exist and should be treated as real architectural footholds
 
 | Crate | Current role |
 |---|---|
-| `kcode-agent-runtime` | shared interrupt and lightweight runtime primitives for agent execution |
-| `kcode-ambient-types` | usage and rate-limit records shared by ambient/background flows |
-| `kcode-auth-types` | provider-neutral auth state and credential metadata |
-| `kcode-background-types` | background-task status and progress DTOs |
-| `kcode-batch-types` | batch tool progress DTOs, currently depending only on message types internally |
-| `kcode-config-types` | stable configuration data contracts |
-| `kcode-core` | low-level utilities such as IDs, env helpers, fs helpers, stdin detection, and formatting |
-| `kcode-gateway-types` | gateway-facing data contracts |
-| `kcode-memory-types` | memory subsystem data contracts |
-| `kcode-message-types` | message content and transport-adjacent data contracts |
-| `kcode-protocol` | client/server protocol surface built from stable type crates and provider-core values |
-| `kcode-plan` | plan/task graph data model shared across coordination flows |
-| `kcode-selfdev-types` | self-development request/status data contracts |
-| `kcode-session-types` | session DTOs, currently depending only on message types internally |
-| `kcode-side-panel-types` | side-panel page and update data contracts |
-| `kcode-task-types` | task/tool scheduling data contracts |
-| `kcode-tool-core` | runtime tool contracts such as the `Tool` trait and execution context |
-| `kcode-tool-types` | stable tool output/image DTOs |
-| `kcode-usage-types` | usage accounting data contracts |
-| `kcode-storage` | storage helpers layered on `kcode-core` |
-| `kcode-embedding` | ONNX/tokenizer-based embedding implementation and heavy inference deps |
-| `kcode-pdf` | PDF text extraction |
-| `kcode-azure-auth` | Azure bearer token retrieval |
-| `kcode-notify-email` | SMTP/IMAP/mail transport |
-| `kcode-provider-metadata` | provider/login catalog and profile metadata |
-| `kcode-provider-core` | shared provider contract (`Provider`/`EventStream`), value types, route/cost/model helpers, shared HTTP client, schema helpers |
-| `kcode-provider-openrouter` | OpenRouter-specific catalog/cache/support helpers |
-| `kcode-provider-gemini` | Gemini schema/model/support helpers |
-| `kcode-tui-core` | low-level terminal UI primitives that do not need full app state |
-| `kcode-tui-markdown` | markdown wrapping/rendering, layered on mermaid/workspace support |
-| `kcode-tui-mermaid` | mermaid parsing, rendering, caching, viewport, and widget support |
-| `kcode-tui-render` | reusable TUI layout/render helpers |
-| `kcode-tui-workspace` | workspace-map data/model/widget rendering |
-| `kcode-terminal-launch` | terminal process launch helpers |
-| `kcode-desktop` | desktop app surface and session/workspace rendering experiments |
+| `jcode-agent-runtime` | shared interrupt and lightweight runtime primitives for agent execution |
+| `jcode-ambient-types` | usage and rate-limit records shared by ambient/background flows |
+| `jcode-auth-types` | provider-neutral auth state and credential metadata |
+| `jcode-background-types` | background-task status and progress DTOs |
+| `jcode-batch-types` | batch tool progress DTOs, currently depending only on message types internally |
+| `jcode-config-types` | stable configuration data contracts |
+| `jcode-core` | low-level utilities such as IDs, env helpers, fs helpers, stdin detection, and formatting |
+| `jcode-gateway-types` | gateway-facing data contracts |
+| `jcode-memory-types` | memory subsystem data contracts |
+| `jcode-message-types` | message content and transport-adjacent data contracts |
+| `jcode-protocol` | client/server protocol surface built from stable type crates and provider-core values |
+| `jcode-plan` | plan/task graph data model shared across coordination flows |
+| `jcode-selfdev-types` | self-development request/status data contracts |
+| `jcode-session-types` | session DTOs, currently depending only on message types internally |
+| `jcode-side-panel-types` | side-panel page and update data contracts |
+| `jcode-task-types` | task/tool scheduling data contracts |
+| `jcode-tool-core` | runtime tool contracts such as the `Tool` trait and execution context |
+| `jcode-tool-types` | stable tool output/image DTOs |
+| `jcode-usage-types` | usage accounting data contracts |
+| `jcode-storage` | storage helpers layered on `jcode-core` |
+| `jcode-embedding` | ONNX/tokenizer-based embedding implementation and heavy inference deps |
+| `jcode-pdf` | PDF text extraction |
+| `jcode-azure-auth` | Azure bearer token retrieval |
+| `jcode-notify-email` | SMTP/IMAP/mail transport |
+| `jcode-provider-metadata` | provider/login catalog and profile metadata |
+| `jcode-provider-core` | shared provider contract (`Provider`/`EventStream`), value types, route/cost/model helpers, shared HTTP client, schema helpers |
+| `jcode-provider-openrouter` | OpenRouter-specific catalog/cache/support helpers |
+| `jcode-provider-gemini` | Gemini schema/model/support helpers |
+| `jcode-tui-core` | low-level terminal UI primitives that do not need full app state |
+| `jcode-tui-markdown` | markdown wrapping/rendering, layered on mermaid/workspace support |
+| `jcode-tui-mermaid` | mermaid parsing, rendering, caching, viewport, and widget support |
+| `jcode-tui-render` | reusable TUI layout/render helpers |
+| `jcode-tui-workspace` | workspace-map data/model/widget rendering |
+| `jcode-terminal-launch` | terminal process launch helpers |
+| `jcode-desktop` | desktop app surface and session/workspace rendering experiments |
 
 These are already aligned with the compile-performance plan's strategy: isolate heavy dependencies and stable helper surfaces first.
 
@@ -159,7 +159,7 @@ This supports the current plan direction:
 
 ```mermaid
 flowchart TD
-  J[kcode root crate]
+  J[jcode root crate]
 
   J --> CLI[CLI and startup]
   J --> Server[Server orchestration]
@@ -170,16 +170,16 @@ flowchart TD
   J --> Coreish[Protocol, message, config, ids]
   J --> Product[Auth, memory, safety, ambient, notifications]
 
-  J --> AR[kcode-agent-runtime]
-  J --> Emb[kcode-embedding]
-  J --> PDF[kcode-pdf]
-  J --> Azure[kcode-azure-auth]
-  J --> Mail[kcode-notify-email]
-  J --> PMeta[kcode-provider-metadata]
-  J --> PCore[kcode-provider-core]
-  J --> POR[kcode-provider-openrouter]
-  J --> PGem[kcode-provider-gemini]
-  J --> TW[kcode-tui-workspace]
+  J --> AR[jcode-agent-runtime]
+  J --> Emb[jcode-embedding]
+  J --> PDF[jcode-pdf]
+  J --> Azure[jcode-azure-auth]
+  J --> Mail[jcode-notify-email]
+  J --> PMeta[jcode-provider-metadata]
+  J --> PCore[jcode-provider-core]
+  J --> POR[jcode-provider-openrouter]
+  J --> PGem[jcode-provider-gemini]
+  J --> TW[jcode-tui-workspace]
 ```
 
 ## Architectural Problems To Solve
@@ -224,33 +224,33 @@ The target is a layered workspace with a thin composition root. Arrows below mea
 
 ```mermaid
 flowchart TD
-  App[kcode top-level package]
+  App[jcode top-level package]
 
   subgraph L2[Layer 2: interfaces and product surfaces]
-    TUI[kcode-tui]
-    SelfDev[kcode-selfdev]
-    CLI[kcode-cli or root CLI modules]
+    TUI[jcode-tui]
+    SelfDev[jcode-selfdev]
+    CLI[jcode-cli or root CLI modules]
   end
 
   subgraph L1[Layer 1: domain/runtime]
-    Server[kcode-server]
-    Agent[kcode-agent]
-    Provider[kcode-provider]
-    Session[kcode-session]
+    Server[jcode-server]
+    Agent[jcode-agent]
+    Provider[jcode-provider]
+    Session[jcode-session]
   end
 
   subgraph L0[Layer 0: foundation and support]
-    Core[kcode-core]
-    AR[kcode-agent-runtime]
-    Emb[kcode-embedding]
-    PDF[kcode-pdf]
-    Azure[kcode-azure-auth]
-    Mail[kcode-notify-email]
-    PMeta[kcode-provider-metadata]
-    PCore[kcode-provider-core]
-    POR[kcode-provider-openrouter]
-    PGem[kcode-provider-gemini]
-    TW[kcode-tui-workspace]
+    Core[jcode-core]
+    AR[jcode-agent-runtime]
+    Emb[jcode-embedding]
+    PDF[jcode-pdf]
+    Azure[jcode-azure-auth]
+    Mail[jcode-notify-email]
+    PMeta[jcode-provider-metadata]
+    PCore[jcode-provider-core]
+    POR[jcode-provider-openrouter]
+    PGem[jcode-provider-gemini]
+    TW[jcode-tui-workspace]
   end
 
   App --> Server
@@ -311,14 +311,14 @@ These crates should be small, low-dependency, and slow-changing. They are allowe
 
 Existing examples:
 
-- `kcode-message-types`
-- `kcode-tool-types`
-- `kcode-session-types`
-- `kcode-config-types`
-- `kcode-protocol`
-- `kcode-provider-core`
-- `kcode-plan`
-- `kcode-*-types`
+- `jcode-message-types`
+- `jcode-tool-types`
+- `jcode-session-types`
+- `jcode-config-types`
+- `jcode-protocol`
+- `jcode-provider-core`
+- `jcode-plan`
+- `jcode-*-types`
 
 Target direction:
 
@@ -338,13 +338,13 @@ These own product behavior but should depend only downward on contracts/support 
 
 Target crates:
 
-- `kcode-provider`: provider composition, provider routing, streaming contract adapters, and concrete runtime implementations layered on the `kcode-provider-core` trait.
-- `kcode-agent`: turn loop, compaction orchestration, provider/tool interaction, recovery logic.
-- `kcode-session`: session model, state transitions, persistence-facing session operations.
-- `kcode-server`: daemon lifecycle, client attachment, swarm/background coordination, service registries.
-- `kcode-tools` or narrower `kcode-tool-core` plus `kcode-tool-impl`: tool registry contracts and tool implementations.
-- `kcode-auth`: root auth orchestration after provider-neutral data lives in `kcode-auth-types` and heavy leaf SDKs stay separate.
-- `kcode-memory`: memory graph/log/search orchestration once its contracts are stable enough.
+- `jcode-provider`: provider composition, provider routing, streaming contract adapters, and concrete runtime implementations layered on the `jcode-provider-core` trait.
+- `jcode-agent`: turn loop, compaction orchestration, provider/tool interaction, recovery logic.
+- `jcode-session`: session model, state transitions, persistence-facing session operations.
+- `jcode-server`: daemon lifecycle, client attachment, swarm/background coordination, service registries.
+- `jcode-tools` or narrower `jcode-tool-core` plus `jcode-tool-impl`: tool registry contracts and tool implementations.
+- `jcode-auth`: root auth orchestration after provider-neutral data lives in `jcode-auth-types` and heavy leaf SDKs stay separate.
+- `jcode-memory`: memory graph/log/search orchestration once its contracts are stable enough.
 
 Compile-time reason:
 
@@ -357,10 +357,10 @@ These are high-churn application surfaces and should sit above runtime/domain cr
 
 Target crates:
 
-- `kcode-cli`: parsing and command dispatch if CLI keeps growing.
-- `kcode-tui`: app state, reducers, key handling, command/input handling, UI orchestration.
-- `kcode-desktop`: already a separate surface.
-- `kcode-selfdev`: self-dev build/reload/customization workflows if they remain a substantial product surface.
+- `jcode-cli`: parsing and command dispatch if CLI keeps growing.
+- `jcode-tui`: app state, reducers, key handling, command/input handling, UI orchestration.
+- `jcode-desktop`: already a separate surface.
+- `jcode-selfdev`: self-dev build/reload/customization workflows if they remain a substantial product surface.
 
 Compile-time reason:
 
@@ -373,12 +373,12 @@ These should remain isolated and often feature-gated.
 
 Existing examples:
 
-- `kcode-embedding`
-- `kcode-pdf`
-- `kcode-azure-auth`
-- `kcode-notify-email`
-- `kcode-tui-mermaid`
-- provider support crates such as `kcode-provider-openrouter` and `kcode-provider-gemini`
+- `jcode-embedding`
+- `jcode-pdf`
+- `jcode-azure-auth`
+- `jcode-notify-email`
+- `jcode-tui-mermaid`
+- provider support crates such as `jcode-provider-openrouter` and `jcode-provider-gemini`
 
 Target direction:
 
@@ -393,7 +393,7 @@ Compile-time reason:
 
 #### 5. Composition package
 
-The top-level `kcode` package should eventually become mostly:
+The top-level `jcode` package should eventually become mostly:
 
 - binary entrypoints
 - feature defaults
@@ -408,23 +408,23 @@ It should not be the long-term home of large implementation modules.
 A healthy final graph should look like this:
 
 ```text
-kcode binary/composition
-  -> kcode-cli, kcode-tui, kcode-server, kcode-selfdev
+jcode binary/composition
+  -> jcode-cli, jcode-tui, jcode-server, jcode-selfdev
 
-kcode-cli / kcode-tui
-  -> kcode-protocol, kcode-*-types, kcode-server-client contracts
+jcode-cli / jcode-tui
+  -> jcode-protocol, jcode-*-types, jcode-server-client contracts
 
-kcode-server
-  -> kcode-agent, kcode-session, kcode-provider, kcode-tools, kcode-storage
+jcode-server
+  -> jcode-agent, jcode-session, jcode-provider, jcode-tools, jcode-storage
 
-kcode-agent
-  -> kcode-provider, kcode-tools, kcode-session, kcode-agent-runtime
+jcode-agent
+  -> jcode-provider, jcode-tools, jcode-session, jcode-agent-runtime
 
-kcode-provider
-  -> kcode-provider-core, kcode-provider-* leaves, kcode-auth-types
+jcode-provider
+  -> jcode-provider-core, jcode-provider-* leaves, jcode-auth-types
 
-kcode-session
-  -> kcode-session-types, kcode-message-types, kcode-storage, optional leaf adapters
+jcode-session
+  -> jcode-session-types, jcode-message-types, jcode-storage, optional leaf adapters
 
 contract/type crates
   -> serde and small support crates only
@@ -455,7 +455,7 @@ If these are not true yet, keep decomposing internally first.
 
 Avoid these tempting but harmful structures:
 
-- **One mega `kcode-common` crate.** It becomes the new root crate and invalidates everything.
+- **One mega `jcode-common` crate.** It becomes the new root crate and invalidates everything.
 - **One crate per source directory.** This creates noisy APIs and dependency cycles without compile wins.
 - **Moving high-churn traits too early.** A poorly stabilized trait crate can become worse than the monolith.
 - **Moving UI-adjacent state into core.** This contaminates lower layers with `ratatui`/terminal concepts.
@@ -466,12 +466,12 @@ Avoid these tempting but harmful structures:
 
 Based on the current root size and existing footholds, the best next work is probably:
 
-1. **Provider contracts:** keep shrinking `src/provider/mod.rs` until a `kcode-provider` trait/runtime crate can depend only on `kcode-message-types`, `kcode-provider-core`, and small runtime primitives.
+1. **Provider contracts:** keep shrinking `src/provider/mod.rs` until a `jcode-provider` trait/runtime crate can depend only on `jcode-message-types`, `jcode-provider-core`, and small runtime primitives.
 2. **Server core:** extract protocol-independent pieces of `src/server/` such as client lifecycle state machines, swarm/background coordination DTOs, and reload/update policies behind server-local contracts.
 3. **TUI reducer/state core:** extract non-rendering app state transitions from `src/tui/app/*` before moving the whole TUI crate.
 4. **Tool contracts and registry shape:** separate tool definitions, schemas, execution context, and registry metadata from individual tool implementations.
 5. **Session domain:** isolate session state transitions and persistence-facing operations from server/TUI/provider orchestration.
-6. **Auth facade:** keep provider-neutral auth data in `kcode-auth-types`, heavy SDKs in leaf crates, and move root auth orchestration only after provider contracts stabilize.
+6. **Auth facade:** keep provider-neutral auth data in `jcode-auth-types`, heavy SDKs in leaf crates, and move root auth orchestration only after provider contracts stabilize.
 
 A useful near-term policy: every time a large root file is touched, ask whether some pure table, DTO, parser, reducer, classifier, or state transition can move downward into an existing support crate without pulling runtime dependencies with it.
 
@@ -481,7 +481,7 @@ Each structural phase should record at least:
 
 - touched-file `cargo check` for the edited hotspot
 - touched-file selfdev build for the edited hotspot
-- `cargo tree -p kcode --edges normal --depth 1` before/after for dependency surprises
+- `cargo tree -p jcode --edges normal --depth 1` before/after for dependency surprises
 - crate-level test coverage for newly extracted crates
 
 A split is successful if it either:
@@ -494,7 +494,7 @@ A split should be reconsidered if it adds public API churn, creates cycles, or r
 
 ## Target crate responsibilities
 
-### `kcode-core`
+### `jcode-core`
 
 Purpose: stable shared types and utilities with minimal dependencies.
 
@@ -519,7 +519,7 @@ Notes:
 - This is the most important future extraction because it enables the rest.
 - `src/protocol.rs`, `src/id.rs`, and carefully selected parts of `config.rs` and `message.rs` are the likely first feeders.
 
-### `kcode-session`
+### `jcode-session`
 
 Purpose: session domain model, persistence, and state transitions.
 
@@ -540,9 +540,9 @@ Should not contain:
 Notes:
 
 - This crate is not explicitly named in the current compile-performance plan, but the current size and fanout of `src/session.rs` make session extraction a natural stabilizing move.
-- If introducing `kcode-session` feels too early, the same boundary should still be established internally first and extracted later.
+- If introducing `jcode-session` feels too early, the same boundary should still be established internally first and extracted later.
 
-### `kcode-provider`
+### `jcode-provider`
 
 Purpose: provider contracts and runtime-facing provider orchestration.
 
@@ -560,10 +560,10 @@ Should not contain:
 
 Notes:
 
-- Existing crates `kcode-provider-core`, `kcode-provider-metadata`, `kcode-provider-openrouter`, and `kcode-provider-gemini` remain useful under this layer.
+- Existing crates `jcode-provider-core`, `jcode-provider-metadata`, `jcode-provider-openrouter`, and `jcode-provider-gemini` remain useful under this layer.
 - The key migration step is shrinking the `Provider` trait's dependency surface so it no longer depends on root-crate-only message/runtime types.
 
-### `kcode-agent`
+### `jcode-agent`
 
 Purpose: agent turn engine and tool orchestration.
 
@@ -584,9 +584,9 @@ Should not contain:
 Notes:
 
 - This aligns directly with the refactoring roadmap's "Agent Turn-Loop Unification" phase.
-- `kcode-agent-runtime` remains the low-level runtime primitive crate below it.
+- `jcode-agent-runtime` remains the low-level runtime primitive crate below it.
 
-### `kcode-server`
+### `jcode-server`
 
 Purpose: daemon lifecycle and multi-client coordination.
 
@@ -602,14 +602,14 @@ Should not contain:
 
 - TUI rendering
 - provider implementation details beyond service interfaces
-- session persistence internals that belong in `kcode-session`
+- session persistence internals that belong in `jcode-session`
 
 Notes:
 
 - The current `src/server/` submodule tree is already the right shape for this extraction.
 - `src/server.rs` should continue shrinking into a facade/composition module.
 
-### `kcode-tui`
+### `jcode-tui`
 
 Purpose: client UI state, reducers, and rendering.
 
@@ -629,9 +629,9 @@ Should not contain:
 Notes:
 
 - This aligns directly with the refactoring roadmap's "TUI State/Reducer Split" phase.
-- `kcode-tui-workspace` can remain a leaf crate or become a child dependency of `kcode-tui`.
+- `jcode-tui-workspace` can remain a leaf crate or become a child dependency of `jcode-tui`.
 
-### `kcode-selfdev`
+### `jcode-selfdev`
 
 Purpose: self-dev workflows, customization records, reload/build productization.
 
@@ -650,7 +650,7 @@ Notes:
 
 - This aligns with the compile-performance plan's issue-#32 direction and with the already-unified shared-server model.
 
-### `kcode` top-level package
+### `jcode` top-level package
 
 Purpose: composition root and shipping product package.
 
@@ -682,16 +682,16 @@ A higher layer may depend on a lower layer. A lower layer may not depend on a hi
 
 ### Rule 3: No server daemon types in core or provider-support crates
 
-- socket/session attachment state, fanout senders, debug socket helpers, and daemon lifecycle code must not appear in `kcode-core`, `kcode-provider-core`, or provider leaf crates
+- socket/session attachment state, fanout senders, debug socket helpers, and daemon lifecycle code must not appear in `jcode-core`, `jcode-provider-core`, or provider leaf crates
 
 ### Rule 4: Provider implementation crates depend on contracts, not on the server or TUI
 
-- provider leaf crates may depend on `kcode-core`, `kcode-provider`, and `kcode-provider-core`
-- they must not depend on `kcode-server` or `kcode-tui`
+- provider leaf crates may depend on `jcode-core`, `jcode-provider`, and `jcode-provider-core`
+- they must not depend on `jcode-server` or `jcode-tui`
 
-### Rule 5: Async/network-heavy dependencies do not belong in `kcode-core`
+### Rule 5: Async/network-heavy dependencies do not belong in `jcode-core`
 
-`kcode-core` should stay cheap to compile and highly reusable.
+`jcode-core` should stay cheap to compile and highly reusable.
 
 Avoid putting these there unless absolutely necessary:
 
@@ -717,14 +717,14 @@ Do not create a dumping-ground crate.
 
 If code has a clear owner, it belongs with that owner:
 
-- protocol/data types -> `kcode-core`
-- session persistence -> `kcode-session`
+- protocol/data types -> `jcode-core`
+- session persistence -> `jcode-session`
 - provider route/schema helpers -> provider crates
-- rendering helpers -> `kcode-tui`
+- rendering helpers -> `jcode-tui`
 
 ### Rule 8: The root package may compose many crates, but peer crates should stay narrow
 
-The top-level `kcode` package can wire multiple domains together. Peer crates should not casually depend on each other sideways when a lower-level contract would do.
+The top-level `jcode` package can wire multiple domains together. Peer crates should not casually depend on each other sideways when a lower-level contract would do.
 
 ### Rule 9: New crate boundaries should follow both ownership and invalidation logic
 
@@ -743,15 +743,15 @@ This is the recommended direction from the current tree, not a one-shot move lis
 
 | Current area | Likely target |
 |---|---|
-| `src/id.rs`, protocol/message/config primitives | `kcode-core` |
-| `src/session.rs`, parts of `storage`, restart snapshot concerns | `kcode-session` |
-| `src/agent/*`, parts of `compaction`, tool orchestration seams | `kcode-agent` |
-| `src/server/` + shrinking `src/server.rs` facade | `kcode-server` |
-| `src/provider/mod.rs` trait/contracts plus provider composition seams | `kcode-provider` |
+| `src/id.rs`, protocol/message/config primitives | `jcode-core` |
+| `src/session.rs`, parts of `storage`, restart snapshot concerns | `jcode-session` |
+| `src/agent/*`, parts of `compaction`, tool orchestration seams | `jcode-agent` |
+| `src/server/` + shrinking `src/server.rs` facade | `jcode-server` |
+| `src/provider/mod.rs` trait/contracts plus provider composition seams | `jcode-provider` |
 | existing provider helper crates | remain leaf/provider support crates |
-| `src/tui/*` + `kcode-tui-workspace` | `kcode-tui` + leaf workspace widget crate |
-| `src/cli/*` | stay in root initially or become `kcode-cli` later if justified |
-| `src/tool/selfdev/*`, self-dev workflow/productization | `kcode-selfdev` |
+| `src/tui/*` + `jcode-tui-workspace` | `jcode-tui` + leaf workspace widget crate |
+| `src/cli/*` | stay in root initially or become `jcode-cli` later if justified |
+| `src/tool/selfdev/*`, self-dev workflow/productization | `jcode-selfdev` |
 
 ## Phased Migration Plan
 
@@ -786,7 +786,7 @@ Exit criteria:
 - root modules are organized by ownership, not by convenience
 - candidate extraction seams are obvious and lower-risk
 
-### Phase 2: Extract `kcode-core`
+### Phase 2: Extract `jcode-core`
 
 This is the highest-leverage shared boundary.
 
@@ -807,10 +807,10 @@ Exit criteria:
 
 Primary targets:
 
-1. `kcode-provider`
-2. `kcode-agent`
-3. `kcode-server`
-4. `kcode-session`
+1. `jcode-provider`
+2. `jcode-agent`
+3. `jcode-server`
+4. `jcode-session`
 
 Recommended order:
 
@@ -822,7 +822,7 @@ Exit criteria:
 
 - the root crate no longer defines the main provider, server, and agent contracts directly
 
-### Phase 4: Extract `kcode-tui`
+### Phase 4: Extract `jcode-tui`
 
 Focus:
 
@@ -835,7 +835,7 @@ Exit criteria:
 
 - TUI can evolve rapidly without dragging broad server/provider recompilation
 
-### Phase 5: Extract `kcode-selfdev`
+### Phase 5: Extract `jcode-selfdev`
 
 Focus:
 
@@ -852,7 +852,7 @@ Exit criteria:
 Desired end state:
 
 - `src/main.rs` remains thin
-- `kcode::run()` is mostly wiring
+- `jcode::run()` is mostly wiring
 - the top-level package primarily assembles runtime services and default product configuration
 
 ### Continuous work across all phases
@@ -908,10 +908,10 @@ Short version:
 
 These do not block the RFC, but they should be revisited as migration proceeds:
 
-- Should `kcode-session` become an explicit crate, or remain an internal boundary until later?
-- Should CLI remain in the top-level package permanently, or eventually become `kcode-cli`?
-- Should `message` and `protocol` remain together in `kcode-core`, or split into separate contract crates if they evolve at different rates?
-- Should `kcode-tui-workspace` remain a separate leaf crate long-term, or fold into `kcode-tui` once the larger TUI extraction lands?
+- Should `jcode-session` become an explicit crate, or remain an internal boundary until later?
+- Should CLI remain in the top-level package permanently, or eventually become `jcode-cli`?
+- Should `message` and `protocol` remain together in `jcode-core`, or split into separate contract crates if they evolve at different rates?
+- Should `jcode-tui-workspace` remain a separate leaf crate long-term, or fold into `jcode-tui` once the larger TUI extraction lands?
 
 ## Recommendation
 

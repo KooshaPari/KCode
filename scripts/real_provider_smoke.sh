@@ -29,15 +29,15 @@ fi
 echo ""
 echo "Test 2: Tool harness (network tools enabled)"
 if [[ "${KCODE_REMOTE_CARGO:-0}" == "1" ]]; then
-  (cd "$repo_root" && "$cargo_exec" build --bin kcode-harness)
-  (cd "$repo_root" && ./target/debug/kcode-harness -- --include-network)
+  (cd "$repo_root" && "$cargo_exec" build --bin jcode-harness)
+  (cd "$repo_root" && ./target/debug/jcode-harness -- --include-network)
 else
-  (cd "$repo_root" && cargo run --bin kcode-harness -- --include-network)
+  (cd "$repo_root" && cargo run --bin jcode-harness -- --include-network)
 fi
 
 echo ""
 echo "Test 3: End-to-end trace"
-if [[ ! -x "$repo_root/target/release/kcode" ]]; then
+if [[ ! -x "$repo_root/target/release/jcode" ]]; then
   (cd "$repo_root" && "$cargo_exec" build --release)
 fi
 
@@ -46,7 +46,7 @@ trap 'rm -rf "$workdir"' EXIT
 
 set +e
 output=$(KCODE_HOME="$workdir" PATH="$repo_root/target/release:$PATH" \
-  kcode run --no-update --trace --provider "$provider" "$prompt" 2>&1)
+  jcode run --no-update --trace --provider "$provider" "$prompt" 2>&1)
 status=$?
 set -e
 

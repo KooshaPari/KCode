@@ -119,7 +119,7 @@ class AttributionDelta:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Analyze kcode runtime memory JSONL logs for growth, spikes, attribution, and optimization hints"
+        description="Analyze jcode runtime memory JSONL logs for growth, spikes, attribution, and optimization hints"
     )
     parser.add_argument("paths", nargs="*", help="Specific JSONL files or directories to analyze")
     parser.add_argument(
@@ -154,9 +154,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def default_log_dir() -> Path:
-    kcode_home = os.environ.get("KCODE_HOME")
-    if kcode_home:
-        return Path(kcode_home).expanduser() / "logs" / "memory"
+    jcode_home = os.environ.get("KCODE_HOME")
+    if jcode_home:
+        return Path(jcode_home).expanduser() / "logs" / "memory"
     return Path.home() / ".kcode" / "logs" / "memory"
 
 
@@ -704,7 +704,7 @@ def build_incident_assessment(
                 "priority": 1,
                 "action": "Pause or cap the workload creating headless sessions.",
                 "why": "These are live allocations; allocator purge is not the first response.",
-                "commands": ["kcode debug 'server:memory-incident'", "kcode debug 'swarm:list'"],
+                "commands": ["jcode debug 'server:memory-incident'", "jcode debug 'swarm:list'"],
             },
             {
                 "priority": 2,
@@ -719,7 +719,7 @@ def build_incident_assessment(
             {
                 "priority": 4,
                 "action": "Purge only after session cleanup if freed-but-held memory remains high.",
-                "commands": ["kcode debug 'allocator:purge'"],
+                "commands": ["jcode debug 'allocator:purge'"],
             },
         ]
     elif retention_dominates:
@@ -734,12 +734,12 @@ def build_incident_assessment(
             {
                 "priority": 1,
                 "action": "Capture a before/after allocator purge and compare PSS.",
-                "commands": ["kcode debug 'allocator:purge'", "kcode debug 'server:memory-incident'"],
+                "commands": ["jcode debug 'allocator:purge'", "jcode debug 'server:memory-incident'"],
             },
             {
                 "priority": 2,
                 "action": "If retained pages repeatedly regrow, inspect allocation churn and allocator decay.",
-                "commands": ["kcode debug 'allocator'", "kcode debug 'allocator:decay:1000'"],
+                "commands": ["jcode debug 'allocator'", "jcode debug 'allocator:decay:1000'"],
             },
         ]
     elif attributed_state_dominates:
@@ -756,7 +756,7 @@ def build_incident_assessment(
             {
                 "priority": 1,
                 "action": "Start with the heaviest sessions and dominant payload category in this report.",
-                "commands": ["kcode debug 'server:memory'"],
+                "commands": ["jcode debug 'server:memory'"],
             }
         ]
     elif allocator_live >= 1024 * 1024 * 1024:
@@ -774,14 +774,14 @@ def build_incident_assessment(
             {
                 "priority": 1,
                 "action": "Capture full server attribution and add counters for the missing owner.",
-                "commands": ["kcode debug 'server:memory'"],
+                "commands": ["jcode debug 'server:memory'"],
             },
             {
                 "priority": 2,
                 "action": "Use a jemalloc-prof build and heap dump if coverage remains below 50%.",
                 "commands": [
-                    "kcode debug 'allocator:profile:on'",
-                    "kcode debug 'allocator:profile:dump /tmp/kcode-server.heap'",
+                    "jcode debug 'allocator:profile:on'",
+                    "jcode debug 'allocator:profile:dump /tmp/jcode-server.heap'",
                 ],
             },
         ]

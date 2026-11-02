@@ -1,8 +1,8 @@
 import Foundation
 
-/// Client request to a kcode server.
+/// Client request to a jcode server.
 ///
-/// Wire format mirrors `crates/kcode-protocol/src/wire.rs` (`#[serde(tag = "type")]`,
+/// Wire format mirrors `crates/jcode-protocol/src/wire.rs` (`#[serde(tag = "type")]`,
 /// snake_case tags). Only the requests the iOS app uses are modeled; the server
 /// ignores fields it does not expect.
 public enum Request: Equatable, Sendable {
@@ -116,7 +116,7 @@ public struct HistoryMessage: Equatable, Sendable {
     }
 }
 
-/// Server event from a kcode server. Unknown event types decode as `.unknown`
+/// Server event from a jcode server. Unknown event types decode as `.unknown`
 /// so newer servers never break older apps.
 public enum ServerEvent: Equatable, Sendable {
     case ack(id: UInt64)

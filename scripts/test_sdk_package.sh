@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify the *published* @1jehuang/kcode-sdk tarball, not just its source.
+# Verify the *published* @kooshapari/kcode-sdk tarball, not just its source.
 #
 # `npm run check` compiles src/ and runs tests against it. A consumer never
 # sees src/: they see whatever `files`, `exports`, `main`, and `types` let out
@@ -26,58 +26,32 @@ echo "packed $tarball"
 echo "== installing into a fresh consumer =="
 cd "$work"
 npm init -y --silent >/dev/null
-runtime_tarball=""
-if command -v kcode >/dev/null 2>&1 && [ "$(uname -s)" = Linux ]; then
-  case "$(uname -m)" in
-    x86_64) runtime_package=linux-x64 ;;
-    aarch64) runtime_package=linux-arm64 ;;
-    *) runtime_package="" ;;
-  esac
-  if [ -n "$runtime_package" ]; then
-    runtime_stage="$work/runtime-stage"
-    mkdir -p "$runtime_stage/bin"
-    cp "$repo_root/sdk/npm/$runtime_package/package.json" "$runtime_stage/"
-    cp "$repo_root/sdk/npm/$runtime_package/README.md" "$runtime_stage/"
-    cp "$(command -v kcode)" "$runtime_stage/bin/kcode"
-    chmod +x "$runtime_stage/bin/kcode"
-    runtime_tarball="$(cd "$runtime_stage" && npm pack --silent)"
-    runtime_tarball="$runtime_stage/$runtime_tarball"
-  fi
-fi
-
-if [ -n "$runtime_tarball" ]; then
-  npm install "$runtime_tarball" "$tarball" --no-audit --no-fund --silent
-else
-  npm install "$tarball" --no-audit --no-fund --silent
-fi
+# The fork ships no bundled runtime channel: bundledJcodeBinary() returns
+# undefined by design, so there is no platform package to stage and install.
+npm install "$tarball" --no-audit --no-fund --silent
 
 echo "== ESM import =="
 node --input-type=module -e '
-import { JcodeClient, HarnessError, API_VERSION_MAJOR } from "@1jehuang/kcode-sdk";
+import { JcodeClient, HarnessError, API_VERSION_MAJOR } from "@kooshapari/kcode-sdk";
 if (typeof JcodeClient !== "function") throw new Error("JcodeClient missing");
 if (typeof HarnessError !== "function") throw new Error("HarnessError missing");
 if (API_VERSION_MAJOR !== 1) throw new Error("unexpected protocol version");
 console.log("esm ok");
 '
 
-if [ -n "$runtime_tarball" ]; then
-  echo "== bundled runtime resolution =="
-  node --input-type=module -e '
-  import { bundledJcodeBinary } from "@1jehuang/kcode-sdk";
-  const binary = bundledJcodeBinary();
-  if (!binary || !binary.includes("@1jehuang/kcode-linux-")) {
-    throw new Error(`platform runtime was not resolved: ${binary}`);
-  }
-  console.log(`runtime ok: ${binary}`);
-  '
-fi
-
-echo "== CJS require =="
-node --input-type=commonjs -e '
-const sdk = require("@1jehuang/kcode-sdk");
+# The package is ESM-only; require() works through require(esm), which is
+# unflagged on Node 22.12+ and 20.19+. Older supported Node 20 releases have
+# no way to load it, so skip the probe there instead of failing.
+if node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 12) || (a === 20 && b >= 19) ? 0 : 1)'; then
+  echo "== CJS require =="
+  node --input-type=commonjs -e '
+const sdk = require("@kooshapari/kcode-sdk");
 if (typeof sdk.JcodeClient !== "function") throw new Error("JcodeClient missing under require");
 console.log("cjs ok");
 '
+else
+  echo "== CJS require skipped: Node $(node -p process.versions.node) predates require(esm) =="
+fi
 
 echo "== TypeScript types resolve for a consumer =="
 npm install --no-audit --no-fund --silent typescript @types/node
@@ -95,7 +69,7 @@ cat > tsconfig.json <<'JSON'
 }
 JSON
 cat > consumer.ts <<'TS'
-import { JcodeClient, HarnessError, type TurnResult, type ApiEvent } from "@1jehuang/kcode-sdk";
+import { JcodeClient, HarnessError, type TurnResult, type ApiEvent } from "@kooshapari/kcode-sdk";
 
 export async function demo(prompt: string): Promise<TurnResult> {
   const client = await JcodeClient.connect({ clientName: "package-test/1.0" });
@@ -121,7 +95,7 @@ TS
 # and every field came back `unknown`. That compiles fine inside the repo and
 # only bites consumers, so assert it from a consumer.
 cat > narrowing.ts <<'TS'
-import { isKnownEvent, type AnyApiEvent, type ApiEvent } from "@1jehuang/kcode-sdk";
+import { isKnownEvent, type AnyApiEvent, type ApiEvent } from "@kooshapari/kcode-sdk";
 
 export function summarize(event: ApiEvent): string {
   switch (event.ev) {
@@ -155,7 +129,7 @@ echo "types ok"
 if command -v kcode >/dev/null 2>&1; then
   echo "== launching a private instance as a consumer would =="
   cat > launch-consumer.mjs <<'JS'
-import { JcodeClient } from "@1jehuang/kcode-sdk";
+import { JcodeClient } from "@kooshapari/kcode-sdk";
 import fs from "node:fs";
 
 // No `binary` option: use the platform npm package, exactly like a consumer.

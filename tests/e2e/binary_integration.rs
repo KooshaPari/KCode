@@ -2,7 +2,7 @@ use crate::test_support::*;
 
 // ============================================================================
 // Binary Integration Tests
-// These tests run the actual kcode binary and require real credentials.
+// These tests run the actual jcode binary and require real credentials.
 // Run with: cargo test --test e2e binary_integration -- --ignored
 // ============================================================================
 
@@ -37,7 +37,7 @@ use crate::test_support::*;
 //     to a Failed verdict instead of an indefinite hang.
 // ----------------------------------------------------------------------------
 
-/// Test that the kcode binary can run independent with Claude provider
+/// Test that the jcode binary can run independent with Claude provider
 #[tokio::test]
 #[ignore] // Requires Claude credentials
 async fn binary_integration_independent_claude() -> Result<()> {
@@ -49,7 +49,7 @@ async fn binary_integration_independent_claude() -> Result<()> {
             "run",
             "--release",
             "--bin",
-            "kcode",
+            "jcode",
             "--",
             "run",
             "Say 'test-ok' and nothing else",
@@ -69,7 +69,7 @@ async fn binary_integration_independent_claude() -> Result<()> {
     Ok(())
 }
 
-/// Test that the kcode binary can run with OpenAI provider
+/// Test that the jcode binary can run with OpenAI provider
 #[tokio::test]
 #[ignore] // Requires OpenAI/Codex credentials
 async fn binary_integration_openai_provider() -> Result<()> {
@@ -81,7 +81,7 @@ async fn binary_integration_openai_provider() -> Result<()> {
             "run",
             "--release",
             "--bin",
-            "kcode",
+            "jcode",
             "--",
             "--provider",
             "openai",
@@ -132,7 +132,7 @@ async fn binary_version_command() -> Result<()> {
 
 /// Test full server reload handoff against a real spawned server process.
 ///
-/// Requires a built release binary at target/release/kcode because the reload
+/// Requires a built release binary at target/release/jcode because the reload
 /// flow execs into the repo's reload candidate.
 #[tokio::test]
 #[ignore]
@@ -140,7 +140,7 @@ async fn binary_integration_reload_handoff() -> Result<()> {
     let _env = setup_test_env()?;
 
     let release_binary =
-        kcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
+        jcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
     if !release_binary.exists() {
         anyhow::bail!(
             "release binary missing at {} (run `cargo build --release` first)",
@@ -149,7 +149,7 @@ async fn binary_integration_reload_handoff() -> Result<()> {
     }
 
     let temp_root = tempfile::Builder::new()
-        .prefix("kcode-reload-e2e-")
+        .prefix("jcode-reload-e2e-")
         .tempdir()?;
     let runtime_dir = temp_root.path().join("runtime");
     let home_dir = temp_root.path().join("home");
@@ -213,7 +213,7 @@ async fn binary_integration_reload_handoff() -> Result<()> {
         );
 
         let marker_deadline = Instant::now() + Duration::from_secs(20);
-        while kcode::server::reload_marker_active(Duration::from_secs(30)) {
+        while jcode::server::reload_marker_active(Duration::from_secs(30)) {
             if Instant::now() >= marker_deadline {
                 anyhow::bail!("reload marker remained active too long after restart");
             }
@@ -259,7 +259,7 @@ async fn binary_integration_reload_handoff() -> Result<()> {
 
 /// Test repeated self-dev reload handoff against a real TUI client running in a PTY.
 ///
-/// Requires a built release binary at target/release/kcode because the
+/// Requires a built release binary at target/release/jcode because the
 /// self-dev server reload path execs into the repo's reload candidate.
 #[cfg(unix)]
 #[tokio::test]
@@ -268,7 +268,7 @@ async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
     let _env = setup_test_env()?;
 
     let release_binary =
-        kcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
+        jcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
     if !release_binary.exists() {
         anyhow::bail!(
             "release binary missing at {} (run `cargo build --release` first)",
@@ -277,7 +277,7 @@ async fn binary_integration_selfdev_reload_reconnects_quickly() -> Result<()> {
     }
 
     let temp_root = tempfile::Builder::new()
-        .prefix("kcode-selfdev-reload-e2e-")
+        .prefix("jcode-selfdev-reload-e2e-")
         .tempdir()?;
     let runtime_dir = temp_root.path().join("runtime");
     let home_dir = temp_root.path().join("home");
@@ -374,7 +374,7 @@ async fn binary_integration_selfdev_client_reload_resumes_session() -> Result<()
     let _env = setup_test_env()?;
 
     let release_binary =
-        kcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
+        jcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
     if !release_binary.exists() {
         anyhow::bail!(
             "release binary missing at {} (run `cargo build --release` first)",
@@ -383,7 +383,7 @@ async fn binary_integration_selfdev_client_reload_resumes_session() -> Result<()
     }
 
     let temp_root = tempfile::Builder::new()
-        .prefix("kcode-selfdev-client-reload-e2e-")
+        .prefix("jcode-selfdev-client-reload-e2e-")
         .tempdir()?;
     let runtime_dir = temp_root.path().join("runtime");
     let home_dir = temp_root.path().join("home");
@@ -398,7 +398,7 @@ async fn binary_integration_selfdev_client_reload_resumes_session() -> Result<()
 
     let socket_path = runtime_dir.join("kcode.sock");
     let debug_socket_path = runtime_dir.join("kcode-debug.sock");
-    let starter_binary = temp_root.path().join("kcode-selfdev-client-starter");
+    let starter_binary = temp_root.path().join("jcode-selfdev-client-starter");
     std::fs::copy(env!("CARGO_BIN_EXE_kcode"), &starter_binary)?;
     let starter_mtime = std::fs::metadata(&release_binary)?
         .modified()?
@@ -536,7 +536,7 @@ async fn binary_integration_selfdev_full_reload_resumes_session_quickly() -> Res
     let _env = setup_test_env()?;
 
     let release_binary =
-        kcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
+        jcode::build::release_binary_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")));
     if !release_binary.exists() {
         anyhow::bail!(
             "release binary missing at {} (run `cargo build --release` first)",
@@ -545,7 +545,7 @@ async fn binary_integration_selfdev_full_reload_resumes_session_quickly() -> Res
     }
 
     let temp_root = tempfile::Builder::new()
-        .prefix("kcode-selfdev-full-reload-e2e-")
+        .prefix("jcode-selfdev-full-reload-e2e-")
         .tempdir()?;
     let runtime_dir = temp_root.path().join("runtime");
     let home_dir = temp_root.path().join("home");
@@ -560,7 +560,7 @@ async fn binary_integration_selfdev_full_reload_resumes_session_quickly() -> Res
 
     let socket_path = runtime_dir.join("kcode.sock");
     let debug_socket_path = runtime_dir.join("kcode-debug.sock");
-    let starter_binary = temp_root.path().join("kcode-selfdev-full-reload-starter");
+    let starter_binary = temp_root.path().join("jcode-selfdev-full-reload-starter");
     std::fs::copy(env!("CARGO_BIN_EXE_kcode"), &starter_binary)?;
     let starter_mtime = std::fs::metadata(&release_binary)?
         .modified()?

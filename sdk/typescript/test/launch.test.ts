@@ -7,9 +7,9 @@ import { inheritCredentials, userJcodeHome } from "../dist/index.js";
 
 test("platform runtime packages map to npm platform conventions", async () => {
   const { platformBinaryPackage } = await import("../dist/index.js");
-  assert.equal(platformBinaryPackage("linux", "x64"), "@1jehuang/kcode-linux-x64");
-  assert.equal(platformBinaryPackage("darwin", "arm64"), "@1jehuang/kcode-darwin-arm64");
-  assert.equal(platformBinaryPackage("win32", "x64"), "@1jehuang/kcode-win32-x64");
+  assert.equal(platformBinaryPackage("linux", "x64"), undefined);
+  assert.equal(platformBinaryPackage("darwin", "arm64"), undefined);
+  assert.equal(platformBinaryPackage("win32", "x64"), undefined);
   assert.equal(platformBinaryPackage("freebsd", "x64"), undefined);
 });
 
@@ -23,7 +23,7 @@ test("platform runtime packages map to npm platform conventions", async () => {
  */
 test("removing an instance home never follows links to real credentials", async () => {
   const instance = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-sdk-instance-"));
-  const precious = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-precious-test-"));
+  const precious = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-precious-test-"));
   fs.mkdirSync(precious, { recursive: true });
   fs.writeFileSync(path.join(precious, "auth.json"), '{"token":"keep me"}');
 
@@ -51,7 +51,7 @@ test("removing an instance home never follows links to real credentials", async 
 });
 
 test("cleanup refuses arbitrary directories even when asked directly", async () => {
-  const arbitrary = fs.mkdtempSync(path.join(os.tmpdir(), "not-a-kcode-instance-"));
+  const arbitrary = fs.mkdtempSync(path.join(os.tmpdir(), "not-a-jcode-instance-"));
   fs.writeFileSync(path.join(arbitrary, "keep"), "safe");
 
   const { removeInstanceHomeForTest } = await import("../dist/launch.js");
@@ -62,7 +62,7 @@ test("cleanup refuses arbitrary directories even when asked directly", async () 
 });
 
 test("daemon shutdown lookup waits for a delayed registry entry", async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "kcode-daemon-race-test-"));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "jcode-daemon-race-test-"));
   const runtimeDir = path.join(home, "run");
   fs.mkdirSync(runtimeDir);
   const { waitForDaemonPidForTest } = await import("../dist/launch.js");
@@ -175,13 +175,13 @@ test("login inheritance creates file links, never credential directory links", (
   }
 });
 
-test("the user's kcode home is resolved independently of an instance", () => {
+test("the user's jcode home is resolved independently of an instance", () => {
   assert.ok(userJcodeHome().length > 0);
   assert.ok(path.isAbsolute(userJcodeHome()));
 });
 
 /**
- * A missing kcode is the most likely first-run failure, so it must be an
+ * A missing jcode is the most likely first-run failure, so it must be an
  * ordinary catchable error.
  *
  * Node treats an unlistened "error" event on a child process as a fatal throw
@@ -190,7 +190,7 @@ test("the user's kcode home is resolved independently of an instance", () => {
  * The failing path also has to clean up after itself: the instance home is
  * created before the spawn, so an error path that returns early leaks it.
  */
-test("a missing kcode binary is catchable, and leaks nothing", async () => {
+test("a missing jcode binary is catchable, and leaks nothing", async () => {
   const { JcodeClient, HarnessError } = await import("../dist/index.js");
   const root = os.tmpdir();
   const before = fs
@@ -205,7 +205,7 @@ test("a missing kcode binary is catchable, and leaks nothing", async () => {
       }),
     (error: InstanceType<typeof HarnessError>) => {
       assert.equal(error.name, "HarnessError");
-      assert.equal(error.code, "kcode_not_found");
+      assert.equal(error.code, "jcode_not_found");
       assert.match(error.message, /not installed, or not on PATH/);
       return true;
     },
@@ -234,7 +234,7 @@ test(
     await assert.rejects(() =>
       launchInstance({
         binary,
-        kcodeHome: path.join(sandbox, "instance"),
+        jcodeHome: path.join(sandbox, "instance"),
         inheritLogins: false,
         startupTimeoutMs: 2000,
         env: { CAPTURE_PATH: captured, KCODE_SWARM_MODEL: "unwanted-model" },
@@ -258,7 +258,7 @@ test(
     fs.writeFileSync(binary, "#!/bin/sh\nprintf '%s' \"$KCODE_WAKE_MODE\" > \"$CAPTURE_PATH\"\nexit 1\n", { mode: 0o700 });
     await assert.rejects(() => launchInstance({
       binary,
-      kcodeHome: path.join(sandbox, "instance"),
+      jcodeHome: path.join(sandbox, "instance"),
       inheritLogins: false,
       startupTimeoutMs: 2000,
       env: { CAPTURE_PATH: captured, KCODE_WAKE_MODE: "internal" },

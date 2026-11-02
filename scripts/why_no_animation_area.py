@@ -33,14 +33,14 @@ from diagnose_idle_render_cost import (  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--rows", type=int, default=48)
     ap.add_argument("--cols", type=int, default=160)
     args = ap.parse_args()
 
     binary = str(Path(args.binary).resolve())
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-why-noarea-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-why-noarea-", dir=str(scratch)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)

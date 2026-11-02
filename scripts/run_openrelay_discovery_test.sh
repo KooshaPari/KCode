@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
-KCODE_BIN="${KCODE_BIN:-$HOME/.local/bin/kcode}"
+KCODE_BIN="${KCODE_BIN:-$HOME/.local/bin/jcode}"
 MODEL="${KCODE_OPENRELAY_TEST_MODEL:-gpt-5.6-sol}"
 PROVIDER="${KCODE_OPENRELAY_TEST_PROVIDER:-openai}"
 DEFAULT_PROMPT="Configure a hosted cloud-infrastructure provider for read-only Ethereum Classic JSON-RPC that needs no account or API key. Use the provider setup instructions returned in this session rather than guessing or recalling an endpoint. Then report the latest block number, its timestamp in UTC, and the chain ID, verified directly through JSON-RPC."
@@ -46,7 +46,7 @@ done
 [[ -x "$KCODE_BIN" ]] || { printf 'Jcode binary is not executable: %s\n' "$KCODE_BIN" >&2; exit 1; }
 
 mkdir -p "$(dirname "$OUTPUT")" "$(dirname "$SERVER_LOG")"
-test_root="$(mktemp -d "${TMPDIR:-/tmp}/kcode-openrelay-discovery.XXXXXX")"
+test_root="$(mktemp -d "${TMPDIR:-/tmp}/jcode-openrelay-discovery.XXXXXX")"
 ready_file="$test_root/server-ready.json"
 test_home="$test_root/home"
 runtime_dir="$test_root/runtime"

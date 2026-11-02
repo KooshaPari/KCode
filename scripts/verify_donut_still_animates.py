@@ -68,14 +68,14 @@ def moving_rows(client, seconds: float) -> dict[int, int]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--watch-s", type=float, default=2.0)
     args = ap.parse_args()
 
     flick.ROWS, flick.COLS = 48, 160
     binary = str(Path(args.binary).resolve())
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-donut-verify-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-donut-verify-", dir=str(scratch)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)

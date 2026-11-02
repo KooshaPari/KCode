@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-WATCHED_CRATES = ["kcode-base", "kcode-app-core", "kcode-tui", "kcode"]
+WATCHED_CRATES = ["jcode-base", "jcode-app-core", "jcode-tui", "jcode"]
 
 
 @dataclass
@@ -56,7 +56,7 @@ def lib_or_root_src(package: dict[str, Any]) -> Path | None:
     for target in package.get("targets", []):
         if "lib" in target.get("kind", []):
             return Path(target["src_path"])
-    if package["name"] == "kcode":
+    if package["name"] == "jcode":
         return ROOT / "src"
     src = manifest.parent / "src"
     return src if src.exists() else None
@@ -137,33 +137,33 @@ def collect_stats(package: dict[str, Any], workspace_names: set[str]) -> CrateSt
 def target_state_violations(stats_by_name: dict[str, CrateStats]) -> list[str]:
     violations: list[str] = []
 
-    tui = stats_by_name.get("kcode-tui")
-    if tui and "kcode-app-core" in tui.normal_workspace_deps:
-        violations.append("target-state: kcode-tui still directly depends on kcode-app-core")
+    tui = stats_by_name.get("jcode-tui")
+    if tui and "jcode-app-core" in tui.normal_workspace_deps:
+        violations.append("target-state: jcode-tui still directly depends on jcode-app-core")
 
-    app_core = stats_by_name.get("kcode-app-core")
-    if app_core and "kcode-base" in app_core.normal_workspace_deps:
-        violations.append("target-state: kcode-app-core still directly depends on kcode-base")
+    app_core = stats_by_name.get("jcode-app-core")
+    if app_core and "jcode-base" in app_core.normal_workspace_deps:
+        violations.append("target-state: jcode-app-core still directly depends on jcode-base")
 
-    base = stats_by_name.get("kcode-base")
+    base = stats_by_name.get("jcode-base")
     if base:
         for dep in base.normal_workspace_deps:
             if dep in {
-                "kcode-azure-auth",
-                "kcode-provider-gemini",
-                "kcode-provider-openai",
-                "kcode-provider-openrouter",
-                "kcode-notify-email",
-                "kcode-build-support",
+                "jcode-azure-auth",
+                "jcode-provider-gemini",
+                "jcode-provider-openai",
+                "jcode-provider-openrouter",
+                "jcode-notify-email",
+                "jcode-build-support",
             }:
-                violations.append(f"target-state: kcode-base still depends on leaf/runtime crate {dep}")
+                violations.append(f"target-state: jcode-base still depends on leaf/runtime crate {dep}")
         for dep in base.normal_external_deps:
             if dep.startswith("aws-") or dep in {"aws-types"}:
-                violations.append(f"target-state: kcode-base still depends directly on AWS crate {dep}")
+                violations.append(f"target-state: jcode-base still depends directly on AWS crate {dep}")
 
     for crate in stats_by_name.values():
         for glob in crate.glob_reexports:
-            if crate.name in {"kcode", "kcode-app-core", "kcode-tui"}:
+            if crate.name in {"jcode", "jcode-app-core", "jcode-tui"}:
                 violations.append(f"target-state: broad glob re-export remains in {glob}")
 
     return violations

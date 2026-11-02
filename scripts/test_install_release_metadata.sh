@@ -6,7 +6,7 @@ trap 'rm -rf "$tmp"' EXIT
 fixture="$tmp/repo"; fake_bin="$tmp/bin"
 mkdir -p "$fixture/scripts/lib" "$fake_bin"
 cp "$repo_root/scripts/install_release.sh" "$fixture/scripts/"
-printf '%s\n' 'kcode_configure_path() { :; }' > "$fixture/scripts/lib/configure_path.sh"
+printf '%s\n' 'jcode_configure_path() { :; }' > "$fixture/scripts/lib/configure_path.sh"
 printf '%s\n' '[workspace]' > "$fixture/Cargo.toml"
 cat > "$fake_bin/git" <<'EOF'
 #!/usr/bin/env bash
@@ -25,11 +25,11 @@ test "${KCODE_BUILD_GIT_HASH:-}" = abc123def
 test "${KCODE_BUILD_GIT_DATE:-}" = '2026-08-09 20:00:00 +0000'
 test "${KCODE_BUILD_GIT_DIRTY:-}" = "${TEST_DIRTY:-0}"
 mkdir -p "$TEST_REPO/target/release"
-cat > "$TEST_REPO/target/release/kcode" <<BIN
+cat > "$TEST_REPO/target/release/jcode" <<BIN
 #!/usr/bin/env bash
-if [[ "\${1:-}" == --version ]]; then printf '%s\\n' 'kcode v0.0.0-dev (${TEST_BINARY_HASH:-$KCODE_BUILD_GIT_HASH}, dirty)'; fi
+if [[ "\${1:-}" == --version ]]; then printf '%s\\n' 'jcode v0.0.0-dev (${TEST_BINARY_HASH:-$KCODE_BUILD_GIT_HASH}, dirty)'; fi
 BIN
-chmod +x "$TEST_REPO/target/release/kcode"
+chmod +x "$TEST_REPO/target/release/jcode"
 EOF
 chmod +x "$fake_bin/git" "$fake_bin/cargo"
 run_install() {
@@ -37,7 +37,7 @@ run_install() {
     KCODE_INSTALL_DIR="$tmp/launcher" KCODE_SKIP_SERVER_RELOAD=1 "$fixture/scripts/install_release.sh"
 }
 TEST_DIRTY=1 run_install >/dev/null
-test -x "$tmp/home/.kcode/builds/versions/abc123def-dirty/kcode"
+test -x "$tmp/home/.kcode/builds/versions/abc123def-dirty/jcode"
 test "$(cat "$tmp/home/.kcode/builds/current-version")" = abc123def-dirty
 rm -rf "$tmp/home" "$tmp/launcher"
 if TEST_BINARY_HASH=stale999 TEST_DIRTY=0 run_install >"$tmp/out" 2>"$tmp/err"; then

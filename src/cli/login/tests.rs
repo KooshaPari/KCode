@@ -21,7 +21,8 @@ fn novita_login_saves_private_key_and_rejects_empty_replacement() {
         .join(profile.env_file);
     let saved = std::fs::read_to_string(&path).unwrap();
     assert!(saved.contains("NOVITA_API_KEY=novita_test_key"));
-    assert_eq!(std::env::var("NOVITA_API_KEY").unwrap(), "novita_test_key");
+    // File only (#1386): the key must not be copied into the process env.
+    assert_eq!(std::env::var_os("NOVITA_API_KEY"), prev_key);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -56,15 +57,15 @@ fn set_or_clear_env(key: &str, value: Option<std::ffi::OsString>) {
 fn scriptable_resume_command_matches_input_kind() {
     assert_eq!(
         scriptable_resume_command("openai", "callback_url", None),
-        "kcode login --provider openai --callback-url '<url-or-query>'"
+        "jcode login --provider openai --callback-url '<url-or-query>'"
     );
     assert_eq!(
         scriptable_resume_command("gemini", "auth_code", None),
-        "kcode login --provider gemini --auth-code '<code>'"
+        "jcode login --provider gemini --auth-code '<code>'"
     );
     assert_eq!(
         scriptable_resume_command("copilot", "complete", None),
-        "kcode login --provider copilot --complete"
+        "jcode login --provider copilot --complete"
     );
 }
 

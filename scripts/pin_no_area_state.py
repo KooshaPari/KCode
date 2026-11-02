@@ -38,14 +38,14 @@ WATCH_KEYS = (
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--samples", type=int, default=14)
     ap.add_argument("--interval-s", type=float, default=1.0)
     args = ap.parse_args()
 
     binary = str(Path(args.binary).resolve())
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-pinstate-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-pinstate-", dir=str(scratch)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)

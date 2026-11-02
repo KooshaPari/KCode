@@ -45,7 +45,7 @@ def snapshot(cmd_path: Path, resp_path: Path) -> tuple[dict, dict, dict, list]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--window-s", type=float, default=3.0)
     ap.add_argument("--type-slash", action="store_true",
                     help="open the slash palette before measuring")
@@ -55,7 +55,7 @@ def main() -> int:
 
     binary = str(Path(args.binary).resolve())
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-drawcount-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-drawcount-", dir=str(scratch)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)

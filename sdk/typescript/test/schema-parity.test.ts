@@ -20,7 +20,7 @@ import {
 } from "../dist/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const rustCrate = path.resolve(here, "../../../crates/kcode-harness-api/src");
+const rustCrate = path.resolve(here, "../../../crates/jcode-harness-api/src");
 
 function snakeCase(variant: string): string {
   return variant.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toLowerCase();

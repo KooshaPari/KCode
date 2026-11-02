@@ -14,7 +14,7 @@ not claim that the earlier LinkedIn research or Amazon cart tasks were completed
 Final coordinated command:
 
 ```sh
-cargo test -p kcode-app-core --lib browser -- --nocapture
+cargo test -p jcode-app-core --lib browser -- --nocapture
 BROWSER_SESSION=<existing-session> python3 scripts/test_browser_handoff_live.py --tab-id <disposable-tab>
 ```
 
@@ -27,13 +27,13 @@ Observed run `2059807twx`, exit 0 at 09:40:32 UTC:
 - The subscription-only smoke case was not run. Live decisions used OpenRouter.
 - Earlier complete rerun `163628unon` also passed all five live cases.
 
-Local full logs: `/tmp/kcode-bg-tasks/2059807twx.output` and
-`/tmp/kcode-bg-tasks/163628unon.output`. These are ephemeral, not repository artifacts.
+Local full logs: `/tmp/jcode-bg-tasks/2059807twx.output` and
+`/tmp/jcode-bg-tasks/163628unon.output`. These are ephemeral, not repository artifacts.
 The concrete outcomes and named assertions below are the durable evidence summary.
 
 ## Explicit requirements mapped to observations
 
-Test names below are in `crates/kcode-app-core/src/tool/`.
+Test names below are in `crates/jcode-app-core/src/tool/`.
 
 | Requirement | Concrete check | Observed result |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ Test names below are in `crates/kcode-app-core/src/tool/`.
 ## Real-site feedback: demonstrated improvement
 
 Same task and read-only context, default interaction confidence 0.8, max 15 actions:
-find/open `CONTRIBUTING.md` in `1jehuang/kcode`, and finish only with the actual
+find/open `CONTRIBUTING.md` in `1jehuang/jcode`, and finish only with the actual
 contribution guidelines visible. No exact scripts, site-specific action candidates,
 or parent-directed clicks/scrolls were supplied.
 
@@ -77,7 +77,7 @@ or parent-directed clicks/scrolls were supplied.
 | Fresh repository tab, 09:40:16 through 09:40:21 UTC | Repeated single handoff scrolled at 0.74, clicked the contribution file at 1.0, returned done. No parent intervention during the task. |
 
 Both successful final observations had URL
-`https://github.com/1jehuang/kcode/blob/master/CONTRIBUTING.md` and text stating
+`https://github.com/1jehuang/jcode/blob/master/CONTRIBUTING.md` and text stating
 that pull requests from everyone are welcome and review is based on correctness,
 tests, security, architecture, maintainability and project fit rather than author
 status. Only read-only navigation and observation actions were executed.

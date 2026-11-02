@@ -13,7 +13,7 @@ struct SpawnedWindowsServer {
 }
 
 impl SpawnedWindowsServer {
-    fn kcode_binary() -> std::path::PathBuf {
+    fn jcode_binary() -> std::path::PathBuf {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let release_binary = manifest_dir
             .join("target")
@@ -37,12 +37,12 @@ impl SpawnedWindowsServer {
         std::fs::create_dir_all(&runtime_dir)?;
         std::fs::create_dir_all(&install_dir)?;
 
-        let socket_path = runtime_dir.join("kcode-windows-lifecycle.sock");
-        let debug_socket_path = runtime_dir.join("kcode-windows-lifecycle-debug.sock");
+        let socket_path = runtime_dir.join("jcode-windows-lifecycle.sock");
+        let debug_socket_path = runtime_dir.join("jcode-windows-lifecycle-debug.sock");
 
         let stdout_file = std::fs::File::create(&stdout_path)?;
         let stderr_file = std::fs::File::create(&stderr_path)?;
-        let mut command = Command::new(Self::kcode_binary());
+        let mut command = Command::new(Self::jcode_binary());
         command
             .arg("--no-update")
             .arg("--socket")
@@ -102,8 +102,8 @@ impl SpawnedWindowsServer {
             .env("RUST_BACKTRACE", "1")
     }
 
-    fn kcode_command(&self) -> Command {
-        let mut command = Command::new(Self::kcode_binary());
+    fn jcode_command(&self) -> Command {
+        let mut command = Command::new(Self::jcode_binary());
         self.apply_env(&mut command);
         command
     }
@@ -116,7 +116,7 @@ impl SpawnedWindowsServer {
         let stderr_path = self._temp_root.path().join(format!("{label}-stderr.log"));
         let stdout_file = std::fs::File::create(&stdout_path)?;
         let stderr_file = std::fs::File::create(&stderr_path)?;
-        let mut command = Command::new(Self::kcode_binary());
+        let mut command = Command::new(Self::jcode_binary());
         self.apply_env(&mut command)
             .arg("--no-update")
             .arg("--socket")
@@ -180,7 +180,7 @@ impl SpawnedWindowsServer {
             let _ = std::fs::copy(&self.stderr_path, artifact_dir.join("server-stderr.log"));
             let logs_dir = self.home_dir.join("logs");
             if let Ok(entries) = std::fs::read_dir(logs_dir) {
-                let copied_logs_dir = artifact_dir.join("kcode-logs");
+                let copied_logs_dir = artifact_dir.join("jcode-logs");
                 let _ = std::fs::create_dir_all(&copied_logs_dir);
                 for entry in entries.flatten() {
                     let path = entry.path();
@@ -236,7 +236,7 @@ async fn wait_for_server_unreachable(socket_path: &std::path::Path) -> Result<()
 #[tokio::test]
 async fn windows_binary_server_accepts_clients_and_debug_cli() -> Result<()> {
     let _env = setup_test_env()?;
-    let server = SpawnedWindowsServer::spawn("kcode-windows-lifecycle-")?;
+    let server = SpawnedWindowsServer::spawn("jcode-windows-lifecycle-")?;
 
     let result = async {
         server.wait_ready().await?;
@@ -260,7 +260,7 @@ async fn windows_binary_server_accepts_clients_and_debug_cli() -> Result<()> {
         );
 
         let output = server
-            .kcode_command()
+            .jcode_command()
             .arg("--no-update")
             .arg("--socket")
             .arg(&server.socket_path)
@@ -292,7 +292,7 @@ async fn windows_binary_server_accepts_clients_and_debug_cli() -> Result<()> {
 #[tokio::test]
 async fn windows_binary_server_rebinds_named_pipe_after_exit() -> Result<()> {
     let _env = setup_test_env()?;
-    let mut first = SpawnedWindowsServer::spawn("kcode-windows-rebind-")?;
+    let mut first = SpawnedWindowsServer::spawn("jcode-windows-rebind-")?;
 
     let result = async {
         first.wait_ready().await?;

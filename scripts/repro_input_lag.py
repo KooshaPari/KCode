@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Reproduce and measure input-line lag in a freshly spawned kcode TUI.
+Reproduce and measure input-line lag in a freshly spawned jcode TUI.
 
 Why this exists
 ---------------
-Users report that a *newly spawned* kcode is laggy: the slash-command popup
+Users report that a *newly spawned* jcode is laggy: the slash-command popup
 stalls and each keystroke takes a visible moment to appear in the input line.
 Unit tests render synthetically and never observe the real
 "byte in -> repainted glyph out" latency of the live binary.
@@ -436,9 +436,9 @@ def draw_stats_summary(cmd_path: Path, resp_path: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    default_bin = REPO_ROOT / "target" / "selfdev" / "kcode"
+    default_bin = REPO_ROOT / "target" / "selfdev" / "jcode"
     if not default_bin.exists():
-        default_bin = Path.home() / ".kcode" / "builds" / "current" / "kcode"
+        default_bin = Path.home() / ".kcode" / "builds" / "current" / "jcode"
     ap.add_argument("--binary", default=str(default_bin))
     ap.add_argument("--json", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -453,7 +453,7 @@ def main() -> int:
                          "letting startup work finish first")
     ap.add_argument("--background-clients", type=int, default=0,
                     help="spawn N extra live TUI clients first. Real users run "
-                         "many kcode windows at once, and each one repaints on a "
+                         "many jcode windows at once, and each one repaints on a "
                          "tick, so this reproduces the contention a lone client "
                          "never sees.")
     ap.add_argument("--no-idle-animation", action="store_true",
@@ -467,7 +467,7 @@ def main() -> int:
         print(f"binary not found: {binary}")
         return 3
 
-    root = Path(tempfile.mkdtemp(prefix="kcode-input-lag-"))
+    root = Path(tempfile.mkdtemp(prefix="jcode-input-lag-"))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)
@@ -506,7 +506,7 @@ def main() -> int:
     cmd_path, resp_path = run / "client_cmd", run / "client_resp"
 
     if not args.json:
-        print("== kcode input-lag repro ==")
+        print("== jcode input-lag repro ==")
         print(f"  binary : {binary}")
         print(f"  mode   : {'live (real server/home)' if args.live else 'isolated'}")
         print(f"  socket : {env['KCODE_SOCKET']}")

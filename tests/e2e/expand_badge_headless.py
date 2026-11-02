@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Headless E2E regression for the edit expand badge shortcut.
 
-This starts a real kcode TUI client inside a pseudo-terminal, prepares a real
+This starts a real jcode TUI client inside a pseudo-terminal, prepares a real
 rendered edit-diff expand-badge fixture through the client debug command, sends
 terminal key bytes to the PTY, and asserts the live TUI state changed.
 
-Run from repo root after building kcode:
+Run from repo root after building jcode:
   python3 tests/e2e/expand_badge_headless.py
 """
 
@@ -71,12 +71,12 @@ def main():
     binary = os.environ.get("KCODE_E2E_BIN")
     if not binary:
         candidates = [
-            REPO / "target" / "selfdev" / "kcode",
-            Path.home() / ".kcode" / "builds" / "current" / "kcode",
+            REPO / "target" / "selfdev" / "jcode",
+            Path.home() / ".kcode" / "builds" / "current" / "jcode",
         ]
         binary = next((str(p) for p in candidates if p.exists()), None)
     if not binary:
-        raise SystemExit("No kcode binary found. Set KCODE_E2E_BIN or build first.")
+        raise SystemExit("No jcode binary found. Set KCODE_E2E_BIN or build first.")
 
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.connect(SOCKET_PATH)

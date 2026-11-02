@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Attribute the cost of a freshly spawned kcode's idle render loop.
+Attribute the cost of a freshly spawned jcode's idle render loop.
 
 Why this exists
 ---------------
@@ -314,9 +314,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    default_bin = REPO_ROOT / "target" / "selfdev" / "kcode"
+    default_bin = REPO_ROOT / "target" / "selfdev" / "jcode"
     if not default_bin.exists():
-        default_bin = Path.home() / ".kcode" / "builds" / "current" / "kcode"
+        default_bin = Path.home() / ".kcode" / "builds" / "current" / "jcode"
     ap.add_argument("--binary", default=str(default_bin))
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--window-s", type=float, default=2.0)
@@ -328,7 +328,7 @@ def main() -> int:
         print(f"binary not found: {binary}")
         return 3
 
-    root = Path(tempfile.mkdtemp(prefix="kcode-render-cost-"))
+    root = Path(tempfile.mkdtemp(prefix="jcode-render-cost-"))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)
@@ -356,7 +356,7 @@ def main() -> int:
     cmd_path, resp_path = run / "client_cmd", run / "client_resp"
 
     if not args.json:
-        print("== kcode idle render cost ==")
+        print("== jcode idle render cost ==")
         print(f"  binary: {binary}")
         print(f"  donut : {'off' if args.no_idle_animation else 'on'}")
 

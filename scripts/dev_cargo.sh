@@ -28,7 +28,7 @@ esac
 
 # shellcheck source=scripts/remote_config.sh
 source "$repo_root/scripts/remote_config.sh"
-kcode_load_remote_config
+jcode_load_remote_config
 
 log() {
   printf 'dev_cargo: %s\n' "$*" >&2
@@ -49,7 +49,7 @@ start_rust_action_log() {
   esac
 
   local state_root="${KCODE_HOME:-${HOME:+$HOME/.kcode}}"
-  [[ -n "$state_root" ]] || state_root="$repo_root/target/kcode-state"
+  [[ -n "$state_root" ]] || state_root="$repo_root/target/jcode-state"
   rust_action_log_path="${KCODE_RUST_ACTION_LOG_PATH:-$state_root/logs/rust-actions.jsonl}"
   rust_action_log_started_ns=$(date +%s%N)
   rust_action_log_started_at=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
@@ -143,15 +143,15 @@ configure_build_tmpdir() {
     return
   elif [[ -n "${KCODE_SCRATCH_DIR:-}" ]]; then
     candidate="$KCODE_SCRATCH_DIR/cargo-tmp"
-    build_tmpdir_status="kcode-scratch"
+    build_tmpdir_status="jcode-scratch"
   elif [[ -n "${KCODE_HOME:-}" ]]; then
     candidate="$KCODE_HOME/scratch/cargo-tmp"
-    build_tmpdir_status="kcode-home"
+    build_tmpdir_status="jcode-home"
   elif [[ -n "${HOME:-}" ]]; then
     candidate="$HOME/.kcode/scratch/cargo-tmp"
     build_tmpdir_status="home-scratch"
   else
-    candidate="$repo_root/target/kcode-scratch/cargo-tmp"
+    candidate="$repo_root/target/jcode-scratch/cargo-tmp"
     build_tmpdir_status="target-scratch"
   fi
 
@@ -230,7 +230,7 @@ maybe_enable_sccache() {
   case "$force_sccache" in
     1|true|yes|on|force) force_sccache="1" ;;
     0|false|no|off|never)
-      sccache_status="disabled-by-kcode-sccache"
+      sccache_status="disabled-by-jcode-sccache"
       log "sccache disabled by KCODE_SCCACHE"
       return
       ;;
@@ -440,7 +440,7 @@ selfdev_low_memory_default_needed() {
   swap_total_kib=$(meminfo_kib SwapTotal)
   [[ -n "$mem_total_kib" && -n "$mem_available_kib" && -n "$swap_total_kib" ]] || return 1
 
-  # On small no-swap machines, earlyoom can terminate the root kcode rustc
+  # On small no-swap machines, earlyoom can terminate the root jcode rustc
   # around 1-3 GiB RSS before the kernel OOM killer would report anything.
   # Keep this adaptive so larger workstations, and currently-idle smaller
   # workstations with enough headroom, retain the faster inherited selfdev
@@ -459,13 +459,13 @@ cpu_count() {
 # builds (e.g. several self-dev agents on one machine) self-throttle instead of
 # all assuming the full core count and tripping earlyoom/OOM.
 #
-# After the monolith was split into the kcode-base/app-core/tui/cli crate DAG,
-# the largest single rustc unit is kcode-base, which has grown back to a
+# After the monolith was split into the jcode-base/app-core/tui/cli crate DAG,
+# the largest single rustc unit is jcode-base, which has grown back to a
 # measured ~1.6 GiB RSS peak (selfdev profile, sampled VmRSS while building the
 # lib), down from the old 2.5-3 GiB monolith but above the original ~1.28 GiB
 # post-split figure. We budget ~1.75 GiB of currently-available memory per job:
 # a deliberate cushion above the measured peak (rustc's true VmHWM can exceed a
-# coarse sample, and kcode-base keeps growing) so a fresh build under load backs
+# coarse sample, and jcode-base keeps growing) so a fresh build under load backs
 # off before earlyoom SIGTERMs it. Clamp into [1, cpus]. On an idle 15 GiB
 # machine this still uses ~7 of 8 cores; under memory pressure a fresh build
 # backs off further. An explicit CARGO_BUILD_JOBS / KCODE_BUILD_JOBS always
@@ -495,7 +495,7 @@ select_build_jobs() {
   cpus=$(cpu_count)
 
   # Per-job memory budget (MiB). Sized with a cushion above the largest measured
-  # rustc unit (kcode-base, ~1.6 GiB RSS sampled) so an idle machine uses nearly
+  # rustc unit (jcode-base, ~1.6 GiB RSS sampled) so an idle machine uses nearly
   # every core while a memory-pressured one backs off before earlyoom kills a
   # build. Tunable per host via KCODE_BUILD_MIB_PER_JOB.
   mib_per_job_default=1792
@@ -519,10 +519,10 @@ select_build_jobs() {
   fi
 }
 
-# Keep `kcode-build-meta`'s embedded git metadata in lockstep with HEAD without
+# Keep `jcode-build-meta`'s embedded git metadata in lockstep with HEAD without
 # making it watch `.git` mtimes.
 #
-# `kcode-build-meta/build.rs` deliberately does NOT declare `.git/HEAD`/`.git/index`
+# `jcode-build-meta/build.rs` deliberately does NOT declare `.git/HEAD`/`.git/index`
 # as `rerun-if-changed` inputs, because their mtimes change on every `git add`,
 # `git status`, commit, and concurrent-agent git op -- which would force a
 # full-tree recompile (base -> app-core -> tui -> cli) on every incremental
@@ -603,13 +603,13 @@ maybe_configure_low_memory_selfdev() {
 }
 
 # Enable rustc's parallel front-end (`-Zthreads`) for the unoptimized
-# iteration profiles (dev/selfdev/test). The kcode monoliths spend most of an
+# iteration profiles (dev/selfdev/test). The jcode monoliths spend most of an
 # opt-level 0 compile in the single-threaded front-end (type/borrow checking),
 # so extra front-end threads are the highest-leverage compile-time lever.
 #
 # Measured on a 16-thread Intel Core Ultra X9 388H, full re-check of one crate:
-#   kcode-base      29.3s -> 8.8s   (-Zthreads=8, +0.08 GiB RSS)
-#   kcode-app-core  25.7s -> 8.9s   (-Zthreads=8, +0.2 GiB RSS)
+#   jcode-base      29.3s -> 8.8s   (-Zthreads=8, +0.08 GiB RSS)
+#   jcode-app-core  25.7s -> 8.9s   (-Zthreads=8, +0.2 GiB RSS)
 #
 # This is applied through Cargo's RUSTC_WRAPPER
 # (scripts/rustc-parallel-frontend), not RUSTFLAGS or RUSTC_WORKSPACE_WRAPPER:
@@ -662,7 +662,7 @@ configure_linux_linker() {
   case "$mode" in
     auto)
       # Prefer mold over lld: on this repo's large statically-linked binary
-      # (~300 MB .text), mold links the kcode bin in ~2.0s vs lld's ~2.9s
+      # (~300 MB .text), mold links the jcode bin in ~2.0s vs lld's ~2.9s
       # (measured, warm, selfdev profile). The bin relinks on every build, so
       # that ~0.8s is a per-build win. Both need clang as the linker driver.
       if command -v mold >/dev/null 2>&1 && command -v clang >/dev/null 2>&1; then
@@ -725,7 +725,7 @@ parallel_frontend_status=$parallel_frontend_status
 build_jobs_status=$build_jobs_status
 cargo_build_jobs=${CARGO_BUILD_JOBS:-<unset>}
 cargo_gate_mode=$cargo_gate_mode
-cargo_gate_path=${KCODE_CARGO_GATE_PATH:-$cargo_gate_dir/kcode-cargo-build.lock}
+cargo_gate_path=${KCODE_CARGO_GATE_PATH:-$cargo_gate_dir/jcode-cargo-build.lock}
 build_tmpdir_status=$build_tmpdir_status
 tmpdir=${TMPDIR:-<unset>}
 feature_profile_status=$feature_profile_status
@@ -789,7 +789,7 @@ remote_down_cache_path() {
   else
     key="${remote//[^A-Za-z0-9_-]/_}"
   fi
-  printf '%s/kcode-remote-down-%s\n' "${TMPDIR:-/tmp}" "$key"
+  printf '%s/jcode-remote-down-%s\n' "${TMPDIR:-/tmp}" "$key"
 }
 
 remote_down_cache_fresh() {
@@ -907,7 +907,7 @@ remote_cargo_preflight() {
     -o ConnectTimeout="$connect_timeout" \
     -o ServerAliveInterval="$server_alive_interval" \
     -o ServerAliveCountMax="$server_alive_count" \
-    "$remote" "printf 'kcode-remote-ok\\n'" 2>&1); then
+    "$remote" "printf 'jcode-remote-ok\\n'" 2>&1); then
     log "remote cargo preflight failed for $remote after ~${connect_timeout}s: $output"
     record_remote_down
     return 1
@@ -967,7 +967,7 @@ cargo_test_has_explicit_filter() {
 run_local_cargo() {
   if cargo_test_has_explicit_filter "${cargo_argv[@]}" && [[ "${KCODE_DEV_CARGO_ALLOW_ZERO_TESTS:-0}" != "1" ]]; then
     local output_file
-    output_file=$(mktemp "${TMPDIR:-/tmp}/kcode-dev-cargo.XXXXXX")
+    output_file=$(mktemp "${TMPDIR:-/tmp}/jcode-dev-cargo.XXXXXX")
     local status=0
     cargo "${cargo_argv[@]}" 2>&1 | tee "$output_file" || status=${PIPESTATUS[0]}
     if [[ "$status" -eq 0 ]] \
@@ -997,7 +997,7 @@ cargo_action_needs_gate() {
 # memory-heavy rustc processes can still run at once. On this 15 GiB development
 # machine that makes every build slower and can trigger earlyoom.
 #
-# Serialize compile-capable local Cargo actions across all kcode worktrees. A
+# Serialize compile-capable local Cargo actions across all jcode worktrees. A
 # single Cargo invocation can still use all jobs selected by select_build_jobs,
 # so this trades harmful process-level competition for useful crate-level
 # parallelism. Nested wrapper calls inherit KCODE_CARGO_GATE_HELD and cannot
@@ -1026,7 +1026,7 @@ acquire_cargo_gate() {
   local gate_dir gate_path wait_started_ns wait_finished_ns waited_seconds
   gate_dir="${KCODE_CARGO_GATE_DIR:-${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}}"
   mkdir -p "$gate_dir"
-  gate_path="${KCODE_CARGO_GATE_PATH:-$gate_dir/kcode-cargo-build.lock}"
+  gate_path="${KCODE_CARGO_GATE_PATH:-$gate_dir/jcode-cargo-build.lock}"
   # NOTE: `exec {var}>file` requires bash 4.1+, but on macOS this script runs
   # under bash 3.2 (/bin/bash 3.2.57) because /usr/bin precedes Homebrew on PATH.
   # There the brace form fails with "exec: {cargo_gate_fd}: not found" and, under
@@ -1102,7 +1102,7 @@ if [[ "${KCODE_REMOTE_CARGO:-0}" == "1" ]]; then
 fi
 
 acquire_cargo_gate
-# Size the in-process parallelism only after competing kcode Cargo processes
+# Size the in-process parallelism only after competing jcode Cargo processes
 # have drained. Measuring before the wait would preserve an unnecessarily low
 # one-job decision even after memory becomes available.
 select_build_jobs

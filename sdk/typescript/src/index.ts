@@ -1,8 +1,8 @@
 /**
- * TypeScript SDK for the kcode harness API.
+ * TypeScript SDK for the jcode harness API.
  *
  * ```ts
- * import { JcodeClient } from "@1jehuang/kcode-sdk";
+ * import { JcodeClient } from "@kooshapari/kcode-sdk";
  * const client = await JcodeClient.connect({ clientName: "my-app/1.0" });
  * const session = await client.createSession(process.cwd());
  * const turn = await client.run(session.session_id, "hello");

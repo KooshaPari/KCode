@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark and optionally regression-check kcode startup time.
+"""Benchmark and optionally regression-check jcode startup time.
 
 This script runs isolated startup measurements under a temporary KCODE_HOME and
 KCODE_RUNTIME_DIR so it does not interfere with the user's real server, logs, or
@@ -49,7 +49,7 @@ class Budget:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("binary", nargs="?", default="./target/release/kcode")
+    parser.add_argument("binary", nargs="?", default="./target/release/jcode")
     parser.add_argument("--runs", type=int, default=5, help="number of startup runs")
     parser.add_argument(
         "--check",
@@ -132,7 +132,7 @@ def wait_for_socket(path: str, timeout_s: float) -> bool:
 def measure_server_startup(binary: str, runs: int) -> list[float]:
     times: list[float] = []
     for _ in range(runs):
-        root = tempfile.mkdtemp(prefix="kcode-server-bench-")
+        root = tempfile.mkdtemp(prefix="jcode-server-bench-")
         env = isolated_env(root)
         socket_path = env["KCODE_SOCKET"]
         proc = None
@@ -205,9 +205,9 @@ def measure_cold_client_startup(binary: str, runs: int) -> list[StartupProfile]:
     profiles: list[StartupProfile] = []
 
     for _ in range(runs):
-        root = tempfile.mkdtemp(prefix="kcode-cold-bench-")
+        root = tempfile.mkdtemp(prefix="jcode-cold-bench-")
         env = isolated_env(root)
-        log_path = Path(env["KCODE_HOME"]) / "logs" / f"kcode-{time.strftime('%Y-%m-%d')}.log"
+        log_path = Path(env["KCODE_HOME"]) / "logs" / f"jcode-{time.strftime('%Y-%m-%d')}.log"
         try:
             command = (
                 f"{binary} --no-update --debug-socket "

@@ -5,7 +5,7 @@ Rust runs tests in parallel threads of one process, so any test that changes
 KCODE_HOME changes it for every concurrently running test. `storage::lock_test_env`
 is the repo's convention for serializing those. A test that mutates the variable
 without holding that lock can swap the home directory out from under an unrelated
-test mid-assertion, which is the shape of kcode-tui's intermittent failures.
+test mid-assertion, which is the shape of jcode-tui's intermittent failures.
 
 Reports each offending test function so they can be fixed rather than retried.
 """
@@ -13,7 +13,7 @@ import re
 import subprocess
 import sys
 
-CRATE = sys.argv[1] if len(sys.argv) > 1 else "crates/kcode-tui/src"
+CRATE = sys.argv[1] if len(sys.argv) > 1 else "crates/jcode-tui/src"
 
 files = subprocess.run(
     ["grep", "-rl", "KCODE_HOME", "--include=*.rs", CRATE],

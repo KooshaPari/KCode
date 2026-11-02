@@ -164,7 +164,7 @@ fn run_main() -> Result<()> {
     // check for updates, or emit first-run telemetry disclosure text into the
     // parent CLI's hook output.
     if let Some(source) = cli_launch_hint_source_invocation() {
-        return kcode::setup_hints::run_setup_hotkey(false, false, false, Some(&source));
+        return jcode::setup_hints::run_setup_hotkey(false, false, false, Some(&source));
     }
 
     // The macOS global-hotkey listener must run on the real main thread with a
@@ -173,15 +173,15 @@ fn run_main() -> Result<()> {
     // otherwise move execution onto a worker thread with no run loop and leave
     // the Cmd+; hotkey silently dead.
     if is_macos_hotkey_listener_invocation() {
-        return kcode::setup_hints::run_macos_hotkey_listener_main_thread();
+        return jcode::setup_hints::run_macos_hotkey_listener_main_thread();
     }
 
     // The generated LSUIElement helper hard-links this universal binary under
     // a dedicated executable name. Intercept that multicall entry point before
     // Tokio/CLI startup so AppKit and Notification Center stay on the real main
     // thread and the helper never initializes an agent session.
-    if kcode::cli::macos_notification_broker::is_invocation() {
-        return kcode::cli::macos_notification_broker::run();
+    if jcode::cli::macos_notification_broker::is_invocation() {
+        return jcode::cli::macos_notification_broker::run();
     }
 
     let mut builder = tokio::runtime::Builder::new_multi_thread();
@@ -210,10 +210,10 @@ fn run_main() -> Result<()> {
     }
     let runtime = builder.build()?;
 
-    runtime.block_on(async { kcode::run().await })
+    runtime.block_on(async { jcode::run().await })
 }
 
-/// True when invoked as `kcode setup-hotkey --listen-macos-hotkey`.
+/// True when invoked as `jcode setup-hotkey --listen-macos-hotkey`.
 fn is_macos_hotkey_listener_invocation() -> bool {
     args_are_macos_hotkey_listener(std::env::args().skip(1))
 }

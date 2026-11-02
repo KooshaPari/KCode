@@ -436,7 +436,7 @@ def run_self_test(debug_sock: Path, session_id: str, verbose: bool) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    default_bin = Path.home() / ".kcode" / "builds" / "current" / "kcode"
+    default_bin = Path.home() / ".kcode" / "builds" / "current" / "jcode"
     ap.add_argument("--binary", default=str(default_bin))
     ap.add_argument("--turns", type=int, default=3, help="tool-call turns to seed")
     ap.add_argument("--keep", action="store_true", help="keep temp home on exit")
@@ -451,7 +451,7 @@ def main() -> int:
         print(f"❌ binary not found: {binary}")
         return 1
 
-    root = Path(tempfile.mkdtemp(prefix="kcode-repro314-"))
+    root = Path(tempfile.mkdtemp(prefix="jcode-repro314-"))
     home = root / "home"
     run = root / "run"
     home.mkdir(parents=True, exist_ok=True)

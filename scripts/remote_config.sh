@@ -10,19 +10,19 @@
 # config file. This lets callers temporarily disable remote builds with, for
 # example, `KCODE_REMOTE_CARGO=0 scripts/dev_cargo.sh check`.
 
-kcode_remote_config_path() {
+jcode_remote_config_path() {
   if [[ -n "${KCODE_REMOTE_CONFIG:-}" ]]; then
     printf '%s\n' "$KCODE_REMOTE_CONFIG"
   elif [[ -n "${XDG_CONFIG_HOME:-}" ]]; then
-    printf '%s\n' "$XDG_CONFIG_HOME/kcode/remote-build.env"
+    printf '%s\n' "$XDG_CONFIG_HOME/jcode/remote-build.env"
   elif [[ -n "${HOME:-}" ]]; then
     printf '%s\n' "$HOME/.config/kcode/remote-build.env"
   fi
 }
 
-kcode_load_remote_config() {
+jcode_load_remote_config() {
   local config_file
-  config_file="$(kcode_remote_config_path)"
+  config_file="$(jcode_remote_config_path)"
   [[ -n "$config_file" && -f "$config_file" ]] || return 0
 
   local had_remote_cargo=0 remote_cargo=""

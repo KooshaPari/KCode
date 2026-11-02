@@ -102,7 +102,7 @@ class DemoShopTests(unittest.TestCase):
             if line.startswith("PROMPT=")
         )
         lowered = prompt_line.lower()
-        self.assertIn("Use `./bin/kcode-demo-shop`", prompt_line)
+        self.assertIn("Use `./bin/jcode-demo-shop`", prompt_line)
         self.assertIn("USB-C laptop charger", prompt_line)
         self.assertIn("work through any prerequisites", lowered)
         self.assertIn("ask me for confirmation immediately before", lowered)

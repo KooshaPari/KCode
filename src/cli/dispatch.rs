@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::io::IsTerminal;
 use std::process::{Command as ProcessCommand, Stdio};
 use std::time::Instant;
@@ -72,6 +72,14 @@ fn arm_debug_client_parent_death_signal() {
 fn arm_debug_client_parent_death_signal() {}
 
 pub(crate) async fn run_main(mut args: Args) -> Result<()> {
+    if let Some(Command::Session(SessionCommand::ImportJcode { session })) = &args.command {
+        if args.ssh.is_some() {
+            anyhow::bail!(
+                "Session import is local; run it on the machine holding the jcode sessions"
+            );
+        }
+        return commands::session_commands::import_jcode_session_command(session);
+    }
     arm_debug_client_parent_death_signal();
     if args.ssh.is_some() {
         // A remote session ID and working directory belong to the remote host.
@@ -103,7 +111,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         provider_catalog::apply_named_provider_profile_env(profile_name)?;
         crate::env::set_var("KCODE_PROVIDER_PROFILE_NAME", profile_name);
         crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
-        args.provider = ProviderChoice::OpenaiCompatible;
+        args.provider = provider_choice_for_named_profile(profile_name);
     }
 
     if let Some(tool_profile) = args.tool_profile.as_deref() {
@@ -188,10 +196,10 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
                 )
                 .await
                 .map_err(|_| {
-                    anyhow::anyhow!("api --stdio: timed out starting the kcode server")
+                    anyhow::anyhow!("api --stdio: timed out starting the jcode server")
                 })??;
-                kcode_harness_api_server::run_bridge_stdio(
-                    kcode_harness_api_server::legacy_socket_path(),
+                jcode_harness_api_server::run_bridge_stdio(
+                    jcode_harness_api_server::legacy_socket_path(),
                 )
                 .await?;
                 return Ok(());
@@ -214,16 +222,16 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             )
             .await
             {
-                eprintln!("api-bridge: could not start the kcode server: {error:#}");
+                eprintln!("api-bridge: could not start the jcode server: {error:#}");
                 eprintln!("api-bridge: continuing; an already-running server will still be used");
             }
             let api_socket = api_socket
                 .map(std::path::PathBuf::from)
-                .unwrap_or_else(kcode_harness_api_server::api_socket_path);
+                .unwrap_or_else(jcode_harness_api_server::api_socket_path);
             // The global `--socket` (and `KCODE_SOCKET`) already selects the
             // daemon socket; `set_socket_path` exported it during startup.
-            let legacy_socket = kcode_harness_api_server::legacy_socket_path();
-            kcode_harness_api_server::run_bridge(api_socket, legacy_socket).await?;
+            let legacy_socket = jcode_harness_api_server::legacy_socket_path();
+            jcode_harness_api_server::run_bridge(api_socket, legacy_socket).await?;
         }
         Some(Command::Server { action }) => match action {
             #[cfg(unix)]
@@ -307,37 +315,32 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             flow_id,
             cancel,
             no_validate,
-            google_access_tier,
+            google,
             api_base,
             api_key,
             api_key_env,
         }) => {
+            let mut options = login::LoginOptions {
+                no_browser,
+                print_auth_url,
+                callback_url,
+                auth_code,
+                json,
+                complete,
+                flow_id,
+                cancel,
+                no_validate,
+                openai_compatible_api_base: api_base,
+                openai_compatible_api_key: api_key,
+                openai_compatible_api_key_env: api_key_env,
+                openai_compatible_default_model: args.model.clone(),
+                ..Default::default()
+            };
+            google.apply(&mut options)?;
             login::run_login(
                 &login_provider.unwrap_or(args.provider),
                 account.as_deref(),
-                login::LoginOptions {
-                    no_browser,
-                    print_auth_url,
-                    callback_url,
-                    auth_code,
-                    json,
-                    complete,
-                    flow_id,
-                    cancel,
-                    no_validate,
-                    google_access_tier: google_access_tier.map(|tier| match tier {
-                        super::args::GoogleAccessTierArg::Full => {
-                            auth::google::GmailAccessTier::Full
-                        }
-                        super::args::GoogleAccessTierArg::Readonly => {
-                            auth::google::GmailAccessTier::ReadOnly
-                        }
-                    }),
-                    openai_compatible_api_base: api_base,
-                    openai_compatible_api_key: api_key,
-                    openai_compatible_api_key_env: api_key_env,
-                    openai_compatible_default_model: args.model.clone(),
-                },
+                options,
             )
             .await?;
         }
@@ -439,14 +442,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
         Some(Command::Memory(subcmd)) => {
             commands::run_memory_command(map_memory_subcommand(subcmd)).await?;
         }
-        Some(Command::Session(subcmd)) => match subcmd {
-            SessionCommand::Rename {
-                session,
-                name,
-                clear,
-                json,
-            } => commands::run_session_rename_command(&session, name.as_deref(), clear, json)?,
-        },
+        Some(Command::Session(subcmd)) => commands::session_commands::run_session_command(subcmd)?,
         Some(Command::Ambient(subcmd)) => {
             commands::run_ambient_command(map_ambient_subcommand(subcmd)).await?;
         }
@@ -647,6 +643,39 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
     Ok(())
 }
 
+/// Transport for `--provider-profile <name>` (issue #1560: this used to force
+/// OpenAI-compatible unconditionally). Anthropic-compatible profiles go
+/// through `Auto`, the same path as `default_provider = "<name>"`: the env
+/// applied by `apply_named_provider_profile_env` already selects the
+/// Anthropic Messages runtime with the profile's base URL and auth, while
+/// `AnthropicApi` would pin an Anthropic API-key credential the profile may
+/// not have (e.g. `auth = "none"`).
+fn provider_choice_for_named_profile(profile_name: &str) -> ProviderChoice {
+    // Same source as `apply_named_provider_profile_env`, which already
+    // validated that the profile exists.
+    match crate::config::Config::load_strict() {
+        Ok(config) => provider_choice_for_named_profile_in(profile_name, &config),
+        Err(_) => provider_choice_for_named_profile_in(profile_name, crate::config::config()),
+    }
+}
+
+fn provider_choice_for_named_profile_in(
+    profile_name: &str,
+    config: &crate::config::Config,
+) -> ProviderChoice {
+    match config.providers.get(profile_name) {
+        Some(profile)
+            if matches!(
+                profile.provider_type,
+                crate::config::NamedProviderType::AnthropicCompatible
+            ) =>
+        {
+            ProviderChoice::Auto
+        }
+        _ => ProviderChoice::OpenaiCompatible,
+    }
+}
+
 fn auth_doctor_provider_arg<'a>(
     positional_provider: Option<&'a str>,
     global_provider: &'a ProviderChoice,
@@ -679,7 +708,7 @@ fn resolve_resume_arg(args: &mut Args) -> Result<()> {
                     // for session lifecycle, so an id that is not in the local store
                     // can still be valid server-side. Hard-exiting here dumped the
                     // user back to a shell with "No session found matching ...",
-                    // making kcode unusable after an auto-update (issue #328).
+                    // making jcode unusable after an auto-update (issue #328).
                     // Instead, keep the raw id and let the remote connection resolve
                     // it; if the server cannot find it either, the TUI surfaces a
                     // recoverable message and falls back to a fresh session rather
@@ -694,7 +723,7 @@ fn resolve_resume_arg(args: &mut Args) -> Result<()> {
                     ResumeResolutionFailureAction::Exit => {
                         eprintln!("Error: {}", e);
                         if !output::quiet_enabled() {
-                            eprintln!("\nUse `kcode --resume` to list available sessions.");
+                            eprintln!("\nUse `jcode --resume` to list available sessions.");
                         }
                         std::process::exit(1);
                     }
@@ -911,6 +940,9 @@ fn map_transcript_mode(mode: TranscriptModeArg) -> crate::protocol::TranscriptMo
 
 async fn run_default_command(args: Args) -> Result<()> {
     startup_profile::mark("run_main_none_branch");
+    // The TUI's first frame reads the auth snapshot (welcome/onboarding gate).
+    // Probe it now on a side thread so it overlaps the setup work below.
+    crate::auth::AuthStatus::prewarm_fast_in_background();
 
     let explicit_provider_or_model = args.provider != ProviderChoice::Auto
         || args.model.is_some()
@@ -968,21 +1000,21 @@ async fn run_default_command(args: Args) -> Result<()> {
     startup_profile::mark("crash_resume_hint");
 
     let cwd = std::env::current_dir()?;
-    let in_kcode_repo = build::is_kcode_repo(&cwd);
-    startup_profile::mark("is_kcode_repo");
+    let in_jcode_repo = build::is_jcode_repo(&cwd);
+    startup_profile::mark("is_jcode_repo");
     let already_in_selfdev = crate::cli::selfdev::client_selfdev_requested();
 
     // Record where this interactive launch happened so the system-wide launch
-    // hotkeys can reopen kcode in the last project directory (Cmd+') and the
-    // last kcode repo for self-dev (Cmd+Shift+'). Best-effort; ignored unless a
+    // hotkeys can reopen jcode in the last project directory (Cmd+') and the
+    // last jcode repo for self-dev (Cmd+Shift+'). Best-effort; ignored unless a
     // real TTY and not a fresh-spawn re-entry.
     if !args.fresh_spawn && std::io::IsTerminal::is_terminal(&std::io::stdin()) {
         let repo_dir = build::get_repo_dir();
         setup_hints::record_launch_dirs(&cwd, repo_dir.as_deref());
     }
 
-    if in_kcode_repo && !already_in_selfdev && !args.no_selfdev {
-        output::stderr_info("📍 Detected kcode repository - enabling self-dev mode");
+    if in_jcode_repo && !already_in_selfdev && !args.no_selfdev {
+        output::stderr_info("📍 Detected jcode repository - enabling self-dev mode");
         output::stderr_info("   Using shared server with self-dev session mode");
         output::stderr_info("   (use --no-selfdev to disable auto-detection)");
         output::stderr_blank_line();
@@ -1047,7 +1079,7 @@ async fn run_default_command(args: Args) -> Result<()> {
         // socket that has no live listener AND whose daemon lock is free, so it
         // can never disturb a running server.
         if server::reap_stale_socket_if_dead(&server::socket_path()).await {
-            output::stderr_info("Removed a stale kcode socket from a previous server.");
+            output::stderr_info("Removed a stale jcode socket from a previous server.");
         }
 
         maybe_prompt_server_bootstrap_login(&args.provider).await?;
@@ -1200,6 +1232,18 @@ fn try_acquire_spawn_lock(path: &std::path::Path) -> Result<Option<SpawnLockGuar
     use std::fs::OpenOptions;
     use std::os::fd::AsRawFd;
 
+    // The client acquires this lock before the daemon creates its socket directory.
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create JCode runtime directory {}",
+                parent.display()
+            )
+        })?;
+    }
     let file = OpenOptions::new()
         .create(true)
         .write(true)

@@ -62,7 +62,8 @@ pub(super) async fn run_automatic_google_login(
     let tier = options
         .google_access_tier
         .unwrap_or(auth::google::GmailAccessTier::Full);
-    let tokens = auth::google::login(tier, options.no_browser).await?;
+    let services = default_google_services(options);
+    let tokens = auth::google::login(&services, tier, options.no_browser).await?;
     let credentials_path = auth::google::credentials_path()?;
     let tokens_path = auth::google::tokens_path()?;
 
@@ -77,11 +78,14 @@ pub(super) async fn run_automatic_google_login(
         },
     )?;
     if !options.json {
-        eprintln!("\nGmail setup complete!");
+        eprintln!("\nGoogle setup complete!");
         if let Some(email) = tokens.email {
             eprintln!("Account: {}", email);
         }
-        eprintln!("Access tier: {}", tokens.tier.label());
+        eprintln!(
+            "Services: {}",
+            auth::google::describe_services(&tokens.services, tokens.tier)
+        );
         eprintln!("Tokens saved to {}", tokens_path.display());
     }
     crate::telemetry::record_auth_success(provider_id, "oauth");
@@ -190,22 +194,30 @@ pub(super) async fn start_scriptable_login(
         }
         LoginProviderTarget::Google => {
             let creds = auth::google::load_credentials().context(
-                "Google/Gmail scriptable auth requires saved OAuth credentials first. Run `kcode login --provider google` once or save google credentials manually.",
+                "Google/Gmail scriptable auth requires saved OAuth credentials first. Run `jcode login --provider google` once or save google credentials manually.",
             )?;
             let tier = options
                 .google_access_tier
                 .unwrap_or(auth::google::GmailAccessTier::Full);
+            let services = default_google_services(options);
             let (verifier, challenge) = auth::oauth::generate_pkce_public();
             let state = auth::oauth::generate_state_public();
             let redirect_uri = format!("http://127.0.0.1:{}", auth::google::DEFAULT_PORT);
-            let auth_url =
-                auth::google::build_auth_url(&creds, tier, &redirect_uri, &challenge, &state);
+            let auth_url = auth::google::build_auth_url(
+                &creds,
+                &services,
+                tier,
+                &redirect_uri,
+                &challenge,
+                &state,
+            );
             (
                 PendingScriptableLogin::Google {
                     verifier,
                     state,
                     redirect_uri,
                     tier,
+                    services: services.clone(),
                 },
                 auth_url,
                 "callback_url",
@@ -215,6 +227,7 @@ pub(super) async fn start_scriptable_login(
                     state: String::new(),
                     redirect_uri: String::new(),
                     tier,
+                    services,
                 }
                 .default_expires_at_ms(),
             )
@@ -364,7 +377,7 @@ pub(super) async fn complete_scriptable_claude_login(
             status: "authenticated",
             provider: provider_id.to_string(),
             account_label: Some(account_label.clone()),
-            credentials_path: Some(auth::claude::kcode_path()?.display().to_string()),
+            credentials_path: Some(auth::claude::jcode_path()?.display().to_string()),
             email: profile_email.clone(),
         },
     )?;
@@ -373,7 +386,7 @@ pub(super) async fn complete_scriptable_claude_login(
         eprintln!(
             "Account '{}' stored at {}",
             account_label,
-            auth::claude::kcode_path()?.display()
+            auth::claude::jcode_path()?.display()
         );
         if let Some(email) = profile_email {
             eprintln!("Profile email: {}", email);
@@ -416,7 +429,7 @@ pub(super) async fn complete_scriptable_openai_login(
     auth::oauth::save_openai_tokens_for_account(&tokens, &account_label)?;
     clear_pending_login(&pending_path);
     crate::telemetry::record_auth_success(provider_id, "oauth");
-    let credentials_path = crate::storage::kcode_dir()?.join("openai-auth.json");
+    let credentials_path = crate::storage::jcode_dir()?.join("openai-auth.json");
     emit_scriptable_auth_success(
         options.json,
         ScriptableAuthSuccess {
@@ -547,6 +560,7 @@ pub(super) async fn complete_scriptable_google_login(
         state,
         redirect_uri,
         tier,
+        services,
     } = load_pending_login(&pending_path, "google")?
     else {
         anyhow::bail!("Pending Google login state is invalid.");
@@ -559,7 +573,7 @@ pub(super) async fn complete_scriptable_google_login(
         }
     };
     let creds = auth::google::load_credentials().context(
-        "Google/Gmail completion requires saved OAuth credentials first. Run `kcode login --provider google` once or save google credentials manually.",
+        "Google/Gmail completion requires saved OAuth credentials first. Run `jcode login --provider google` once or save google credentials manually.",
     )?;
     let tokens = auth::google::exchange_callback_input(
         &creds,
@@ -567,6 +581,7 @@ pub(super) async fn complete_scriptable_google_login(
         &callback_input,
         &state,
         &redirect_uri,
+        &services,
         tier,
     )
     .await?;
@@ -583,11 +598,14 @@ pub(super) async fn complete_scriptable_google_login(
         },
     )?;
     if !options.json {
-        eprintln!("Successfully logged in to Google/Gmail!");
+        eprintln!("Successfully logged in to Google!");
         if let Some(email) = tokens.email.as_deref() {
             eprintln!("Account: {}", email);
         }
-        eprintln!("Access tier: {}", tokens.tier.label());
+        eprintln!(
+            "Services: {}",
+            auth::google::describe_services(&tokens.services, tokens.tier)
+        );
         eprintln!("Tokens saved to {}", auth::google::tokens_path()?.display());
     }
     Ok(LoginFlowOutcome::Completed)
@@ -763,7 +781,7 @@ pub(super) fn cancel_scoped_pending_login(path: &Path) -> Result<()> {
 }
 
 pub(super) fn pending_login_dir() -> Result<PathBuf> {
-    Ok(crate::storage::kcode_dir()?.join("pending-login"))
+    Ok(crate::storage::jcode_dir()?.join("pending-login"))
 }
 
 pub(super) fn require_scriptable_input(
@@ -775,7 +793,7 @@ pub(super) fn require_scriptable_input(
 pub(super) fn load_pending_login(path: &PathBuf, provider: &str) -> Result<PendingScriptableLogin> {
     if !path.exists() {
         anyhow::bail!(
-            "No pending {} login state found. Run `kcode login --provider {} --print-auth-url` first.",
+            "No pending {} login state found. Run `jcode login --provider {} --print-auth-url` first.",
             provider,
             provider
         );
@@ -792,7 +810,7 @@ pub(super) fn load_pending_login(path: &PathBuf, provider: &str) -> Result<Pendi
         if record.expires_at_ms <= current_time_ms() {
             clear_pending_login(path);
             anyhow::bail!(
-                "Pending {} login state expired. Run `kcode login --provider {} --print-auth-url` again.",
+                "Pending {} login state expired. Run `jcode login --provider {} --print-auth-url` again.",
                 provider,
                 provider
             );
@@ -918,14 +936,14 @@ pub(super) fn scriptable_resume_command(
     match input_kind {
         "callback_url" => {
             format!(
-                "kcode login --provider {} --callback-url '<url-or-query>'",
+                "jcode login --provider {} --callback-url '<url-or-query>'",
                 provider
             )
         }
-        "auth_code" => format!("kcode login --provider {} --auth-code '<code>'", provider),
-        "complete" => format!("kcode login --provider {} --complete", provider),
+        "auth_code" => format!("jcode login --provider {} --auth-code '<code>'", provider),
+        "complete" => format!("jcode login --provider {} --complete", provider),
         _ => format!(
-            "kcode login --provider {} --callback-url '<url>'  # or --auth-code '<code>'",
+            "jcode login --provider {} --callback-url '<url>'  # or --auth-code '<code>'",
             provider
         ),
     }

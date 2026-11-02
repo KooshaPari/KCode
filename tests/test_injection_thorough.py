@@ -306,7 +306,7 @@ def main():
     # Check socket exists
     if not os.path.exists(SOCKET_PATH):
         print(f"ERROR: Socket not found at {SOCKET_PATH}")
-        print("Make sure kcode is running with debug control enabled.")
+        print("Make sure jcode is running with debug control enabled.")
         return 1
 
     all_passed = True

@@ -4,13 +4,13 @@
 # Defaults:
 # - Config file: ~/.config/kcode/remote-build.env (override with KCODE_REMOTE_CONFIG)
 # - Host: KCODE_REMOTE_HOST from env/config, or --host
-# - Remote dir: .cache/remote-builds/kcode/<repo-name> (override with KCODE_REMOTE_DIR or --remote-dir)
+# - Remote dir: .cache/remote-builds/jcode/<repo-name> (override with KCODE_REMOTE_DIR or --remote-dir)
 #
 # Examples:
 #   scripts/remote_build.sh --release
 #   scripts/remote_build.sh test
 #   scripts/remote_build.sh check --all-targets
-#   scripts/remote_build.sh --host mybox --remote-dir ~/src/kcode test -- --nocapture
+#   scripts/remote_build.sh --host mybox --remote-dir ~/src/jcode test -- --nocapture
 
 set -euo pipefail
 
@@ -21,7 +21,7 @@ Usage: scripts/remote_build.sh [options] [cargo-subcommand] [cargo-args...]
 Options:
   -r, --release        Add --release to cargo invocation
   --host HOST          Remote SSH host (default: $KCODE_REMOTE_HOST from env/config; required if unset)
-  --remote-dir DIR     Remote project directory (default: $KCODE_REMOTE_DIR or .cache/remote-builds/kcode/<repo-name>)
+  --remote-dir DIR     Remote project directory (default: $KCODE_REMOTE_DIR or .cache/remote-builds/jcode/<repo-name>)
   --no-sync            Skip rsync upload step
   --sync-back          Force sync-back of built binary after command
   --no-sync-back       Disable sync-back of built binary after command
@@ -31,7 +31,7 @@ Behavior:
   - Default cargo subcommand is 'build'
   - Sync-back defaults to ON for 'build', OFF for other subcommands
   - For build sync-back, copies target/{debug|release}/<artifact> from remote to local
-    (artifact defaults to 'kcode', or '--bin <name>' when provided)
+    (artifact defaults to 'jcode', or '--bin <name>' when provided)
   - Default config file is ~/.config/kcode/remote-build.env
 EOF
 }
@@ -41,10 +41,10 @@ REPO_NAME="$(basename "$LOCAL_DIR")"
 
 # shellcheck source=scripts/remote_config.sh
 source "$LOCAL_DIR/scripts/remote_config.sh"
-kcode_load_remote_config
+jcode_load_remote_config
 
 REMOTE="${KCODE_REMOTE_HOST:-}"
-REMOTE_DIR="${KCODE_REMOTE_DIR:-.cache/remote-builds/kcode/${REPO_NAME}}"
+REMOTE_DIR="${KCODE_REMOTE_DIR:-.cache/remote-builds/jcode/${REPO_NAME}}"
 SSH_BIN="${KCODE_REMOTE_SSH_BIN:-ssh}"
 RSYNC_BIN="${KCODE_REMOTE_RSYNC_BIN:-rsync}"
 
@@ -185,7 +185,7 @@ else
     build_mode="debug"
 fi
 
-artifact_name="kcode"
+artifact_name="jcode"
 if [[ "$SUBCOMMAND" == "build" ]]; then
     for ((i=0; i<${#POSITIONAL[@]}; i++)); do
         if [[ "${POSITIONAL[$i]}" == "--bin" && $((i + 1)) -lt ${#POSITIONAL[@]} ]]; then
@@ -221,7 +221,7 @@ echo "SSH timeout: ${SSH_CONNECT_TIMEOUT}s"
 
 echo ""
 echo "[0/3] Checking remote SSH..."
-if ! preflight_output="$(remote_ssh "printf 'kcode-remote-ok\\n'" 2>&1)"; then
+if ! preflight_output="$(remote_ssh "printf 'jcode-remote-ok\\n'" 2>&1)"; then
     echo "error: remote host '$REMOTE' is not reachable within ${SSH_CONNECT_TIMEOUT}s" >&2
     echo "$preflight_output" >&2
     echo "hint: set KCODE_REMOTE_CARGO=0 to force local cargo, or fix KCODE_REMOTE_HOST/KCODE_REMOTE_CONNECT_TIMEOUT." >&2

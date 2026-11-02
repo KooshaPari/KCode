@@ -361,7 +361,7 @@ impl SshConnection {
             .map(|bytes| String::from_utf8_lossy(&bytes).trim().to_owned())
             .unwrap_or_default();
         format!(
-            "Native SSH connection closed. Verify SSH credentials/known_hosts and remote `kcode server stdio` support. {stderr}"
+            "Native SSH connection closed. Verify SSH credentials/known_hosts and remote `jcode server stdio` support. {stderr}"
         )
     }
 
@@ -527,7 +527,7 @@ async fn bridge_stream<R: AsyncRead + Unpin, W: AsyncWrite + Unpin>(
     let handshake = NativeHandshake {
         kind: "kcode-native-stdio".into(),
         protocol: PROTOCOL,
-        version: kcode_build_meta::version().to_string(),
+        version: jcode_build_meta::version().to_string(),
         working_dir: std::env::current_dir()?.to_string_lossy().into_owned(),
         socket_path: socket.to_string_lossy().into_owned(),
     };
@@ -596,19 +596,19 @@ mod tests {
             "user name@host",
             "host\nother",
         ] {
-            assert!(SshOptions::new(host, "kcode").is_err(), "{host}");
+            assert!(SshOptions::new(host, "jcode").is_err(), "{host}");
         }
         for host in ["kcode-dev", "user@host", "[::1]", "host.example"] {
-            assert!(SshOptions::new(host, "kcode").is_ok(), "{host}");
+            assert!(SshOptions::new(host, "jcode").is_ok(), "{host}");
         }
-        for binary in ["", "--help", "kcode\nfalse"] {
+        for binary in ["", "--help", "jcode\nfalse"] {
             assert!(SshOptions::new("host", binary).is_err());
         }
     }
 
     #[test]
     fn command_is_owned_noninteractive_and_quotes_literal_paths() {
-        let mut options = SshOptions::new("user@kcode-dev", "/a path/kcode'quoted").unwrap();
+        let mut options = SshOptions::new("user@jcode-dev", "/a path/jcode'quoted").unwrap();
         options.daemon_socket = Some("/socket path/native'quoted".into());
         options.working_dir = Some("/workspace with 'quotes'".into());
         let command = options.command();
@@ -630,11 +630,11 @@ mod tests {
             assert!(args.iter().any(|s| s == required), "{required}");
         }
         let remote = args.last().unwrap();
-        assert!(remote.contains("exec '/a path/kcode'\\''quoted'"));
+        assert!(remote.contains("exec '/a path/jcode'\\''quoted'"));
         assert!(remote.contains("--socket '/socket path/native'\\''quoted'"));
         assert!(remote.contains("--cwd '/workspace with '\\''quotes'\\'''"));
         assert!(remote.ends_with("server stdio"));
-        assert_eq!(args[args.len() - 2], "user@kcode-dev");
+        assert_eq!(args[args.len() - 2], "user@jcode-dev");
     }
 
     #[tokio::test]
@@ -771,7 +771,7 @@ mod tests {
     #[tokio::test]
     async fn workspace_validation_rejects_empty_and_control_paths_before_ssh() {
         for path in ["", "bad\npath", "bad\0path"] {
-            let error = NativeSsh::connect_with_workspace("test", "kcode", None, Some(path))
+            let error = NativeSsh::connect_with_workspace("test", "jcode", None, Some(path))
                 .await
                 .err()
                 .expect("invalid path must fail");

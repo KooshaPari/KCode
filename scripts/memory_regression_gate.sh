@@ -71,7 +71,7 @@ LIVE_HEAP_BYTES="$(jq -r '.client.allocated_bytes // 0' <<<"$IDLE_LINE")"
 
 # Informational server-side numbers (never gate: server load varies).
 SERVER_INFO="$(jq -cn \
-    --argjson rss "$(awk '/VmRSS/{print $2*1024}' "/proc/$(pgrep -f 'shared-server/kcode serve' | head -1)/status" 2>/dev/null || echo 0)" \
+    --argjson rss "$(awk '/VmRSS/{print $2*1024}' "/proc/$(pgrep -f 'shared-server/jcode serve' | head -1)/status" 2>/dev/null || echo 0)" \
     '{server_rss_bytes: $rss}')"
 
 FAILURES=()

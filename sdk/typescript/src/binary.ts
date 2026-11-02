@@ -1,39 +1,20 @@
-import { createRequire } from "node:module";
-import path from "node:path";
+/** KCode has no maintained npm runtime channel for this branch. */
+import { assertKcodePath } from "./product.js";
 
-const require = createRequire(import.meta.url);
-
-const PLATFORM_PACKAGES: Record<string, string> = {
-  "linux-x64": "@1jehuang/kcode-linux-x64",
-  "linux-arm64": "@1jehuang/kcode-linux-arm64",
-  "darwin-x64": "@1jehuang/kcode-darwin-x64",
-  "darwin-arm64": "@1jehuang/kcode-darwin-arm64",
-  "win32-x64": "@1jehuang/kcode-win32-x64",
-  "win32-arm64": "@1jehuang/kcode-win32-arm64",
-};
-
-/** The optional npm package containing the runtime for this machine. */
-export function platformBinaryPackage(
-  platform = process.platform,
-  arch = process.arch,
-): string | undefined {
-  return PLATFORM_PACKAGES[`${platform}-${arch}`];
+export function resolveKcodeBinary(explicit?: string): string {
+  const binary = explicit ?? process.env.KCODE_BINARY ?? "kcode";
+  assertKcodePath(binary);
+  return binary;
 }
 
-/**
- * Resolve the kcode executable installed as an optional platform dependency.
- * Returns undefined on unsupported platforms or when optional dependencies
- * were deliberately omitted, allowing launch() to fall back to PATH.
- */
+export function platformBinaryPackage(
+  _platform = process.platform,
+  _arch = process.arch,
+): string | undefined {
+  return undefined;
+}
+
+/** Preserve the SDK API while refusing every upstream bundled runtime. */
 export function bundledJcodeBinary(): string | undefined {
-  const packageName = platformBinaryPackage();
-  if (!packageName) return undefined;
-  try {
-    const manifest = require.resolve(`${packageName}/package.json`);
-    return path.join(path.dirname(manifest), "bin", process.platform === "win32" ? "kcode.exe" : "kcode");
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === "MODULE_NOT_FOUND") return undefined;
-    throw error;
-  }
+  return undefined;
 }

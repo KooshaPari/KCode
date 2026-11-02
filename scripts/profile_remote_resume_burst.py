@@ -20,12 +20,12 @@ PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Profile resumed kcode PTY burst startup")
-    p.add_argument("--binary", default="./target/release/kcode")
+    p = argparse.ArgumentParser(description="Profile resumed jcode PTY burst startup")
+    p.add_argument("--binary", default="./target/release/jcode")
     p.add_argument("--burst", type=int, default=20)
     p.add_argument("--timeout", type=float, default=15.0)
     p.add_argument("--stagger-ms", type=float, default=0.0)
-    p.add_argument("--json-out", default="/tmp/kcode_remote_burst_profile.json")
+    p.add_argument("--json-out", default="/tmp/jcode_remote_burst_profile.json")
     return p.parse_args()
 
 
@@ -285,7 +285,7 @@ def run_burst(
             client.buffer += chunk
             client.buffer = reply_queries(fd, client.buffer)
             lower = client.buffer.lower()
-            if b"loading session" in lower or b"kcode" in lower or len(client.buffer) > 2048:
+            if b"loading session" in lower or b"jcode" in lower or len(client.buffer) > 2048:
                 client.done = True
 
         for client in clients:
@@ -319,7 +319,7 @@ def run_burst(
 
 def main() -> None:
     args = parse_args()
-    root = Path(tempfile.mkdtemp(prefix="kcode-remote-burst-"))
+    root = Path(tempfile.mkdtemp(prefix="jcode-remote-burst-"))
     home = root / "home"
     run = root / "run"
     home.mkdir(parents=True, exist_ok=True)

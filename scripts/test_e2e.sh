@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end test script for kcode
+# End-to-end test script for jcode
 
 set -e
 
@@ -10,16 +10,16 @@ run_cargo() {
     (cd "$repo_root" && "$cargo_exec" "$@")
 }
 
-echo "=== E2E Testing Script for kcode ==="
+echo "=== E2E Testing Script for jcode ==="
 echo ""
 
 # Test 1: Check binary exists and runs
-echo "Test 1: Check kcode binary..."
-if command -v kcode &> /dev/null; then
-    echo "✓ kcode binary found"
-    kcode --version
+echo "Test 1: Check jcode binary..."
+if command -v jcode &> /dev/null; then
+    echo "✓ jcode binary found"
+    jcode --version
 else
-    echo "✗ kcode binary not found"
+    echo "✗ jcode binary not found"
     exit 1
 fi
 
@@ -71,6 +71,6 @@ echo ""
 echo "=== All tests passed! ==="
 echo ""
 echo "To test interactively:"
-echo "  kcode        # Start TUI mode"
-echo "  kcode server # Start server mode"
-echo "  kcode client # Connect to server"
+echo "  jcode        # Start TUI mode"
+echo "  jcode server # Start server mode"
+echo "  jcode client # Connect to server"

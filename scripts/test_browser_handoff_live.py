@@ -36,7 +36,7 @@ def main():
     # may wait for another build's lock, which is not a live-test timeout.
     print('KCODE_CHECKPOINT {"message":"Compiling live browser test harness once"}', flush=True)
     build = subprocess.run(
-        [str(repo / "scripts/dev_cargo.sh"), "test", "-p", "kcode-app-core", "--lib", "--no-run", "--message-format=json"],
+        [str(repo / "scripts/dev_cargo.sh"), "test", "-p", "jcode-app-core", "--lib", "--no-run", "--message-format=json"],
         cwd=repo, env=env, stdout=subprocess.PIPE, text=True, timeout=1800, check=False)
     executables = set()
     for line in build.stdout.splitlines():
@@ -49,19 +49,19 @@ def main():
                 print(rendered, file=sys.stderr, end="", flush=True)
         target = artifact.get("target", {})
         if (artifact.get("reason") == "compiler-artifact"
-                and target.get("name") == "kcode_app_core"
+                and target.get("name") == "jcode_app_core"
                 and "lib" in target.get("kind", [])
                 and artifact.get("profile", {}).get("test") is True
                 and artifact.get("executable")):
             executables.add(artifact["executable"])
     build.check_returncode()
     if len(executables) != 1:
-        parser.error("Expected exactly one kcode-app-core library test executable from Cargo")
+        parser.error("Expected exactly one jcode-app-core library test executable from Cargo")
     test_executable = executables.pop()
     if not Path(test_executable).is_file():
         parser.error("Cargo's library test executable is missing")
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
-    lock_fd = os.open(runtime / f"kcode-browser-acceptance-tab-{args.tab_id}.lock",
+    lock_fd = os.open(runtime / f"jcode-browser-acceptance-tab-{args.tab_id}.lock",
                       os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)

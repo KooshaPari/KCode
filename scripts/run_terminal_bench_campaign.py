@@ -63,8 +63,8 @@ def load_tasks(args: argparse.Namespace) -> list[str]:
 
 
 def ensure_binary(root: Path, env: dict[str, str]) -> Path:
-    binary_dir = Path(env.get("KCODE_HARBOR_BINARY_DIR", "/tmp/kcode-compat-dist")).expanduser()
-    binary_path = Path(env.get("KCODE_HARBOR_BINARY", str(binary_dir / "kcode-linux-x86_64"))).expanduser()
+    binary_dir = Path(env.get("KCODE_HARBOR_BINARY_DIR", "/tmp/jcode-compat-dist")).expanduser()
+    binary_path = Path(env.get("KCODE_HARBOR_BINARY", str(binary_dir / "jcode-linux-x86_64"))).expanduser()
     if not (binary_path.exists() and os.access(binary_path, os.X_OK)):
         run([str(root / "scripts" / "build_linux_compat.sh"), str(binary_dir)], env=env, cwd=root)
     return binary_path.resolve()
@@ -414,7 +414,7 @@ def prepare_task(campaign_dir: Path, jobs_root: Path, task: str, required_attemp
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run a sequential Terminal-Bench campaign for kcode and preserve stitchable artifacts.")
+    parser = argparse.ArgumentParser(description="Run a sequential Terminal-Bench campaign for jcode and preserve stitchable artifacts.")
     parser.add_argument("--campaign-dir", required=True, help="Persistent output directory for the campaign")
     parser.add_argument("--task", action="append", default=[], help="Task name to run. Can be passed multiple times.")
     parser.add_argument("--tasks-file", help="File with one task name per line")

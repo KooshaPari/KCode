@@ -4,14 +4,14 @@ Run:  python3 scripts/fuzz/niri_insert_point_fuzz.py <seed> <count>
 
 Emits niri-valid configs to ~/.kcode/scratch/fuzz719/valid_inputs.json. Feed
 that to the committed corpus in
-crates/kcode-setup-hints/src/linux_niri_fuzz_corpus.txt to widen coverage.
+crates/jcode-setup-hints/src/linux_niri_fuzz_corpus.txt to widen coverage.
 
-Differential fuzz: does kcode's insert-point scan agree with real niri?
+Differential fuzz: does jcode's insert-point scan agree with real niri?
 
 Generates random-but-valid niri configs from KDL constructs that stress the
 brace-depth scanner (block comments, line comments, strings, raw strings,
 nested nodes), asks real `niri validate` whether the ORIGINAL is valid, then
-asks it again after kcode splices its managed block in.
+asks it again after jcode splices its managed block in.
 
 Any config that niri accepts before but rejects after is a bug in the scan.
 This replaces "test the cases I thought of" with "let niri be the oracle".

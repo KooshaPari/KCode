@@ -1,5 +1,5 @@
 /**
- * Socket path resolution, mirroring `kcode-harness-api::sockets`.
+ * Socket path resolution, mirroring `jcode-harness-api::sockets`.
  *
  * The bridge and every client must resolve the same directory or nothing can
  * connect, so the rules here follow the Rust module exactly.
@@ -8,16 +8,17 @@
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { assertKcodePath } from "./product.js";
 
 export function runtimeDir(): string {
   const explicit = process.env.KCODE_RUNTIME_DIR;
-  if (explicit) return explicit;
+  if (explicit) return assertKcodePath(explicit);
   const xdg = process.env.XDG_RUNTIME_DIR;
-  if (xdg) return xdg;
+  if (xdg) return assertKcodePath(xdg);
   if (process.platform === "darwin" && process.env.TMPDIR) {
-    return process.env.TMPDIR;
+    return assertKcodePath(process.env.TMPDIR);
   }
-  return path.join(os.tmpdir(), `kcode-${userDiscriminator()}`);
+  return path.join(assertKcodePath(os.tmpdir()), `kcode-${userDiscriminator()}`);
 }
 
 function userDiscriminator(): string {
@@ -43,7 +44,7 @@ function sanitize(raw: string): string {
  * On Unix that is the path itself. On Windows there is no socket file: the
  * bridge publishes a named pipe whose name is derived from the path, so a
  * client that dialled the path would find nothing there. This mirrors
- * `kcode-transport`'s derivation exactly, and the two are pinned together by a
+ * `jcode-transport`'s derivation exactly, and the two are pinned together by a
  * test on each side.
  */
 export function transportEndpoint(socketPath: string): string {
@@ -60,10 +61,10 @@ export function transportEndpoint(socketPath: string): string {
 
 /** Path of the versioned harness API socket. `KCODE_API_SOCKET` overrides. */
 export function apiSocketPath(): string {
-  return process.env.KCODE_API_SOCKET ?? path.join(runtimeDir(), "kcode-api.sock");
+  return assertKcodePath(process.env.KCODE_API_SOCKET ?? path.join(runtimeDir(), "kcode-api.sock"));
 }
 
 /** Path of the internal daemon socket. `KCODE_SOCKET` overrides. */
 export function legacySocketPath(): string {
-  return process.env.KCODE_SOCKET ?? path.join(runtimeDir(), "kcode.sock");
+  return assertKcodePath(process.env.KCODE_SOCKET ?? path.join(runtimeDir(), "kcode.sock"));
 }

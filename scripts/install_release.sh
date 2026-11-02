@@ -7,14 +7,18 @@
 # - ~/.kcode/builds/stable/kcode -> .../versions/<hash>/kcode
 # - ~/.kcode/builds/current/kcode -> .../versions/<hash>/kcode
 # - ~/.local/bin/kcode -> ~/.kcode/builds/current/kcode (launcher)
-#
-# Backwards compat: launcher prefers ~/.kcode/ (new) and only falls back to
-# ~/.jcode/ (legacy) when ~/.kcode/ is missing — see ~/.local/bin/kcode.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+source "$repo_root/scripts/product_paths.sh"
+product_root="${KCODE_HOME:-$HOME/.kcode}"
+builds_dir="$product_root/builds"
+install_dir="${KCODE_INSTALL_DIR:-$HOME/.local/bin}"
+require_kcode_owned_path "$product_root"
+require_kcode_owned_path "$builds_dir"
+require_kcode_owned_path "$install_dir"
 
-profile="${KCODE_RELEASE_PROFILE:-${JCODE_RELEASE_PROFILE:-release-lto}}"
+profile="${KCODE_RELEASE_PROFILE:-release-lto}"
 if [[ "${1:-}" == "--fast" ]]; then
   profile="release"
   shift
@@ -86,13 +90,15 @@ if [[ -n "$git_hash" ]]; then
 fi
 
 # Install versioned binary into ~/.kcode/builds/versions/<hash>/
-builds_dir="$HOME/.kcode/builds"
 version_dir="$builds_dir/versions/$hash"
+require_kcode_owned_path "$version_dir/kcode"
 mkdir -p "$version_dir"
 install -m 755 "$bin" "$version_dir/kcode"
 
 # Update stable symlink
 stable_dir="$builds_dir/stable"
+require_kcode_owned_path "$stable_dir"
+require_kcode_owned_path "$builds_dir/stable-version"
 mkdir -p "$stable_dir"
 ln -sfn "$version_dir/kcode" "$stable_dir/kcode"
 
@@ -101,12 +107,14 @@ printf '%s\n' "$hash" > "$builds_dir/stable-version"
 
 # Update current symlink + marker
 current_dir="$builds_dir/current"
+require_kcode_owned_path "$current_dir"
+require_kcode_owned_path "$builds_dir/current-version"
 mkdir -p "$current_dir"
 ln -sfn "$version_dir/kcode" "$current_dir/kcode"
 printf '%s\n' "$hash" > "$builds_dir/current-version"
 
 # Update launcher path to current channel
-install_dir="${KCODE_INSTALL_DIR:-${JCODE_INSTALL_DIR:-$HOME/.local/bin}}"
+require_kcode_owned_path "$install_dir"
 mkdir -p "$install_dir"
 ln -sfn "$current_dir/kcode" "$install_dir/kcode"
 
@@ -138,7 +146,7 @@ esac
 # installed (issue #291). `server reload` only reloads when the running daemon
 # is genuinely older, hands live headless/swarm sessions to the new process, and
 # is a no-op when no server is running, so it is safe to call unconditionally.
-if [ "${KCODE_SKIP_SERVER_RELOAD:-${JCODE_SKIP_SERVER_RELOAD:-}}" != "1" ]; then
+if [ "${KCODE_SKIP_SERVER_RELOAD:-}" != "1" ]; then
   if "$install_dir/kcode" server reload </dev/null >/dev/null 2>&1; then
     echo "Reloaded the running kcode server onto $hash (if one was active)."
   fi

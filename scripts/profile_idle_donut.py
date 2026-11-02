@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Profile a live, freshly spawned kcode TUI while the decorative idle animation
+Profile a live, freshly spawned jcode TUI while the decorative idle animation
 is running, and report where its CPU actually goes.
 
 Why this exists
@@ -47,7 +47,7 @@ from diagnose_idle_render_cost import (  # noqa: E402
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    default_bin = REPO_ROOT / "target" / "selfdev" / "kcode"
+    default_bin = REPO_ROOT / "target" / "selfdev" / "jcode"
     ap.add_argument("--binary", default=str(default_bin))
     ap.add_argument("--seconds", type=float, default=8.0)
     ap.add_argument("--freq", type=int, default=997)
@@ -61,7 +61,7 @@ def main() -> int:
         return 3
 
     root = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-profile-donut-", dir=str(root)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-profile-donut-", dir=str(root)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)

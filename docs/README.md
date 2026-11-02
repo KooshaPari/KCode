@@ -1,6 +1,6 @@
-# kcode Docs
+# jcode Docs
 
-Reference documentation for the kcode codebase.
+Reference documentation for the jcode codebase.
 
 ## Layout
 

@@ -4,7 +4,7 @@ use crate::test_support::*;
 async fn resume_session_restores_persisted_compaction_for_provider_context() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "kcode-compaction-resume-test-{}",
+        "jcode-compaction-resume-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -137,7 +137,7 @@ async fn test_simple_response() -> Result<()> {
         StreamEvent::SessionId("test-session-123".to_string()),
     ]);
 
-    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider, registry);
 
@@ -153,7 +153,7 @@ async fn test_simple_response() -> Result<()> {
 async fn test_agent_clear_preserves_debug_flag() -> Result<()> {
     let _env = setup_test_env()?;
     let provider = MockProvider::new();
-    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider, registry);
     agent.set_debug(true);
@@ -170,7 +170,7 @@ async fn test_agent_clear_preserves_debug_flag() -> Result<()> {
 async fn test_debug_create_session_marks_debug() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "kcode-debug-test-{}",
+        "jcode-debug-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -181,7 +181,7 @@ async fn test_debug_create_session_marks_debug() -> Result<()> {
     let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = MockProvider::new();
-    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
     let server_instance =
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
     let server_handle = tokio::spawn(async move { server_instance.run().await });
@@ -201,7 +201,7 @@ async fn test_debug_create_session_marks_debug() -> Result<()> {
 async fn test_debug_create_selfdev_session_marks_canary() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "kcode-debug-selfdev-test-{}",
+        "jcode-debug-selfdev-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -212,7 +212,7 @@ async fn test_debug_create_selfdev_session_marks_canary() -> Result<()> {
     let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = MockProvider::new();
-    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
     let server_instance =
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
     let server_handle = tokio::spawn(async move { server_instance.run().await });
@@ -237,7 +237,7 @@ async fn test_debug_create_selfdev_session_marks_canary() -> Result<()> {
 async fn test_clear_preserves_debug_for_resumed_debug_session() -> Result<()> {
     let _env = setup_test_env()?;
     let runtime_dir = short_runtime_dir(format!(
-        "kcode-clear-debug-test-{}",
+        "jcode-clear-debug-test-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -248,7 +248,7 @@ async fn test_clear_preserves_debug_for_resumed_debug_session() -> Result<()> {
     let debug_socket_path = runtime_dir.join("kcode-debug.sock");
 
     let provider = MockProvider::new();
-    let provider: Arc<dyn kcode::provider::Provider> = Arc::new(provider);
+    let provider: Arc<dyn jcode::provider::Provider> = Arc::new(provider);
     let server_instance =
         server::Server::new_with_paths(provider, socket_path.clone(), debug_socket_path.clone());
     let server_handle = tokio::spawn(async move { server_instance.run().await });

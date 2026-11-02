@@ -1,13 +1,13 @@
-# kcode wrapper / scripting guide
+# jcode wrapper / scripting guide
 
-This document describes the non-interactive CLI surface intended for wrappers, scripts, and other tools that invoke `kcode`.
+This document describes the non-interactive CLI surface intended for wrappers, scripts, and other tools that invoke `jcode`.
 
 ## Recommended flags
 
 Use these flags by default in wrappers:
 
 ```bash
-kcode --quiet --no-update --no-selfdev ...
+jcode --quiet --no-update --no-selfdev ...
 ```
 
 - `--quiet` suppresses non-error CLI/status chatter
@@ -19,9 +19,9 @@ kcode --quiet --no-update --no-selfdev ...
 List model names that can be passed to `-m/--model`:
 
 ```bash
-kcode --quiet model list
-kcode --quiet model list --json
-kcode --quiet --provider openai model list --json
+jcode --quiet model list
+jcode --quiet model list --json
+jcode --quiet --provider openai model list --json
 ```
 
 ## Discover providers and current selection
@@ -29,33 +29,33 @@ kcode --quiet --provider openai model list --json
 List provider IDs you can pass to `-p/--provider`:
 
 ```bash
-kcode --quiet provider list
-kcode --quiet provider list --json
+jcode --quiet provider list
+jcode --quiet provider list --json
 ```
 
 Inspect the currently requested and resolved provider/model selection:
 
 ```bash
-kcode --quiet provider current
-kcode --quiet --provider openai --model gpt-5.4 provider current --json
+jcode --quiet provider current
+jcode --quiet --provider openai --model gpt-5.4 provider current --json
 ```
 
 Verbose human summary:
 
 ```bash
-kcode --quiet model list --verbose
+jcode --quiet model list --verbose
 ```
 
 ## Run one prompt and return JSON
 
 ```bash
-kcode --quiet run --json "Reply with exactly OK"
+jcode --quiet run --json "Reply with exactly OK"
 ```
 
 ## Stream one prompt as NDJSON
 
 ```bash
-kcode --quiet run --ndjson "Reply with exactly OK"
+jcode --quiet run --ndjson "Reply with exactly OK"
 ```
 
 Typical event types:
@@ -95,8 +95,8 @@ Example shape:
 ## Inspect authentication state
 
 ```bash
-kcode --quiet auth status
-kcode --quiet auth status --json
+jcode --quiet auth status
+jcode --quiet auth status --json
 ```
 
 JSON output includes:
@@ -113,8 +113,8 @@ JSON output includes:
 ## Inspect build/version details
 
 ```bash
-kcode --quiet version
-kcode --quiet version --json
+jcode --quiet version
+jcode --quiet version --json
 ```
 
 JSON output includes:
@@ -130,5 +130,5 @@ JSON output includes:
 
 - JSON commands are designed so the intended machine-readable result is printed to `stdout`
 - With `--quiet`, wrapper-oriented commands should keep `stderr` empty unless there is a real warning/error
-- `kcode model list` and `kcode run --json` do not require the TUI
-- `kcode model list` does not require an already-running shared server
+- `jcode model list` and `jcode run --json` do not require the TUI
+- `jcode model list` does not require an already-running shared server

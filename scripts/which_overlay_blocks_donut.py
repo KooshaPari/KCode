@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Identify the exact UI state a freshly spawned kcode client sits in while its
+Identify the exact UI state a freshly spawned jcode client sits in while its
 render loop runs at animation cadence with no animation area recorded.
 
 `ui::draw_inner` returns early for a set of full-screen overlays (changelog,
@@ -42,14 +42,14 @@ PROBES = ("picker", "state", "overlays", "screen-text", "screen", "help")
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--fresh-session", action="store_true",
                     help="start a brand new session instead of resuming one")
     args = ap.parse_args()
 
     binary = str(Path(args.binary).resolve())
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-whichoverlay-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-whichoverlay-", dir=str(scratch)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)

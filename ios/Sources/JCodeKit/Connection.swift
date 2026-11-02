@@ -18,7 +18,7 @@ public enum ConnectionOutput: Equatable, Sendable {
     case event(ServerEvent)
 }
 
-/// Actor owning one WebSocket connection to a kcode server.
+/// Actor owning one WebSocket connection to a jcode server.
 ///
 /// Responsibilities:
 /// - connect, authenticate, subscribe

@@ -4,19 +4,19 @@
 # - "cloud host": a user-level sshd on 127.0.0.1:$SSH_PORT whose login shell
 #   environment forces KCODE_HOME/RUNTIME into $W/cloud-home (ForceCommand
 #   wrapper), so it never touches the user's real ~/.kcode or daemon.
-# - "laptop": a private tmux server running the kcode TUI with
+# - "laptop": a private tmux server running the jcode TUI with
 #   KCODE_HOME=$W/local-home and its own runtime dir / daemon socket.
 # Same repo path on both (same box), so the cloud side uses a *separate*
 # repo directory via a bind-mount namespace in the ForceCommand wrapper.
 set -euo pipefail
 KCODE_BIN=${KCODE_BIN:?}
 W=$(mktemp -d "${KCODE_SCRATCH_DIR:-/tmp}/cloud-tui-e2e.XXXXXX")
-REPO=/tmp/kcode-cloud-tui-e2e-repo
+REPO=/tmp/jcode-cloud-tui-e2e-repo
 SSH_PORT=${SSH_PORT:-22917}
 MODEL_PORT=${MODEL_PORT:-18912}
 TMUX_SOCK=$W/tmux.sock
 mkdir -p "$W/local-home" "$W/local-run" "$W/cloud-home" "$W/cloud-run" "$W/cloud-repo" "$W/ssh"
-if [ -e "$REPO" ]; then rm -rf -- "/tmp/kcode-cloud-tui-e2e-repo"; fi
+if [ -e "$REPO" ]; then rm -rf -- "/tmp/jcode-cloud-tui-e2e-repo"; fi
 
 pass() { printf '  PASS %s\n' "$*"; }
 fail() { printf '  FAIL %s\n' "$*"; tmux -S "$TMUX_SOCK" capture-pane -p -t e2e 2>/dev/null | tail -40; exit 1; }
@@ -52,7 +52,7 @@ cmd=\${SSH_ORIGINAL_COMMAND:-bash -l}
 exec unshare --user --map-root-user --mount bash -c 'mount --bind "$W/cloud-repo" "$REPO" 2>/dev/null || { mkdir -p "$REPO"; mount --bind "$W/cloud-repo" "$REPO"; }; exec bash -c "\$0"' "\$cmd"
 EOF
 chmod +x "$W/cloud-shell"
-ln -sf "$KCODE_BIN" "$W/bin/kcode"
+ln -sf "$KCODE_BIN" "$W/bin/jcode"
 cat > "$W/ssh/sshd_config" <<EOF
 Port $SSH_PORT
 ListenAddress 127.0.0.1
@@ -78,7 +78,7 @@ Host cloud-tui
   StrictHostKeyChecking no
   UserKnownHostsFile $W/ssh/known_hosts
 EOF
-# kcode shells out to plain `ssh <host>`; point it at our config.
+# jcode shells out to plain `ssh <host>`; point it at our config.
 cat > "$W/bin-local-ssh" <<EOF
 #!/usr/bin/env bash
 exec /usr/bin/ssh -F "$W/ssh/config" "\$@"
@@ -92,7 +92,7 @@ git config user.name T; git config user.email t@example.invalid
 echo base > file.txt; git add -A; git commit -qm init
 echo "local wip" >> file.txt
 
-LOCAL_ENV="KCODE_CLOUD_REMOTE_BINARY=$W/bin/kcode KCODE_HOME=$W/local-home KCODE_RUNTIME_DIR=$W/local-run KCODE_CLOUD_HOST=cloud-tui KCODE_CLOUD_HOST_LABEL=laptop-tui PATH=$W/local-bin:/usr/bin $MODEL_ENV"
+LOCAL_ENV="KCODE_CLOUD_REMOTE_BINARY=$W/bin/jcode KCODE_HOME=$W/local-home KCODE_RUNTIME_DIR=$W/local-run KCODE_CLOUD_HOST=cloud-tui KCODE_CLOUD_HOST_LABEL=laptop-tui PATH=$W/local-bin:/usr/bin $MODEL_ENV"
 tmux -S "$TMUX_SOCK" -f /dev/null new-session -d -s e2e -x 160 -y 45 \
   "cd $REPO && env -u KCODE_SOCKET -u KCODE_SESSION_ID $LOCAL_ENV $KCODE_BIN --no-update --no-selfdev --provider openai-compatible --model fake-model; echo EXITED; sleep 600"
 wait_for() { # wait_for <regex> <seconds>

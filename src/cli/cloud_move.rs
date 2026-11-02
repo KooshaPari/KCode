@@ -5,7 +5,7 @@
 //!
 //! - **Conversation: one owner.** A transcript cannot be merged, so exactly one
 //!   machine runs turns at a time. Ownership is a per-machine lease
-//!   (`kcode_storage::session_lease`) with a shared, monotonic migration epoch.
+//!   (`jcode_storage::session_lease`) with a shared, monotonic migration epoch.
 //!   The old owner's in-memory agent refuses to start turns or persist once the
 //!   lease says the session moved.
 //! - **Code: git.** The move ships the exact local state (HEAD, branch,
@@ -31,7 +31,7 @@ use std::process::{Command, Stdio};
 use crate::{session, storage};
 
 const FORMAT_VERSION: u32 = 1;
-const SNAPSHOT_REF_PREFIX: &str = "refs/kcode-cloud";
+const SNAPSHOT_REF_PREFIX: &str = "refs/jcode-cloud";
 /// Environment variables worth carrying. Everything else (DISPLAY, WAYLAND_*,
 /// SSH_AUTH_SOCK, DBUS_*, XDG_RUNTIME_DIR, secrets) is machine-local.
 const ENV_ALLOWLIST: &[&str] = &[
@@ -124,7 +124,7 @@ impl Target {
             .unwrap_or_else(|| "kcode".to_string())
     }
 
-    /// Fail fast, with an actionable message, when the cloud host's kcode is
+    /// Fail fast, with an actionable message, when the cloud host's jcode is
     /// too old to speak the move protocol.
     fn preflight(&self, host: &str) -> Result<()> {
         match self.run_remote(host, &["cloud", "receive", "--help"], None) {
@@ -133,15 +133,15 @@ impl Target {
                 let text = format!("{error:#}");
                 if text.contains("unrecognized subcommand") || text.contains("unrecognized") {
                     bail!(
-                        "kcode on `{host}` does not support `cloud move` yet. Update kcode on the cloud host (or pass --remote-binary / set KCODE_CLOUD_REMOTE_BINARY to a newer build)"
+                        "jcode on `{host}` does not support `cloud move` yet. Update jcode on the cloud host (or pass --remote-binary / set KCODE_CLOUD_REMOTE_BINARY to a newer build)"
                     );
                 }
-                Err(error.context(format!("could not run kcode on `{host}`")))
+                Err(error.context(format!("could not run jcode on `{host}`")))
             }
         }
     }
 
-    /// Run `kcode <args>` on the target, feeding `stdin` and returning stdout.
+    /// Run `jcode <args>` on the target, feeding `stdin` and returning stdout.
     fn run_remote(&self, host: &str, args: &[&str], stdin: Option<&Path>) -> Result<Vec<u8>> {
         let binary = shell_quote(&self.remote_binary());
         let quoted: Vec<String> = args.iter().map(|arg| shell_quote(arg)).collect();
@@ -180,7 +180,7 @@ impl Target {
             .with_context(|| format!("failed to reach cloud host `{host}`"))?;
         if !output.status.success() {
             bail!(
-                "remote `kcode {}` on `{host}` failed ({}):\n{}",
+                "remote `jcode {}` on `{host}` failed ({}):\n{}",
                 args.first().copied().unwrap_or_default(),
                 output.status,
                 String::from_utf8_lossy(&output.stderr).trim()
@@ -548,7 +548,7 @@ pub(crate) fn run_receive() -> Result<()> {
     let manifest: MoveManifest = read_json(&stage.join("manifest.json"))?;
     if manifest.format_version != FORMAT_VERSION {
         bail!(
-            "move format {} not supported by this kcode (expects {FORMAT_VERSION}); update kcode on the cloud host",
+            "move format {} not supported by this jcode (expects {FORMAT_VERSION}); update jcode on the cloud host",
             manifest.format_version
         );
     }
@@ -881,15 +881,15 @@ fn identity_env(root: &Path) -> Vec<(&'static str, &'static std::ffi::OsStr)> {
         return Vec::new();
     }
     vec![
-        ("GIT_AUTHOR_NAME", std::ffi::OsStr::new("kcode snapshot")),
+        ("GIT_AUTHOR_NAME", std::ffi::OsStr::new("jcode snapshot")),
         (
             "GIT_AUTHOR_EMAIL",
-            std::ffi::OsStr::new("snapshot@kcode.invalid"),
+            std::ffi::OsStr::new("snapshot@jcode.invalid"),
         ),
-        ("GIT_COMMITTER_NAME", std::ffi::OsStr::new("kcode snapshot")),
+        ("GIT_COMMITTER_NAME", std::ffi::OsStr::new("jcode snapshot")),
         (
             "GIT_COMMITTER_EMAIL",
-            std::ffi::OsStr::new("snapshot@kcode.invalid"),
+            std::ffi::OsStr::new("snapshot@jcode.invalid"),
         ),
     ]
 }
@@ -906,7 +906,7 @@ fn restore_repo(
     let snap_ref = format!("{SNAPSHOT_REF_PREFIX}/{session_id}/outgoing");
     if root.join(".git").exists() {
         // Existing checkout (an earlier move, dry run, or return). Overwrite
-        // only when its working state still equals a snapshot kcode itself
+        // only when its working state still equals a snapshot jcode itself
         // placed or exported here. Anything else is work that never came back.
         let scratch = tempfile::tempdir()?;
         let current = snapshot_worktree_tree(&root, scratch.path())?;
@@ -1253,7 +1253,7 @@ pub(crate) fn run_cli(command: super::args::CloudCommand) -> Result<()> {
                     ),
                 };
                 println!(
-                    "Returned {} from `{}` ({} messages). Code: {merge}.\n  Resume: kcode --resume {}",
+                    "Returned {} from `{}` ({} messages). Code: {merge}.\n  Resume: jcode --resume {}",
                     report.session_id, report.host, report.messages, report.session_id
                 );
             }
@@ -1342,7 +1342,7 @@ fn resolve_session_id(session_ref: Option<&str>) -> Result<String> {
         return Ok(id);
     }
     bail!(
-        "no session given: pass --session <id> (inside a kcode agent shell KCODE_SESSION_ID is used)"
+        "no session given: pass --session <id> (inside a jcode agent shell KCODE_SESSION_ID is used)"
     )
 }
 
@@ -1539,7 +1539,7 @@ fn toolchain_hints(root: Option<&Path>) -> Vec<String> {
 }
 
 fn configured_mcp_servers() -> Vec<String> {
-    let Ok(dir) = storage::kcode_dir() else {
+    let Ok(dir) = storage::jcode_dir() else {
         return Vec::new();
     };
     let Ok(raw) = std::fs::read(dir.join("mcp.json")) else {
@@ -1569,13 +1569,13 @@ fn local_host_label() -> String {
 }
 
 fn todo_file(session_id: &str) -> Result<PathBuf> {
-    Ok(storage::kcode_dir()?
+    Ok(storage::jcode_dir()?
         .join("todos")
         .join(format!("{session_id}.json")))
 }
 
 fn inbox_dir() -> Result<PathBuf> {
-    Ok(storage::kcode_dir()?.join("cloud_inbox"))
+    Ok(storage::jcode_dir()?.join("cloud_inbox"))
 }
 
 fn copy_if_exists(from: &Path, to: &Path) -> Result<()> {

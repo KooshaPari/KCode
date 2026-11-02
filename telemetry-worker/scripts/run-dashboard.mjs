@@ -18,7 +18,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
-const DB = "kcode-telemetry";
+const DB = "jcode-telemetry";
 const args = process.argv.slice(2);
 const asJson = args.includes("--json");
 const file = args.find((a) => !a.startsWith("--"));

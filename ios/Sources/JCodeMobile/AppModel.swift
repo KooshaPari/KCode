@@ -184,7 +184,7 @@ final class AppModel {
     }
 
     private func deviceID() -> String {
-        let key = "kcode.device.id"
+        let key = "jcode.device.id"
         if let existing = UserDefaults.standard.string(forKey: key) {
             return existing
         }

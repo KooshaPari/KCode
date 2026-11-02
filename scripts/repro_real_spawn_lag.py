@@ -131,7 +131,7 @@ def measure(client, cmd_path: Path, resp_path: Path, label: str,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--session", default=None,
                     help="session id to resume (default: most recent real one)")
     ap.add_argument("--window-s", type=float, default=4.0)
@@ -154,7 +154,7 @@ def main() -> int:
     debug_sock = runtime / "kcode-debug.sock"
 
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    run = Path(tempfile.mkdtemp(prefix="kcode-realspawn-", dir=str(scratch)))
+    run = Path(tempfile.mkdtemp(prefix="jcode-realspawn-", dir=str(scratch)))
     cmd_path, resp_path = run / "client_cmd", run / "client_resp"
 
     print("== real-environment spawn lag ==")

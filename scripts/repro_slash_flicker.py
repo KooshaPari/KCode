@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Reproduce the "slash command menu flickers in a freshly spawned kcode" bug.
+Reproduce the "slash command menu flickers in a freshly spawned jcode" bug.
 
 Why this exists
 ---------------
@@ -341,9 +341,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    default_bin = REPO_ROOT / "target" / "selfdev" / "kcode"
+    default_bin = REPO_ROOT / "target" / "selfdev" / "jcode"
     if not default_bin.exists():
-        default_bin = Path.home() / ".kcode" / "builds" / "current" / "kcode"
+        default_bin = Path.home() / ".kcode" / "builds" / "current" / "jcode"
     ap.add_argument("--binary", default=str(default_bin))
     ap.add_argument("--json", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -357,7 +357,7 @@ def main() -> int:
         print(f"binary not found: {binary}")
         return 3
 
-    root = Path(tempfile.mkdtemp(prefix="kcode-slash-flicker-"))
+    root = Path(tempfile.mkdtemp(prefix="jcode-slash-flicker-"))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)
@@ -387,7 +387,7 @@ def main() -> int:
     cmd_path, resp_path = run / "client_cmd", run / "client_resp"
 
     if not args.json:
-        print("== kcode slash-menu flicker repro ==")
+        print("== jcode slash-menu flicker repro ==")
         print(f"  binary : {binary}")
         print(f"  donut  : {'off' if args.no_idle_animation else 'on'}")
 

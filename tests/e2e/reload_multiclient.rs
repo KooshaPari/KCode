@@ -14,14 +14,14 @@ use crate::test_support::*;
 /// Spin up an in-process server backed by a `MockProvider`.
 async fn start_inprocess_server(
     label: &str,
-    provider: Arc<dyn kcode::provider::Provider>,
+    provider: Arc<dyn jcode::provider::Provider>,
 ) -> Result<(
     std::path::PathBuf,
     std::path::PathBuf,
     tokio::task::JoinHandle<Result<()>>,
 )> {
     let runtime_dir = short_runtime_dir(format!(
-        "kcode-reload-mc-{label}-{}",
+        "jcode-reload-mc-{label}-{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

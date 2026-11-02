@@ -21,7 +21,7 @@ from repro_real_spawn_lag import recent_session  # noqa: E402
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--binary", default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+    ap.add_argument("--binary", default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--session", default=None)
     ap.add_argument("--seconds", type=float, default=8.0)
     ap.add_argument("--freq", type=int, default=997)
@@ -37,7 +37,7 @@ def main() -> int:
     debug_sock = runtime / "kcode-debug.sock"
 
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-profile-real-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-profile-real-", dir=str(scratch)))
     cmd_path, resp_path = root / "client_cmd", root / "client_resp"
 
     session = args.session or recent_session(debug_sock, str(REPO_ROOT))

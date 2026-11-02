@@ -32,9 +32,9 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CASES = REPO_ROOT / "scripts" / "discovery_benchmark_cases.json"
 DEFAULT_OUTPUT = REPO_ROOT / "target" / "discovery-benchmark" / "latest.json"
-CATEGORY_SOURCE = REPO_ROOT / "crates" / "kcode-base" / "src" / "sponsors.rs"
+CATEGORY_SOURCE = REPO_ROOT / "crates" / "jcode-base" / "src" / "sponsors.rs"
 BENCHMARK_ENV = "KCODE_DISCOVERY_BENCHMARK"
-BENCHMARK_HEADER = "x-kcode-discovery-benchmark"
+BENCHMARK_HEADER = "x-jcode-discovery-benchmark"
 # Accept both the current and legacy tool name when scanning transcripts.
 DISCOVERY_TOOL_NAMES = ("integration_tools", "discover_tools")
 # The tool was renamed from `discover_tools` to `integration_tools`, and its
@@ -102,7 +102,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=90.0, help="Seconds allowed per model attempt.")
     parser.add_argument("--catalog-retries", type=int, default=4)
     parser.add_argument("--retry-delay", type=float, default=0.5)
-    parser.add_argument("--kcode", default=os.environ.get("KCODE_BIN", "kcode"))
+    parser.add_argument("--jcode", default=os.environ.get("KCODE_BIN", "jcode"))
     parser.add_argument("--model", default=os.environ.get("KCODE_DISCOVERY_BENCHMARK_MODEL", "gpt-5.6-sol"))
     parser.add_argument("--provider", default=os.environ.get("KCODE_DISCOVERY_BENCHMARK_PROVIDER"))
     parser.add_argument(
@@ -370,7 +370,7 @@ def run_debug_command(
     return result.stdout.strip()
 
 
-def fetch_catalog_via_kcode(
+def fetch_catalog_via_jcode(
     args: argparse.Namespace,
     socket_path: Path,
     workdir: Path,
@@ -757,7 +757,7 @@ def main() -> int:
                 f"missing cases={coverage['missing_cases']}, stale cases={coverage['stale_cases']}"
             )
     else:
-        with tempfile.TemporaryDirectory(prefix="kcode-discovery-benchmark-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="jcode-discovery-benchmark-") as temp_dir:
             temporary_root = Path(temp_dir)
             socket_path = temporary_root / "kcode.sock"
             workdir = temporary_root / "workspace"
@@ -767,7 +767,7 @@ def main() -> int:
                 catalog = (
                     load_catalog_file(args.catalog_file, categories)
                     if args.catalog_file
-                    else fetch_catalog_via_kcode(args, socket_path, workdir, categories)
+                    else fetch_catalog_via_jcode(args, socket_path, workdir, categories)
                 )
                 coverage = validate_catalog_coverage(all_cases, catalog)
                 mismatch = bool(coverage["missing_cases"] or coverage["stale_cases"])

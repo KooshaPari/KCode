@@ -8,6 +8,7 @@ import { NdjsonDecoder, encodeFrame } from "./framing.js";
 import { apiSocketPath, transportEndpoint } from "./sockets.js";
 import { launchInstance, type LaunchOptions, type LaunchedInstance } from "./launch.js";
 import { HarnessError } from "./errors.js";
+import { assertKcodePath } from "./product.js";
 import { ToolCallbacks, prepareTools, type SessionToolsOptions, type ToolResult } from "./tools.js";
 import {
   assertRetryCount,
@@ -75,6 +76,7 @@ export interface Transport {
 }
 
 export function unixSocketTransport(socketPath: string): Promise<Transport> {
+  assertKcodePath(socketPath);
   return new Promise((resolve, reject) => {
     // On Windows the bridge listens on a named pipe derived from this path,
     // not on the path itself.
@@ -231,7 +233,7 @@ export class JcodeClient extends EventEmitter {
     (error) => this.emitSafe("error", error),
   );
 
-  /** Server identity from the handshake, e.g. "kcode-harness-api-bridge/0.1.0". */
+  /** Server identity from the handshake, e.g. "jcode-harness-api-bridge/0.1.0". */
   server = "";
   /** Capability strings advertised by the server. */
   capabilities: string[] = [];
@@ -269,15 +271,15 @@ export class JcodeClient extends EventEmitter {
 
   /** State directory of the instance this client launched, if any. */
   get instanceHome(): string | undefined {
-    return this.instance?.kcodeHome;
+    return this.instance?.jcodeHome;
   }
 
   /**
-   * Start a private kcode instance and connect to it.
+   * Start a private jcode instance and connect to it.
    *
-   * This is the entry point for embedding kcode as an agent engine. The
+   * This is the entry point for embedding jcode as an agent engine. The
    * instance has its own state directory, its own sessions, and its own
-   * sockets, so it cannot see or disturb the kcode the user runs
+   * sockets, so it cannot see or disturb the jcode the user runs
    * interactively. `close()` shuts it down.
    *
    * Provider logins are inherited from the user by default, because an
@@ -302,11 +304,11 @@ export class JcodeClient extends EventEmitter {
   }
 
   /**
-   * Connect to the kcode already running on this machine.
+   * Connect to the jcode already running on this machine.
    *
-   * Use this to automate the user's own kcode: an editor plugin, a status
+   * Use this to automate the user's own jcode: an editor plugin, a status
    * dashboard, a hotkey tool. It shares the user's live sessions, so anything
-   * done here is visible in their terminal. To embed kcode as an engine
+   * done here is visible in their terminal. To embed jcode as an engine
    * instead, use {@link JcodeClient.launch}.
    */
   static async connect(options: ConnectOptions = {}): Promise<JcodeClient> {
@@ -493,7 +495,7 @@ export class JcodeClient extends EventEmitter {
 
   private requireSessionTools(): void {
     if (!this.supports("session_tools")) {
-      throw new HarnessError("unsupported", "This harness does not support session_tools. Update the kcode runtime and API bridge.");
+      throw new HarnessError("unsupported", "This harness does not support session_tools. Update the jcode runtime and API bridge.");
     }
   }
 
@@ -756,7 +758,7 @@ export class JcodeClient extends EventEmitter {
     };
   }
 
-  /** Persist an API key in kcode's owner-only provider store and hot-reload it. */
+  /** Persist an API key in jcode's owner-only provider store and hot-reload it. */
   async setApiKey(provider: string, apiKey: string): Promise<void> {
     await this.expectReply({ req: "set_api_key", provider, api_key: apiKey }, "credential_updated");
   }

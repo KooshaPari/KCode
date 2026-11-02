@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dump the rendered screen of a freshly spawned kcode client through a real
+Dump the rendered screen of a freshly spawned jcode client through a real
 terminal emulator, and report which rows change over time.
 
 This answers a question the counters cannot: on the fresh-spawn screen, is the
@@ -30,7 +30,7 @@ import repro_slash_flicker as flick  # noqa: E402
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--binary",
-                    default=str(REPO_ROOT / "target" / "selfdev" / "kcode"))
+                    default=str(REPO_ROOT / "target" / "selfdev" / "jcode"))
     ap.add_argument("--rows", type=int, default=48)
     ap.add_argument("--cols", type=int, default=160)
     ap.add_argument("--watch-s", type=float, default=2.0)
@@ -40,7 +40,7 @@ def main() -> int:
     flick.ROWS, flick.COLS = args.rows, args.cols
     binary = str(Path(args.binary).resolve())
     scratch = Path(os.environ.get("KCODE_SCRATCH_DIR") or tempfile.gettempdir())
-    root = Path(tempfile.mkdtemp(prefix="kcode-screendump-", dir=str(scratch)))
+    root = Path(tempfile.mkdtemp(prefix="jcode-screendump-", dir=str(scratch)))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)

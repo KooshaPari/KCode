@@ -10,7 +10,7 @@
 # mocked release endpoint, then probing the result with REAL shells.
 #
 #   Section A  fresh-install PATH resolution - after one `curl | sh`-equivalent
-#              install, does `kcode` resolve in a brand-new login/interactive
+#              install, does `jcode` resolve in a brand-new login/interactive
 #              shell of every kind we claim to support (bash -l, bash -i,
 #              sh -l, fish, zsh)? This is the exact "it wasn't on my PATH"
 #              complaint, asked of the real rc files the installer wrote.
@@ -86,19 +86,19 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$url" in
-  *telemetry.kcode.sh*) ;;
-  *kcode.sh/releases/latest/version) printf 'v%s\n' "${EVAL_VERSION:-1.2.3}" ;;
-  *kcode.sh/releases/v*/download-bases)
-    printf 'https://github.com/1jehuang/kcode/releases/download/v%s\n' "${EVAL_VERSION:-1.2.3}"
+  *telemetry.jcode.sh*) ;;
+  *jcode.sh/releases/latest/version) printf 'v%s\n' "${EVAL_VERSION:-1.2.3}" ;;
+  *jcode.sh/releases/v*/download-bases)
+    printf 'https://github.com/KooshaPari/KCode/releases/download/v%s\n' "${EVAL_VERSION:-1.2.3}"
     ;;
   *SHA256SUMS)
     # Checksum of the deterministic fake archive written by the tar mock's
     # sibling below (the literal bytes "fake archive").
     printf '8d57abb57a0dae3ff23c8f0df1f51951b7772822e0d560e860d6f68c24ef6d3d  %s\n' \
-      "${EVAL_CHECKSUM_ASSET:-kcode-linux-x86_64.tar.gz}"
+      "${EVAL_CHECKSUM_ASSET:-jcode-linux-x86_64.tar.gz}"
     ;;
   *github.com*/releases/latest)
-    printf 'https://github.com/1jehuang/kcode/releases/tag/v%s' "${EVAL_VERSION:-1.2.3}"
+    printf 'https://github.com/KooshaPari/KCode/releases/tag/v%s' "${EVAL_VERSION:-1.2.3}"
     ;;
   *github.com*/releases/download/*)
     [ -n "$output" ] || exit 2
@@ -117,10 +117,10 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-artifact="${EVAL_ARCHIVE_ARTIFACT:-kcode-linux-x86_64}"
+artifact="${EVAL_ARCHIVE_ARTIFACT:-jcode-linux-x86_64}"
 cat > "$dest/$artifact" <<BIN
 #!/usr/bin/env bash
-if [ "\${1:-}" = "--version" ]; then printf 'kcode ${EVAL_VERSION:-1.2.3}\n'; fi
+if [ "\${1:-}" = "--version" ]; then printf 'jcode ${EVAL_VERSION:-1.2.3}\n'; fi
 exit 0
 BIN
 chmod +x "$dest/$artifact"
@@ -141,7 +141,7 @@ run_install() {
   bash "$install_sh" 2>&1
 }
 
-# Probe: does `kcode` resolve and run in a fresh shell of the given kind, with
+# Probe: does `jcode` resolve and run in a fresh shell of the given kind, with
 # only the sandbox HOME's rc files to set it up? PATH starts minimal (no
 # ~/.local/bin) so resolution can only come from what the installer wrote.
 probe_shell() { # probe_shell <home> <shell-cmd...>
@@ -150,7 +150,7 @@ probe_shell() { # probe_shell <home> <shell-cmd...>
   XDG_CONFIG_HOME="$home/.config" \
   ENV="$home/.profile" \
   PATH="/usr/bin:/bin" \
-  "$@" 'command -v kcode >/dev/null 2>&1 && kcode --version' 2>/dev/null </dev/null
+  "$@" 'command -v jcode >/dev/null 2>&1 && jcode --version' 2>/dev/null </dev/null
 }
 
 echo "================ SETUP FRICTION SCORECARD ================"
@@ -166,19 +166,19 @@ install_status=$?
 check "installer completes on a fresh home" \
   "exit 0" "exit $install_status" "$install_status"
 
-launcher="$home_a/.local/bin/kcode"
+launcher="$home_a/.local/bin/jcode"
 [ -x "$launcher" ]; check "launcher exists and is executable" \
-  "executable at ~/.local/bin/kcode" "missing or not executable: $launcher" "$?"
+  "executable at ~/.local/bin/jcode" "missing or not executable: $launcher" "$?"
 
 ver=$("$launcher" --version 2>/dev/null || true)
-[ "$ver" = "kcode 1.2.3" ]; check "launcher runs and reports the installed version" \
-  "kcode 1.2.3" "${ver:-<no output>}" "$?"
+[ "$ver" = "jcode 1.2.3" ]; check "launcher runs and reports the installed version" \
+  "jcode 1.2.3" "${ver:-<no output>}" "$?"
 
-# The success message must not dead-end the user: either kcode is already
+# The success message must not dead-end the user: either jcode is already
 # resolvable or the copy explicitly says future shells will have it.
-printf '%s' "$install_out" | grep -q "Run 'kcode' to get started\|Future terminal sessions will have kcode on PATH automatically"
+printf '%s' "$install_out" | grep -q "Run 'jcode' to get started\|Future terminal sessions will have jcode on PATH automatically"
 check "install output gives a working next step (no dead end)" \
-  "a 'run kcode' or 'future sessions' line" "neither line found in installer output" "$?"
+  "a 'run jcode' or 'future sessions' line" "neither line found in installer output" "$?"
 
 probe_case() { # probe_case <label> <binary> <shell-cmd...>
   local label="$1" binary="$2"; shift 2
@@ -188,15 +188,15 @@ probe_case() { # probe_case <label> <binary> <shell-cmd...>
   fi
   local out
   out=$(probe_shell "$home_a" "$@")
-  [ "$out" = "kcode 1.2.3" ]
-  check "$label" "kcode resolves and prints 'kcode 1.2.3'" "${out:-<not found on PATH>}" "$?"
+  [ "$out" = "jcode 1.2.3" ]
+  check "$label" "jcode resolves and prints 'jcode 1.2.3'" "${out:-<not found on PATH>}" "$?"
 }
 
-probe_case "bash login shell (bash -lc) finds kcode"        bash bash -lc
-probe_case "bash interactive shell (bash -ic) finds kcode"  bash bash -ic
-probe_case "sh login shell (sh -lc) finds kcode"            sh   sh -lc
-probe_case "fish shell (fish -c) finds kcode"               fish fish -c
-probe_case "zsh login shell (zsh -lc) finds kcode"          zsh  zsh -lc
+probe_case "bash login shell (bash -lc) finds jcode"        bash bash -lc
+probe_case "bash interactive shell (bash -ic) finds jcode"  bash bash -ic
+probe_case "sh login shell (sh -lc) finds jcode"            sh   sh -lc
+probe_case "fish shell (fish -c) finds jcode"               fish fish -c
+probe_case "zsh login shell (zsh -lc) finds jcode"          zsh  zsh -lc
 
 # ---------------------------------------------------------------------------
 # Section B: idempotency - reinstalling must not stack PATH lines.
@@ -209,11 +209,11 @@ run_install "$home_a" "1.2.3" >/dev/null 2>&1
 for rc in .bashrc .profile .zshenv .config/fish/config.fish; do
   file="$home_a/$rc"
   [ -f "$file" ] || continue
-  # Each install appends one "# Added by kcode installer" stanza when missing;
+  # Each install appends one "# Added by jcode installer" stanza when missing;
   # a correct idempotency guard leaves exactly one after any number of runs.
-  count=$(grep -cF "# Added by kcode installer" "$file" || true)
+  count=$(grep -cF "# Added by jcode installer" "$file" || true)
   [ "$count" -le 1 ]
-  check "~/$rc has at most one kcode PATH stanza after 3 installs" \
+  check "~/$rc has at most one jcode PATH stanza after 3 installs" \
     "<= 1 installer stanza" "$count installer stanzas" "$?"
 done
 
@@ -233,9 +233,9 @@ printf '{"kept":true}\n' > "$home_c/.kcode/auth.json"
 
 run_install "$home_c" "1.3.0" >/dev/null 2>&1
 
-ver=$("$home_c/.local/bin/kcode" --version 2>/dev/null || true)
-[ "$ver" = "kcode 1.3.0" ]; check "upgrade switches the launcher to the new version" \
-  "kcode 1.3.0" "${ver:-<no output>}" "$?"
+ver=$("$home_c/.local/bin/jcode" --version 2>/dev/null || true)
+[ "$ver" = "jcode 1.3.0" ]; check "upgrade switches the launcher to the new version" \
+  "jcode 1.3.0" "${ver:-<no output>}" "$?"
 
 [ "$(cat "$home_c/.kcode/config.toml" 2>/dev/null)" = 'model = "kept"' ]
 check "upgrade preserves ~/.kcode/config.toml" \
@@ -245,7 +245,7 @@ check "upgrade preserves ~/.kcode/config.toml" \
 check "upgrade preserves ~/.kcode/auth.json" \
   "file unchanged" "missing or modified" "$?"
 
-[ -x "$home_c/.kcode/builds/versions/1.2.3/kcode" ] && [ -x "$home_c/.kcode/builds/versions/1.3.0/kcode" ]
+[ -x "$home_c/.kcode/builds/versions/1.2.3/jcode" ] && [ -x "$home_c/.kcode/builds/versions/1.3.0/jcode" ]
 check "both immutable version binaries kept (rollback possible)" \
   "versions/1.2.3 and versions/1.3.0 both executable" \
   "$(ls "$home_c/.kcode/builds/versions" 2>/dev/null | tr '\n' ' ')" "$?"
@@ -254,17 +254,17 @@ stable_ver=$(cat "$home_c/.kcode/builds/stable-version" 2>/dev/null || true)
 [ "$stable_ver" = "1.3.0" ]; check "stable channel marker points at the new version" \
   "1.3.0" "${stable_ver:-<missing>}" "$?"
 
-# A second post-upgrade login shell must still resolve kcode (PATH survives
+# A second post-upgrade login shell must still resolve jcode (PATH survives
 # upgrades, not just fresh installs).
 out=$(probe_shell "$home_c" bash -lc)
-[ "$out" = "kcode 1.3.0" ]; check "post-upgrade login shell still finds kcode" \
-  "kcode 1.3.0" "${out:-<not found on PATH>}" "$?"
+[ "$out" = "jcode 1.3.0" ]; check "post-upgrade login shell still finds jcode" \
+  "jcode 1.3.0" "${out:-<not found on PATH>}" "$?"
 
 # Uninstall (default, no --purge) must remove binaries but KEEP user data, so
 # a returning user's reinstall lands on their old config/auth. This is the
 # retention contract of leaving: coming back is cheap.
 uninstall_sh="$repo_dir/scripts/uninstall.sh"
-# uninstall.sh pkills running kcode servers; neuter that inside the sandbox so
+# uninstall.sh pkills running jcode servers; neuter that inside the sandbox so
 # the eval never touches real processes on the machine running it.
 printf '#!/usr/bin/env bash\nexit 0\n' > "$work/bin/pkill"
 chmod +x "$work/bin/pkill"
@@ -274,7 +274,7 @@ bash "$uninstall_sh" --yes >/dev/null 2>&1
 uninstall_status=$?
 check "uninstall (no --purge) completes" "exit 0" "exit $uninstall_status" "$uninstall_status"
 
-[ ! -e "$home_c/.local/bin/kcode" ] && [ ! -d "$home_c/.kcode/builds" ]
+[ ! -e "$home_c/.local/bin/jcode" ] && [ ! -d "$home_c/.kcode/builds" ]
 check "uninstall removes launcher and build channels" \
   "launcher and builds gone" "still present" "$?"
 
@@ -332,7 +332,7 @@ mkdir -p "$home_w" "$work/localappdata"
 win_state="$work/win-env"
 mkdir -p "$win_state"
 # Seed a user PATH that already contains a stale (case/slash variant) entry.
-printf 'C:\\Tools;%s\\' "$(printf '%s' "$work/localappdata/kcode/bin" | tr '[:lower:]' '[:upper:]')" > "$win_state/user-path"
+printf 'C:\\Tools;%s\\' "$(printf '%s' "$work/localappdata/jcode/bin" | tr '[:lower:]' '[:upper:]')" > "$win_state/user-path"
 cat > "$work/bin/powershell.exe" <<'EOF'
 #!/usr/bin/env bash
 # Minimal mock of the two PowerShell invocations install.sh makes on Windows:
@@ -351,8 +351,8 @@ chmod +x "$work/bin/powershell.exe"
 
 EVAL_VERSION="1.2.3" \
 EVAL_UNAME_S="MINGW64_NT-10.0" \
-EVAL_ARCHIVE_ARTIFACT="kcode-windows-x86_64.exe" \
-EVAL_CHECKSUM_ASSET="kcode-windows-x86_64.tar.gz" \
+EVAL_ARCHIVE_ARTIFACT="jcode-windows-x86_64.exe" \
+EVAL_CHECKSUM_ASSET="jcode-windows-x86_64.tar.gz" \
 EVAL_WIN_STATE="$win_state" \
 PATH="$work/bin:/usr/bin:/bin" \
 HOME="$home_w" \
@@ -366,11 +366,11 @@ check "Git Bash Windows install completes" "exit 0" "exit $win_install_status" "
 
 win_path_now=$(cat "$win_state/user-path" 2>/dev/null || true)
 case "$win_path_now" in
-  "$work/localappdata/kcode/bin;C:\\Tools") win_ok=0 ;;
+  "$work/localappdata/jcode/bin;C:\\Tools") win_ok=0 ;;
   *) win_ok=1 ;;
 esac
 check "Git Bash install persists + dedupes the Windows user PATH" \
-  "$work/localappdata/kcode/bin;C:\\Tools" "${win_path_now:-<unset>}" "$win_ok"
+  "$work/localappdata/jcode/bin;C:\\Tools" "${win_path_now:-<unset>}" "$win_ok"
 
 [ -f "$win_state/broadcasted" ]
 check "Git Bash install broadcasts WM_SETTINGCHANGE" \

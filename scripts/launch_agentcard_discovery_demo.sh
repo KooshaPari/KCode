@@ -3,11 +3,11 @@ set -euo pipefail
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
-KCODE_BIN="${KCODE_BIN:-$HOME/.local/bin/kcode}"
-DEMO_DIR="${KCODE_AGENTCARD_DEMO_DIR:-/tmp/kcode-agentcard-discovery-demo}"
+KCODE_BIN="${KCODE_BIN:-$HOME/.local/bin/jcode}"
+DEMO_DIR="${KCODE_AGENTCARD_DEMO_DIR:-/tmp/jcode-agentcard-discovery-demo}"
 MODEL="${KCODE_AGENTCARD_DEMO_MODEL:-gpt-5.6-sol}"
-LOG_FILE="${KCODE_AGENTCARD_DEMO_LOG:-/tmp/kcode-agentcard-discovery-demo.log}"
-PROMPT='Use `./bin/kcode-demo-shop` to see whether this shop has a USB-C laptop charger for $50 or less and get it for me. Work through any prerequisites, but ask me for confirmation immediately before actually creating or funding a prepaid card, making a payment, or placing the order.'
+LOG_FILE="${KCODE_AGENTCARD_DEMO_LOG:-/tmp/jcode-agentcard-discovery-demo.log}"
+PROMPT='Use `./bin/jcode-demo-shop` to see whether this shop has a USB-C laptop charger for $50 or less and get it for me. Work through any prerequisites, but ask me for confirmation immediately before actually creating or funding a prepaid card, making a payment, or placing the order.'
 
 case "${1:-}" in
   --help|-h)
@@ -31,11 +31,11 @@ case "${1:-}" in
 esac
 
 mkdir -p "$DEMO_DIR/bin"
-ln -sfn "$REPO_ROOT/scripts/demo_shop.py" "$DEMO_DIR/bin/kcode-demo-shop"
+ln -sfn "$REPO_ROOT/scripts/demo_shop.py" "$DEMO_DIR/bin/jcode-demo-shop"
 chmod +x "$REPO_ROOT/scripts/demo_shop.py"
 export PATH="$DEMO_DIR/bin:$PATH"
 export KCODE_DEMO_SHOP_STATE="$DEMO_DIR/shop-state.json"
-kcode-demo-shop reset >>"$LOG_FILE" 2>&1
+jcode-demo-shop reset >>"$LOG_FILE" 2>&1
 
 before_file="$(mktemp)"
 after_file="$(mktemp)"
@@ -47,7 +47,7 @@ trap 'rm -f "$before_file" "$after_file"' EXIT
 # The mock shop and Discovery are the only capabilities exposed. The shop has
 # no networking, account, payment, or order-placement implementation.
 kitty \
-  --class kcode-agentcard-demo \
+  --class jcode-agentcard-demo \
   --title "Jcode AgentCard Discovery Demo" \
   --directory "$DEMO_DIR" \
   "$KCODE_BIN" \

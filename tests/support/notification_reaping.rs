@@ -116,7 +116,7 @@ fn notification_children_are_reaped_without_blocking() {
             let entry = entry.unwrap();
             assert_eq!(
                 std::fs::read_to_string(entry.path()).unwrap(),
-                "--app-name=kcode\nreaping title\nreaping body\n"
+                "--app-name=jcode\nreaping title\nreaping body\n"
             );
             entry.file_name().to_str().unwrap().parse().unwrap()
         })

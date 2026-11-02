@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Reproduce the "typed character flickers in and out" bug in a live kcode TUI.
+Reproduce the "typed character flickers in and out" bug in a live jcode TUI.
 
 The symptom
 -----------
-Spawn a fresh kcode, press `/`, and the slash appears, vanishes, and reappears.
+Spawn a fresh jcode, press `/`, and the slash appears, vanishes, and reappears.
 Something repaints the composer from a state that does not yet contain the
 keystroke, so the character is briefly erased after it was already drawn.
 
@@ -171,7 +171,7 @@ def create_session(debug_sock: Path, working_dir: Path) -> str:
 
 @dataclass
 class EmulatedClient:
-    """A live kcode under a PTY, with its output rendered into a real screen.
+    """A live jcode under a PTY, with its output rendered into a real screen.
 
     Reading a `pyte` screen instead of raw bytes is what makes the flicker
     visible: the bug is a *state regression on screen*, which byte-level probes
@@ -464,9 +464,9 @@ def observe_keystroke(client: EmulatedClient, ch: str, expect: str,
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    default_bin = REPO_ROOT / "target" / "selfdev" / "kcode"
+    default_bin = REPO_ROOT / "target" / "selfdev" / "jcode"
     if not default_bin.exists():
-        default_bin = Path.home() / ".kcode" / "builds" / "current" / "kcode"
+        default_bin = Path.home() / ".kcode" / "builds" / "current" / "jcode"
     ap.add_argument("--binary", default=str(default_bin))
     ap.add_argument("--live", action="store_true",
                     help="use the user's real server/home instead of a throwaway "
@@ -488,7 +488,7 @@ def main() -> int:
         print(f"binary not found: {binary}")
         return 3
 
-    root = Path(tempfile.mkdtemp(prefix="kcode-input-flicker-"))
+    root = Path(tempfile.mkdtemp(prefix="jcode-input-flicker-"))
     home, run = root / "home", root / "run"
     home.mkdir(parents=True)
     run.mkdir(parents=True)
@@ -513,7 +513,7 @@ def main() -> int:
     cmd_path, resp_path = run / "client_cmd", run / "client_resp"
 
     if not args.json:
-        print("== kcode input-flicker repro ==")
+        print("== jcode input-flicker repro ==")
         print(f"  binary : {binary}")
         print(f"  mode   : {'live' if args.live else 'isolated'}")
 

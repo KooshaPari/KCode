@@ -1,4 +1,4 @@
-//! `kcode menubar` - a lightweight live indicator of how many kcode sessions
+//! `jcode menubar` - a lightweight live indicator of how many jcode sessions
 //! are running and how many are actively streaming a model response.
 //!
 //! On macOS this renders a native menu bar (`NSStatusItem`) item that updates
@@ -133,9 +133,9 @@ pub fn run_menubar_command(once: bool, json: bool) -> Result<()> {
     }
 }
 
-/// Ensure a single background `kcode menubar` helper is running on macOS so the
+/// Ensure a single background `jcode menubar` helper is running on macOS so the
 /// session-count indicator shows up automatically for every macOS user without
-/// them needing to run `kcode menubar` by hand.
+/// them needing to run `jcode menubar` by hand.
 ///
 /// This is a best-effort, fire-and-forget singleton: it records the helper's
 /// PID in the *global* `~/.kcode/menubar.pid` (see [`global_menubar_dir`]) and
@@ -143,7 +143,7 @@ pub fn run_menubar_command(once: bool, json: bool) -> Result<()> {
 /// Failures are silently ignored so they never disrupt normal session startup.
 ///
 /// The macOS menu bar is a single per-login-session resource, so this guards
-/// hard against sandboxed kcode processes (tests, self-dev, onboarding) ever
+/// hard against sandboxed jcode processes (tests, self-dev, onboarding) ever
 /// spawning a helper: each such process runs with a throwaway `$KCODE_HOME`,
 /// and without this guard every distinct sandbox home spawned its own helper
 /// and drew its own duplicate status item into the one real menu bar.
@@ -157,7 +157,7 @@ pub fn ensure_menubar_helper_running() {
         return;
     }
 
-    // Sandboxed kcode (tests / self-dev / onboarding, anything with a throwaway
+    // Sandboxed jcode (tests / self-dev / onboarding, anything with a throwaway
     // `$KCODE_HOME`) must never manage the real user's global menu bar.
     if running_in_menubar_sandbox() {
         return;
@@ -171,9 +171,10 @@ pub fn ensure_menubar_helper_running() {
     // If a recorded helper PID is still alive, do nothing.
     if let Ok(raw) = std::fs::read_to_string(&pid_path)
         && let Ok(pid) = raw.trim().parse::<u32>()
-            && crate::platform::is_process_running(pid) {
-                return;
-            }
+        && crate::platform::is_process_running(pid)
+    {
+        return;
+    }
 
     let Ok(exe) = std::env::current_exe() else {
         return;
@@ -206,12 +207,12 @@ pub fn ensure_menubar_helper_running() {}
 /// state - the "only one helper" lock and the helper pid file.
 ///
 /// The macOS menu bar is a single per-login-session resource shared by every
-/// kcode process for this user, so this state must live at a fixed location
+/// jcode process for this user, so this state must live at a fixed location
 /// that does **not** depend on `$KCODE_HOME`. Sandboxes (tests, self-dev,
 /// onboarding) override `$KCODE_HOME` with throwaway temp dirs; anchoring to
 /// the real home (`$HOME/.kcode`) gives every process the same lock inode so
 /// the singleton actually holds across them. For a normal (non-sandboxed)
-/// launch this is exactly `crate::storage::kcode_dir()`, so behavior for the
+/// launch this is exactly `crate::storage::jcode_dir()`, so behavior for the
 /// real user is unchanged.
 #[cfg(target_os = "macos")]
 fn global_menubar_dir() -> Option<std::path::PathBuf> {
@@ -221,7 +222,7 @@ fn global_menubar_dir() -> Option<std::path::PathBuf> {
     Some(dir)
 }
 
-/// True when this process is a sandboxed kcode that must not own the real
+/// True when this process is a sandboxed jcode that must not own the real
 /// user's global menu bar. A throwaway `$KCODE_HOME` (anything other than the
 /// real `~/.kcode`) or an explicit test/temp marker means "sandbox".
 #[cfg(target_os = "macos")]
@@ -256,7 +257,7 @@ fn is_menubar_sandbox(
     test_session: bool,
     temp_server: bool,
     custom_home: Option<&std::ffi::OsStr>,
-    real_kcode_home: Option<&std::path::Path>,
+    real_jcode_home: Option<&std::path::Path>,
 ) -> bool {
     if test_session || temp_server {
         return true;
@@ -267,7 +268,7 @@ fn is_menubar_sandbox(
         return false;
     };
     let custom = std::path::Path::new(custom_home);
-    let Some(real) = real_kcode_home else {
+    let Some(real) = real_jcode_home else {
         // No real home to compare against: treat any explicit override as a sandbox.
         return true;
     };
@@ -316,7 +317,7 @@ mod macos {
     ///
     /// Uses a non-blocking `flock(LOCK_EX | LOCK_NB)` on the *global*
     /// `~/.kcode/menubar.lock` (see [`super::global_menubar_dir`]) so the lock
-    /// is shared across every kcode process for this OS user, including ones
+    /// is shared across every jcode process for this OS user, including ones
     /// running with a sandboxed `$KCODE_HOME`. The menu bar itself is a single
     /// per-login-session resource, so the guard must be global too.
     ///
@@ -388,7 +389,7 @@ mod macos {
 
            impl MenuHandler {
                /// Open the clicked session (stored in the item's representedObject)
-               /// in a new terminal window via `kcode --resume <id>`.
+               /// in a new terminal window via `jcode --resume <id>`.
                #[unsafe(method(openSession:))]
                fn open_session(&self, sender: &NSMenuItem)
     {
@@ -398,13 +399,13 @@ mod macos {
                    let Ok(session_id) = object.downcast::<NSString>() else {
                        return;
                    };
-                   launch_kcode_window(vec!["--resume".to_string(), session_id.to_string()]);
+                   launch_jcode_window(vec!["--resume".to_string(), session_id.to_string()]);
                }
 
-               /// Launch a brand-new kcode session in a new terminal window.
+               /// Launch a brand-new jcode session in a new terminal window.
                #[unsafe(method(newWindow:))]
                fn new_window(&self, _sender: &NSMenuItem) {
-                   launch_kcode_window(Vec::new());
+                   launch_jcode_window(Vec::new());
                }
            }
        );
@@ -416,13 +417,13 @@ mod macos {
         }
     }
 
-    /// Launch a kcode window off the main thread so slow terminal startup
+    /// Launch a jcode window off the main thread so slow terminal startup
     /// (osascript / `open`) never blocks the menu bar UI.
-    fn launch_kcode_window(args: Vec<String>) {
+    fn launch_jcode_window(args: Vec<String>) {
         std::thread::spawn(move || {
-            if let Err(err) = crate::setup_hints::launch_kcode_in_macos_terminal(&args) {
+            if let Err(err) = crate::setup_hints::launch_jcode_in_macos_terminal(&args) {
                 crate::logging::warn(&format!(
-                    "menubar: failed to launch kcode window ({args:?}): {err}"
+                    "menubar: failed to launch jcode window ({args:?}): {err}"
                 ));
             }
         });
@@ -430,13 +431,13 @@ mod macos {
 
     pub(super) fn run_status_item_app() {
         let mtm = MainThreadMarker::new()
-            .expect("kcode menubar must run on the main thread (the process entry point)");
+            .expect("jcode menubar must run on the main thread (the process entry point)");
 
         // Defense in depth: a process running under an explicit test/temp marker
         // must never paint into the real user's menu bar. The real protection
         // against duplicates is `ensure_menubar_helper_running` (which refuses
         // to spawn from sandboxes) plus the global singleton lock below, but a
-        // stray `kcode menubar` invoked directly inside a test harness should
+        // stray `jcode menubar` invoked directly inside a test harness should
         // still never realize a status item.
         if super::env_truthy("KCODE_TEST_SESSION") || super::env_truthy("KCODE_TEMP_SERVER") {
             return;
@@ -444,8 +445,8 @@ mod macos {
 
         // Enforce a single live menu bar helper. The pid-file fast path in
         // `ensure_menubar_helper_running` is best-effort and can race or be
-        // bypassed entirely (e.g. a self-dev `target/.../kcode` and the
-        // installed `~/.local/bin/kcode` both spawn helpers, or a reload
+        // bypassed entirely (e.g. a self-dev `target/.../jcode` and the
+        // installed `~/.local/bin/jcode` both spawn helpers, or a reload
         // re-runs startup). Without a hard guard each extra helper creates its
         // own NSStatusItem, so the user ends up with a duplicate menu bar item
         // per spawn. Acquire an exclusive advisory lock here; if another helper
@@ -460,7 +461,7 @@ mod macos {
         // Accessory: no Dock icon, no main menu, just a menu bar item.
         app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 
-        // Follow the system's Light/Dark setting explicitly. `kcode` runs as a
+        // Follow the system's Light/Dark setting explicitly. `jcode` runs as a
         // bare Mach-O with no Info.plist app bundle, so AppKit defaults the
         // process to the light Aqua appearance and never auto-adopts macOS Dark
         // Mode. That made the status item's template icon and `labelColor` text
@@ -506,7 +507,7 @@ mod macos {
         if let Some(button) = status_item.button(mtm) {
             let icon = NSImage::imageWithSystemSymbolName_accessibilityDescription(
                 ns_string!("terminal.fill"),
-                Some(ns_string!("kcode sessions")),
+                Some(ns_string!("jcode sessions")),
             );
             if let Some(icon) = icon.as_deref() {
                 icon.setTemplate(true);
@@ -532,7 +533,7 @@ mod macos {
         let new_window_item = unsafe {
             NSMenuItem::initWithTitle_action_keyEquivalent(
                 NSMenuItem::alloc(mtm),
-                ns_string!("New kcode Window"),
+                ns_string!("New jcode Window"),
                 Some(sel!(newWindow:)),
                 ns_string!("n"),
             )
@@ -544,7 +545,7 @@ mod macos {
         let quit_item = unsafe {
             NSMenuItem::initWithTitle_action_keyEquivalent(
                 NSMenuItem::alloc(mtm),
-                ns_string!("Quit kcode menu bar"),
+                ns_string!("Quit jcode menu bar"),
                 Some(objc2::sel!(terminate:)),
                 ns_string!("q"),
             )
@@ -623,7 +624,7 @@ mod macos {
 
     /// Pin the application's appearance to the system Light/Dark setting.
     ///
-    /// `kcode` runs as a bare executable without an `Info.plist` app bundle, so
+    /// `jcode` runs as a bare executable without an `Info.plist` app bundle, so
     /// AppKit defaults the process to the light `Aqua` appearance and does not
     /// follow the user's macOS Dark Mode preference. With a light appearance the
     /// status item's template SF Symbol and `labelColor` title both resolve to a
@@ -971,7 +972,7 @@ mod tests {
         assert!(is_menubar_sandbox(
             false,
             false,
-            Some(OsStr::new("/private/tmp/kcode-e2e-home-xyz")),
+            Some(OsStr::new("/private/tmp/jcode-e2e-home-xyz")),
             Some(real),
         ));
 
@@ -979,7 +980,7 @@ mod tests {
         assert!(is_menubar_sandbox(
             false,
             false,
-            Some(OsStr::new("/private/tmp/kcode-e2e-home-xyz")),
+            Some(OsStr::new("/private/tmp/jcode-e2e-home-xyz")),
             None,
         ));
     }

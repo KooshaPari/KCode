@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run kcode's CI-style test suites with timing and timeout reporting.
+"""Run jcode's CI-style test suites with timing and timeout reporting.
 
 This is intentionally split the same way as `.github/workflows/ci.yml` instead of
 using one monolithic `cargo test --workspace --all-targets`, which is harder to

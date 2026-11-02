@@ -43,25 +43,56 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+function Assert-KcodeOwnedPath([string]$ProductPath) {
+    if (-not $ProductPath) { return }
+    $probe = [System.IO.Path]::GetFullPath($ProductPath)
+    if ($probe -match '(?i)(^|[\\/])(?:\.jcode[^\\/]*|jcode(?:[.-][^\\/]*)?)(?:[\\/]|$)') {
+        throw 'KCode cannot install into jcode storage or binary directories.'
+    }
+    while ($probe) {
+        if (Test-Path -LiteralPath $probe) {
+            $entry = Get-Item -LiteralPath $probe -Force
+            if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw 'KCode installer does not follow reparse points in product paths.'
+            }
+        }
+        $parent = Split-Path -Parent $probe
+        if (-not $parent -or $parent -eq $probe) { break }
+        $probe = $parent
+    }
+}
+
+# No maintained KCode channel exists for this branch. Fail before network,
+# directory creation, executable probing, or PATH changes.
+if (-not $ArtifactExePath -and -not $ArtifactTgzPath) {
+    throw 'KCode release downloads are disabled. Build KooshaPari/KCode and provide a local artifact with -Version.'
+}
+if (-not $Version) {
+    throw 'KCode local artifact installs require an explicit -Version.'
+}
+foreach ($productPath in @($InstallDir, $env:KCODE_HOME)) {
+    Assert-KcodeOwnedPath $productPath
+}
+
 if ($PSVersionTable.PSVersion.Major -lt 5) {
     Write-Host "error: PowerShell 5.1 or later is required" -ForegroundColor Red
     exit 1
 }
 
-$Repo = "1jehuang/kcode"
+$Repo = "KooshaPari/KCode"
 $ReleaseMetadataBase = if ($env:KCODE_RELEASE_METADATA_BASE) {
     $env:KCODE_RELEASE_METADATA_BASE.TrimEnd('/')
 } else {
-    "https://kcode.sh/releases"
+    "https://github.com/KooshaPari/KCode/releases"
 }
 
 if (-not $InstallDir) {
     $localAppData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData) }
     if (-not $localAppData -and $env:USERPROFILE) { $localAppData = Join-Path $env:USERPROFILE "AppData\Local" }
-    $InstallDir = Join-Path $localAppData "kcode\bin"
+    $InstallDir = if ($env:KCODE_HOME) { Join-Path $env:KCODE_HOME "bin" } else { Join-Path $localAppData "kcode\bin" }
 }
 
-$JcodeHome = if ($env:KCODE_HOME) {
+$KcodeHome = if ($env:KCODE_HOME) {
     $env:KCODE_HOME
 } elseif ($env:USERPROFILE) {
     Join-Path $env:USERPROFILE ".kcode"
@@ -69,14 +100,16 @@ $JcodeHome = if ($env:KCODE_HOME) {
     Join-Path ([Environment]::GetFolderPath("UserProfile")) ".kcode"
 }
 
-$HotkeyDir = Join-Path $JcodeHome "hotkey"
-$SetupHintsPath = Join-Path $JcodeHome "setup_hints.json"
+Assert-KcodeOwnedPath $InstallDir
+Assert-KcodeOwnedPath $KcodeHome
+$HotkeyDir = Join-Path $KcodeHome "hotkey"
+$SetupHintsPath = Join-Path $KcodeHome "setup_hints.json"
 
 function Write-Info($msg) { Write-Host $msg -ForegroundColor Blue }
 function Write-Err($msg) { throw "error: $msg" }
 function Write-Warn($msg) { Write-Host "warning: $msg" -ForegroundColor Yellow }
 
-function ConvertFrom-JcodeWebContent($Content) {
+function ConvertFrom-KcodeWebContent($Content) {
     if ($null -eq $Content) { return "" }
 
     # Windows PowerShell 5.1 returns Byte[] for some text responses when the
@@ -90,11 +123,11 @@ function ConvertFrom-JcodeWebContent($Content) {
     return [string]$Content
 }
 
-function Test-JcodeReleaseTag([string]$Tag) {
+function Test-KcodeReleaseTag([string]$Tag) {
     return [bool]($Tag -match '^v[0-9]+\.[0-9]+\.[0-9]+(?:[+.-][A-Za-z0-9.-]+)?$')
 }
 
-function Resolve-JcodeReleaseTagFromUri([string]$Uri) {
+function Resolve-KcodeReleaseTagFromUri([string]$Uri) {
     if (-not $Uri) { return $null }
     if ($Uri -match '/releases/tag/([^/?#]+)') {
         return [Uri]::UnescapeDataString($Matches[1])
@@ -102,14 +135,14 @@ function Resolve-JcodeReleaseTagFromUri([string]$Uri) {
     return $null
 }
 
-function Get-LatestJcodeReleaseTag {
+function Get-LatestKcodeReleaseTag {
     # Avoid api.github.com here. Its unauthenticated limit is only 60 requests
     # per public IP per hour, so installs are unreliable behind shared NAT/VPNs.
     $metadataTag = $null
     try {
         $metadataResponse = Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseMetadataBase/latest/version"
-        $candidate = (ConvertFrom-JcodeWebContent -Content $metadataResponse.Content).Trim()
-        if (Test-JcodeReleaseTag $candidate) { $metadataTag = $candidate }
+        $candidate = (ConvertFrom-KcodeWebContent -Content $metadataResponse.Content).Trim()
+        if (Test-KcodeReleaseTag $candidate) { $metadataTag = $candidate }
     } catch {}
 
     try {
@@ -131,7 +164,7 @@ function Get-LatestJcodeReleaseTag {
             }
         }
 
-        $tag = Resolve-JcodeReleaseTagFromUri $resolvedUri
+        $tag = Resolve-KcodeReleaseTagFromUri $resolvedUri
         if ($tag) { return $tag }
     } catch {
         if (-not $metadataTag) {
@@ -146,11 +179,11 @@ function Get-LatestJcodeReleaseTag {
     Write-Err "Failed to determine latest version"
 }
 
-function Get-JcodeReleaseDownloadBases([string]$ReleaseTag) {
+function Get-KcodeReleaseDownloadBases([string]$ReleaseTag) {
     $bases = New-Object System.Collections.Generic.List[string]
     try {
         $response = Invoke-WebRequest -UseBasicParsing -Uri "$ReleaseMetadataBase/$ReleaseTag/download-bases"
-        foreach ($line in ((ConvertFrom-JcodeWebContent -Content $response.Content) -split "`r?`n")) {
+        foreach ($line in ((ConvertFrom-KcodeWebContent -Content $response.Content) -split "`r?`n")) {
             $candidate = $line.Trim().TrimEnd('/')
             if ($candidate -match '^https://\S+$' -and -not $bases.Contains($candidate)) {
                 $bases.Add($candidate)
@@ -163,7 +196,7 @@ function Get-JcodeReleaseDownloadBases([string]$ReleaseTag) {
     return $bases.ToArray()
 }
 
-function Get-JcodeSha256FromManifest {
+function Get-KcodeSha256FromManifest {
     param(
         [Parameter(Mandatory = $true)][string]$ManifestText,
         [Parameter(Mandatory = $true)][string]$AssetName
@@ -189,7 +222,7 @@ function Get-ReleaseChecksum([string]$ReleaseTag, [string]$AssetName) {
     )) {
         try {
             $response = Invoke-WebRequest -UseBasicParsing -Uri $checksumUrl
-            $expected = Get-JcodeSha256FromManifest -ManifestText (ConvertFrom-JcodeWebContent -Content $response.Content) -AssetName $AssetName
+            $expected = Get-KcodeSha256FromManifest -ManifestText (ConvertFrom-KcodeWebContent -Content $response.Content) -AssetName $AssetName
             if ($expected) { return $expected }
         } catch {
             $lastError = $_
@@ -202,7 +235,7 @@ function Get-ReleaseChecksum([string]$ReleaseTag, [string]$AssetName) {
     Write-Err "SHA256SUMS for $ReleaseTag does not list $AssetName"
 }
 
-function Assert-JcodeFileChecksum([string]$FilePath, [string]$ExpectedSha256, [string]$AssetName) {
+function Assert-KcodeFileChecksum([string]$FilePath, [string]$ExpectedSha256, [string]$AssetName) {
     try {
         $actual = (Get-FileHash -LiteralPath $FilePath -Algorithm SHA256).Hash.ToLowerInvariant()
     } catch {
@@ -218,7 +251,7 @@ function Assert-JcodeFileChecksum([string]$FilePath, [string]$ExpectedSha256, [s
     return $actual
 }
 
-function Get-JcodeLocalAppDataDir {
+function Get-KcodeLocalAppDataDir {
     if ($env:LOCALAPPDATA) {
         return $env:LOCALAPPDATA
     }
@@ -235,11 +268,11 @@ function Get-JcodeLocalAppDataDir {
     return (Join-Path ([Environment]::GetFolderPath("UserProfile")) "AppData\Local")
 }
 
-function Get-DefaultJcodeInstallDir {
-    return (Join-Path (Get-JcodeLocalAppDataDir) "kcode\bin")
+function Get-DefaultKcodeInstallDir {
+    return (Join-Path (Get-KcodeLocalAppDataDir) "kcode\bin")
 }
 
-function ConvertTo-JcodePathKey([string]$PathValue) {
+function ConvertTo-KcodePathKey([string]$PathValue) {
     if (-not $PathValue) {
         return ""
     }
@@ -259,7 +292,7 @@ function ConvertTo-JcodePathKey([string]$PathValue) {
     return $clean.ToUpperInvariant()
 }
 
-function Split-JcodePathList([string]$PathValue) {
+function Split-KcodePathList([string]$PathValue) {
     if (-not $PathValue) {
         return @()
     }
@@ -274,7 +307,7 @@ function Split-JcodePathList([string]$PathValue) {
     return $entries
 }
 
-function Join-JcodePathList([string[]]$Entries) {
+function Join-KcodePathList([string[]]$Entries) {
     if (-not $Entries -or $Entries.Count -eq 0) {
         return ""
     }
@@ -282,10 +315,10 @@ function Join-JcodePathList([string[]]$Entries) {
     return ($Entries -join ';')
 }
 
-function Get-JcodeManagedPathKeys([string]$InstallDir) {
+function Get-KcodeManagedPathKeys([string]$InstallDir) {
     $keys = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    foreach ($candidate in @($InstallDir, (Get-DefaultJcodeInstallDir))) {
-        $key = ConvertTo-JcodePathKey $candidate
+    foreach ($candidate in @($InstallDir, (Get-DefaultKcodeInstallDir))) {
+        $key = ConvertTo-KcodePathKey $candidate
         if ($key) {
             [void]$keys.Add($key)
         }
@@ -293,19 +326,19 @@ function Get-JcodeManagedPathKeys([string]$InstallDir) {
     return $keys
 }
 
-function Resolve-JcodePathUpdate {
+function Resolve-KcodePathUpdate {
     param(
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [AllowNull()][string]$CurrentPath,
         [switch]$RemoveOnly
     )
 
-    $managedKeys = Get-JcodeManagedPathKeys -InstallDir $InstallDir
+    $managedKeys = Get-KcodeManagedPathKeys -InstallDir $InstallDir
     $nextEntries = @()
     $removedManaged = 0
 
-    foreach ($entry in (Split-JcodePathList $CurrentPath)) {
-        $key = ConvertTo-JcodePathKey $entry
+    foreach ($entry in (Split-KcodePathList $CurrentPath)) {
+        $key = ConvertTo-KcodePathKey $entry
         if (-not $key) {
             continue
         }
@@ -322,7 +355,7 @@ function Resolve-JcodePathUpdate {
         $nextEntries = @($InstallDir) + $nextEntries
     }
 
-    $nextPath = Join-JcodePathList $nextEntries
+    $nextPath = Join-KcodePathList $nextEntries
     $changed = ($nextPath -ne ([string]$CurrentPath))
 
     return [pscustomobject]@{
@@ -335,16 +368,16 @@ function Resolve-JcodePathUpdate {
     }
 }
 
-function Send-JcodeEnvironmentChangedBroadcast {
+function Send-KcodeEnvironmentChangedBroadcast {
     if ($env:KCODE_DISABLE_ENV_BROADCAST -eq "1") {
         return $false
     }
 
-    if (-not ("Jcode.EnvironmentBroadcast" -as [type])) {
+    if (-not ("Kcode.EnvironmentBroadcast" -as [type])) {
         Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-namespace Jcode {
+namespace Kcode {
     public static class EnvironmentBroadcast {
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern IntPtr SendMessageTimeout(
@@ -361,11 +394,11 @@ namespace Jcode {
     }
 
     $result = [UIntPtr]::Zero
-    [Jcode.EnvironmentBroadcast]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, "Environment", 0x0002, 5000, [ref]$result) | Out-Null
+    [Kcode.EnvironmentBroadcast]::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, "Environment", 0x0002, 5000, [ref]$result) | Out-Null
     return $true
 }
 
-function Set-JcodeUserPath {
+function Set-KcodeUserPath {
     param(
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [AllowNull()][string]$CurrentPath,
@@ -378,7 +411,7 @@ function Set-JcodeUserPath {
         $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
     }
 
-    $update = Resolve-JcodePathUpdate -InstallDir $InstallDir -CurrentPath $CurrentPath
+    $update = Resolve-KcodePathUpdate -InstallDir $InstallDir -CurrentPath $CurrentPath
     $broadcasted = $false
 
     if ($update.Changed) {
@@ -392,7 +425,7 @@ function Set-JcodeUserPath {
             if ($BroadcastAction) {
                 & $BroadcastAction | Out-Null
             } else {
-                Send-JcodeEnvironmentChangedBroadcast | Out-Null
+                Send-KcodeEnvironmentChangedBroadcast | Out-Null
             }
             $broadcasted = $true
         }
@@ -402,7 +435,7 @@ function Set-JcodeUserPath {
     return $update
 }
 
-function Remove-JcodeUserPath {
+function Remove-KcodeUserPath {
     param(
         [Parameter(Mandatory = $true)][string]$InstallDir,
         [AllowNull()][string]$CurrentPath,
@@ -415,7 +448,7 @@ function Remove-JcodeUserPath {
         $CurrentPath = [Environment]::GetEnvironmentVariable("Path", "User")
     }
 
-    $update = Resolve-JcodePathUpdate -InstallDir $InstallDir -CurrentPath $CurrentPath -RemoveOnly
+    $update = Resolve-KcodePathUpdate -InstallDir $InstallDir -CurrentPath $CurrentPath -RemoveOnly
     $broadcasted = $false
 
     if ($update.Changed) {
@@ -429,7 +462,7 @@ function Remove-JcodeUserPath {
             if ($BroadcastAction) {
                 & $BroadcastAction | Out-Null
             } else {
-                Send-JcodeEnvironmentChangedBroadcast | Out-Null
+                Send-KcodeEnvironmentChangedBroadcast | Out-Null
             }
             $broadcasted = $true
         }
@@ -439,13 +472,13 @@ function Remove-JcodeUserPath {
     return $update
 }
 
-function Set-JcodeProcessPath([string]$InstallDir) {
-    $update = Resolve-JcodePathUpdate -InstallDir $InstallDir -CurrentPath $env:Path
+function Set-KcodeProcessPath([string]$InstallDir) {
+    $update = Resolve-KcodePathUpdate -InstallDir $InstallDir -CurrentPath $env:Path
     $env:Path = $update.Path
     return $update
 }
 
-function Remove-JcodeStaleLauncherBackups {
+function Remove-KcodeStaleLauncherBackups {
     param(
         [Parameter(Mandatory = $true)][string]$LauncherDir
     )
@@ -454,7 +487,7 @@ function Remove-JcodeStaleLauncherBackups {
         Remove-Item -Force -ErrorAction SilentlyContinue
 }
 
-function Install-JcodeLauncher {
+function Install-KcodeLauncher {
     param(
         [Parameter(Mandatory = $true)][string]$SourcePath,
         [Parameter(Mandatory = $true)][string]$LauncherPath
@@ -498,7 +531,7 @@ function Install-JcodeLauncher {
         # Only prune backups after the stable path contains the new launcher.
         # Doing this before replacement could delete another concurrent
         # installer's rollback file during its short rename window.
-        Remove-JcodeStaleLauncherBackups -LauncherDir $launcherDir
+        Remove-KcodeStaleLauncherBackups -LauncherDir $launcherDir
     } finally {
         Remove-Item -LiteralPath $tempLauncher -Force -ErrorAction SilentlyContinue
     }
@@ -671,7 +704,7 @@ function Install-Alacritty {
     return $true
 }
 
-function Stop-JcodeHotkeyListeners {
+function Stop-KcodeHotkeyListeners {
     try {
         Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" -ErrorAction SilentlyContinue |
             Where-Object { $_.CommandLine -like '*kcode-hotkey*' } |
@@ -686,7 +719,7 @@ function Stop-JcodeHotkeyListeners {
     } catch {}
 }
 
-function ConvertFrom-JcodeVersionOutput([string]$Output) {
+function ConvertFrom-KcodeVersionOutput([string]$Output) {
     if (-not $Output) {
         return $null
     }
@@ -701,7 +734,7 @@ function ConvertFrom-JcodeVersionOutput([string]$Output) {
     return $null
 }
 
-function Get-JcodeVersionFromBinary([string]$BinaryPath) {
+function Get-KcodeVersionFromBinary([string]$BinaryPath) {
     if (-not $BinaryPath -or -not (Test-Path -LiteralPath $BinaryPath)) {
         return $null
     }
@@ -719,7 +752,7 @@ function Get-JcodeVersionFromBinary([string]$BinaryPath) {
         if ($exitCode -ne 0) {
             return $null
         }
-        return (ConvertFrom-JcodeVersionOutput $output)
+        return (ConvertFrom-KcodeVersionOutput $output)
     } catch {
         return $null
     } finally {
@@ -727,7 +760,7 @@ function Get-JcodeVersionFromBinary([string]$BinaryPath) {
     }
 }
 
-function Assert-JcodeBinaryCandidate {
+function Assert-KcodeBinaryCandidate {
     param(
         [Parameter(Mandatory = $true)][string]$BinaryPath,
         [Parameter(Mandatory = $true)][string]$ExpectedVersion
@@ -737,7 +770,7 @@ function Assert-JcodeBinaryCandidate {
         return $null
     }
 
-    $reportedVersion = Get-JcodeVersionFromBinary $BinaryPath
+    $reportedVersion = Get-KcodeVersionFromBinary $BinaryPath
     if (-not $reportedVersion) {
         Write-Err "Downloaded kcode binary could not run '--version'. It may be corrupt, quarantined by antivirus, or built for the wrong architecture."
     }
@@ -751,7 +784,7 @@ function Assert-JcodeBinaryCandidate {
     return $reportedVersion
 }
 
-function Test-JcodeMsvcBuildToolsAvailable {
+function Test-KcodeMsvcBuildToolsAvailable {
     if (Get-Command link.exe -ErrorAction SilentlyContinue) {
         return $true
     }
@@ -774,7 +807,7 @@ function Test-JcodeMsvcBuildToolsAvailable {
     }
 }
 
-function Assert-JcodeSourceBuildPrerequisites {
+function Assert-KcodeSourceBuildPrerequisites {
     if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
         Write-Err "Git is required for -BuildFromSource. Install it with: winget install -e --id Git.Git"
     }
@@ -787,13 +820,13 @@ function Assert-JcodeSourceBuildPrerequisites {
         $rustHost = (& rustc -vV 2>$null | Select-String '^host:' | Select-Object -First 1).ToString()
     } catch {}
 
-    if ($rustHost -match 'pc-windows-msvc' -and -not (Test-JcodeMsvcBuildToolsAvailable)) {
+    if ($rustHost -match 'pc-windows-msvc' -and -not (Test-KcodeMsvcBuildToolsAvailable)) {
         Write-Err "The MSVC linker (link.exe) was not found. Install Visual Studio 2022 Build Tools with the 'Desktop development with C++' workload, then open a new PowerShell window before using -BuildFromSource."
     }
 }
 
 function Set-SetupHintsState([bool]$AlacrittyConfigured, [bool]$HotkeyConfigured) {
-    New-Item -ItemType Directory -Path $JcodeHome -Force | Out-Null
+    New-Item -ItemType Directory -Path $KcodeHome -Force | Out-Null
 
     $state = @{
         launch_count = 0
@@ -830,9 +863,9 @@ function Set-SetupHintsState([bool]$AlacrittyConfigured, [bool]$HotkeyConfigured
     $state | ConvertTo-Json | Set-Content -Path $SetupHintsPath -Encoding UTF8
 }
 
-function Get-JcodeHotkeyShortcutScript([string]$StartupShortcutPath, [string]$JcodeExePath) {
+function Get-KcodeHotkeyShortcutScript([string]$StartupShortcutPath, [string]$KcodeExePath) {
     $escapedShortcutPath = $StartupShortcutPath.Replace("'", "''")
-    $escapedExePath = $JcodeExePath.Replace("'", "''")
+    $escapedExePath = $KcodeExePath.Replace("'", "''")
     $listenerArguments = "-NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -Command `"& '$escapedExePath' setup-hotkey --listen-windows-hotkey`""
     $escapedListenerArguments = $listenerArguments.Replace("'", "''")
     $shortcutLines = @(
@@ -849,14 +882,14 @@ function Get-JcodeHotkeyShortcutScript([string]$StartupShortcutPath, [string]$Jc
     return ($shortcutLines -join "`r`n")
 }
 
-function Install-JcodeHotkey([string]$JcodeExePath) {
+function Install-KcodeHotkey([string]$KcodeExePath) {
     New-Item -ItemType Directory -Path $HotkeyDir -Force | Out-Null
     $skipProcessLifecycle = (
         $env:KCODE_WINDOWS_SETUP_SKIP_EXTERNALS -eq "1" -or
         $env:KCODE_WINDOWS_SETUP_SKIP_PROCESS_LIFECYCLE -eq "1"
     )
     if (-not $skipProcessLifecycle) {
-        Stop-JcodeHotkeyListeners
+        Stop-KcodeHotkeyListeners
     }
 
     # Upgrade cleanup: v0.47 and earlier wrote a generated PowerShell listener.
@@ -867,7 +900,7 @@ function Install-JcodeHotkey([string]$JcodeExePath) {
     $startupDir = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup"
     New-Item -ItemType Directory -Path $startupDir -Force | Out-Null
     $startupShortcutPath = Join-Path $startupDir "kcode-hotkey.lnk"
-    $shortcutScript = Get-JcodeHotkeyShortcutScript -StartupShortcutPath $startupShortcutPath -JcodeExePath $JcodeExePath
+    $shortcutScript = Get-KcodeHotkeyShortcutScript -StartupShortcutPath $startupShortcutPath -KcodeExePath $KcodeExePath
 
     if ($env:KCODE_WINDOWS_SETUP_SKIP_EXTERNALS -eq "1") {
         Set-Content -Path (Join-Path $HotkeyDir "kcode-hotkey-shortcut.ps1") -Value $shortcutScript -Encoding UTF8
@@ -881,7 +914,7 @@ function Install-JcodeHotkey([string]$JcodeExePath) {
         return $false
     }
 
-    $escapedExePath = $JcodeExePath.Replace("'", "''")
+    $escapedExePath = $KcodeExePath.Replace("'", "''")
     $launchHotkeyCommand = "Start-Process -FilePath '$escapedExePath' -ArgumentList @('setup-hotkey', '--listen-windows-hotkey') -WindowStyle Hidden"
     if (-not $skipProcessLifecycle) {
         & powershell -NoProfile -ExecutionPolicy RemoteSigned -WindowStyle Hidden -Command $launchHotkeyCommand | Out-Null
@@ -893,7 +926,7 @@ function Install-JcodeHotkey([string]$JcodeExePath) {
     Write-Info "Configured Alt+; and the Copilot key to launch kcode"
     return $true
 }
-function Resolve-JcodeWindowsArtifact([string[]]$ArchitectureCandidates) {
+function Resolve-KcodeWindowsArtifact([string[]]$ArchitectureCandidates) {
     $sawX64 = $false
 
     foreach ($arch in @($ArchitectureCandidates)) {
@@ -908,7 +941,7 @@ function Resolve-JcodeWindowsArtifact([string[]]$ArchitectureCandidates) {
     return $null
 }
 
-function Get-JcodeWindowsArtifact {
+function Get-KcodeWindowsArtifact {
     $candidates = @()
 
     try {
@@ -920,15 +953,15 @@ function Get-JcodeWindowsArtifact {
         if ($envArch) { $candidates += [string]$envArch }
     }
 
-    $artifact = Resolve-JcodeWindowsArtifact $candidates
+    $artifact = Resolve-KcodeWindowsArtifact $candidates
     if ($artifact) { return $artifact }
 
     $displayArch = if ($candidates.Count -gt 0) { $candidates -join ", " } else { "<unknown>" }
     Write-Err "Unsupported architecture: $displayArch (supported: x86_64, ARM64)"
 }
 
-function Invoke-JcodeInstall {
-$Artifact = Get-JcodeWindowsArtifact
+function Invoke-KcodeInstall {
+$Artifact = Get-KcodeWindowsArtifact
 
 $ResolvedArtifactExePath = Resolve-OptionalPath $ArtifactExePath
 $ResolvedArtifactTgzPath = Resolve-OptionalPath $ArtifactTgzPath
@@ -939,7 +972,7 @@ if ($ResolvedArtifactExePath -and $ResolvedArtifactTgzPath) {
 
 if (-not $Version) {
     if ($ResolvedArtifactExePath) {
-        $Version = Get-JcodeVersionFromBinary $ResolvedArtifactExePath
+        $Version = Get-KcodeVersionFromBinary $ResolvedArtifactExePath
         if (-not $Version) {
             Write-Err "Could not detect a kcode version from '$ResolvedArtifactExePath'. Pass -Version explicitly if this is a trusted local build."
         }
@@ -948,16 +981,17 @@ if (-not $Version) {
         Write-Err "-Version is required when using -ArtifactTgzPath"
     } else {
         Write-Info "Fetching latest release..."
-        $Version = Get-LatestJcodeReleaseTag
+        $Version = Get-LatestKcodeReleaseTag
     }
 }
 
 if (-not $Version) { Write-Err "Failed to determine latest version" }
 
 $VersionNum = $Version.TrimStart('v')
-$DownloadBases = Get-JcodeReleaseDownloadBases $Version
+$DownloadBases = @() # Local artifacts only: no release metadata or network lookup.
 
-$BuildsDir = Join-Path (Get-JcodeLocalAppDataDir) "kcode\builds"
+$BuildsDir = if ($env:KCODE_HOME) { Join-Path $env:KCODE_HOME "builds" } else { Join-Path (Get-KcodeLocalAppDataDir) "kcode\builds" }
+Assert-KcodeOwnedPath $BuildsDir
 $StableDir = Join-Path $BuildsDir "stable"
 $VersionDir = Join-Path $BuildsDir "versions\$VersionNum"
 $LauncherPath = Join-Path $InstallDir "kcode.exe"
@@ -1019,7 +1053,7 @@ if ($ResolvedArtifactExePath) {
 if (-not $ResolvedArtifactExePath -and -not $ResolvedArtifactTgzPath -and $DownloadMode) {
     $downloadedAssetName = if ($DownloadMode -eq "bin") { "$Artifact.exe" } else { "$Artifact.tar.gz" }
     $expectedSha256 = Get-ReleaseChecksum -ReleaseTag $Version -AssetName $downloadedAssetName
-    Assert-JcodeFileChecksum -FilePath $DownloadPath -ExpectedSha256 $expectedSha256 -AssetName $downloadedAssetName | Out-Null
+    Assert-KcodeFileChecksum -FilePath $DownloadPath -ExpectedSha256 $expectedSha256 -AssetName $downloadedAssetName | Out-Null
 }
 
 $DestBin = Join-Path $VersionDir "kcode.exe"
@@ -1041,7 +1075,7 @@ if ($DownloadMode -eq "tar") {
     }
 
     Write-Info "No prebuilt asset found for $Artifact in $Version; -BuildFromSource was requested"
-    Assert-JcodeSourceBuildPrerequisites
+    Assert-KcodeSourceBuildPrerequisites
 
     $SrcDir = Join-Path $TempDir "kcode-src"
     Write-Info "Cloning $Repo at $Version..."
@@ -1084,12 +1118,12 @@ if ($DownloadMode -eq "tar") {
     Copy-Item -Path $BuiltBin -Destination $DestBin -Force
 }
 
-Assert-JcodeBinaryCandidate -BinaryPath $DestBin -ExpectedVersion $Version | Out-Null
+Assert-KcodeBinaryCandidate -BinaryPath $DestBin -ExpectedVersion $Version | Out-Null
 
 $StableBin = Join-Path $StableDir "kcode.exe"
 Copy-Item -Path $DestBin -Destination $StableBin -Force
 Set-Content -Path (Join-Path $BuildsDir "stable-version") -Value $VersionNum
-Install-JcodeLauncher -SourcePath $StableBin -LauncherPath $LauncherPath | Out-Null
+Install-KcodeLauncher -SourcePath $StableBin -LauncherPath $LauncherPath | Out-Null
 } finally {
     Get-Item -LiteralPath $TempDir -ErrorAction SilentlyContinue |
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
@@ -1107,7 +1141,7 @@ if ($env:KCODE_SKIP_SERVER_RELOAD -ne "1") {
     }
 }
 
-$userPathUpdate = Set-JcodeUserPath -InstallDir $InstallDir
+$userPathUpdate = Set-KcodeUserPath -InstallDir $InstallDir
 if ($userPathUpdate.Changed) {
     Write-Info "Updated user PATH with $InstallDir"
     if ($userPathUpdate.RemovedManagedEntries -gt 0 -or $userPathUpdate.RemovedDuplicateEntries -gt 0) {
@@ -1117,7 +1151,7 @@ if ($userPathUpdate.Changed) {
     Write-Info "User PATH already contains $InstallDir"
 }
 
-Set-JcodeProcessPath -InstallDir $InstallDir | Out-Null
+Set-KcodeProcessPath -InstallDir $InstallDir | Out-Null
 
 $installedAlacritty = $false
 $configuredHotkey = $false
@@ -1139,7 +1173,7 @@ if ($shouldSetupAlacritty) {
 }
 
 if ($shouldSetupHotkey) {
-    $configuredHotkey = Install-JcodeHotkey -JcodeExePath $LauncherPath
+    $configuredHotkey = Install-KcodeHotkey -KcodeExePath $LauncherPath
 } else {
     Write-Info "Optional global hotkey setup not requested"
 }
@@ -1175,5 +1209,5 @@ if (Get-Command kcode -ErrorAction SilentlyContinue) {
 }
 
 if ($env:KCODE_INSTALL_PS1_IMPORT_ONLY -ne "1") {
-    Invoke-JcodeInstall
+    Invoke-KcodeInstall
 }

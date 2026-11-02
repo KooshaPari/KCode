@@ -58,7 +58,7 @@ def test_selfdev_status():
 
     try:
         # Create a test session
-        result = send_cmd(sock, "create_session:selfdev:/home/jeremy/kcode")
+        result = send_cmd(sock, "create_session:selfdev:/home/jeremy/jcode")
         if not result or not result.get('ok'):
             print(f"Failed to create session: {result}")
             return False
@@ -121,7 +121,7 @@ def test_selfdev_socket_info():
         return False
 
     try:
-        result = send_cmd(sock, "create_session:selfdev:/home/jeremy/kcode")
+        result = send_cmd(sock, "create_session:selfdev:/home/jeremy/jcode")
         if not result or not result.get('ok'):
             return False
         session_id = json.loads(result['output'])['session_id']

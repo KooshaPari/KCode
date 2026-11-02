@@ -54,7 +54,7 @@ def test_injection_during_tools():
         sock.connect(SOCKET_PATH)
     except FileNotFoundError:
         print(f"ERROR: Debug socket not found at {SOCKET_PATH}")
-        print("Make sure kcode is running with debug control enabled.")
+        print("Make sure jcode is running with debug control enabled.")
         return False
 
     try:

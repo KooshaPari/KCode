@@ -4,8 +4,8 @@
 Offline: python3 tests/test_native_ssh_import.py --self-test
 Live, only after the coordinator builds/deploys matching binaries:
   KCODE_NATIVE_SSH_IMPORT=1 \
-  KCODE_NATIVE_SSH_BINARY=/absolute/local/ELF/kcode \
-  KCODE_NATIVE_SSH_IMPORT_REMOTE_EXECUTABLE=/absolute/remote/ELF/kcode \
+  KCODE_NATIVE_SSH_BINARY=/absolute/local/ELF/jcode \
+  KCODE_NATIVE_SSH_IMPORT_REMOTE_EXECUTABLE=/absolute/remote/ELF/jcode \
   KCODE_NATIVE_SSH_HOST=explicit-verified-alias \
   KCODE_NATIVE_SSH_CWD=/absolute/remote/workspace \
     python3 tests/test_native_ssh_import.py
@@ -98,8 +98,8 @@ def token_hashes(data):
 def isolated_env(root):
     root = Path(root)
     return {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(root / "home"),
-            "USER": "kcode-import-acceptance", "LANG": "C.UTF-8", "TERM": "xterm-256color",
-            "KCODE_HOME": str(root / "kcode"), "KCODE_RUNTIME_DIR": str(root / "runtime"),
+            "USER": "jcode-import-acceptance", "LANG": "C.UTF-8", "TERM": "xterm-256color",
+            "KCODE_HOME": str(root / "jcode"), "KCODE_RUNTIME_DIR": str(root / "runtime"),
             "XDG_RUNTIME_DIR": str(root / "runtime"),
             "XDG_CONFIG_HOME": str(root / "home" / ".config"),
             "XDG_CACHE_HOME": str(root / "home" / ".cache"),
@@ -235,19 +235,19 @@ if request["operation"] == "create":
     assert executable.is_absolute() and executable.is_file() and os.access(executable, os.X_OK)
     with executable.open("rb") as source:
         assert source.read(4) == b"\x7fELF", "Remote executable must be actual ELF"
-    parent = Path(pwd.getpwuid(os.getuid()).pw_dir) / ".cache" / "kcode-import-acceptance"
+    parent = Path(pwd.getpwuid(os.getuid()).pw_dir) / ".cache" / "jcode-import-acceptance"
     parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix="run-", dir=parent))
-    for name in ("home", "kcode", "runtime"):
+    for name in ("home", "jcode", "runtime"):
         (root / name).mkdir(mode=0o700)
     (root / ".acceptance-owned").write_text(request["owner"])
     (root / "expected.json").write_text(json.dumps(request["expected"]))
     other = "claude" if request["provider"] == "openai" else "openai"
     store, _ = fixture(other)  # Independent VM fixture, NOT a copy from local HOME.
-    seeded = root / "kcode" / FILES[other]
+    seeded = root / "jcode" / FILES[other]
     seeded.write_text(json.dumps(store))
     seeded.chmod(0o600)
-    wrapper = root / "remote-kcode"
+    wrapper = root / "remote-jcode"
     wrapper.write_text("#!/usr/bin/python3\nROOT=" + repr(str(root)) +
                       "\nEXECUTABLE=" + repr(str(executable)) + "\n" + request["wrapper"])
     wrapper.chmod(0o700)
@@ -256,15 +256,15 @@ if request["operation"] == "create":
 else:
     root = Path(request["root"])
     assert root.is_absolute() and root.name.startswith("run-")
-    assert root.parent.name == "kcode-import-acceptance"
+    assert root.parent.name == "jcode-import-acceptance"
     assert (root / ".acceptance-owned").read_text() == request["owner"]
     assert request["operation"] == "inspect"
-    stores = scan_files(root, {"kcode/" + name for name in FILES.values()})
+    stores = scan_files(root, {"jcode/" + name for name in FILES.values()})
     audit = root / "import-audit.jsonl"
     calls = [json.loads(line) for line in audit.read_text().splitlines()] if audit.exists() else []
     starts_path = root / "import-starts.jsonl"
     starts = [json.loads(line) for line in starts_path.read_text().splitlines()] if starts_path.exists() else []
-    result = subprocess.run([str(root / "remote-kcode"), "--no-update", "--no-selfdev",
+    result = subprocess.run([str(root / "remote-jcode"), "--no-update", "--no-selfdev",
                              "auth", "status", "--json"], stdin=subprocess.DEVNULL,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
     assert result.returncode == 0, "Real remote auth status failed"
@@ -287,7 +287,7 @@ else:
         processes.append({"pid": pid, "start_time": fields[19], "uid": uid,
                           "identity_source": "isolated Unix socket SO_PEERCRED"})
     # Scan again after status, which could otherwise conceal a status log leak.
-    assert scan_files(root, {"kcode/" + name for name in FILES.values()}) == stores
+    assert scan_files(root, {"jcode/" + name for name in FILES.values()}) == stores
     print(json.dumps({"stores": stores, "calls": calls, "starts": starts, "states": states, "processes": processes}))
 '''
 
@@ -382,10 +382,10 @@ def assert_snapshot(snapshot, provider, baseline, expected, imported, calls):
                 and call["reply_provider"] == provider for call in snapshot["calls"]),
             "Unsafe or wrong-provider remote invocation")
     other = "claude" if provider == "openai" else "openai"
-    other_path = "kcode/" + FILES[other]
+    other_path = "jcode/" + FILES[other]
     require(snapshot["stores"].get(other_path) == baseline["stores"][other_path],
             "Other-provider remote source changed")
-    selected = "kcode/" + FILES[provider]
+    selected = "jcode/" + FILES[provider]
     if imported:
         store = snapshot["stores"].get(selected, {})
         require(store.get("mode") == 0o600 and store.get("tokens") == expected[provider],
@@ -470,19 +470,19 @@ def run_provider(config, provider, root, env, local_before, expected):
 
 def run_acceptance(config):
     require(sys.platform.startswith("linux"), "Import acceptance requires Linux /proc")
-    with tempfile.TemporaryDirectory(prefix="kcode-ssh-import-", dir=os.environ.get("KCODE_SCRATCH_DIR")) as directory:
+    with tempfile.TemporaryDirectory(prefix="jcode-ssh-import-", dir=os.environ.get("KCODE_SCRATCH_DIR")) as directory:
         root = Path(directory)
-        for name in ("home", "kcode", "runtime"):
+        for name in ("home", "jcode", "runtime"):
             (root / name).mkdir(mode=0o700)
         expected = {}
         for provider, name in FILES.items():
             store, _ = fixture(provider)
             data = json.dumps(store).encode()
-            path = root / "kcode" / name
+            path = root / "jcode" / name
             path.write_bytes(data)
             path.chmod(0o600)
             expected[provider] = token_hashes(data)
-        local_before = scan_files(root, {"kcode/" + name for name in FILES.values()})
+        local_before = scan_files(root, {"jcode/" + name for name in FILES.values()})
         env = isolated_env(root)
         for key in ("PATH", "LOGNAME", "SSH_AUTH_SOCK", "SSH_AGENT_PID"):
             if key in os.environ:
@@ -505,7 +505,7 @@ class HarnessSelfTests(unittest.TestCase):
             fake.write_text("#!/bin/sh\nexit 0\n")
             fake.chmod(0o700)
             env = {PREFIX + "IMPORT": "1", PREFIX + "BINARY": str(fake), PREFIX + "HOST": "safe-alias",
-                   PREFIX + "CWD": "/workspace", PREFIX + "IMPORT_REMOTE_EXECUTABLE": "/opt/kcode"}
+                   PREFIX + "CWD": "/workspace", PREFIX + "IMPORT_REMOTE_EXECUTABLE": "/opt/jcode"}
             with mock.patch.dict(os.environ, env, clear=True), self.assertRaisesRegex(AssertionError, "actual ELF"):
                 configured()
 
@@ -527,15 +527,15 @@ class HarnessSelfTests(unittest.TestCase):
     def test_scan_all_artifacts_and_exact_store_allowlist(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root / "kcode").mkdir()
+            (root / "jcode").mkdir()
             store, _ = fixture("openai")
             data = json.dumps(store).encode()
-            path = root / "kcode/openai-auth.json"
+            path = root / "jcode/openai-auth.json"
             path.write_bytes(data)
             path.chmod(0o600)
-            allowed = {"kcode/openai-auth.json"}
+            allowed = {"jcode/openai-auth.json"}
             observed = scan_files(root, allowed)
-            self.assertEqual(observed["kcode/openai-auth.json"]["mode"], 0o600)
+            self.assertEqual(observed["jcode/openai-auth.json"]["mode"], 0o600)
             (root / "transcript.json").write_bytes(data)
             with self.assertRaisesRegex(AssertionError, "leaked"):
                 scan_files(root, allowed)
@@ -557,7 +557,7 @@ class HarnessSelfTests(unittest.TestCase):
             compile(remote_common() + source, "<remote-acceptance>", "exec")
 
     def exercise_wrapper(self, argv, payload, expected, result):
-        # Only the harness boundary is mocked. No SSH or kcode process runs in
+        # Only the harness boundary is mocked. No SSH or jcode process runs in
         # selftests, and no claims about Rust behavior are inferred from these.
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -573,7 +573,7 @@ class HarnessSelfTests(unittest.TestCase):
                         mock.patch("subprocess.run", return_value=result) as run:
                     with self.assertRaises(SystemExit) as stopped:
                         exec(remote_common() + REMOTE_WRAPPER,
-                             {"ROOT": str(root), "EXECUTABLE": "/not-executed/kcode"})
+                             {"ROOT": str(root), "EXECUTABLE": "/not-executed/jcode"})
                     execute.assert_not_called()
                 output = streams[1].buffer.getvalue() + streams[2].buffer.getvalue()
                 self.assertFalse(TOKEN_RE.search(output))
@@ -662,16 +662,16 @@ class HarnessSelfTests(unittest.TestCase):
 
     def test_snapshot_detects_cancel_transfer_and_repeat_mutation(self):
         other = {"sha256": "other", "mode": 0o600, "tokens": ["other"]}
-        baseline = {"stores": {"kcode/auth.json": other}, "calls": [], "starts": [],
+        baseline = {"stores": {"jcode/auth.json": other}, "calls": [], "starts": [],
                     "states": {"openai": "not_configured"}}
         assert_snapshot(baseline, "openai", baseline, {"openai": ["selected"]}, False, 0)
-        bad = dict(baseline, stores={**baseline["stores"], "kcode/openai-auth.json": {}})
+        bad = dict(baseline, stores={**baseline["stores"], "jcode/openai-auth.json": {}})
         with self.assertRaises(AssertionError):
             assert_snapshot(bad, "openai", baseline, {}, False, 0)
         bad = dict(baseline, starts=[{"provider": "openai"}])
         with self.assertRaises(AssertionError):
             assert_snapshot(bad, "openai", baseline, {}, False, 0)
-        bad = dict(baseline, stores={"kcode/auth.json": {**other, "sha256": "changed"}})
+        bad = dict(baseline, stores={"jcode/auth.json": {**other, "sha256": "changed"}})
         with self.assertRaises(AssertionError):
             assert_snapshot(bad, "openai", baseline, {}, False, 0)
 

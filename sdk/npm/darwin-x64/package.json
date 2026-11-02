@@ -1,6 +1,6 @@
 {
-  "name": "@1jehuang/kcode-darwin-x64",
-  "version": "1.2.0",
+  "name": "@kooshapari/kcode-darwin-x64",
+  "version": "1.2.0-k0.1.0",
   "description": "Jcode runtime binary for darwin x64",
   "license": "MIT",
   "os": [
@@ -18,10 +18,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/1jehuang/kcode.git",
+    "url": "git+https://github.com/1jehuang/jcode.git",
     "directory": "sdk/npm/darwin-x64"
   },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "private": true
 }
