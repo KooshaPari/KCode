@@ -159,8 +159,6 @@ KNOWN_DRIFT=(
   $'scripts/bench_compile.sh\tcargo-package-selector\tDEBT\tCompile benchmark preset; -p jcode does not resolve. Rename to -p kcode.'
   $'scripts/bench_compile.sh\tcargo-bin-selector\tDEBT\tCompile benchmark preset; --bin jcode does not exist. Rename to --bin kcode.'
   $'scripts/bench_selfdev_build.sh\tcargo-package-selector\tDEBT\tSelfdev build benchmark; -p jcode does not resolve. Rename to -p kcode.'
-  $'scripts/build_linux_compat.sh\tcargo-package-selector\tDEBT\tLinux compat build; -p jcode does not resolve. Rename to -p kcode.'
-  $'scripts/build_linux_compat.sh\tcargo-bin-selector\tDEBT\tLinux compat build; --bin jcode does not exist. Rename to --bin kcode.'
   $'scripts/stale_server_upgrade_sandbox.sh\tcargo-package-selector\tDEBT\tSandbox harness guard message; -p jcode does not resolve. Rename to -p kcode.'
   $'scripts/test_sdk_e2e.sh\tcargo-package-selector\tDEBT\tSDK e2e build; -p jcode does not resolve. Rename to -p kcode.'
   $'scripts/test_sdk_e2e.sh\tcargo-bin-selector\tDEBT\tSDK e2e build; --bin jcode does not exist. Rename to --bin kcode.'
