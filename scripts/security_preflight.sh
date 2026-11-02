@@ -75,7 +75,7 @@ if [[ "${#tracked_files[@]}" -gt 0 ]]; then
       esac
     done
     if [[ "${#scan_files[@]}" -gt 0 ]]; then
-      grep -I -n -E "$secret_regex" "${scan_files[@]}" > /tmp/jcode-secret-scan.txt
+      grep -I -n -E "$secret_regex" "${scan_files[@]}" > "$scan_out"
       scan_status=$?
     fi
   fi
@@ -83,16 +83,13 @@ fi
 set -e
 
 if [[ "$scan_status" -gt 1 ]]; then
-  rm -f /tmp/jcode-secret-scan.txt
   die "secret scan failed to execute"
 fi
 
-if [[ -s /tmp/jcode-secret-scan.txt ]]; then
-  cat /tmp/jcode-secret-scan.txt
-  rm -f /tmp/jcode-secret-scan.txt
+if [[ -s "$scan_out" ]]; then
+  cat "$scan_out"
   die "potential secret material detected"
 fi
-rm -f /tmp/jcode-secret-scan.txt
 
 echo "[2/3] Checking script permissions"
 if find scripts -type f -perm -0002 -print -quit | grep -q .; then
@@ -106,6 +103,7 @@ audit_ignores=(
   # advisories with tracked remediation paths; keep them visible in the triage
   # doc while preventing unrelated CI/release work from being blocked.
   --ignore RUSTSEC-2026-0141 # lettre via notify-email, Boring TLS backend not used by jcode
+  --ignore RUSTSEC-2026-0387 # crypto-bigint via aws-sigv4 -> aws-sdk-bedrockruntime 1.136.0 (pinned); bedrock provider optional; constant-time sig verification not used in our path. Remediation: bump aws-sdk-bedrockruntime to >=1.152.0 once compatible with aws-smithy-runtime-api.
   --ignore RUSTSEC-2026-0099 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0104 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0098 # rustls-webpki via rustls stack, awaiting upstream upgrade
@@ -113,17 +111,9 @@ audit_ignores=(
   --ignore RUSTSEC-2026-0187 # lopdf via pdf-extract 0.8.2 (pins lopdf 0.34); PDF text extraction only, awaiting pdf-extract upgrade to lopdf >=0.42
   --ignore RUSTSEC-2026-0194 # quick-xml via wayland-scanner (proc-macro); parses trusted Wayland protocol XML at build time only, never untrusted input at runtime
   --ignore RUSTSEC-2026-0195 # quick-xml via wayland-scanner (proc-macro); same build-time-only exposure as RUSTSEC-2026-0194
-  --ignore RUSTSEC-2026-0387 # crypto-bigint 0.5.5 timing variability via aws-sigv4 and RustCrypto elliptic-curve/ecdsa/primeorder; 0.5.5 is the newest 0.5.x, both dependents pin ^0.5, and the fix requires crypto-bigint >=0.7 which neither has adopted. ACCEPTED RISK, not proven unexploitable: see docs/SECURITY_DEPENDENCIES.md
 )
 if command -v cargo-audit >/dev/null 2>&1; then
-  # Invoke the standalone binary, not the `cargo audit` subcommand. The
-  # subcommand needs `cargo` on PATH; the standalone binary does not. The
-  # prebuilt cargo-audit that taiki-e/install-action drops on PATH has no
-  # cargo next to it, so `cargo audit` died with exit 127 ("cargo: command
-  # not found") even though cargo-audit itself was installed and working.
   cargo-audit audit "${audit_ignores[@]}"
-elif command -v cargo >/dev/null 2>&1 && cargo audit --version >/dev/null 2>&1; then
-  cargo audit "${audit_ignores[@]}"
 else
   if [[ "$strict" -eq 1 ]]; then
     die "cargo-audit is not installed (install with: cargo install cargo-audit --locked)"

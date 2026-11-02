@@ -9,7 +9,7 @@ on:
   #   1. Re-running CI for a commit that was pushed while the self-hosted
   #      runners were offline. No run is created, so `gh run rerun` has nothing
   #      to target, and pushing an empty commit to nudge CI is not acceptable.
-  #   2. Validating a long job (Build & Test is ~80 min) without adding a
+  #   2. Validating a long job (Build & Test is ~45 min) without adding a
   #      throwaway commit to the branch under review.
   workflow_dispatch:
 
@@ -633,41 +633,6 @@ jobs:
         run: |
           scripts/check_warning_budget.sh
 
-  security-preflight:
-    name: Security preflight (Linux)
-    # Fork PRs never run here: this is a persistent self-hosted runner with
-    # no isolation guarantees, so only same-repository pull requests get
-    # automatic CI. External contributions need a maintainer-run check.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      # Prebuilt binary, not `cargo install`. Compiling cargo-audit from source
-      # takes many minutes on this host (a cold cache built ~200 crates), which
-      # leaves little room to finish inside the gate's 20-minute budget while
-      # competing for a saturated desk runner. The action fetches a release
-      # binary in seconds, so the gate completes in the short windows where a
-      # runner is actually free.
-      #
-      # This is also what fixes the failure this step produced as a step inside
-      # the `build` job. Run 41376408063 failed here with
-      #   scripts/security_preflight.sh: line 117: cargo: command not found
-      # because the step ran `cargo install cargo-audit --locked` and the
-      # runner's PATH for that job had no `cargo` on it. The prebuilt action
-      # needs no cargo at all.
-      - name: Install cargo-audit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-audit
-
-      - name: Run security preflight
-        shell: bash
-        run: scripts/security_preflight.sh --strict
-
   windows-build-test:
     name: Build & Test (windows-latest)
     # Hosted Windows CI is disabled while hosted Actions minutes are capped at $0;
@@ -812,7 +777,7 @@ jobs:
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          & "target/x86_64-pc-windows-msvc/release/kcode.exe" --version
+          & "target/x86_64-pc-windows-msvc/release/jcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows binary failed to run --version'
           }
@@ -835,7 +800,7 @@ jobs:
           # this identity from the root package version and appends `-dev`.
           $version = 'v' + $cargoVersion.Matches[0].Groups[1].Value + '-dev'
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/kcode.exe' `
+            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/jcode.exe' `
             -Version $version
 
   fmt:
@@ -997,3 +962,36 @@ jobs:
       - name: Check Windows ARM64 target (advisory)
         continue-on-error: true
         run: cargo xwin check --locked --target aarch64-pc-windows-msvc --no-default-features --features pdf
+
+  # Standalone so a build abort cannot mask the security gate. Previously this
+  # step ran last inside the 12-minute `build` job, where a runner-level abort
+  # left it PENDING and the gate produced no verdict at all (run 41145617775:
+  # steps 6-22 all PENDING, job failed, no log). It needs only checkout plus
+  # cargo-audit, so it belongs in its own cheap job.
+  security-preflight:
+    name: Security preflight (Linux)
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, desk-linux]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Prebuilt binary, not `cargo install`. Compiling cargo-audit from source
+      # takes many minutes on this host (a cold cache built ~200 crates), which
+      # leaves little room to finish inside the gate's 20-minute budget while
+      # competing for a saturated desk runner. The action fetches a release
+      # binary in seconds, so the gate completes in the short windows where a
+      # runner is actually free.
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Run security preflight
+        shell: bash
+        run: scripts/security_preflight.sh --strict
