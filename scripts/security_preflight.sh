@@ -108,9 +108,22 @@ audit_ignores=(
   --ignore RUSTSEC-2026-0194 # quick-xml via wayland-scanner (proc-macro); parses trusted Wayland protocol XML at build time only, never untrusted input at runtime
   --ignore RUSTSEC-2026-0195 # quick-xml via wayland-scanner (proc-macro); same build-time-only exposure as RUSTSEC-2026-0194
 )
+# Run cargo-audit through whichever entry point actually exists.
+#
+# The check below used to test for `cargo-audit` on PATH and then invoke
+# `cargo audit`. Those are different programs: `cargo-audit` is the standalone
+# binary, `cargo audit` is the cargo subcommand that requires the Rust
+# toolchain to be installed. On the self-hosted desk runner the toolchain is
+# not on PATH for the runner service (cargo lives in ~/.cargo/bin, which the
+# runner's PATH does not include), so `command -v cargo-audit` succeeded and
+# the very next line died with "cargo: command not found" (exit 127).
+#
+# Prefer the standalone binary when it is present, since that is what the
+# CI job installs into ~/.install-action/bin, and fall back to the cargo
+# subcommand only when cargo itself is reachable.
 if command -v cargo-audit >/dev/null 2>&1; then
-  cargo audit "${audit_ignores[@]}"
-elif cargo audit --version >/dev/null 2>&1; then
+  cargo-audit audit "${audit_ignores[@]}"
+elif command -v cargo >/dev/null 2>&1 && cargo audit --version >/dev/null 2>&1; then
   cargo audit "${audit_ignores[@]}"
 else
   if [[ "$strict" -eq 1 ]]; then
