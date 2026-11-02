@@ -766,7 +766,14 @@ jobs:
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
-    timeout-minutes: 10
+    # `cargo fmt --all -- --check` needs no compilation, so 10 minutes looked
+    # generous. It is not enough on this runner when the host is oversubscribed:
+    # observed 2026-11-02 in run 41425751987, job 125211820283, Format exceeded
+    # its cap and was cancelled while a second Rust build ran concurrently and
+    # the host load average was 52 on 16 cores. A formatting gate that dies from
+    # starvation reports failure for a tree that is correctly formatted, which is
+    # worse than a slow gate. 30 minutes costs nothing when the host is idle.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
