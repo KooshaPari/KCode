@@ -127,7 +127,7 @@ RULES=(
   $'env-build-git-dirty\t(^|[^A-Za-z0-9_])JCODE_BUILD_GIT_DIRTY([^A-Za-z0-9_]|$)'
   $'env-build-metadata-file\t(^|[^A-Za-z0-9_])JCODE_BUILD_METADATA_FILE([^A-Za-z0-9_]|$)'
   $'env-build-changelog-raw\t(^|[^A-Za-z0-9_])JCODE_BUILD_CHANGELOG_RAW([^A-Za-z0-9_]|$)'
-  $'cargo-package-selector\t(^|[[:space:]])-p[[:space:]]+jcode([[:space:]]|$)'
+  $'cargo-package-selector\t(^|[[:space:]])(-p|--package)[[:space:]]+jcode([[:space:]]|$)'
   $'cargo-bin-selector\t--bin[[:space:]]+jcode([[:space:]]|$)'
   $'windows-exe-name\t(^|[^A-Za-z0-9_.-])jcode\\.exe'
 )
@@ -145,33 +145,48 @@ RULES=(
 #               enumerated here so they cannot silently grow.
 #
 # Format: relpath<TAB>label<TAB>kind<TAB>justification
+#
+# A file may legitimately contain the same rule more than once (a script that
+# builds the same crate in several profiles). The register therefore pins an
+# OCCURRENCE COUNT, not just "this file has this problem": an entry may carry
+# a fifth field with the number of occurrences allowed for that (path, label)
+# pair. When the field is absent the count is 1.
+#
+# Without the count, a file with one registered occurrence could grow a second
+# unregistered occurrence of the same rule and the gate would still pass,
+# because matching was by (path, label) alone. That defeats the ratchet: the
+# register is supposed to pin the exact set of allowed occurrences so the
+# baseline can only shrink.
+#
+# The count is the entry's LAST tab-separated field when it is a bare integer,
+# so a justification containing tabs is still safe.
 # ---------------------------------------------------------------------------
 KNOWN_DRIFT=(
-  $'scripts/remote/README.md\twindows-exe-name\tLEGITIMATE\tProse describing a stray jcode.exe left in the user-scope remote dir by an older build; names an artifact on disk, selects nothing.'
-  $'scripts/docs/jcode_env.lst\tenv-release-build\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.'
-  $'scripts/docs/jcode_env.lst\tenv-ci-build\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.'
-  $'scripts/docs/jcode_env.lst\tenv-build-semver\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.'
-  $'scripts/docs/jcode_env.lst\tenv-build-git-dirty\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.'
-  $'scripts/docs/jcode_env.lst\tenv-build-metadata-file\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable.'
-  $'scripts/docs/jcode_env.lst\tenv-build-changelog-raw\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable.'
-  $'scripts/quick-release.sh\tcargo-package-selector\tDEBT\tDev release helper; -p jcode does not resolve (no such package). Rename to -p kcode.'
-  $'scripts/quick-release.sh\tcargo-bin-selector\tDEBT\tDev release helper; --bin jcode does not exist (bins are kcode, test_api, kcode-harness). Rename to --bin kcode.'
-  $'scripts/bench_compile.sh\tcargo-package-selector\tDEBT\tCompile benchmark preset; -p jcode does not resolve. Rename to -p kcode.'
-  $'scripts/bench_compile.sh\tcargo-bin-selector\tDEBT\tCompile benchmark preset; --bin jcode does not exist. Rename to --bin kcode.'
-  $'scripts/bench_selfdev_build.sh\tcargo-package-selector\tDEBT\tSelfdev build benchmark; -p jcode does not resolve. Rename to -p kcode.'
-  $'scripts/stale_server_upgrade_sandbox.sh\tcargo-package-selector\tDEBT\tSandbox harness guard message; -p jcode does not resolve. Rename to -p kcode.'
-  $'scripts/test_sdk_e2e.sh\tcargo-package-selector\tDEBT\tSDK e2e build; -p jcode does not resolve. Rename to -p kcode.'
-  $'scripts/test_sdk_e2e.sh\tcargo-bin-selector\tDEBT\tSDK e2e build; --bin jcode does not exist. Rename to --bin kcode.'
-  $'scripts/test_desktop_selfdev.py\tcargo-package-selector\tDEBT\tDocstring showing the desktop selfdev build command; -p jcode does not resolve.'
-  $'scripts/test_desktop_selfdev.py\tcargo-bin-selector\tDEBT\tDocstring showing the desktop selfdev build command; --bin jcode does not exist.'
-  $'scripts/test_auth_e2e.sh\tcargo-bin-selector\tDEBT\tAuth e2e runs cargo run --bin jcode, which does not exist. Rename to --bin kcode.'
-  $'scripts/auth_regression_matrix.sh\tcargo-bin-selector\tDEBT\tAuth matrix default client command; --bin jcode does not exist. Rename to --bin kcode.'
-  $'scripts/auth_fixture.sh\tcargo-bin-selector\tDEBT\tAuth fixture client command; --bin jcode does not exist. Rename to --bin kcode.'
-  $'scripts/onboarding_sandbox.sh\tcargo-bin-selector\tDEBT\tOnboarding sandbox client command; --bin jcode does not exist. Rename to --bin kcode.'
-  $'scripts/test_fast.sh\tcargo-bin-selector\tDEBT\tFast test runner; --bin jcode does not exist. Rename to --bin kcode.'
-  $'scripts/test_windows_launcher_install.ps1\twindows-exe-name\tDEBT\tAsserts the launcher at LOCALAPPDATA\\jcode\\bin\\jcode.exe while scripts/install.ps1:997 writes kcode.exe. Run in windows CI; expected name is kcode.exe.'
-  $'scripts/test_windows_setup_evaluation.ps1\twindows-exe-name\tDEBT\tStale assertion, not a fixture: line 272 asserts a CLEAN INSTALL populates BuildsDir\\stable\\jcode.exe and line 416 asserts that path is a managed executable, while scripts/install.ps1:1059/1123 write kcode.exe. Would fail if run. Hidden because the windows-build-test job is `if: false` in ci.yml. A rename alone is not enough - the test needs to run on a Windows host to confirm.'
-  $'scripts/test_install_conversion.sh\twindows-exe-name\tDEBT\tAsserts the converted Windows tree contains jcode.exe. Two problems, not one: (a) the name is pre-rename, and (b) the test drives scripts/install.sh expecting a release DOWNLOAD, which this fork disables - running it locally exits 1 immediately with "KCode release downloads are disabled". The whole setup-friction job is `if: false` in ci.yml for that reason, so fixing the name alone will not make it pass; the installer path has to be restored first.'
+  $'scripts/remote/README.md\twindows-exe-name\tLEGITIMATE\tProse describing a stray jcode.exe left in the user-scope remote dir by an older build; names an artifact on disk, selects nothing.\t1'
+  $'scripts/docs/jcode_env.lst\tenv-release-build\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.\t1'
+  $'scripts/docs/jcode_env.lst\tenv-ci-build\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.\t1'
+  $'scripts/docs/jcode_env.lst\tenv-build-semver\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.\t1'
+  $'scripts/docs/jcode_env.lst\tenv-build-git-dirty\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.\t1'
+  $'scripts/docs/jcode_env.lst\tenv-build-metadata-file\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable.\t1'
+  $'scripts/docs/jcode_env.lst\tenv-build-changelog-raw\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable.\t1'
+  $'scripts/quick-release.sh\tcargo-package-selector\tDEBT\tDev release helper; -p jcode does not resolve (no such package). Rename to -p kcode.\t1'
+  $'scripts/quick-release.sh\tcargo-bin-selector\tDEBT\tDev release helper; --bin jcode does not exist (bins are kcode, test_api, kcode-harness). Rename to --bin kcode.\t3'
+  $'scripts/bench_compile.sh\tcargo-package-selector\tDEBT\tCompile benchmark preset; -p jcode does not resolve. Rename to -p kcode.\t5'
+  $'scripts/bench_compile.sh\tcargo-bin-selector\tDEBT\tCompile benchmark preset; --bin jcode does not exist. Rename to --bin kcode.\t4'
+  $'scripts/bench_selfdev_build.sh\tcargo-package-selector\tDEBT\tSelfdev build benchmark; -p jcode does not resolve. Rename to -p kcode.\t1'
+  $'scripts/stale_server_upgrade_sandbox.sh\tcargo-package-selector\tDEBT\tSandbox harness guard message; -p jcode does not resolve. Rename to -p kcode.\t1'
+  $'scripts/test_sdk_e2e.sh\tcargo-package-selector\tDEBT\tSDK e2e build; -p jcode does not resolve. Rename to -p kcode.\t1'
+  $'scripts/test_sdk_e2e.sh\tcargo-bin-selector\tDEBT\tSDK e2e build; --bin jcode does not exist. Rename to --bin kcode.\t1'
+  $'scripts/test_desktop_selfdev.py\tcargo-package-selector\tDEBT\tDocstring showing the desktop selfdev build command; -p jcode does not resolve.\t1'
+  $'scripts/test_desktop_selfdev.py\tcargo-bin-selector\tDEBT\tDocstring showing the desktop selfdev build command; --bin jcode does not exist.\t1'
+  $'scripts/test_auth_e2e.sh\tcargo-bin-selector\tDEBT\tAuth e2e runs cargo run --bin jcode, which does not exist. Rename to --bin kcode.\t1'
+  $'scripts/auth_regression_matrix.sh\tcargo-bin-selector\tDEBT\tAuth matrix default client command; --bin jcode does not exist. Rename to --bin kcode.\t2'
+  $'scripts/auth_fixture.sh\tcargo-bin-selector\tDEBT\tAuth fixture client command; --bin jcode does not exist. Rename to --bin kcode.\t1'
+  $'scripts/onboarding_sandbox.sh\tcargo-bin-selector\tDEBT\tOnboarding sandbox client command; --bin jcode does not exist. Rename to --bin kcode.\t1'
+  $'scripts/test_fast.sh\tcargo-bin-selector\tDEBT\tFast test runner; --bin jcode does not exist. Rename to --bin kcode.\t1'
+  $'scripts/test_windows_launcher_install.ps1\twindows-exe-name\tDEBT\tAsserts the launcher at LOCALAPPDATA\\jcode\\bin\\jcode.exe while scripts/install.ps1:997 writes kcode.exe. Run in windows CI; expected name is kcode.exe.\t5'
+  $'scripts/test_windows_setup_evaluation.ps1\twindows-exe-name\tDEBT\tStale assertion, not a fixture: line 272 asserts a CLEAN INSTALL populates BuildsDir\\stable\\jcode.exe and line 416 asserts that path is a managed executable, while scripts/install.ps1:1059/1123 write kcode.exe. Would fail if run. Hidden because the windows-build-test job is `if: false` in ci.yml. A rename alone is not enough - the test needs to run on a Windows host to confirm.\t8'
+  $'scripts/test_install_conversion.sh\twindows-exe-name\tDEBT\tAsserts the converted Windows tree contains jcode.exe. Two problems, not one: (a) the name is pre-rename, and (b) the test drives scripts/install.sh expecting a release DOWNLOAD, which this fork disables - running it locally exits 1 immediately with "KCode release downloads are disabled". The whole setup-friction job is `if: false` in ci.yml for that reason, so fixing the name alone will not make it pass; the installer path has to be restored first.\t1'
 )
 
 SCAN_ROOTS=(
@@ -204,9 +219,23 @@ printf 'excluded:   crates/ src/ tests/ (jcode crate, lib and data names are leg
 hit_path() { printf '%s\n' "${1%%:*}"; }
 hit_content() { local rest=${1#*:}; printf '%s\n' "${rest#*:}"; }
 
+# Number of occurrences the register allows for one (path, label) pair.
+# The count is the register entry's last tab-separated field when it is a bare
+# integer; otherwise the entry allows exactly one occurrence.
+allowed_occurrences() {
+  local entry="$1"
+  local last="${entry##*$'\t'}"
+  if [[ "$last" =~ ^[0-9]+$ ]] && (( last > 0 )); then
+    printf '%s' "$last"
+  else
+    printf '1'
+  fi
+}
+
 declare -a new_hits=()
 declare -a known_hits=()
 declare -a seen_known=()
+declare -a pair_counts=()
 
 for rule in "${RULES[@]}"; do
   label=${rule%%$'\t'*}
@@ -242,8 +271,23 @@ for rule in "${RULES[@]}"; do
     done
 
     if [[ -n "$match" ]]; then
-      known_hits+=("$line [rule: $label]")
-      seen_known+=("$path"$'\t'"$label")
+      # The register pins an occurrence count for this (path, label) pair. The
+      # first N occurrences are allowed; occurrence N+1 is new drift and fails.
+      # The counter is per (path, label): the same file may hold several rules,
+      # and each has its own allowance.
+      allowed=$(allowed_occurrences "$match")
+      pair_key="$path"$'\t'"$label"
+      seen_count=0
+      for seen_key in "${pair_counts[@]:-}"; do
+        [[ "$seen_key" == "$pair_key" ]] && seen_count=$((seen_count + 1))
+      done
+      if (( seen_count < allowed )); then
+        known_hits+=("$line [rule: $label]")
+        pair_counts+=("$pair_key")
+        seen_known+=("$pair_key")
+      else
+        new_hits+=("$line [rule: $label]")
+      fi
     else
       new_hits+=("$line [rule: $label]")
     fi
