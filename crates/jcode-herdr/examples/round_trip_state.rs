@@ -23,8 +23,8 @@
 //!   cargo run -p jcode-herdr --example round_trip_state
 //! ```
 
-use jcode_herdr::state::AgentState;
 use jcode_herdr::HerdrEnv;
+use jcode_herdr::state::AgentState;
 
 fn main() {
     for state in [AgentState::Working, AgentState::Idle, AgentState::Blocked] {
