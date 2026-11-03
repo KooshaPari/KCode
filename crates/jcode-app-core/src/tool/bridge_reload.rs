@@ -429,7 +429,7 @@ mod tests {
         assert!(
             launch
                 .program
-                .ends_with("target/release/jcode-harness-api-bridge")
+                .ends_with("target/release/kcode-harness-api-bridge")
         );
         assert!(launch.args.is_empty());
     }

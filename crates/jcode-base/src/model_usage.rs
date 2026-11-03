@@ -146,7 +146,6 @@ fn method_usage_counts_at(path: &Path) -> Result<HashMap<String, u64>> {
 
 /// Add local usage to provider-owned catalog rows. Failure leaves usage unknown,
 /// never fabricated zero. No transcript loading or historical inference occurs.
-
 pub fn enrich_routes(routes: &mut [ModelRoute]) {
     let mut usage = legacy();
     let mut started: Option<u64> = None;

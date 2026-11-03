@@ -35,6 +35,9 @@ concurrency:
 
 jobs:
   smoke:
+    # Disabled: hosted ubuntu-latest minutes are capped at $0 (never pay for
+    # GH CI). Re-enable if hosted spend is ever restored.
+    if: false
     name: FreeBSD Smoke (x86_64)
     runs-on: ubuntu-latest
     timeout-minutes: 120
