@@ -101,6 +101,7 @@ pub(super) async fn spawn_tracked_live_turn(
     system_reminder: Option<String>,
     display_role: Option<crate::session::StoredDisplayRole>,
     status_detail: Option<String>,
+    receipt_id: Option<String>,
     swarm: LiveTurnSwarmContext,
 ) {
     update_member_status(
@@ -120,7 +121,11 @@ pub(super) async fn spawn_tracked_live_turn(
     tokio::spawn(async move {
         let start_message_index = agent.message_count();
         let (result, stop_reason) = catch_live_turn_panic(async {
-            if let Some(display_role) = display_role {
+            if let Some(receipt_id) = receipt_id {
+                agent
+                    .run_once_streaming_mpsc_with_receipt(&message, &receipt_id, event_tx.clone())
+                    .await
+            } else if let Some(display_role) = display_role {
                 agent
                     .run_once_streaming_mpsc_with_display_role(
                         &message,
@@ -220,6 +225,7 @@ pub(super) async fn run_live_turn_if_idle(
         system_reminder,
         None,
         detail,
+        None,
         swarm,
     )
     .await;
@@ -243,6 +249,44 @@ pub(super) async fn run_live_system_turn_if_idle(
         None,
         Some(crate::session::StoredDisplayRole::System),
         detail,
+        None,
+        swarm,
+    )
+    .await;
+    true
+}
+
+/// Retryable native receipt wake. Busy or unattached targets stay queued.
+pub(super) async fn run_receipt_turn_if_idle(
+    session_id: &str,
+    message: &str,
+    receipt_id: &str,
+    sessions: &SessionAgents,
+    swarm: LiveTurnSwarmContext,
+) -> bool {
+    let Some(agent) = idle_live_agent(session_id, sessions, &swarm.members).await else {
+        return false;
+    };
+    // The caller's queued snapshot may predate a completed turn. The agent
+    // reservation serializes live turns; re-read the durable receipt only now.
+    if !matches!(
+        super::wake_receipts::get(receipt_id),
+        Ok(Some(receipt))
+            if receipt.session_id == session_id
+                && receipt.message == message
+                && receipt.state == super::wake_receipts::WakeState::Queued
+    ) {
+        return false;
+    }
+    let detail = Some(truncate_detail(message, 120));
+    spawn_tracked_live_turn(
+        session_id,
+        agent,
+        message.to_string(),
+        None,
+        Some(crate::session::StoredDisplayRole::System),
+        detail,
+        Some(receipt_id.to_string()),
         swarm,
     )
     .await;

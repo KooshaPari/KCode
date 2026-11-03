@@ -1,5 +1,6 @@
 use super::client_actions::{
     NotifySessionContext, handle_applet_action, handle_close_applet, handle_notify_session,
+    handle_notify_session_receipt,
 };
 use super::client_comm::{
     handle_comm_channel_members, handle_comm_list, handle_comm_list_channels, handle_comm_message,
@@ -179,6 +180,61 @@ pub(super) async fn handle_lightweight_control_request(
                 },
             )
             .await;
+        }
+        Request::NotifySessionReceipt {
+            id,
+            session_id,
+            message,
+            receipt_id,
+        } => {
+            handle_notify_session_receipt(
+                id,
+                session_id,
+                message,
+                receipt_id,
+                NotifySessionContext {
+                    sessions,
+                    soft_interrupt_queues,
+                    client_connections,
+                    swarm_members,
+                    swarms_by_id,
+                    event_history,
+                    event_counter,
+                    swarm_event_tx,
+                    client_event_tx: &client_event_tx,
+                },
+            )
+            .await;
+        }
+        Request::GetWakeReceipt { id, receipt_id } => {
+            match super::wake_receipts::get(&receipt_id) {
+                Ok(Some(receipt))
+                    if super::wake_receipts::target_is_allowed(&receipt.session_id) =>
+                {
+                    let _ = client_event_tx.send(super::wake_receipts::status_event(id, receipt));
+                }
+                Ok(Some(_)) => {
+                    let _ = client_event_tx.send(ServerEvent::Error {
+                        id,
+                        message: "Wake receipt target is not allowed".to_string(),
+                        retry_after_secs: None,
+                    });
+                }
+                Ok(None) => {
+                    let _ = client_event_tx.send(ServerEvent::Error {
+                        id,
+                        message: "Unknown wake receipt".to_string(),
+                        retry_after_secs: None,
+                    });
+                }
+                Err(error) => {
+                    let _ = client_event_tx.send(ServerEvent::Error {
+                        id,
+                        message: error.to_string(),
+                        retry_after_secs: None,
+                    });
+                }
+            }
         }
         Request::AppletAction {
             id,

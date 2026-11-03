@@ -532,6 +532,26 @@ impl Session {
         self.save_inner(false)
     }
 
+    /// Make a saved native wake turn entry durable before its receipt advances.
+    /// Normal session saves favor throughput and may leave a journal append in
+    /// the page cache; receipt state uses a durable write and must not outrun it.
+    pub fn sync_wake_turn_entry(&self) -> Result<()> {
+        if let Some(block) = self.migration_lease_block() {
+            anyhow::bail!("Session {} was not persisted: {}", self.id, block);
+        }
+        let snapshot = session_path(&self.id)?;
+        std::fs::File::open(&snapshot)?.sync_all()?;
+        let journal = session_journal_path_from_snapshot(&snapshot);
+        if journal.exists() {
+            std::fs::File::open(&journal)?.sync_all()?;
+        }
+        #[cfg(unix)]
+        if let Some(parent) = snapshot.parent() {
+            std::fs::File::open(parent)?.sync_all()?;
+        }
+        Ok(())
+    }
+
     /// Persist the session even when it has no visible conversation message
     /// yet. Use this for sessions prepared by one process and attached to by
     /// another (for example visible swarm spawns), where caller-configured

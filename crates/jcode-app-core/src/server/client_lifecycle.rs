@@ -2333,6 +2333,10 @@ pub(super) async fn handle_client(
                 )
                 .await;
             }
+            Request::NotifySessionReceipt { .. } | Request::GetWakeReceipt { .. } => {
+                // Routed before session attachment by is_lightweight_control_request.
+                unreachable!("wake receipts must use the lightweight control path")
+            }
 
             Request::AppletAction {
                 id,

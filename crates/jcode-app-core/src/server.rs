@@ -50,6 +50,7 @@ mod swarm_labels;
 mod swarm_mutation_state;
 mod swarm_persistence;
 mod util;
+pub(crate) mod wake_receipts;
 
 pub(super) use self::await_members_state::AwaitMembersRuntime;
 use self::background_tasks::{
