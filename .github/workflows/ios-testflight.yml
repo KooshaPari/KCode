@@ -20,6 +20,8 @@ env:
 
 jobs:
   test:
+    # Disabled: hosted macos-latest minutes are capped at $0 (never pay for GH CI).
+    if: false
     name: swift test (JCodeKit)
     runs-on: macos-latest
     timeout-minutes: 30
@@ -37,6 +39,8 @@ jobs:
         run: swift test
 
   compile-check:
+    # Disabled: hosted macos-latest minutes are capped at $0 (never pay for GH CI).
+    if: false
     name: xcodebuild (simulator, unsigned)
     runs-on: macos-latest
     timeout-minutes: 30
@@ -63,6 +67,8 @@ jobs:
             | tail -60
 
   build-and-upload:
+    # Disabled: hosted macos-latest minutes are capped at $0 (never pay for GH CI).
+    if: false
     name: Build, sign, upload to TestFlight
     needs: [test, compile-check]
     runs-on: macos-latest
