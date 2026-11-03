@@ -30,7 +30,16 @@ jobs:
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
-    timeout-minutes: 45
+    # Measured on the shared desk-linux runner (run 41163955888, job
+    # 125095678225, 2026-11-02): the 20 substantive steps took 43m29s
+    # (04:30:49 -> 05:14:18), so the old 45m cap killed the job during the
+    # rust-cache post step and reported the whole job as cancelled. The
+    # individual steps are not the problem - "Check all targets and all
+    # features" took 7m37s, clippy 15m18s, "Enforce Cargo.lock is up to
+    # date" 8m13s and "Enforce warning budget" 9m21s, because this runner
+    # shares 16 cores with the Build & Test job. 90 minutes leaves room for
+    # a slower day and for the post-job cleanup steps to finish.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
@@ -836,7 +845,14 @@ jobs:
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
-    timeout-minutes: 10
+    # `cargo fmt --all -- --check` needs no compilation, so 10 minutes looked
+    # generous. It is not enough on this runner when the host is oversubscribed:
+    # observed 2026-11-02 in run 41425751987, job 125211820283, Format exceeded
+    # its cap and was cancelled while a second Rust build ran concurrently and
+    # the host load average was 52 on 16 cores. A formatting gate that dies from
+    # starvation reports failure for a tree that is correctly formatted, which is
+    # worse than a slow gate. 30 minutes costs nothing when the host is idle.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
