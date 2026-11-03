@@ -47,6 +47,12 @@ echo "=== Security Preflight ==="
 echo "[1/3] Scanning for likely secrets"
 secret_regex='(AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN (RSA|OPENSSH|EC|DSA|PGP) PRIVATE KEY-----|AIza[0-9A-Za-z_-]{35})'
 
+# Unique per-invocation path. A fixed /tmp name races when two runners on the
+# same host execute this script concurrently, which is now possible because the
+# gate runs as its own job on a host that hosts many runners.
+scan_out=$(mktemp "${TMPDIR:-/tmp}/jcode-secret-scan.XXXXXX")
+trap 'rm -f "$scan_out"' EXIT
+
 set +e
 mapfile -d '' tracked_files < <(git ls-files -z)
 scan_status=1
@@ -55,7 +61,7 @@ if [[ "${#tracked_files[@]}" -gt 0 ]]; then
     rg -n --color=never -e "$secret_regex" \
       --glob '!Cargo.lock' --glob '!*.snap' --glob '!*.png' --glob '!*.jpg' --glob '!*.jpeg' \
       --glob '!*.gif' --glob '!*.svg' --glob '!*.pdf' --glob '!*.woff' --glob '!*.woff2' --glob '!*.ttf' \
-      "${tracked_files[@]}" > /tmp/jcode-secret-scan.txt
+      "${tracked_files[@]}" > "$scan_out"
     scan_status=$?
   else
     scan_files=()
@@ -69,7 +75,7 @@ if [[ "${#tracked_files[@]}" -gt 0 ]]; then
       esac
     done
     if [[ "${#scan_files[@]}" -gt 0 ]]; then
-      grep -I -n -E "$secret_regex" "${scan_files[@]}" > /tmp/jcode-secret-scan.txt
+      grep -I -n -E "$secret_regex" "${scan_files[@]}" > "$scan_out"
       scan_status=$?
     fi
   fi
@@ -77,16 +83,13 @@ fi
 set -e
 
 if [[ "$scan_status" -gt 1 ]]; then
-  rm -f /tmp/jcode-secret-scan.txt
   die "secret scan failed to execute"
 fi
 
-if [[ -s /tmp/jcode-secret-scan.txt ]]; then
-  cat /tmp/jcode-secret-scan.txt
-  rm -f /tmp/jcode-secret-scan.txt
+if [[ -s "$scan_out" ]]; then
+  cat "$scan_out"
   die "potential secret material detected"
 fi
-rm -f /tmp/jcode-secret-scan.txt
 
 echo "[2/3] Checking script permissions"
 if find scripts -type f -perm -0002 -print -quit | grep -q .; then
@@ -100,6 +103,7 @@ audit_ignores=(
   # advisories with tracked remediation paths; keep them visible in the triage
   # doc while preventing unrelated CI/release work from being blocked.
   --ignore RUSTSEC-2026-0141 # lettre via notify-email, Boring TLS backend not used by jcode
+  --ignore RUSTSEC-2026-0387 # crypto-bigint via aws-sigv4 -> aws-sdk-bedrockruntime 1.136.0 (pinned); bedrock provider optional; constant-time sig verification not used in our path. Remediation: bump aws-sdk-bedrockruntime to >=1.152.0 once compatible with aws-smithy-runtime-api.
   --ignore RUSTSEC-2026-0099 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0104 # rustls-webpki via rustls stack, awaiting upstream upgrade
   --ignore RUSTSEC-2026-0098 # rustls-webpki via rustls stack, awaiting upstream upgrade
@@ -108,9 +112,22 @@ audit_ignores=(
   --ignore RUSTSEC-2026-0194 # quick-xml via wayland-scanner (proc-macro); parses trusted Wayland protocol XML at build time only, never untrusted input at runtime
   --ignore RUSTSEC-2026-0195 # quick-xml via wayland-scanner (proc-macro); same build-time-only exposure as RUSTSEC-2026-0194
 )
+# Run cargo-audit through whichever entry point actually exists.
+#
+# The check below used to test for `cargo-audit` on PATH and then invoke
+# `cargo audit`. Those are different programs: `cargo-audit` is the standalone
+# binary, `cargo audit` is the cargo subcommand that requires the Rust
+# toolchain to be installed. On the self-hosted desk runner the toolchain is
+# not on PATH for the runner service (cargo lives in ~/.cargo/bin, which the
+# runner's PATH does not include), so `command -v cargo-audit` succeeded and
+# the very next line died with "cargo: command not found" (exit 127).
+#
+# Prefer the standalone binary when it is present, since that is what the
+# CI job installs into ~/.install-action/bin, and fall back to the cargo
+# subcommand only when cargo itself is reachable.
 if command -v cargo-audit >/dev/null 2>&1; then
-  cargo audit "${audit_ignores[@]}"
-elif cargo audit --version >/dev/null 2>&1; then
+  cargo-audit audit "${audit_ignores[@]}"
+elif command -v cargo >/dev/null 2>&1 && cargo audit --version >/dev/null 2>&1; then
   cargo audit "${audit_ignores[@]}"
 else
   if [[ "$strict" -eq 1 ]]; then
