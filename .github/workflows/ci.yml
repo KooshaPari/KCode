@@ -261,26 +261,12 @@ jobs:
       # Per-runner (not shared) on purpose: concurrent cargo builds take an
       # exclusive lock on one target dir and would serialise against each other.
       #
-      # Measured cold on this runner: Build = 2453s, `cargo test --lib --bins
-      # --no-run` ~= 2990s. With a warm persistent target both drop to minutes.
       - name: Configure persistent cargo target dir
         run: |
           set -euo pipefail
-          T="/home/kcode-run/kcode-target-${RUNNER_NAME:?RUNNER_NAME unset}"
-          echo "CARGO_TARGET_DIR=$T" >> "$GITHUB_ENV"
-          # Seed from the shared warm copy so the first run is warm rather than
-          # paying a ~55min cold build. Only when absent; later runs reuse it.
-          if [ ! -d "$T" ]; then
-            SEED=/home/kcode-run/kcode-target
-            if [ -d "$SEED" ]; then
-              echo "seeding $T from $SEED"
-              mkdir -p "$(dirname "$T")"
-              cp -a "$SEED" "$T"
-            else
-              echo "no seed dir at $SEED; starting cold"
-            fi
-          fi
+          T="$HOME/kcode-target-${RUNNER_NAME:?RUNNER_NAME unset}"
           mkdir -p "$T"
+          echo "CARGO_TARGET_DIR=$T" >> "$GITHUB_ENV"
           du -sh "$T" || true
 
       - uses: dtolnay/rust-toolchain@stable
