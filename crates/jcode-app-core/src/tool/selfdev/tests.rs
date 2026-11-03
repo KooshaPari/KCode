@@ -47,7 +47,7 @@ fn create_repo_fixture() -> tempfile::TempDir {
     std::fs::create_dir_all(temp.path().join(".git")).expect("git dir");
     std::fs::write(
         temp.path().join("Cargo.toml"),
-        "[package]\nname = \"jcode\"\nversion = \"0.1.0\"\n",
+        "[package]\nname = \"kcode\"\nversion = \"0.1.0\"\n",
     )
     .expect("cargo toml");
     temp

@@ -542,7 +542,7 @@ mod tests {
         };
         assert_eq!(
             kitty_notification_sequence(&n, "session:fox/123"),
-            "\x1b]99;i=jcode-turn-sessionfox123:d=0:e=1:p=title;amNvZGUgwrcgZm94\x1b\\\x1b]99;i=jcode-turn-sessionfox123:d=1:e=1:p=body:a=focus;Mi8zIHRvZG9zCkZpbmlzaGVkIHBhcnNlcg==\x1b\\"
+            "\x1b]99;i=kcode-turn-sessionfox123:d=0:e=1:p=title;amNvZGUgwrcgZm94\x1b\\\x1b]99;i=kcode-turn-sessionfox123:d=1:e=1:p=body:a=focus;Mi8zIHRvZG9zCkZpbmlzaGVkIHBhcnNlcg==\x1b\\"
         );
     }
 

@@ -33,7 +33,7 @@ fn heredoc_open_pattern() -> Regex {
         // pattern that matches everywhere and bypasses validation.
         Err(_) => match Regex::new(r"[^\s\S]") {
             Ok(re) => re,
-            Err(_) => loop {},
+            Err(_) => unreachable!("static regex patterns must compile"),
         },
     }
 }
@@ -216,7 +216,7 @@ fn strip_heredocs(command: &str) -> Option<String> {
         Ok(re) => re,
         Err(_) => match Regex::new("") {
             Ok(re) => re,
-            Err(_) => loop {},
+            Err(_) => unreachable!("static regex patterns must compile"),
         },
     };
 
