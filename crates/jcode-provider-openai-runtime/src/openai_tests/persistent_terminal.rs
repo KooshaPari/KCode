@@ -22,10 +22,20 @@ async fn persistent_terminal_public_case(
     let full_input = build_responses_input(&messages);
     let expected_input = full_input.clone();
     let server = tokio::spawn(async move {
-        let (tcp, _) = listener.accept().await.unwrap();
-        let mut ws = tokio_tungstenite::accept_async(tcp).await.unwrap();
-        let delta: Value =
-            serde_json::from_str(ws.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        // Skip side requests that are not the response socket (the provider also
+        // probes the base URL over HTTPS) and connections that never complete
+        // the websocket handshake. A rejected accept must not kill the server
+        // task: it owns the listener, so every later connect to this port would
+        // be refused.
+        let (mut ws, delta_text) = loop {
+            let (tcp, _) = listener.accept().await.unwrap();
+            if let Ok(mut ws) = tokio_tungstenite::accept_async(tcp).await
+                && let Some(Ok(WsMessage::Text(text))) = ws.next().await
+            {
+                break (ws, text);
+            }
+        };
+        let delta: Value = serde_json::from_str(&delta_text).unwrap();
         assert_eq!(delta["previous_response_id"], "resp_stale");
         assert!(delta["input"].as_array().unwrap().len() < expected_input.len());
         let error = serde_json::json!({"type":"invalid_request_error", "code":code,
@@ -47,10 +57,15 @@ async fn persistent_terminal_public_case(
                 _ => break,
             }
         }
-        let (tcp, _) = listener.accept().await.unwrap();
-        let mut ws = tokio_tungstenite::accept_async(tcp).await.unwrap();
-        let fresh: Value =
-            serde_json::from_str(ws.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+        let (mut ws, fresh_text) = loop {
+            let (tcp, _) = listener.accept().await.unwrap();
+            if let Ok(mut ws) = tokio_tungstenite::accept_async(tcp).await
+                && let Some(Ok(WsMessage::Text(text))) = ws.next().await
+            {
+                break (ws, text);
+            }
+        };
+        let fresh: Value = serde_json::from_str(&fresh_text).unwrap();
         assert!(fresh.get("previous_response_id").is_none(), "{fresh}");
         assert_eq!(fresh["input"], serde_json::json!(expected_input));
         for event in [
