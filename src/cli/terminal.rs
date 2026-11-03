@@ -110,10 +110,8 @@ fn has_terminal_exec_handoff(
 /// typed input is invisible because echo and cooked mode were never restored
 /// (see issue #214).
 ///
-/// The normal teardown path should call [`TuiRuntimeGuard::finish`] (or
-/// [`TuiRuntimeGuard::finish_for_run_result`]) which performs the restore and
-/// disarms the guard. If neither is called (error/panic path), `Drop` performs
-/// a best-effort full restore.
+/// Normal teardown restores and disarms the guard. During an exec handoff the
+/// guard stays armed, so an unsuccessful replacement still restores on drop.
 pub struct TuiRuntimeGuard {
     state: TuiRuntimeState,
     armed: bool,
@@ -139,13 +137,14 @@ impl TuiRuntimeGuard {
 
     /// Normal teardown for the interactive client: restore unless we are about
     /// to exec a follow-up process (reload/rebuild/update), in which case the
-    /// next process inherits the terminal modes.
-    pub fn finish_for_run_result(mut self, run_result: &crate::tui::RunResult, extra_exec: bool) {
-        if run_result_will_exec(run_result, extra_exec) {
+    /// next process inherits the terminal modes. Remain armed in case it fails.
+    pub fn finish_for_run_result(&mut self, run_result: &crate::tui::RunResult, extra_exec: bool) {
+        let will_exec = run_result_will_exec(run_result, extra_exec);
+        if will_exec {
             export_tui_exec_handoff(&self.state);
         }
         cleanup_tui_runtime_for_run_result(&self.state, run_result, extra_exec);
-        self.armed = false;
+        self.armed = will_exec;
     }
 }
 
@@ -578,11 +577,12 @@ fn cleanup_tui_runtime_for_run_result(
 }
 
 fn run_result_will_exec(run_result: &crate::tui::RunResult, extra_exec: bool) -> bool {
-    extra_exec
-        || run_result.reload_session.is_some()
-        || run_result.rebuild_session.is_some()
-        || run_result.update_session.is_some()
-        || run_result.restart_session.is_some()
+    run_result.exit_code.is_none()
+        && (extra_exec
+            || run_result.reload_session.is_some()
+            || run_result.rebuild_session.is_some()
+            || run_result.update_session.is_some()
+            || run_result.restart_session.is_some())
 }
 
 fn export_tui_exec_handoff(state: &TuiRuntimeState) {
@@ -817,6 +817,9 @@ mod tests {
             &crate::tui::RunResult::default(),
             false
         ));
+        let mut exiting = with("reload");
+        exiting.exit_code = Some(1);
+        assert!(!run_result_will_exec(&exiting, true));
     }
 
     #[test]
@@ -845,6 +848,18 @@ mod tests {
             restores, 0,
             "finish() should disarm the guard so drop does not double-restore"
         );
+    }
+
+    #[test]
+    fn failed_handoff_restores_terminal_on_drop() {
+        GUARD_DROP_RESTORES.with(|c| c.set(0));
+        {
+            let mut guard = test_guard();
+            let mut result = crate::tui::RunResult::default();
+            result.reload_session = Some("session_test".into());
+            guard.finish_for_run_result(&result, false);
+        }
+        assert_eq!(GUARD_DROP_RESTORES.with(|c| c.get()), 1);
     }
 
     #[test]
