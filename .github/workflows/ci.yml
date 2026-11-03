@@ -201,6 +201,8 @@ jobs:
     # the parity test and cargo-machete get their own 90-minute budget so
     # their cost is their own signal.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
     runs-on: [self-hosted, desk-linux]
     timeout-minutes: 90
     steps:
@@ -238,6 +240,8 @@ jobs:
     # need seconds, not an hour, and must never be blinded by a compile.
     # Clippy gets its own budget here so its cost is its own signal.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
     runs-on: [self-hosted, desk-linux]
     timeout-minutes: 90
     steps:
