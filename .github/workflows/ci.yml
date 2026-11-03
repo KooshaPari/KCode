@@ -267,7 +267,6 @@ jobs:
           T="$HOME/kcode-target-${RUNNER_NAME:?RUNNER_NAME unset}"
           mkdir -p "$T"
           echo "CARGO_TARGET_DIR=$T" >> "$GITHUB_ENV"
-          du -sh "$T" || true
 
       - uses: dtolnay/rust-toolchain@stable
         with:
