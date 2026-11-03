@@ -86,9 +86,6 @@ fn should_defer_history_for_runtime_identity(
 #[cfg(test)]
 mod runtime_identity_tests {
     use super::should_defer_history_for_runtime_identity_with_allow;
-    use crate::tui::app::remote::version_ordering::{
-        parse_release_semver, server_release_is_older_than_client,
-    };
 
     #[test]
     fn runtime_identity_gate_defers_stale_server_history_by_default() {

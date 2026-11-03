@@ -89,6 +89,18 @@ if [[ "$normalized" != *"-k"* ]]; then
   fail "missing the -k fork marker"
 fi
 
+# Split at the FIRST "-k", matching fork_version::parse's `split_once("-k")`.
+# Both halves must use the same occurrence: `${normalized%%-k*}` strips the
+# longest matching SUFFIX, so the surviving prefix is everything before the
+# FIRST "-k", and `${normalized#*-k}` strips the shortest matching PREFIX, so
+# the remainder is everything after the FIRST "-k". Both therefore split at
+# the first occurrence, exactly like split_once.
+#
+# A version with two "-k" markers, e.g. "1.2.3-k0.1.0-k9.9.9", splits the same
+# way here as it does in fork_version::parse: base "1.2.3", fork
+# "0.1.0-k9.9.9", which the parser reads as fork version 0.1.0 with the
+# alphanumeric channel "k9.9.9" and accepts. Verified against a verbatim copy
+# of the Rust parser, so the two implementations agree.
 base="${normalized%%-k*}"
 fork="${normalized#*-k}"
 
