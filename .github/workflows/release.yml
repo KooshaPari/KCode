@@ -48,6 +48,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The `if:` above admits any fork tag containing "-k", which would let a
+      # malformed tag like `v1.2.3-kbad` reach the build. The build then
+      # refuses the version identity (fork_version::parse rejects it) and the
+      # release silently ships with derived development identity instead of
+      # the tag. Validate the tag against the same grammar before anything is
+      # built, so a malformed fork tag fails loudly here.
+      - name: Validate fork release tag
+        shell: bash
+        if: github.repository == 'KooshaPari/KCode'
+        run: scripts/validate_fork_tag.sh "${GITHUB_REF_NAME}"
+
       # Render a human-readable changelog for the release body (issue #435):
       # changelog/v<version>.json when present, otherwise grouped commit
       # subjects since the previous tag, always ending with the compare link.
@@ -537,7 +548,7 @@ jobs:
             mkdir -p dist
             cp target/release/kcode dist/kcode-freebsd-x86_64
             chmod +x dist/kcode-freebsd-x86_64
-            cd dist && tar czf kcode-freebsd-x86_64.tar.gz kcode-freebsd-x86_64
+            cd dist && tar czf jcode-freebsd-x86_64.tar.gz kcode-freebsd-x86_64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

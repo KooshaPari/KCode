@@ -283,20 +283,29 @@ short-hash length inside `version`:
 **Why they differ.** The three artifacts were built from *different working-tree
 states*, not from one identical checkout. The macOS build's checkout descends
 from a different tag lineage (hence the `v0.85.1-k1.1.0-301-g…` describe string
-and the `0.93.0-k0.1.0` compile-time update semver, which is taken from the
-compile-time git tag, not from the commit count). The ARM64 artifact was built
-three days after the other two (`git_date` 2026-10-25 vs 2026-10-22), so its
-tree state differs as well. The short-hash length difference is a separate
-artifact of `git rev-parse --short`, whose abbreviation length adapts to the
-object count of the checkout, so the same commit abbreviates to 9 characters in
-the macOS checkout and 8 in the Windows cross-build checkout.
+and the `0.93.0-k0.1.0` compile-time update semver. Per
+`crates/jcode-build-meta/build.rs` (lines 56-61, 306-314), `update_semver` is
+derived from the `KCODE_BUILD_SEMVER` environment variable override when that is
+set; otherwise it falls back to `base_semver` (`MAJOR.MINOR.PATCH` with the
+channel suffix, i.e. the base version's patch with no commit offset). It is
+NOT derived from the commit count or the compile-time git tag. (The commit
+count drives `build_semver`/`KCODE_SEMVER` via `resolve_build_semver`, lines
+317-343, which adds `commits_since_base_tag` to the base patch; that is a
+different field.) The ARM64 artifact's HEAD commit has a later commit date
+(`git_date` 2026-10-25 vs 2026-10-22); `git_date` is derived from
+`git log -1 --format=%ci` (the checked-out commit's commit date, lines 72-78),
+not from the moment the build ran, so a later value indicates a different
+checked-out commit rather than a later build time. The short-hash length
+difference is a separate artifact of `git rev-parse --short`, whose abbreviation
+length adapts to the object count of the checkout, so the same commit
+abbreviates to 9 characters in the macOS checkout and 8 in the Windows
+cross-build checkout.
 
-**Impact.** `update_semver` is the compile-time semver used for update
-comparisons, so the macOS client would compare against `0.93.0-k0.1.0` while
-both Windows clients compare against `0.93.398-k0.1.0`. All three values are
-nonzero and fork-shaped, so the metadata requirement itself holds on every
-artifact; the divergence is a release-consistency defect, not a version
-collapse.
+**Impact.** `update_semver` is the semver used for update comparisons, so the
+macOS client would compare against `0.93.0-k0.1.0` while both Windows clients
+compare against `0.93.398-k0.1.0`. All three values are nonzero and
+fork-shaped, so the metadata requirement itself holds on every artifact; the
+divergence is a release-consistency defect, not a version collapse.
 
 **Reconciliation.** A single-tree rebuild of all three artifacts from one
 checkout at one commit would make `update_semver`, `git_tag`, `git_date`, and

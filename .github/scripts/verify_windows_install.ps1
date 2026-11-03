@@ -57,8 +57,14 @@ $installScript = Join-Path $repoRoot 'scripts\install.ps1'
     -ArtifactExePath $resolvedArtifact
 
 $launcherPath = Join-Path $installDir 'kcode.exe'
-$versionDir = Join-Path $localAppData ('kcode\builds\versions\' + $Version.TrimStart('v') + '\kcode.exe')
-$stablePath = Join-Path $localAppData 'kcode\builds\stable\kcode.exe'
+# install.ps1 resolves its builds directory as `$env:KCODE_HOME\builds` when
+# KCODE_HOME is set, and only falls back to `%LOCALAPPDATA%\kcode\builds`
+# otherwise. This script exports KCODE_HOME=$kcodeHome above, so the versioned
+# and stable binaries land under $kcodeHome, NOT under $localAppData. Checking
+# $localAppData here looked for files that the install never creates and threw
+# "Expected installed file missing" on every run.
+$versionDir = Join-Path $kcodeHome ('builds\versions\' + $Version.TrimStart('v') + '\kcode.exe')
+$stablePath = Join-Path $kcodeHome 'builds\stable\kcode.exe'
 
 foreach ($path in @($launcherPath, $versionDir, $stablePath)) {
     if (-not (Test-Path -LiteralPath $path)) {

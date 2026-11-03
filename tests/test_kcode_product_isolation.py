@@ -20,6 +20,31 @@ class ProductIdentityTests(unittest.TestCase):
         # scripts/product_paths.sh before the jcode-component guard this test
         # is actually asserting, and the expected stderr never appears.
         forbidden_base = pathlib.Path(tempfile.gettempdir()).resolve()
+        # On Windows, tempfile.gettempdir() yields a drive-letter path
+        # (e.g. C:\Users\...\Temp) that Git Bash / MSYS2 cannot consume
+        # directly as a bash argument; convert it to a POSIX path using
+        # `cygpath -u`. If cygpath is unavailable (non-Windows host, or a
+        # Git Bash build without it), skip instead of asserting vacuously.
+        forbidden_base_str = str(forbidden_base)
+        is_windows_path = (
+            __import__("os").name == "nt"
+            or "\\" in forbidden_base_str
+            or (len(forbidden_base_str) >= 2 and forbidden_base_str[1] == ":")
+        )
+        if is_windows_path:
+            cygpath = shutil.which("cygpath")
+            if not cygpath:
+                self.skipTest("cygpath unavailable; cannot convert Windows path for bash")
+            converted = subprocess.run(
+                [cygpath, "-u", forbidden_base_str],
+                capture_output=True, text=True, timeout=30,
+            )
+            if converted.returncode != 0 or not converted.stdout.strip():
+                self.skipTest(
+                    "cygpath conversion failed: "
+                    + (converted.stderr.strip() or "no output")
+                )
+            forbidden_base = pathlib.Path(converted.stdout.strip())
         rejected = subprocess.run(
             [bash, "-c",
              'source scripts/product_paths.sh; require_kcode_owned_path "$1"/.jcode/forbidden',

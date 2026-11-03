@@ -31,7 +31,25 @@ fn parse_release_semver(version: &str) -> Option<(u32, u32, u32)> {
         .unwrap_or(&lower)
         .trim();
     let token = token.strip_prefix('v').unwrap_or(token);
-    let mut parts = token.split('.');
+    // Strip a strict KCode fork-version suffix of the form "-k<major>.<minor>.<patch>"
+    // (e.g. "v0.93.398-k0.1.0" -> "0.93.398"). The fork suffix is NOT part of the
+    // base release semver and must not be parsed into the patch number. Only the
+    // strict "-k<digits>.<digits>.<digits>" form is accepted; any other suffix is
+    // left in place (and therefore fails to parse below).
+    let base = if let Some((base, fork)) = token.split_once("-k") {
+        let fork_parts: Vec<&str> = fork.split('.').collect();
+        if fork_parts.len() != 3
+            || fork_parts
+                .iter()
+                .any(|part| part.is_empty() || !part.bytes().all(|c| c.is_ascii_digit()))
+        {
+            return None;
+        }
+        base
+    } else {
+        token
+    };
+    let mut parts = base.split('.');
     let major = parts.next()?.parse().ok()?;
     let minor = parts.next()?.parse().ok()?;
     let patch = parts.next().unwrap_or("0").parse().ok()?;
@@ -201,6 +219,34 @@ mod runtime_identity_tests {
         assert_eq!(parse_release_semver("v0.18.4-dev (102e9750, dirty)"), None);
         assert_eq!(parse_release_semver("v0.14.2-dev (38452185, dirty)"), None);
         assert_eq!(parse_release_semver("unknown"), None);
+        // KCode fork release versions carry a "-k<major>.<minor>.<patch>" suffix
+        // that must not be absorbed into the base patch number (issue #295).
+        assert_eq!(parse_release_semver("v0.93.398-k0.1.0"), Some((0, 93, 398)));
+        assert_eq!(parse_release_semver("0.93.398-k0.1.0"), Some((0, 93, 398)));
+        assert_eq!(
+            parse_release_semver("v0.93.398-k0.1.0 (abc1234)"),
+            Some((0, 93, 398))
+        );
+        // A dev fork build is still unorderable.
+        assert_eq!(parse_release_semver("v0.93.398-k0.1.0-dev"), None);
+        // Arbitrary (non-strict) suffixes are not accepted.
+        assert_eq!(parse_release_semver("v0.93.398-kraken"), None);
+        assert_eq!(parse_release_semver("v0.93.398-k0.1"), None);
+    }
+
+    #[test]
+    fn server_release_older_than_client_detects_fork_stale_server() {
+        // A fork server older than a newer fork client is detected as stale
+        // (issue #295): previously parse_release_semver returned None for every
+        // fork release, so this never fired.
+        assert!(server_release_is_older_than_client(
+            Some("v0.93.398-k0.1.0"),
+            "v0.93.399-k0.1.0"
+        ));
+        assert!(!server_release_is_older_than_client(
+            Some("v0.93.398-k0.1.0"),
+            "v0.93.398-k0.1.0"
+        ));
     }
 
     #[test]

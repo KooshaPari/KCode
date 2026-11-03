@@ -12,6 +12,12 @@ installation on the operator's device remain unverified. Fork downloads and
 self-update are deliberately disabled until a maintained channel passes the
 [KCode isolation and delivery gates](KCODE_ISOLATION.md#forward-delivery-work-breakdown).
 
+On a default Windows configuration, running a downloaded `.ps1` can be blocked
+by the PowerShell execution policy. Use the documented one-liner
+(`irm https://kcode.sh/install.ps1 | iex`) or invoke PowerShell with
+`-ExecutionPolicy RemoteSigned` (for example
+`powershell -ExecutionPolicy RemoteSigned -File .\scripts\install.ps1`).
+
 Build an explicitly trusted checkout with Git, Rust, and Visual Studio 2022
 Build Tools with the **Desktop development with C++** workload:
 
@@ -28,7 +34,7 @@ The local-artifact installer uses these independent destinations:
 | --- | --- |
 | Launcher | `%LOCALAPPDATA%\kcode\bin\kcode.exe` |
 | Stable binary | `%LOCALAPPDATA%\kcode\builds\stable\kcode.exe` |
-| Immutable binary | `%LOCALAPPDATA%\kcode\builds\versions\<version>\kcode.exe` |
+| Versioned binary (replaced on reinstall) | `%LOCALAPPDATA%\kcode\builds\versions\<version>\kcode.exe` |
 | User configuration and sessions | `%USERPROFILE%\.kcode` |
 
 The installer adds only its KCode bin directory to the user and current-process
