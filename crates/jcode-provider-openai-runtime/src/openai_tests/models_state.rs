@@ -355,6 +355,14 @@ fn test_service_tier_can_be_changed_while_a_request_snapshot_is_held() {
 /// endpoints. If these ever diverge, OpenAI returns 401.
 #[test]
 fn openai_catalog_and_chat_endpoints_agree_on_credential_shape() {
+    // Serialize with the tests that set the API-base override via
+    // EnvVarGuard, and pin the override vars unset so a proxied runner
+    // environment cannot leak into the API-key assertion.
+    let _guard = jcode_base::storage::lock_test_env();
+    let _b = EnvVarGuard::remove("KCODE_OPENAI_API_BASE");
+    let _c = EnvVarGuard::remove("OPENAI_BASE_URL");
+    let _d = EnvVarGuard::remove("OPENAI_API_BASE");
+
     // API-key-shaped credential: no refresh token, no id token.
     let api_key_creds = CodexCredentials {
         access_token: "sk-platform-key".to_string(),

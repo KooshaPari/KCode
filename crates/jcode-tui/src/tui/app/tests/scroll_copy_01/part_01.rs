@@ -1345,7 +1345,8 @@ fn status_line_is_always_pinned_with_pink_model_on_real_app() {
         let pink = ratatui::style::Color::Rgb(255, 135, 200);
         let last_row_pink_cells = |terminal: &ratatui::Terminal<ratatui::backend::TestBackend>| {
             let buf = terminal.backend().buffer();
-            let y = buf.area.height - 1;
+            // Compact status bar owns the final row at width >= 80.
+            let y = buf.area.height - if width >= 80 { 2 } else { 1 };
             (0..buf.area.width)
                 .filter(|&x| buf[(x, y)].fg == pink && buf[(x, y)].symbol().trim() != "")
                 .count()

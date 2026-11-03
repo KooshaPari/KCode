@@ -1,7 +1,25 @@
+/// Restore the previous `KCODE_HOME` on every exit path, including panics and
+/// early `?` returns, so a failed run never leaks the temp home into the
+/// process-wide environment other tests share.
+struct KcodeHomeGuard(Option<std::ffi::OsString>);
+
+impl Drop for KcodeHomeGuard {
+    fn drop(&mut self) {
+        if let Some(prev) = self.0.take() {
+            crate::env::set_var("KCODE_HOME", prev);
+        } else {
+            crate::env::remove_var("KCODE_HOME");
+        }
+    }
+}
+
 #[tokio::test]
 async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() -> Result<()> {
     let _guard = crate::storage::lock_test_env();
     let (_runtime, prev_runtime) = setup_runtime_dir()?;
+    let temp_home = tempfile::TempDir::new().map_err(|e| anyhow!(e))?;
+    let _home_guard = KcodeHomeGuard(std::env::var_os("KCODE_HOME"));
+    crate::env::set_var("KCODE_HOME", temp_home.path());
 
     let target_session_id = "session_existing_live_busy";
     let temp_session_id = "session_temp_connecting_busy";
@@ -18,6 +36,15 @@ async fn handle_resume_session_allows_live_attach_when_existing_agent_is_busy() 
         tool_duration_ms: None,
         token_usage: None,
     };
+
+    // The busy-attach history path deliberately reads the persisted session
+    // snapshot instead of waiting on the live agent lock, so the expected
+    // message must exist on disk.
+    let mut persisted_session =
+        crate::session::Session::create_with_id(target_session_id.to_string(), None, None);
+    persisted_session.model = Some("mock".to_string());
+    persisted_session.replace_messages(vec![persisted_message.clone()]);
+    persisted_session.save().map_err(|e| anyhow!(e))?;
 
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let existing_registry = Registry::new(provider.clone()).await;

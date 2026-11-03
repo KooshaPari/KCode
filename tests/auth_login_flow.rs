@@ -71,7 +71,7 @@ impl TestEnv {
     fn new() -> Result<Self> {
         let lock = lock_env();
         let temp = tempfile::Builder::new()
-            .prefix("jcode-auth-flow-")
+            .prefix("kcode-auth-flow-")
             .tempdir()?;
         let saved = tracked_env_vars()
             .into_iter()
