@@ -246,6 +246,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Test persistent cargo target setup
+        run: python3 scripts/test_ci_persistent_target.py
+
       # Persistent, per-runner cargo target dir.
       #
       # Self-hosted runner with durable disk, so caching `target/` via
