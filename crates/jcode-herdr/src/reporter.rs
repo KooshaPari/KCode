@@ -1,3 +1,4 @@
+#![allow(clippy::await_holding_lock)]
 //! HERDR lifecycle reporter for jcode and ForgeCode.
 //!
 //! [`HerdrReporter`] manages state transitions, debouncing, monotonic
