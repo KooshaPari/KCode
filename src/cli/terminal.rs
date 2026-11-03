@@ -197,8 +197,13 @@ pub fn install_panic_hook() {
 
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
-        // 0. Rate guard — runs first so we still call the cleanup branch
-        //    below even when we force-exit.
+        // Restore before the rate guard, which can terminate without unwinding.
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableFocusChange);
+        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableBracketedPaste);
+        let _ = crossterm::execute!(std::io::stderr(), crossterm::terminal::LeaveAlternateScreen);
+        let _ = crossterm::execute!(std::io::stderr(), crossterm::cursor::Show);
+
         let now_ms = chrono::Utc::now().timestamp_millis();
         let prev_ms = PANIC_TS.swap(now_ms, Ordering::SeqCst);
         let mut burst = PANIC_BURST.load(Ordering::SeqCst);
@@ -213,17 +218,6 @@ pub fn install_panic_hook() {
             burst = 0;
         }
         PANIC_BURST.store(burst, Ordering::SeqCst);
-
-        // 1. Best-effort synchronous terminal cleanup so the user is not left
-        //    with raw mode / focus events / bracketed paste still enabled when
-        //    the panic propagates to std::process::exit (issue #214 / report
-        //    §4.4). Errors here are silently swallowed because the panic
-        //    handler must not panic itself.
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableFocusChange);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableBracketedPaste);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::terminal::LeaveAlternateScreen);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::cursor::Show);
 
         // 2. Persist the panic details to a sibling log file so the next
         //    process can diagnose even when stderr was swallowed by a parent
@@ -740,6 +734,32 @@ mod tests {
             keyboard_enhanced: false,
             focus_change: false,
         })
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn panic_burst_cleans_terminal_before_forced_exit() {
+        const CHILD: &str = "KCODE_TEST_PANIC_BURST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            install_panic_hook();
+            for _ in 0..6 {
+                let _ = std::panic::catch_unwind(|| panic!("panic burst witness"));
+            }
+            panic!("panic burst did not terminate");
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("panic_burst_cleans_terminal_before_forced_exit")
+            .arg("--nocapture")
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(101));
+        let resets = output
+            .stderr
+            .windows(b"\x1b[?2004l".len())
+            .filter(|bytes| *bytes == b"\x1b[?2004l")
+            .count();
+        assert_eq!(resets, 6);
     }
 
     #[test]
