@@ -66,8 +66,37 @@ VERSION="${1:?Usage: scripts/quick-release.sh [--prepare-fast | --fast-local | -
 TITLE="${2:-$VERSION}"
 VERSION_NUM="${VERSION#v}"
 
-if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Error: Version must be in format v0.5.4"
+# The version must carry the fork identity, because it is passed straight to
+# KCODE_BUILD_SEMVER and crates/jcode-build-meta/build.rs validates that
+# variable with fork_version::parse, which REQUIRES the BASE-kFORK form and
+# panics otherwise ("KCODE_BUILD_SEMVER must use nonzero BASE-kFORK_SEMVER
+# identity"). A plain v0.5.4 therefore builds nothing at all.
+#
+# The grammar mirrors fork_version::parse exactly:
+#   base    three dot-separated integers, none with a leading zero, not all zero
+#   fork    three dot-separated integers, none with a leading zero
+#   channel optional, dash-separated alphanumeric components, none empty
+# The no-leading-zero and no-empty-component rules are enforced below by
+# rejecting the shapes the Rust parser rejects, so the guard never accepts a
+# version the build would panic on.
+if [[ ! "$VERSION_NUM" =~ ^[0-9]+\.[0-9]+\.[0-9]+-k[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$ ]]; then
+    echo "Error: Version must be in format v0.93.398-k0.1.0 (fork identity required)" >&2
+    echo "       The fork identity is required: the build validates KCODE_BUILD_SEMVER" >&2
+    echo "       against the fork-version grammar and rejects a plain semver." >&2
+    exit 1
+fi
+
+# The base version must not be all zeros, matching fork_version::parse.
+if [[ "$VERSION_NUM" =~ ^0\.0\.0-k ]]; then
+    echo "Error: Version base must not be 0.0.0" >&2
+    exit 1
+fi
+
+# No numeric component may carry a leading zero, matching fork_version::parse.
+# (0 itself is fine; 00, 01 and 007 are not.) The component may follow the
+# start of the string, a dot, a dash, or the "k" fork marker.
+if [[ "$VERSION_NUM" =~ (^|[.-k])0[0-9] ]]; then
+    echo "Error: Version components must not have leading zeros" >&2
     exit 1
 fi
 
