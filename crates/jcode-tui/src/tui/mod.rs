@@ -152,14 +152,9 @@ pub fn enable_keyboard_enhancement() -> bool {
     result
 }
 
-/// Clear stale reporting before native input, including policy-disabled exec handoffs.
-pub fn prepare_keyboard_input(enhanced: bool) -> std::io::Result<bool> {
-    keyboard_protocol::prepare_input(&mut std::io::stdout(), enhanced)
-}
+pub use keyboard_protocol::prepare_keyboard_input;
 
-fn inside_tmux() -> bool {
-    std::env::var_os("TMUX").is_some_and(|value| !value.is_empty())
-}
+use keyboard_protocol::inside_tmux;
 
 fn enable_keyboard_enhancement_to(
     writer: &mut impl std::io::Write,
