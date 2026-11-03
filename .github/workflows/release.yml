@@ -103,17 +103,17 @@ jobs:
             # Debian/Ubuntu containers used by many TB tasks.
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            artifact: jcode-linux-x86_64
+            artifact: kcode-linux-x86_64
             compat_container: true
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            artifact: jcode-linux-aarch64
+            artifact: kcode-linux-aarch64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: jcode-macos-aarch64
+            artifact: kcode-macos-aarch64
           - os: macos-15-intel
             target: x86_64-apple-darwin
-            artifact: jcode-macos-x86_64
+            artifact: kcode-macos-x86_64
 
     steps:
       - uses: actions/checkout@v4
@@ -240,11 +240,11 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: jcode-windows-x86_64
+            artifact: kcode-windows-x86_64
             unsigned_artifact: windows-unsigned-x86_64
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
-            artifact: jcode-windows-aarch64
+            artifact: kcode-windows-aarch64
             unsigned_artifact: windows-unsigned-aarch64
             cargo_args: "--no-default-features --features pdf"
 
@@ -440,8 +440,8 @@ jobs:
           signing-account-name: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.WINDOWS_SIGNING_CERTIFICATE_PROFILE }}
           files: |
-            ${{ github.workspace }}\artifacts\windows-unsigned-x86_64\jcode-windows-x86_64.exe
-            ${{ github.workspace }}\artifacts\windows-unsigned-aarch64\jcode-windows-aarch64.exe
+            ${{ github.workspace }}\artifacts\windows-unsigned-x86_64\kcode-windows-x86_64.exe
+            ${{ github.workspace }}\artifacts\windows-unsigned-aarch64\kcode-windows-aarch64.exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
@@ -451,8 +451,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           $assets = @(
-            @{ Name = 'jcode-windows-x86_64'; Path = 'artifacts/windows-unsigned-x86_64/jcode-windows-x86_64.exe' },
-            @{ Name = 'jcode-windows-aarch64'; Path = 'artifacts/windows-unsigned-aarch64/jcode-windows-aarch64.exe' }
+            @{ Name = 'kcode-windows-x86_64'; Path = 'artifacts/windows-unsigned-x86_64/kcode-windows-x86_64.exe' },
+            @{ Name = 'kcode-windows-aarch64'; Path = 'artifacts/windows-unsigned-aarch64/kcode-windows-aarch64.exe' }
           )
 
           foreach ($asset in $assets) {
@@ -473,18 +473,18 @@ jobs:
       - name: Upload final Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: jcode-windows-x86_64
+          name: kcode-windows-x86_64
           path: |
-            dist/jcode-windows-x86_64.exe
-            dist/jcode-windows-x86_64.tar.gz
+            dist/kcode-windows-x86_64.exe
+            dist/kcode-windows-x86_64.tar.gz
 
       - name: Upload final Windows ARM64 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: jcode-windows-aarch64
+          name: kcode-windows-aarch64
           path: |
-            dist/jcode-windows-aarch64.exe
-            dist/jcode-windows-aarch64.tar.gz
+            dist/kcode-windows-aarch64.exe
+            dist/kcode-windows-aarch64.tar.gz
 
       - name: Publish Windows assets to release
         shell: pwsh
@@ -492,7 +492,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release upload "${env:GITHUB_REF_NAME}" dist/jcode-windows-x86_64.exe dist/jcode-windows-x86_64.tar.gz dist/jcode-windows-aarch64.exe dist/jcode-windows-aarch64.tar.gz --clobber
+          gh release upload "${env:GITHUB_REF_NAME}" dist/kcode-windows-x86_64.exe dist/kcode-windows-x86_64.tar.gz dist/kcode-windows-aarch64.exe dist/kcode-windows-aarch64.tar.gz --clobber
 
   build-freebsd:
     name: Build (x86_64-unknown-freebsd)
@@ -548,20 +548,20 @@ jobs:
             mkdir -p dist
             cp target/release/kcode dist/kcode-freebsd-x86_64
             chmod +x dist/kcode-freebsd-x86_64
-            cd dist && tar czf jcode-freebsd-x86_64.tar.gz kcode-freebsd-x86_64
+            cd dist && tar czf kcode-freebsd-x86_64.tar.gz kcode-freebsd-x86_64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: jcode-freebsd-x86_64
-          path: dist/jcode-freebsd-x86_64.tar.gz
+          name: kcode-freebsd-x86_64
+          path: dist/kcode-freebsd-x86_64.tar.gz
 
       - name: Publish asset to release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${GITHUB_REF_NAME}" "dist/jcode-freebsd-x86_64.tar.gz" --clobber
+          gh release upload "${GITHUB_REF_NAME}" "dist/kcode-freebsd-x86_64.tar.gz" --clobber
 
   release:
     name: Finalize release
@@ -584,22 +584,22 @@ jobs:
         continue-on-error: true
         with:
           path: artifacts
-          pattern: jcode-*
+          pattern: kcode-*
 
       - name: Validate complete platform asset set
         shell: bash
         run: |
           set -euo pipefail
           expected=(
-            artifacts/jcode-linux-x86_64/jcode-linux-x86_64.tar.gz
-            artifacts/jcode-linux-aarch64/jcode-linux-aarch64.tar.gz
-            artifacts/jcode-macos-aarch64/jcode-macos-aarch64.tar.gz
-            artifacts/jcode-macos-x86_64/jcode-macos-x86_64.tar.gz
-            artifacts/jcode-windows-x86_64/jcode-windows-x86_64.exe
-            artifacts/jcode-windows-x86_64/jcode-windows-x86_64.tar.gz
-            artifacts/jcode-windows-aarch64/jcode-windows-aarch64.exe
-            artifacts/jcode-windows-aarch64/jcode-windows-aarch64.tar.gz
-            artifacts/jcode-freebsd-x86_64/jcode-freebsd-x86_64.tar.gz
+            artifacts/kcode-linux-x86_64/kcode-linux-x86_64.tar.gz
+            artifacts/kcode-linux-aarch64/kcode-linux-aarch64.tar.gz
+            artifacts/kcode-macos-aarch64/kcode-macos-aarch64.tar.gz
+            artifacts/kcode-macos-x86_64/kcode-macos-x86_64.tar.gz
+            artifacts/kcode-windows-x86_64/kcode-windows-x86_64.exe
+            artifacts/kcode-windows-x86_64/kcode-windows-x86_64.tar.gz
+            artifacts/kcode-windows-aarch64/kcode-windows-aarch64.exe
+            artifacts/kcode-windows-aarch64/kcode-windows-aarch64.tar.gz
+            artifacts/kcode-freebsd-x86_64/kcode-freebsd-x86_64.tar.gz
           )
 
           missing=()
@@ -640,13 +640,13 @@ jobs:
             if [ -f "$1" ]; then printf true; else printf false; fi
           }
 
-          linux_x86_64=$(available artifacts/jcode-linux-x86_64/jcode-linux-x86_64.tar.gz)
-          linux_aarch64=$(available artifacts/jcode-linux-aarch64/jcode-linux-aarch64.tar.gz)
-          macos_aarch64=$(available artifacts/jcode-macos-aarch64/jcode-macos-aarch64.tar.gz)
-          macos_x86_64=$(available artifacts/jcode-macos-x86_64/jcode-macos-x86_64.tar.gz)
-          windows_x86_64=$(available artifacts/jcode-windows-x86_64/jcode-windows-x86_64.exe)
-          windows_aarch64=$(available artifacts/jcode-windows-aarch64/jcode-windows-aarch64.exe)
-          freebsd_x86_64=$(available artifacts/jcode-freebsd-x86_64/jcode-freebsd-x86_64.tar.gz)
+          linux_x86_64=$(available artifacts/kcode-linux-x86_64/kcode-linux-x86_64.tar.gz)
+          linux_aarch64=$(available artifacts/kcode-linux-aarch64/kcode-linux-aarch64.tar.gz)
+          macos_aarch64=$(available artifacts/kcode-macos-aarch64/kcode-macos-aarch64.tar.gz)
+          macos_x86_64=$(available artifacts/kcode-macos-x86_64/kcode-macos-x86_64.tar.gz)
+          windows_x86_64=$(available artifacts/kcode-windows-x86_64/kcode-windows-x86_64.exe)
+          windows_aarch64=$(available artifacts/kcode-windows-aarch64/kcode-windows-aarch64.exe)
+          freebsd_x86_64=$(available artifacts/kcode-freebsd-x86_64/kcode-freebsd-x86_64.tar.gz)
 
           homebrew_ready=false
           aur_ready=false
@@ -783,10 +783,10 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           VERSION_NUM="${VERSION#v}"
 
-          LINUX_SHA=$(sha256sum artifacts/jcode-linux-x86_64/jcode-linux-x86_64.tar.gz | cut -d' ' -f1)
-          LINUX_ARM_SHA=$(sha256sum artifacts/jcode-linux-aarch64/jcode-linux-aarch64.tar.gz | cut -d' ' -f1)
-          MACOS_ARM_SHA=$(sha256sum artifacts/jcode-macos-aarch64/jcode-macos-aarch64.tar.gz | cut -d' ' -f1)
-          MACOS_INTEL_SHA=$(sha256sum artifacts/jcode-macos-x86_64/jcode-macos-x86_64.tar.gz | cut -d' ' -f1)
+          LINUX_SHA=$(sha256sum artifacts/kcode-linux-x86_64/kcode-linux-x86_64.tar.gz | cut -d' ' -f1)
+          LINUX_ARM_SHA=$(sha256sum artifacts/kcode-linux-aarch64/kcode-linux-aarch64.tar.gz | cut -d' ' -f1)
+          MACOS_ARM_SHA=$(sha256sum artifacts/kcode-macos-aarch64/kcode-macos-aarch64.tar.gz | cut -d' ' -f1)
+          MACOS_INTEL_SHA=$(sha256sum artifacts/kcode-macos-x86_64/kcode-macos-x86_64.tar.gz | cut -d' ' -f1)
 
           mkdir -p ~/.ssh
           echo "$HOMEBREW_DEPLOY_KEY" > ~/.ssh/deploy_key
@@ -804,45 +804,45 @@ jobs:
 
             on_macos do
               on_arm do
-                url "https://github.com/1jehuang/jcode/releases/download/${VERSION}/jcode-macos-aarch64.tar.gz"
+                url "https://github.com/1jehuang/jcode/releases/download/${VERSION}/kcode-macos-aarch64.tar.gz"
                 sha256 "${MACOS_ARM_SHA}"
 
                 def install
-                  bin.install "jcode-macos-aarch64" => "jcode"
+                  bin.install "kcode-macos-aarch64" => "jcode"
                 end
               end
 
               on_intel do
-                url "https://github.com/1jehuang/jcode/releases/download/${VERSION}/jcode-macos-x86_64.tar.gz"
+                url "https://github.com/1jehuang/jcode/releases/download/${VERSION}/kcode-macos-x86_64.tar.gz"
                 sha256 "${MACOS_INTEL_SHA}"
 
                 def install
-                  bin.install "jcode-macos-x86_64" => "jcode"
+                  bin.install "kcode-macos-x86_64" => "jcode"
                 end
               end
             end
 
             on_linux do
               on_intel do
-                url "https://github.com/1jehuang/jcode/releases/download/${VERSION}/jcode-linux-x86_64.tar.gz"
+                url "https://github.com/1jehuang/jcode/releases/download/${VERSION}/kcode-linux-x86_64.tar.gz"
                 sha256 "${LINUX_SHA}"
 
                 def install
-                  libexec.install "jcode-linux-x86_64", "jcode-linux-x86_64.bin"
+                  libexec.install "kcode-linux-x86_64", "kcode-linux-x86_64.bin"
                   libexec.install Dir["libssl.so*"], Dir["libcrypto.so*"] unless Dir["libssl.so*", "libcrypto.so*"].empty?
                   (bin/"jcode").write <<~SH
                     #!/bin/sh
-                    exec "#{libexec}/jcode-linux-x86_64" "\$@"
+                    exec "#{libexec}/kcode-linux-x86_64" "\$@"
                   SH
                 end
               end
 
               on_arm do
-                url "https://github.com/1jehuang/jcode/releases/download/${VERSION}/jcode-linux-aarch64.tar.gz"
+                url "https://github.com/1jehuang/jcode/releases/download/${VERSION}/kcode-linux-aarch64.tar.gz"
                 sha256 "${LINUX_ARM_SHA}"
 
                 def install
-                  bin.install "jcode-linux-aarch64" => "jcode"
+                  bin.install "kcode-linux-aarch64" => "jcode"
                 end
               end
             end
@@ -889,8 +889,8 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           VERSION_NUM="${VERSION#v}"
 
-          LINUX_SHA=$(sha256sum artifacts/jcode-linux-x86_64/jcode-linux-x86_64.tar.gz | cut -d' ' -f1)
-          LINUX_URL="https://github.com/1jehuang/jcode/releases/download/${VERSION}/jcode-linux-x86_64.tar.gz"
+          LINUX_SHA=$(sha256sum artifacts/kcode-linux-x86_64/kcode-linux-x86_64.tar.gz | cut -d' ' -f1)
+          LINUX_URL="https://github.com/1jehuang/jcode/releases/download/${VERSION}/kcode-linux-x86_64.tar.gz"
 
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
@@ -921,8 +921,8 @@ jobs:
           sha256sums=('SHA_PLACEHOLDER')
 
           package() {
-              install -Dm755 "${srcdir}/jcode-linux-x86_64" "${pkgdir}/usr/lib/jcode/jcode-linux-x86_64"
-              install -Dm755 "${srcdir}/jcode-linux-x86_64.bin" "${pkgdir}/usr/lib/jcode/jcode-linux-x86_64.bin"
+              install -Dm755 "${srcdir}/kcode-linux-x86_64" "${pkgdir}/usr/lib/jcode/kcode-linux-x86_64"
+              install -Dm755 "${srcdir}/kcode-linux-x86_64.bin" "${pkgdir}/usr/lib/jcode/kcode-linux-x86_64.bin"
               if compgen -G "${srcdir}/libssl.so*" >/dev/null; then
                   install -Dm644 "${srcdir}"/libssl.so* "${pkgdir}/usr/lib/jcode/"
               fi
@@ -930,7 +930,7 @@ jobs:
                   install -Dm644 "${srcdir}"/libcrypto.so* "${pkgdir}/usr/lib/jcode/"
               fi
               mkdir -p "${pkgdir}/usr/bin"
-              ln -s /usr/lib/jcode/jcode-linux-x86_64 "${pkgdir}/usr/bin/jcode"
+              ln -s /usr/lib/jcode/kcode-linux-x86_64 "${pkgdir}/usr/bin/jcode"
           }
           PKGBUILD_END
 

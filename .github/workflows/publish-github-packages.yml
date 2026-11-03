@@ -25,16 +25,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - artifact: jcode-linux-x86_64
+          - artifact: kcode-linux-x86_64
             os_name: linux
             arch: x86_64
-          - artifact: jcode-linux-aarch64
+          - artifact: kcode-linux-aarch64
             os_name: linux
             arch: aarch64
-          - artifact: jcode-macos-aarch64
+          - artifact: kcode-macos-aarch64
             os_name: darwin
             arch: aarch64
-          - artifact: jcode-macos-x86_64
+          - artifact: kcode-macos-x86_64
             os_name: darwin
             arch: x86_64
 
@@ -107,7 +107,7 @@ jobs:
           cd dist
           tar xzf "${{ matrix.artifact }}.tar.gz"
 
-          # The tarball contains the raw binary (jcode-linux-x86_64, etc.)
+          # The tarball contains the raw binary (kcode-linux-x86_64, etc.)
           BINARY="${{ matrix.artifact }}"
           if [ ! -f "${BINARY}" ]; then
             echo "::error::Expected binary $BINARY not found after extraction"
@@ -325,12 +325,12 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "| Platform | Package |" >> "$GITHUB_STEP_SUMMARY"
           echo "|----------|---------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Linux x86_64 | \`ghcr.io/${{ github.repository_owner }}/jcode/jcode-linux-x86_64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Linux aarch64 | \`ghcr.io/${{ github.repository_owner }}/jcode/jcode-linux-aarch64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| macOS aarch64 | \`ghcr.io/${{ github.repository_owner }}/jcode/jcode-macos-aarch64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| macOS x86_64 | \`ghcr.io/${{ github.repository_owner }}/jcode/jcode-macos-x86_64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Linux x86_64 | \`ghcr.io/${{ github.repository_owner }}/jcode/kcode-linux-x86_64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Linux aarch64 | \`ghcr.io/${{ github.repository_owner }}/jcode/kcode-linux-aarch64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| macOS aarch64 | \`ghcr.io/${{ github.repository_owner }}/jcode/kcode-macos-aarch64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| macOS x86_64 | \`ghcr.io/${{ github.repository_owner }}/jcode/kcode-macos-x86_64:${VERSION#v}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "To pull a binary:" >> "$GITHUB_STEP_SUMMARY"
           echo '```bash' >> "$GITHUB_STEP_SUMMARY"
-          echo "crane pull ghcr.io/${{ github.repository_owner }}/jcode/jcode-linux-x86_64:${VERSION#v} - | tar xz" >> "$GITHUB_STEP_SUMMARY"
+          echo "crane pull ghcr.io/${{ github.repository_owner }}/jcode/kcode-linux-x86_64:${VERSION#v} - | tar xz" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"

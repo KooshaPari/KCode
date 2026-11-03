@@ -71,7 +71,7 @@ bun run --bun https://jcode.sh/install_bun.sh
 
 ```bash
 # GitHub Packages (replace <version> with desired release, e.g. 0.85.1-k1.1.1)
-docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+docker pull ghcr.io/KooshaPari/jcode/kcode-linux-x86_64:<version>
 ```
 
 **Manual download:** Grab a prebuilt binary from [GitHub Releases](https://github.com/KooshaPari/jcode/releases) and add it to your `PATH`.
@@ -989,7 +989,7 @@ bun run --bun https://jcode.sh/install_bun.sh
 
 ```bash
 # GitHub Packages (replace <version> with desired release)
-docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+docker pull ghcr.io/KooshaPari/jcode/kcode-linux-x86_64:<version>
 ```
 
 **Manual download:** Prebuilt binaries are available on the

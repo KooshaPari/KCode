@@ -24,11 +24,11 @@ prepare() {
 # `kcode`/`kcode.exe`. sdk/typescript's assertKcodePath (src/product.ts:8-19)
 # rejects any path component matching /^(?:jcode(?:[.-].*)?|\.jcode.*)$/i, so a
 # payload named `jcode` would be refused by the SDK that shipped it. The
-# 2nd/3rd arguments stay `jcode-*` because those are the release asset names
+# 2nd/3rd arguments stay `kcode-*` because those are the release asset names
 # produced by release.yml, not the payload name.
-prepare linux-x64 jcode-linux-x86_64.tar.gz jcode-linux-x86_64 kcode
-prepare linux-arm64 jcode-linux-aarch64.tar.gz jcode-linux-aarch64 kcode
-prepare darwin-x64 jcode-macos-x86_64.tar.gz jcode-macos-x86_64 kcode
-prepare darwin-arm64 jcode-macos-aarch64.tar.gz jcode-macos-aarch64 kcode
-prepare win32-x64 jcode-windows-x86_64.tar.gz jcode-windows-x86_64.exe kcode.exe
-prepare win32-arm64 jcode-windows-aarch64.tar.gz jcode-windows-aarch64.exe kcode.exe
+prepare linux-x64 kcode-linux-x86_64.tar.gz kcode-linux-x86_64 kcode
+prepare linux-arm64 kcode-linux-aarch64.tar.gz kcode-linux-aarch64 kcode
+prepare darwin-x64 kcode-macos-x86_64.tar.gz kcode-macos-x86_64 kcode
+prepare darwin-arm64 kcode-macos-aarch64.tar.gz kcode-macos-aarch64 kcode
+prepare win32-x64 kcode-windows-x86_64.tar.gz kcode-windows-x86_64.exe kcode.exe
+prepare win32-arm64 kcode-windows-aarch64.tar.gz kcode-windows-aarch64.exe kcode.exe

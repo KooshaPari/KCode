@@ -17,7 +17,7 @@ if [[ "$out_dir" != /* ]]; then
   out_dir="$repo_root/$out_dir"
 fi
 
-artifact="${KCODE_COMPAT_ARTIFACT:-jcode-linux-x86_64}"
+artifact="${KCODE_COMPAT_ARTIFACT:-kcode-linux-x86_64}"
 profile="${KCODE_COMPAT_PROFILE:-release}"
 image="${KCODE_COMPAT_IMAGE:-quay.io/pypa/manylinux2014_x86_64}"
 cache_root="${KCODE_COMPAT_CACHE_DIR:-$HOME/.cache/jcode-linux-compat}"

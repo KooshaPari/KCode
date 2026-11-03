@@ -169,8 +169,6 @@ KNOWN_DRIFT=(
   $'scripts/docs/jcode_env.lst\tenv-build-git-dirty\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.\t1'
   $'scripts/docs/jcode_env.lst\tenv-build-metadata-file\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable.\t1'
   $'scripts/docs/jcode_env.lst\tenv-build-changelog-raw\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable.\t1'
-  $'scripts/quick-release.sh\tcargo-package-selector\tDEBT\tDev release helper; -p jcode does not resolve (no such package). Rename to -p kcode.\t1'
-  $'scripts/quick-release.sh\tcargo-bin-selector\tDEBT\tDev release helper; --bin jcode does not exist (bins are kcode, test_api, kcode-harness). Rename to --bin kcode.\t3'
   $'scripts/bench_compile.sh\tcargo-package-selector\tDEBT\tCompile benchmark preset; -p jcode does not resolve. Rename to -p kcode.\t5'
   $'scripts/bench_compile.sh\tcargo-bin-selector\tDEBT\tCompile benchmark preset; --bin jcode does not exist. Rename to --bin kcode.\t4'
   $'scripts/bench_selfdev_build.sh\tcargo-package-selector\tDEBT\tSelfdev build benchmark; -p jcode does not resolve. Rename to -p kcode.\t1'
