@@ -31,9 +31,23 @@ pub(super) struct WakeReceipt {
     pub created_at: u64,
 }
 
-/// Hard ceiling on the durable ledger. Each accepted receipt costs a full-file
+/// Hard ceiling on pending receipts. Each accepted receipt costs a full-file
 /// rewrite plus fsync, so an unbounded ledger degrades submit latency forever.
 const MAX_RECEIPTS: usize = 256;
+
+/// Ceiling on settled tombstones. Enough to keep retries of recent wakes
+/// idempotent without letting the file grow without bound.
+const MAX_SETTLED: usize = 1024;
+
+/// On-disk ledger: pending receipts plus tombstones for awakened ones that were
+/// evicted, so a retried receipt id can never start a second turn.
+#[derive(Default, Serialize, Deserialize)]
+struct Ledger {
+    #[serde(default)]
+    receipts: BTreeMap<String, WakeReceipt>,
+    #[serde(default)]
+    settled: BTreeMap<String, WakeReceipt>,
+}
 
 fn receipt_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -44,7 +58,7 @@ fn path() -> Result<PathBuf> {
     Ok(crate::storage::jcode_dir()?.join("native-wake-receipts.json"))
 }
 
-fn load() -> Result<BTreeMap<String, WakeReceipt>> {
+fn load() -> Result<Ledger> {
     let path = path()?;
     if path.exists() {
         crate::storage::read_json(&path)
@@ -56,36 +70,52 @@ fn load() -> Result<BTreeMap<String, WakeReceipt>> {
         if backup.exists() {
             crate::storage::read_json(&backup)
         } else {
-            Ok(BTreeMap::new())
+            Ok(Ledger::default())
         }
     }
 }
 
-fn save(receipts: &BTreeMap<String, WakeReceipt>) -> Result<()> {
-    crate::storage::write_json(&path()?, receipts)
+fn save(ledger: &Ledger) -> Result<()> {
+    crate::storage::write_json(&path()?, ledger)
 }
 
-/// Drop the oldest entries once the ledger exceeds its ceiling. Awakened
-/// receipts prune first: losing one costs only idempotency history for a retry,
-/// while dropping a queued receipt would lose an accepted wake outright.
-fn prune(receipts: &mut BTreeMap<String, WakeReceipt>, keep: &str) {
-    if receipts.len() <= MAX_RECEIPTS {
-        return;
+/// Move the oldest awakened receipts out of the pending ledger once it exceeds
+/// its ceiling, keeping a tombstone so a retried id stays idempotent. Queued
+/// receipts are never evicted: an accepted queued wake that vanished would make
+/// the caller's later poll answer `Unknown wake receipt` with the wake unrun.
+fn prune(ledger: &mut Ledger, keep: &str, reserve: usize) {
+    let overflow = (ledger.receipts.len() + reserve).saturating_sub(MAX_RECEIPTS);
+    if overflow > 0 {
+        let mut candidates: Vec<(u64, String)> = ledger
+            .receipts
+            .values()
+            .filter(|receipt| receipt.receipt_id != keep && receipt.state == WakeState::Awakened)
+            .map(|receipt| (receipt.created_at, receipt.receipt_id.clone()))
+            .collect();
+        candidates.sort_unstable();
+        for (_, receipt_id) in candidates.into_iter().take(overflow) {
+            if let Some(mut receipt) = ledger.receipts.remove(&receipt_id) {
+                // The message has already been delivered; the tombstone only
+                // needs to identify the id and its target.
+                receipt.message = String::new();
+                ledger.settled.insert(receipt_id, receipt);
+            }
+        }
     }
-    let mut candidates: Vec<(u8, u64, String)> = receipts
-        .values()
-        .filter(|receipt| receipt.receipt_id != keep)
-        .map(|receipt| {
-            let rank = match receipt.state {
-                WakeState::Awakened => 0u8,
-                WakeState::Queued => 1u8,
-            };
-            (rank, receipt.created_at, receipt.receipt_id.clone())
-        })
-        .collect();
-    candidates.sort_unstable();
-    for (_, _, receipt_id) in candidates.into_iter().take(receipts.len() - MAX_RECEIPTS) {
-        receipts.remove(&receipt_id);
+
+    if ledger.settled.len() > MAX_SETTLED {
+        let mut tombstones: Vec<(u64, String)> = ledger
+            .settled
+            .values()
+            .map(|receipt| (receipt.created_at, receipt.receipt_id.clone()))
+            .collect();
+        tombstones.sort_unstable();
+        for (_, receipt_id) in tombstones
+            .into_iter()
+            .take(ledger.settled.len() - MAX_SETTLED)
+        {
+            ledger.settled.remove(&receipt_id);
+        }
     }
 }
 
@@ -161,12 +191,27 @@ pub(super) fn submit(receipt_id: &str, session_id: &str, message: &str) -> Resul
     let _guard = receipt_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut receipts = load()?;
-    if let Some(existing) = receipts.get(receipt_id) {
-        if existing.session_id != session_id || existing.message != message {
+    let mut ledger = load()?;
+    let existing = ledger
+        .receipts
+        .get(receipt_id)
+        .or_else(|| ledger.settled.get(receipt_id));
+    if let Some(existing) = existing {
+        // A tombstone keeps only the id and target, so a retried settled wake
+        // is compared on its target alone; its message was already delivered.
+        if existing.session_id != session_id
+            || (existing.state == WakeState::Queued && existing.message != message)
+        {
             bail!("receipt_id already belongs to another wake payload");
         }
         return Ok(existing.clone());
+    }
+    // Make room by settling awakened receipts before refusing the new wake.
+    prune(&mut ledger, receipt_id, 1);
+    if ledger.receipts.len() >= MAX_RECEIPTS {
+        bail!(
+            "wake receipt ledger is full ({MAX_RECEIPTS} pending receipts); retry once existing wakes settle"
+        );
     }
     let receipt = WakeReceipt {
         receipt_id: receipt_id.to_string(),
@@ -178,9 +223,11 @@ pub(super) fn submit(receipt_id: &str, session_id: &str, message: &str) -> Resul
             .map(|elapsed| elapsed.as_nanos() as u64)
             .unwrap_or(0),
     };
-    receipts.insert(receipt_id.to_string(), receipt.clone());
-    prune(&mut receipts, receipt_id);
-    save(&receipts)?;
+    ledger
+        .receipts
+        .insert(receipt_id.to_string(), receipt.clone());
+    prune(&mut ledger, receipt_id, 0);
+    save(&ledger)?;
     Ok(receipt)
 }
 
@@ -188,7 +235,12 @@ pub(super) fn get(receipt_id: &str) -> Result<Option<WakeReceipt>> {
     let _guard = receipt_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    Ok(load()?.get(receipt_id).cloned())
+    let ledger = load()?;
+    Ok(ledger
+        .receipts
+        .get(receipt_id)
+        .or_else(|| ledger.settled.get(receipt_id))
+        .cloned())
 }
 
 /// Called only after the exact receipt's content has been saved in the target transcript.
@@ -196,15 +248,22 @@ pub(crate) fn mark_awakened(receipt_id: &str, session_id: &str) -> Result<()> {
     let _guard = receipt_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut receipts = load()?;
-    let Some(receipt) = receipts.get_mut(receipt_id) else {
+    let mut ledger = load()?;
+    if let Some(settled) = ledger.settled.get(receipt_id) {
+        if settled.session_id != session_id {
+            bail!("receipt target mismatch");
+        }
+        // Already settled and evicted: recording the proof again is a no-op.
+        return Ok(());
+    }
+    let Some(receipt) = ledger.receipts.get_mut(receipt_id) else {
         bail!("unknown receipt_id");
     };
     if receipt.session_id != session_id {
         bail!("receipt target mismatch");
     }
     receipt.state = WakeState::Awakened;
-    save(&receipts)
+    save(&ledger)
 }
 
 pub(super) fn status_event(id: u64, receipt: WakeReceipt) -> crate::protocol::ServerEvent {
@@ -310,26 +369,74 @@ mod tests {
     }
 
     #[test]
-    fn ledger_is_bounded_and_keeps_the_newest_receipt() {
+    fn ledger_rejects_new_wakes_instead_of_evicting_queued_ones() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("temp dir");
         let old_home = std::env::var_os("KCODE_HOME");
         crate::env::set_var("KCODE_HOME", temp.path());
 
-        let total = MAX_RECEIPTS + 3;
-        for index in 0..total {
+        for index in 0..MAX_RECEIPTS {
             submit(&format!("bound:event:{index}"), "ses_target", "wake").expect("submit");
         }
+        // The ledger is full of queued receipts: a new wake is refused rather
+        // than silently dropping an already-accepted one.
+        let rejected = submit("bound:event:new", "ses_target", "wake");
+        assert!(rejected.is_err(), "a full ledger must refuse new wakes");
+
         let ledger = load().expect("reload");
-        assert_eq!(ledger.len(), MAX_RECEIPTS);
-        assert!(
-            !ledger.contains_key("bound:event:0"),
-            "oldest must be pruned"
+        assert_eq!(ledger.receipts.len(), MAX_RECEIPTS);
+        for index in 0..MAX_RECEIPTS {
+            assert!(
+                ledger
+                    .receipts
+                    .contains_key(&format!("bound:event:{index}")),
+                "queued receipt {index} must survive"
+            );
+        }
+
+        // Settling one makes room again.
+        mark_awakened("bound:event:0", "ses_target").expect("settle");
+        submit("bound:event:new", "ses_target", "wake").expect("room after settle");
+
+        if let Some(old_home) = old_home {
+            crate::env::set_var("KCODE_HOME", old_home);
+        } else {
+            crate::env::remove_var("KCODE_HOME");
+        }
+    }
+
+    #[test]
+    fn evicted_awakened_receipt_still_blocks_a_second_turn() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let old_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        for index in 0..MAX_RECEIPTS {
+            submit(&format!("prune:event:{index}"), "ses_target", "wake").expect("submit");
+        }
+        mark_awakened("prune:event:0", "ses_target").expect("settle");
+        // Over the ceiling again: the awakened entry is the only eviction
+        // candidate, so it becomes a tombstone instead of disappearing.
+        submit("prune:event:extra", "ses_target", "wake").expect("submit");
+
+        let ledger = load().expect("reload");
+        assert!(!ledger.receipts.contains_key("prune:event:0"));
+        assert!(ledger.settled.contains_key("prune:event:0"));
+
+        let retried = get("prune:event:0").expect("reload").expect("tombstone");
+        assert_eq!(retried.state, WakeState::Awakened);
+        assert_eq!(
+            submit("prune:event:0", "ses_target", "wake")
+                .expect("retry stays settled")
+                .state,
+            WakeState::Awakened
         );
         assert!(
-            ledger.contains_key(&format!("bound:event:{}", total - 1)),
-            "the just-accepted receipt must never be pruned"
+            submit("prune:event:0", "ses_other", "wake").is_err(),
+            "a tombstone still pins its target"
         );
+        mark_awakened("prune:event:0", "ses_target").expect("re-settling is a no-op");
 
         if let Some(old_home) = old_home {
             crate::env::set_var("KCODE_HOME", old_home);

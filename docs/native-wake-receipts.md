@@ -21,6 +21,14 @@ Retries with the same receipt ID and identical payload return the existing
 state; changed payloads fail. Neither the legacy `notify_session` response nor
 a generic `done` event is a wake receipt.
 
+The ledger is bounded: it holds at most 256 pending receipts. When it is full,
+a new submission is refused with an explicit error instead of evicting an
+already-accepted queued wake, and settling an existing wake frees a slot.
+Awakened receipts past the ceiling move to a bounded tombstone set (1024
+entries) that keeps the receipt ID and target but drops the delivered message,
+so a retried ID still resolves to `awakened` and cannot start a second turn.
+`get` reads both sets.
+
 This is an at-least-once turn-entry protocol. A process crash after the target
 transcript save but before the receipt state save can leave a queued receipt
 that replays on retry. A concurrent retry rechecks the receipt after reserving
