@@ -1420,7 +1420,7 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
     );
     let content = app.display_messages().last().unwrap().content.clone();
     assert!(
-        content.contains("older release") && content.contains("jcode server stop"),
+        content.contains("older release") && content.contains("kcode server stop --force"),
         "{content}"
     );
 }
@@ -1501,7 +1501,7 @@ fn older_server_reporting_no_update_is_still_deferred_via_client_check() {
     assert_eq!(remote.session_id(), None);
     let content = app.display_messages().last().unwrap().content.clone();
     assert!(
-        content.contains("older release") && content.contains("jcode server stop"),
+        content.contains("older release") && content.contains("kcode server stop --force"),
         "{content}"
     );
 }

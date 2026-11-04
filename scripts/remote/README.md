@@ -12,7 +12,7 @@ From inside jcode, `/remote` does all of this:
 
 ```
 /remote on        # enable the gateway
-                  # then restart the server: jcode server reload
+                  # then restart the server: kcode server reload
 /remote pair      # pairing code + QR
 /remote           # status, dial address, paired devices
 /remote revoke <device>
@@ -34,7 +34,7 @@ The equivalent by hand:
 2. Restart the server so it picks up the config:
 
    ```sh
-   jcode server reload      # or: jcode server stop --force && jcode server start
+   kcode server reload      # or: kcode server stop --force && kcode server start
    ```
 
    Confirm it bound: `curl -s http://127.0.0.1:7643/health`
@@ -42,7 +42,7 @@ The equivalent by hand:
 3. Generate a pairing code (valid 5 minutes):
 
    ```sh
-   jcode pair
+   kcode pair
    ```
 
 ## Setup on the client
@@ -85,5 +85,5 @@ so later runs omit `--code`.
 - **The server pings.** A client that never sends a pong frame will appear to
   hang with zero events. `gateway_client.py` answers pings for you.
 
-- **`jcode server reload` can fail** with "Client must Subscribe with a
+- **`kcode server reload` can fail** with "Client must Subscribe with a
   working_dir" on older builds. Fall back to `stop --force` + `start`.

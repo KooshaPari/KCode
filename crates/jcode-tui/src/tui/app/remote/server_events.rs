@@ -1555,7 +1555,7 @@ pub(in crate::tui::app) fn handle_server_event(
                         "Connected server is an older release; reloading it before attach",
                     );
                     app.push_display_message(DisplayMessage::system(format!(
-                        "ℹ Connected server is running an older release ({}) than this client ({}). Reloading it before applying session state. If reload does not take, run `jcode server stop` and relaunch. Set KCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing.",
+                        "ℹ Connected server is running an older release ({}) than this client ({}). Reloading it before applying session state. If reload does not take, run `kcode server stop --force` and relaunch. Set KCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing.",
                         app.remote_server_version.as_deref().unwrap_or("unknown"),
                         jcode_build_meta::version(),
                     )));
