@@ -127,7 +127,7 @@ pub(super) fn target_is_allowed(session_id: &str) -> bool {
 /// lost work.
 pub(super) fn send_event(tx: &mpsc::UnboundedSender<ServerEvent>, event: ServerEvent) {
     if let Err(error) = tx.send(event) {
-        tracing::debug!(%error, "wake receipt event not delivered: client closed");
+        crate::logging::debug(&format!("wake receipt event not delivered: {error}"));
     }
 }
 
@@ -147,7 +147,9 @@ pub(super) fn reread_or(receipt_id: &str, fallback: WakeReceipt) -> WakeReceipt 
         Ok(Some(updated)) => updated,
         Ok(None) => fallback,
         Err(error) => {
-            tracing::warn!(%error, receipt_id, "wake receipt re-read failed");
+            crate::logging::warn(&format!(
+                "wake receipt {receipt_id} re-read failed: {error}"
+            ));
             fallback
         }
     }

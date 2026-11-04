@@ -218,7 +218,7 @@ pub(super) async fn handle_lightweight_control_request(
                     // submit time. Let a poll advance it, so the caller is not
                     // required to resubmit an identical request indefinitely.
                     let status = if receipt.state == super::wake_receipts::WakeState::Queued {
-                        if let Err(error) = super::live_turn::run_receipt_turn_if_idle(
+                        let started = super::live_turn::run_receipt_turn_if_idle(
                             &receipt.session_id,
                             &receipt.message,
                             &receipt.receipt_id,
@@ -231,15 +231,13 @@ pub(super) async fn handle_lightweight_control_request(
                                 swarm_event_tx,
                             ),
                         )
-                        .await
-                        {
-                            tracing::warn!(
-                                receipt_id = %receipt_id,
-                                %error,
-                                "wake receipt turn did not start; reporting stored state"
-                            );
+                        .await;
+                        if !started {
+                            crate::logging::debug(&format!(
+                                "wake receipt turn not started for {receipt_id}:                                  target busy or already awakened"
+                            ));
                         }
-                        super::wake_receipts::reread_or(receipt_id, receipt)
+                        super::wake_receipts::reread_or(&receipt_id, receipt)
                     } else {
                         receipt
                     };

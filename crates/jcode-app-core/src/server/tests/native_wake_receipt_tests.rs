@@ -5,6 +5,9 @@
 
 use super::*;
 
+// These tests exercise `server::wake_receipts` and `server::live_turn`, which
+// are two module levels up from this child of `server::tests`.
+
 #[tokio::test]
 async fn native_receipt_remains_queued_until_exact_target_turn_saves_message() {
     let _env_guard = crate::storage::lock_test_env();
@@ -20,9 +23,12 @@ async fn native_receipt_remains_queued_until_exact_target_turn_saves_message() {
     let agent = test_agent(provider).await;
     let session_id = agent.lock().await.session_id().to_string();
     let receipt_id = "synthetic:receipt:1";
-    let receipt = super::wake_receipts::submit(receipt_id, &session_id, "synthetic wake")
+    let receipt = super::super::wake_receipts::submit(receipt_id, &session_id, "synthetic wake")
         .expect("durable queue");
-    assert_eq!(receipt.state, super::wake_receipts::WakeState::Queued);
+    assert_eq!(
+        receipt.state,
+        super::super::wake_receipts::WakeState::Queued
+    );
 
     let sessions = Arc::new(RwLock::new(HashMap::from([(
         session_id.clone(),
@@ -32,18 +38,19 @@ async fn native_receipt_remains_queued_until_exact_target_turn_saves_message() {
     let member = attached_swarm_member(&session_id, member_event_tx);
     let swarm_members = Arc::new(RwLock::new(HashMap::from([(session_id.clone(), member)])));
     let (swarms_by_id, event_history, event_counter, swarm_event_tx) = empty_swarm_status_state();
-    let ctx = super::live_turn::LiveTurnSwarmContext::new(
+    let ctx = super::super::live_turn::LiveTurnSwarmContext::new(
         &swarm_members,
         &swarms_by_id,
         &event_history,
         &event_counter,
         &swarm_event_tx,
     );
-    let reservation = super::live_turn::idle_live_agent(&session_id, &sessions, &swarm_members)
-        .await
-        .expect("reserve synthetic target");
+    let reservation =
+        super::super::live_turn::idle_live_agent(&session_id, &sessions, &swarm_members)
+            .await
+            .expect("reserve synthetic target");
     assert!(
-        !super::live_turn::run_receipt_turn_if_idle(
+        !super::super::live_turn::run_receipt_turn_if_idle(
             &session_id,
             "synthetic wake",
             receipt_id,
@@ -53,15 +60,15 @@ async fn native_receipt_remains_queued_until_exact_target_turn_saves_message() {
         .await
     );
     assert_eq!(
-        super::wake_receipts::get(receipt_id)
+        super::super::wake_receipts::get(receipt_id)
             .expect("status")
             .expect("receipt")
             .state,
-        super::wake_receipts::WakeState::Queued
+        super::super::wake_receipts::WakeState::Queued
     );
     drop(reservation);
     assert!(
-        super::live_turn::run_receipt_turn_if_idle(
+        super::super::live_turn::run_receipt_turn_if_idle(
             &session_id,
             "synthetic wake",
             receipt_id,
@@ -84,11 +91,11 @@ async fn native_receipt_remains_queued_until_exact_target_turn_saves_message() {
     .expect("receipt turn finishes");
     assert!(crate::session::session_exists(&session_id));
     assert_eq!(
-        super::wake_receipts::get(receipt_id)
+        super::super::wake_receipts::get(receipt_id)
             .expect("status")
             .expect("receipt")
             .state,
-        super::wake_receipts::WakeState::Awakened
+        super::super::wake_receipts::WakeState::Awakened
     );
     assert!(agent.lock().await.messages().iter().any(|message| {
         message.role == Role::User && message.content_preview().contains("synthetic wake")
@@ -102,7 +109,7 @@ async fn native_receipt_remains_queued_until_exact_target_turn_saves_message() {
     // state and leave the transcript unchanged.
     let message_count = agent.lock().await.messages().len();
     assert!(
-        !super::live_turn::run_receipt_turn_if_idle(
+        !super::super::live_turn::run_receipt_turn_if_idle(
             &session_id,
             "synthetic wake",
             receipt_id,
@@ -141,7 +148,7 @@ async fn native_receipt_admits_attached_session_and_replays_without_target() {
         agent.clone(),
     )])));
     let soft_interrupt_queues: SessionInterruptQueues = Arc::new(RwLock::new(HashMap::new()));
-    let client_connections: Arc<RwLock<HashMap<String, super::ClientConnectionInfo>>> =
+    let client_connections: Arc<RwLock<HashMap<String, super::super::ClientConnectionInfo>>> =
         Arc::new(RwLock::new(HashMap::new()));
     let (member_event_tx, _member_event_rx) = mpsc::unbounded_channel();
     let member = attached_swarm_member(&target, member_event_tx);
@@ -150,12 +157,12 @@ async fn native_receipt_admits_attached_session_and_replays_without_target() {
     let (client_event_tx, mut client_event_rx) = mpsc::unbounded_channel();
 
     let receipt_id = "attached:receipt:1";
-    super::client_actions::handle_notify_session_receipt(
+    super::super::client_actions::handle_notify_session_receipt(
         1,
         target.clone(),
         "wake attached".to_string(),
         receipt_id.to_string(),
-        super::client_actions::NotifySessionContext {
+        super::super::client_actions::NotifySessionContext {
             sessions: &sessions,
             soft_interrupt_queues: &soft_interrupt_queues,
             client_connections: &client_connections,
@@ -178,12 +185,12 @@ async fn native_receipt_admits_attached_session_and_replays_without_target() {
     // identical request. It must return the stored state, not "does not exist".
     sessions.write().await.remove(&target);
     assert!(!crate::session::session_exists(&target));
-    super::client_actions::handle_notify_session_receipt(
+    super::super::client_actions::handle_notify_session_receipt(
         2,
         target.clone(),
         "wake attached".to_string(),
         receipt_id.to_string(),
-        super::client_actions::NotifySessionContext {
+        super::super::client_actions::NotifySessionContext {
             sessions: &sessions,
             soft_interrupt_queues: &soft_interrupt_queues,
             client_connections: &client_connections,
