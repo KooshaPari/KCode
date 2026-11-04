@@ -22,7 +22,16 @@ pub(super) struct WakeReceipt {
     pub session_id: String,
     pub message: String,
     pub state: WakeState,
+    /// Nanoseconds since the Unix epoch when this receipt was first accepted.
+    /// Ledgers written before pruning existed default this to 0, so those
+    /// entries sort oldest and are pruned first.
+    #[serde(default)]
+    pub created_at: u64,
 }
+
+/// Hard ceiling on the durable ledger. Each accepted receipt costs a full-file
+/// rewrite plus fsync, so an unbounded ledger degrades submit latency forever.
+const MAX_RECEIPTS: usize = 256;
 
 fn receipt_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -52,6 +61,30 @@ fn load() -> Result<BTreeMap<String, WakeReceipt>> {
 
 fn save(receipts: &BTreeMap<String, WakeReceipt>) -> Result<()> {
     crate::storage::write_json(&path()?, receipts)
+}
+
+/// Drop the oldest entries once the ledger exceeds its ceiling. Awakened
+/// receipts prune first: losing one costs only idempotency history for a retry,
+/// while dropping a queued receipt would lose an accepted wake outright.
+fn prune(receipts: &mut BTreeMap<String, WakeReceipt>, keep: &str) {
+    if receipts.len() <= MAX_RECEIPTS {
+        return;
+    }
+    let mut candidates: Vec<(u8, u64, String)> = receipts
+        .values()
+        .filter(|receipt| receipt.receipt_id != keep)
+        .map(|receipt| {
+            let rank = match receipt.state {
+                WakeState::Awakened => 0u8,
+                WakeState::Queued => 1u8,
+            };
+            (rank, receipt.created_at, receipt.receipt_id.clone())
+        })
+        .collect();
+    candidates.sort_unstable();
+    for (_, _, receipt_id) in candidates.into_iter().take(receipts.len() - MAX_RECEIPTS) {
+        receipts.remove(&receipt_id);
+    }
 }
 
 fn validate(receipt_id: &str, session_id: &str, message: &str) -> Result<()> {
@@ -103,8 +136,13 @@ pub(super) fn submit(receipt_id: &str, session_id: &str, message: &str) -> Resul
         session_id: session_id.to_string(),
         message: message.to_string(),
         state: WakeState::Queued,
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos() as u64)
+            .unwrap_or(0),
     };
     receipts.insert(receipt_id.to_string(), receipt.clone());
+    prune(&mut receipts, receipt_id);
     save(&receipts)?;
     Ok(receipt)
 }
@@ -153,9 +191,9 @@ mod tests {
     fn queued_receipt_survives_reload_and_retries_without_duplicate() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let old_home = std::env::var_os("JCODE_HOME");
+        let old_home = std::env::var_os("KCODE_HOME");
         let old_allowlist = std::env::var_os("JCODE_NATIVE_WAKE_SESSION_ALLOWLIST");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        crate::env::set_var("KCODE_HOME", temp.path());
         crate::env::set_var(
             "JCODE_NATIVE_WAKE_SESSION_ALLOWLIST",
             "ses_target,ses_second",
@@ -185,9 +223,9 @@ mod tests {
         );
 
         if let Some(old_home) = old_home {
-            crate::env::set_var("JCODE_HOME", old_home);
+            crate::env::set_var("KCODE_HOME", old_home);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
         if let Some(old_allowlist) = old_allowlist {
             crate::env::set_var("JCODE_NATIVE_WAKE_SESSION_ALLOWLIST", old_allowlist);
@@ -200,8 +238,8 @@ mod tests {
     fn interrupted_replace_recovers_backup_without_erasing_history() {
         let _guard = crate::storage::lock_test_env();
         let temp = tempfile::TempDir::new().expect("temp dir");
-        let old_home = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", temp.path());
+        let old_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
 
         let first = submit("bridge:event:old", "ses_target", "first").expect("submit");
         let primary = path().expect("receipt path");
@@ -228,9 +266,38 @@ mod tests {
         assert!(submit("bridge:event:third", "ses_target", "third").is_err());
 
         if let Some(old_home) = old_home {
-            crate::env::set_var("JCODE_HOME", old_home);
+            crate::env::set_var("KCODE_HOME", old_home);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
+        }
+    }
+
+    #[test]
+    fn ledger_is_bounded_and_keeps_the_newest_receipt() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let old_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        let total = MAX_RECEIPTS + 3;
+        for index in 0..total {
+            submit(&format!("bound:event:{index}"), "ses_target", "wake").expect("submit");
+        }
+        let ledger = load().expect("reload");
+        assert_eq!(ledger.len(), MAX_RECEIPTS);
+        assert!(
+            !ledger.contains_key("bound:event:0"),
+            "oldest must be pruned"
+        );
+        assert!(
+            ledger.contains_key(&format!("bound:event:{}", total - 1)),
+            "the just-accepted receipt must never be pruned"
+        );
+
+        if let Some(old_home) = old_home {
+            crate::env::set_var("KCODE_HOME", old_home);
+        } else {
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 }

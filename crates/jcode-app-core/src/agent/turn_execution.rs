@@ -119,7 +119,12 @@ impl Agent {
 
         self.announce_late_mcp_tools().await;
         self.announce_late_skills();
-        self.append_user_context_message_with_display_role(user_message, images, display_role, false)?;
+        self.append_user_context_message_with_display_role(
+            user_message,
+            images,
+            display_role,
+            false,
+        )?;
         crate::telemetry::record_turn();
         let turn_started_at = Instant::now();
         let start_message_index = self.message_count();
@@ -138,6 +143,10 @@ impl Agent {
         receipt_id: &str,
         event_tx: mpsc::UnboundedSender<ServerEvent>,
     ) -> Result<()> {
+        // Receipt turns carry no reminder. A turn that panicked before its own
+        // cleanup can leave the field set on this reused agent, and the stale
+        // reminder would then ride along with the synthetic wake input.
+        self.current_turn_system_reminder = None;
         self.announce_late_mcp_tools().await;
         self.announce_late_skills();
         self.append_user_context_message_with_display_role(

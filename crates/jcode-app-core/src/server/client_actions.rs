@@ -195,10 +195,17 @@ pub(super) async fn handle_notify_session_receipt(
         if !super::wake_receipts::target_is_allowed(&session_id) {
             anyhow::bail!("Session '{}' is not allowed for native wakes", session_id);
         }
-        // A receipt names one existing target in this profile. Never create a
-        // new session implicitly from untrusted bridge input.
-        if !crate::session::session_exists(&session_id) {
-            anyhow::bail!("Session '{}' does not exist in this profile", session_id);
+        // Only new admissions need a live target. An identical replay must keep
+        // returning the stored state even if the target transcript was removed
+        // since, which is why the replay lookup runs before this guard.
+        if super::wake_receipts::get(&receipt_id)?.is_none() {
+            // A receipt names one existing target in this profile. Never create a
+            // new session implicitly from untrusted bridge input. An attached
+            // live session counts as existing before its first transcript save.
+            let attached = ctx.sessions.read().await.contains_key(&session_id);
+            if !attached && !crate::session::session_exists(&session_id) {
+                anyhow::bail!("Session '{}' does not exist in this profile", session_id);
+            }
         }
         let receipt = super::wake_receipts::submit(&receipt_id, &session_id, &message)?;
         if receipt.state == super::wake_receipts::WakeState::Queued {

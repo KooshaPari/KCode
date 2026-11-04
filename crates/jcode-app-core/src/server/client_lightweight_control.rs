@@ -209,16 +209,41 @@ pub(super) async fn handle_lightweight_control_request(
         Request::GetWakeReceipt { id, receipt_id } => {
             match super::wake_receipts::get(&receipt_id) {
                 Ok(Some(receipt))
-                    if super::wake_receipts::target_is_allowed(&receipt.session_id) =>
+                    if !super::wake_receipts::target_is_allowed(&receipt.session_id) =>
                 {
-                    let _ = client_event_tx.send(super::wake_receipts::status_event(id, receipt));
-                }
-                Ok(Some(_)) => {
                     let _ = client_event_tx.send(ServerEvent::Error {
                         id,
                         message: "Wake receipt target is not allowed".to_string(),
                         retry_after_secs: None,
                     });
+                }
+                Ok(Some(receipt)) => {
+                    // A busy or unattached target leaves the receipt queued at
+                    // submit time. Let a poll advance it, so the caller is not
+                    // required to resubmit an identical request indefinitely.
+                    let status = if receipt.state == super::wake_receipts::WakeState::Queued {
+                        let _ = super::live_turn::run_receipt_turn_if_idle(
+                            &receipt.session_id,
+                            &receipt.message,
+                            &receipt.receipt_id,
+                            sessions,
+                            super::live_turn::LiveTurnSwarmContext::new(
+                                swarm_members,
+                                swarms_by_id,
+                                event_history,
+                                event_counter,
+                                swarm_event_tx,
+                            ),
+                        )
+                        .await;
+                        super::wake_receipts::get(&receipt_id)
+                            .ok()
+                            .flatten()
+                            .unwrap_or(receipt)
+                    } else {
+                        receipt
+                    };
+                    let _ = client_event_tx.send(super::wake_receipts::status_event(id, status));
                 }
                 Ok(None) => {
                     let _ = client_event_tx.send(ServerEvent::Error {

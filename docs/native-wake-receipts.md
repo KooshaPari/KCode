@@ -12,8 +12,11 @@ means the exact message was saved in the target transcript at the start of a
 receipt-specific live turn and the transcript snapshot or journal was synced
 before the receipt advanced. A system-displayed wake input forces the first
 snapshot even if no earlier visible conversation exists. A busy, unattached,
-or unavailable target remains
-`queued`. The caller retries the same request or polls `get_wake_receipt`.
+or unavailable target remains `queued` at submit time. The caller may retry the
+same request or poll `get_wake_receipt`; a poll attempts to start the queued
+turn once the target is attached and idle, so polling can advance a receipt
+that submit could not start. Only retrying or polling can make progress: no
+stored receipt advances on its own.
 Retries with the same receipt ID and identical payload return the existing
 state; changed payloads fail. Neither the legacy `notify_session` response nor
 a generic `done` event is a wake receipt.

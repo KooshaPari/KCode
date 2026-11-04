@@ -539,15 +539,25 @@ impl Session {
         if let Some(block) = self.migration_lease_block() {
             anyhow::bail!("Session {} was not persisted: {}", self.id, block);
         }
+        // Windows `File::open` yields a read-only handle and `FlushFileBuffers`
+        // requires write access, so open write-capable first and fall back to
+        // read-only when the file itself is not writable.
+        let sync_durably = |path: &Path| -> Result<()> {
+            match std::fs::OpenOptions::new().write(true).open(path) {
+                Ok(file) => file.sync_all()?,
+                Err(_) => std::fs::File::open(path)?.sync_all()?,
+            }
+            Ok(())
+        };
         let snapshot = session_path(&self.id)?;
-        std::fs::File::open(&snapshot)?.sync_all()?;
+        sync_durably(&snapshot)?;
         let journal = session_journal_path_from_snapshot(&snapshot);
         if journal.exists() {
-            std::fs::File::open(&journal)?.sync_all()?;
+            sync_durably(&journal)?;
         }
         #[cfg(unix)]
         if let Some(parent) = snapshot.parent() {
-            std::fs::File::open(parent)?.sync_all()?;
+            sync_durably(parent)?;
         }
         Ok(())
     }

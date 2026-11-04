@@ -94,6 +94,10 @@ pub(super) async fn idle_live_agent(
 /// `failed` when it finishes. A synthetic terminal `Done { id: 0 }` (or
 /// `Error { id: 0, .. }`) is fanned out to attached clients so their UI can
 /// finish rendering the externally started turn.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a tracked wake turn carries routing, display, status and receipt identity plus the swarm context it fans out to"
+)]
 pub(super) async fn spawn_tracked_live_turn(
     session_id: &str,
     mut agent: OwnedMutexGuard<Agent>,
