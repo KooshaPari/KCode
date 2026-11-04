@@ -1,0 +1,36 @@
+# CodeRabbit PR #187 triage (read-only)
+
+.github/workflows/release.yml:43 | STILL_VALID | Env-var half already uses KCODE_* (lines 178-180,289-291), but the fork gate still only checks contains(ref_name,'-k'), which admits malformed tags like v1.2.3-kbad; the fork_version parser exists in crates/jcode-build-meta/src/fork_version.rs but is not invoked in CI. | .github/workflows/release.yml:43,178-180
+.github/workflows/release.yml:331 | ALREADY_FIXED | verify_windows_install.ps1 now uses kcode\bin, kcode.exe, kcode\builds, kcode-hotkey.lnk throughout. | .github/scripts/verify_windows_install.ps1:60-61,68-72
+.github/workflows/release.yml:540 | STILL_VALID | FreeBSD job tars kcode-freebsd-x86_64.tar.gz but upload (line 546), gh release upload (553), expected-asset list (591) and availability check (638) still reference jcode-freebsd-x86_64.tar.gz. | .github/workflows/release.yml:540,546,553,591,638
+crates/jcode-build-meta/build.rs:345 | STILL_VALID | parse_release_semver in server_events.rs still splits "v0.93.398-k0.1.0" on '.' and fails to parse "398-k0", returning None, so fork releases are treated as unorderable. | crates/jcode-tui/src/tui/app/remote/server_events.rs:22-33
+docs/WINDOWS.md:22 | STILL_VALID | Guide still does not mention the default Restricted execution policy blocking install.ps1. | docs/WINDOWS.md:1-21
+docs/WINDOWS.md:31 | STILL_VALID | Table still labels the versioned binary "Immutable binary" although install.ps1 uses Move-Item -Force. | docs/WINDOWS.md:30-33
+tests/test_kcode_product_isolation.py:26 | STILL_VALID | Test passes str(forbidden_base) (Windows path C:\...) directly to bash without cygpath -u conversion. | tests/test_kcode_product_isolation.py:22-28
+docs/SECURITY_DEPENDENCIES.md:41 | STILL_VALID | Removal condition says crypto-bigint >=0.7, but RustSec patched version is 0.7.6; an upgrade to 0.7.0-0.7.5 would not remediate. | docs/SECURITY_DEPENDENCIES.md:41
+scripts/check_symbol_drift.sh:130 | STILL_VALID | cargo-package-selector regex only matches -p jcode, not --package jcode. | scripts/check_symbol_drift.sh:123
+scripts/check_symbol_drift.sh:162 | ALREADY_FIXED | build_linux_compat.sh already uses -p kcode --bin kcode and copies kcode; no baseline entries for it remain. | scripts/build_linux_compat.sh:148-150
+scripts/check_symbol_drift.sh:239 | STILL_VALID | KNOWN_DRIFT matching is by (path,label) only, so extra occurrences in the same file pass the gate. | scripts/check_symbol_drift.sh:210-225
+.github/scripts/verify_windows_install.ps1:61 | STILL_VALID | Verifier sets KCODE_HOME but checks versionDir/stablePath under $localAppData\kcode\builds, while install.ps1 writes them under $kcodeHome\builds. | .github/scripts/verify_windows_install.ps1:59-61; scripts/install.ps1:993
+.github/workflows/release.yml:303 | NOT_A_BUG | ARM64 publication after build/version/dependency/installer checks is a release-policy judgment, not a concrete code defect. | .github/workflows/release.yml:295-315
+docs/KCODE_ISOLATION.md:287 | STILL_VALID | Doc claims update_semver is taken from the compile-time git tag, but build.rs uses KCODE_BUILD_SEMVER override or commits-since-base-tag. | docs/KCODE_ISOLATION.md:278-282; crates/jcode-build-meta/build.rs:304-345
+docs/KCODE_ISOLATION.md:289 | STILL_VALID | Doc uses git_date as evidence of build time/source state, but git_date defaults to commit date. | docs/KCODE_ISOLATION.md:274-282; crates/jcode-build-meta/build.rs:140-175
+scripts/check_symbol_drift.sh:63 | ALREADY_FIXED | ci.yml quality job already invokes bash scripts/check_symbol_drift.sh at line 162. | .github/workflows/ci.yml:158-162
+.github/workflows/ci.yml:669 | ALREADY_FIXED | security_preflight.sh calls cargo-audit binary directly, never cargo; comment also marked addressed in commit de78989. | scripts/security_preflight.sh:115-121; .github/workflows/ci.yml:1008-1023
+.github/workflows/ci.yml:200 | STILL_VALID | cargo-check job checkout (lines 198-200) lacks persist-credentials: false and a contents: read permission scope. | .github/workflows/ci.yml:183-200
+
+STILL_VALID_LIST:
+.github/workflows/release.yml:43 - fork-tag gate still loose (contains '-k' only); env-var half already fixed
+.github/workflows/release.yml:540 - FreeBSD archive filename mismatch (kcode vs jcode)
+crates/jcode-build-meta/build.rs:345 - parse_release_semver does not handle fork versions like v0.93.398-k0.1.0
+docs/WINDOWS.md:22 - missing PowerShell execution-policy prerequisite
+docs/WINDOWS.md:31 - "Immutable binary" should be "Versioned binary"
+tests/test_kcode_product_isolation.py:26 - forbidden_base not converted via cygpath on Windows
+docs/SECURITY_DEPENDENCIES.md:41 - crypto-bigint removal threshold should be >=0.7.6 not >=0.7
+scripts/check_symbol_drift.sh:130 - --package jcode selector not detected
+scripts/check_symbol_drift.sh:239 - ratchet tracks file/rule pairs, not occurrence counts
+.github/scripts/verify_windows_install.ps1:61 - build paths checked under $localAppData instead of $kcodeHome
+docs/KCODE_ISOLATION.md:287 - update_semver derivation documented incorrectly
+docs/KCODE_ISOLATION.md:289 - git_date treated as build time
+.github/workflows/ci.yml:200 - missing persist-credentials:false and contents:read
+STILL_VALID_COUNT: 13
