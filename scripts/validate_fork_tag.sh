@@ -61,10 +61,13 @@ numeric() {
   local value="$1"
   local nonzero="$2"
   local parts
-  IFS='.' read -r -a parts <<<"$value"
-  if [[ "${#parts[@]}" -ne 3 ]]; then
+  # `read -a` drops trailing empty fields, so "1.2.3." would otherwise be read
+  # as three parts. Anchor the whole string first, matching fork_version::parse's
+  # `split('.')` length check, which counts the trailing empty component.
+  if [[ ! "$value" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     return 1
   fi
+  IFS='.' read -r -a parts <<<"$value"
   local part
   for part in "${parts[@]}"; do
     if [[ -z "$part" ]]; then
@@ -74,6 +77,12 @@ numeric() {
       return 1
     fi
     if [[ "${#part}" -gt 1 && "$part" == 0* ]]; then
+      return 1
+    fi
+    # fork_version::parse applies `part.parse::<u32>()`, so a component above
+    # u32::MAX is rejected there but would otherwise pass here and fail the
+    # release build. The length guard keeps bash arithmetic in 64-bit range.
+    if [[ "${#part}" -gt 10 ]] || (( 10#$part > 4294967295 )); then
       return 1
     fi
   done
@@ -117,19 +126,12 @@ if [[ "$fork" == *-* ]]; then
   if [[ -z "$channel" ]]; then
     fail "empty channel after the fork version"
   fi
-  IFS='.' read -r -a channel_parts <<<"$channel"
-  for part in "${channel_parts[@]}"; do
-    # Split on dots and dashes: each piece must be non-empty alphanumeric.
-    IFS='-' read -r -a dash_parts <<<"$part"
-    for dash_part in "${dash_parts[@]}"; do
-      if [[ -z "$dash_part" ]]; then
-        fail "channel '$channel' has an empty component"
-      fi
-      if [[ ! "$dash_part" =~ ^[A-Za-z0-9]+$ ]]; then
-        fail "channel '$channel' has a non-alphanumeric component"
-      fi
-    done
-  done
+  # Matches fork_version::parse: split on dots and dashes, every piece must be
+  # non-empty alphanumeric. The regex rejects leading, trailing and doubled
+  # separators, which `read -a` would silently collapse.
+  if [[ ! "$channel" =~ ^[A-Za-z0-9]+([.-][A-Za-z0-9]+)*$ ]]; then
+    fail "channel '$channel' has an empty or non-alphanumeric component"
+  fi
 fi
 
 if [[ -z "$fork" ]]; then

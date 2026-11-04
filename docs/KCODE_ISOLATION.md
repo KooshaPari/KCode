@@ -308,8 +308,12 @@ fork-shaped, so the metadata requirement itself holds on every artifact; the
 divergence is a release-consistency defect, not a version collapse.
 
 **Reconciliation.** A single-tree rebuild of all three artifacts from one
-checkout at one commit would make `update_semver`, `git_tag`, `git_date`, and
-the hash abbreviation identical. No artifact was rebuilt for this receipt; the
+checkout at one commit, with the same `KCODE_BUILD_SEMVER` value for every
+build, would make `update_semver`, `git_tag`, `git_date`, and the hash
+abbreviation identical. `KCODE_BUILD_SEMVER` is read from the environment
+(`crates/jcode-build-meta/build.rs`, `explicit_build_semver_override`), so a
+build that omits it or uses a different value produces a different
+`update_semver` even from the same checkout. No artifact was rebuilt for this receipt; the
 values above are read from the shipped binaries and their recorded native-run
 receipts, and the per-file SHA-256 digests in the table above identify exactly
 which bytes each row was measured on.

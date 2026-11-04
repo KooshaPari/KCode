@@ -44,7 +44,11 @@ class ProductIdentityTests(unittest.TestCase):
                     "cygpath conversion failed: "
                     + (converted.stderr.strip() or "no output")
                 )
-            forbidden_base = pathlib.Path(converted.stdout.strip())
+            # Keep the POSIX path from `cygpath -u` as a string. Wrapping it
+            # in pathlib.Path on Windows re-interprets `/c/Users/...` as
+            # `\c\Users\...`, which bash no longer treats as absolute and the
+            # guard's "cannot use jcode" branch is never reached.
+            forbidden_base = converted.stdout.strip()
         rejected = subprocess.run(
             [bash, "-c",
              'source scripts/product_paths.sh; require_kcode_owned_path "$1"/.jcode/forbidden',

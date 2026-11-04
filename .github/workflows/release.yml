@@ -491,8 +491,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          WINDOWS_ARM64_QUALIFIED: ${{ vars.WINDOWS_ARM64_QUALIFIED }}
         run: |
-          gh release upload "${env:GITHUB_REF_NAME}" dist/kcode-windows-x86_64.exe dist/kcode-windows-x86_64.tar.gz dist/kcode-windows-aarch64.exe dist/kcode-windows-aarch64.tar.gz --clobber
+          gh release upload "${env:GITHUB_REF_NAME}" dist/kcode-windows-x86_64.exe dist/kcode-windows-x86_64.tar.gz --clobber
+
+          # docs/KCODE_ISOLATION.md: "qualify ARM64 separately before publishing
+          # an ARM64 asset". The per-matrix --version / dependency / installer
+          # checks are build smoke tests, not the ARM64 runtime qualification,
+          # so the ARM64 asset stays unpublished until the gate variable is set.
+          if ($env:WINDOWS_ARM64_QUALIFIED -eq 'true') {
+            gh release upload "${env:GITHUB_REF_NAME}" dist/kcode-windows-aarch64.exe dist/kcode-windows-aarch64.tar.gz --clobber
+          } else {
+            Write-Host "Skipping ARM64 asset publication: WINDOWS_ARM64_QUALIFIED is not 'true'"
+          }
 
   build-freebsd:
     name: Build (x86_64-unknown-freebsd)
@@ -588,6 +599,8 @@ jobs:
 
       - name: Validate complete platform asset set
         shell: bash
+        env:
+          WINDOWS_ARM64_QUALIFIED: ${{ vars.WINDOWS_ARM64_QUALIFIED }}
         run: |
           set -euo pipefail
           expected=(
@@ -597,10 +610,17 @@ jobs:
             artifacts/kcode-macos-x86_64/kcode-macos-x86_64.tar.gz
             artifacts/kcode-windows-x86_64/kcode-windows-x86_64.exe
             artifacts/kcode-windows-x86_64/kcode-windows-x86_64.tar.gz
-            artifacts/kcode-windows-aarch64/kcode-windows-aarch64.exe
-            artifacts/kcode-windows-aarch64/kcode-windows-aarch64.tar.gz
             artifacts/kcode-freebsd-x86_64/kcode-freebsd-x86_64.tar.gz
           )
+
+          # Windows ARM64 is published only after the separate ARM64 runtime
+          # qualification, so it is required only once that gate is recorded.
+          if [ "${WINDOWS_ARM64_QUALIFIED:-}" = 'true' ]; then
+            expected+=(
+              artifacts/kcode-windows-aarch64/kcode-windows-aarch64.exe
+              artifacts/kcode-windows-aarch64/kcode-windows-aarch64.tar.gz
+            )
+          fi
 
           missing=()
           for asset in "${expected[@]}"; do
@@ -617,10 +637,16 @@ jobs:
       # Build jobs normally attach their own assets to the draft. Upload them
       # again here so a late per-platform upload failure cannot leave a built
       # artifact out of the public release.
+      #
+      # The Windows ARM64 assets are excluded unless the operator has recorded
+      # the separate ARM64 runtime qualification (docs/KCODE_ISOLATION.md).
+      # The publish-windows job applies the same gate, so this blanket upload
+      # must not reintroduce the ARM64 asset that job withheld.
       - name: Attach all completed platform assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          WINDOWS_ARM64_QUALIFIED: ${{ vars.WINDOWS_ARM64_QUALIFIED }}
         run: |
           set -euo pipefail
           mapfile -d '' assets < <(
@@ -628,6 +654,23 @@ jobs:
           )
           if [ "${#assets[@]}" -eq 0 ]; then
             echo "No completed release assets found" >&2
+            exit 1
+          fi
+          if [ "${WINDOWS_ARM64_QUALIFIED:-}" != 'true' ]; then
+            filtered=()
+            for asset in "${assets[@]}"; do
+              case "$asset" in
+                *windows-aarch64*)
+                  echo "Skipping unqualified Windows ARM64 asset: $asset"
+                  continue
+                  ;;
+              esac
+              filtered+=("$asset")
+            done
+            assets=("${filtered[@]}")
+          fi
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "No publishable release assets found" >&2
             exit 1
           fi
           gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
@@ -682,9 +725,12 @@ jobs:
 
       - name: Generate checksums
         shell: bash
+        env:
+          WINDOWS_ARM64_QUALIFIED: ${{ vars.WINDOWS_ARM64_QUALIFIED }}
         run: |
           python3 - << 'PY'
           import hashlib
+          import os
           from pathlib import Path
 
           files = sorted(
@@ -693,6 +739,16 @@ jobs:
           )
           if not files:
               raise SystemExit("No release assets found for checksum generation")
+
+          # The unpublished Windows ARM64 assets must not appear in
+          # SHA256SUMS: the installers verify a downloaded asset against this
+          # file, so an entry for an asset that was never published would
+          # advertise a download that cannot succeed.
+          if os.environ.get("WINDOWS_ARM64_QUALIFIED", "") != "true":
+              files = [p for p in files if "windows-aarch64" not in p.name]
+
+          if not files:
+              raise SystemExit("No publishable release assets found for checksum generation")
 
           with Path("SHA256SUMS").open("w", encoding="utf-8") as out:
               for path in files:
@@ -778,7 +834,9 @@ jobs:
       - name: Update Homebrew formula
         env:
           HOMEBREW_DEPLOY_KEY: ${{ secrets.HOMEBREW_DEPLOY_KEY }}
-        if: env.HOMEBREW_DEPLOY_KEY != '' && env.HOMEBREW_READY == 'true'
+        # Fork releases must never push to the upstream tap: the deploy key and
+        # the artifact SHAs are upstream-owned. Gate on the canonical repo.
+        if: github.repository == '1jehuang/jcode' && env.HOMEBREW_DEPLOY_KEY != '' && env.HOMEBREW_READY == 'true'
         run: |
           VERSION="${GITHUB_REF_NAME}"
           VERSION_NUM="${VERSION#v}"
@@ -865,7 +923,8 @@ jobs:
       - name: Update AUR package
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
-        if: env.AUR_SSH_KEY != '' && env.AUR_READY == 'true'
+        # Same reasoning as the Homebrew step: upstream-owned package repo.
+        if: github.repository == '1jehuang/jcode' && env.AUR_SSH_KEY != '' && env.AUR_READY == 'true'
         run: |
           set -euo pipefail
 

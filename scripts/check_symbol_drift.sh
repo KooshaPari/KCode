@@ -127,8 +127,8 @@ RULES=(
   $'env-build-git-dirty\t(^|[^A-Za-z0-9_])JCODE_BUILD_GIT_DIRTY([^A-Za-z0-9_]|$)'
   $'env-build-metadata-file\t(^|[^A-Za-z0-9_])JCODE_BUILD_METADATA_FILE([^A-Za-z0-9_]|$)'
   $'env-build-changelog-raw\t(^|[^A-Za-z0-9_])JCODE_BUILD_CHANGELOG_RAW([^A-Za-z0-9_]|$)'
-  $'cargo-package-selector\t(^|[[:space:]])(-p|--package)[[:space:]]+jcode([[:space:]]|$)'
-  $'cargo-bin-selector\t--bin[[:space:]]+jcode([[:space:]]|$)'
+  $'cargo-package-selector\t(^|[[:space:]])(-p|--package)([[:space:]]+|=)jcode([[:space:]]|$)'
+  $'cargo-bin-selector\t--bin([[:space:]]+|=)jcode([[:space:]]|$)'
   $'windows-exe-name\t(^|[^A-Za-z0-9_.-])jcode\\.exe'
 )
 
@@ -172,7 +172,6 @@ KNOWN_DRIFT=(
   $'scripts/bench_compile.sh\tcargo-package-selector\tDEBT\tCompile benchmark preset; -p jcode does not resolve. Rename to -p kcode.\t5'
   $'scripts/bench_compile.sh\tcargo-bin-selector\tDEBT\tCompile benchmark preset; --bin jcode does not exist. Rename to --bin kcode.\t4'
   $'scripts/bench_selfdev_build.sh\tcargo-package-selector\tDEBT\tSelfdev build benchmark; -p jcode does not resolve. Rename to -p kcode.\t1'
-  $'scripts/stale_server_upgrade_sandbox.sh\tcargo-package-selector\tDEBT\tSandbox harness guard message; -p jcode does not resolve. Rename to -p kcode.\t1'
   $'scripts/test_sdk_e2e.sh\tcargo-package-selector\tDEBT\tSDK e2e build; -p jcode does not resolve. Rename to -p kcode.\t1'
   $'scripts/test_sdk_e2e.sh\tcargo-bin-selector\tDEBT\tSDK e2e build; --bin jcode does not exist. Rename to --bin kcode.\t1'
   $'scripts/test_desktop_selfdev.py\tcargo-package-selector\tDEBT\tDocstring showing the desktop selfdev build command; -p jcode does not resolve.\t1'

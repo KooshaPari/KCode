@@ -13,10 +13,14 @@ self-update are deliberately disabled until a maintained channel passes the
 [KCode isolation and delivery gates](KCODE_ISOLATION.md#forward-delivery-work-breakdown).
 
 On a default Windows configuration, running a downloaded `.ps1` can be blocked
-by the PowerShell execution policy. Use the documented one-liner
-(`irm https://kcode.sh/install.ps1 | iex`) or invoke PowerShell with
-`-ExecutionPolicy RemoteSigned` (for example
-`powershell -ExecutionPolicy RemoteSigned -File .\scripts\install.ps1`).
+by the PowerShell execution policy. Invoke PowerShell with
+`-ExecutionPolicy RemoteSigned` and a local artifact, because this branch's
+installer rejects downloads and requires an explicit artifact and version (for
+example
+`powershell -ExecutionPolicy RemoteSigned -File .\scripts\install.ps1 -ArtifactExePath .\target\release\kcode.exe -Version <version>`).
+The `irm https://kcode.sh/install.ps1 | iex` one-liner does not work on this
+branch: `scripts/install.ps1` throws "KCode release downloads are disabled"
+before it downloads anything.
 
 Build an explicitly trusted checkout with Git, Rust, and Visual Studio 2022
 Build Tools with the **Desktop development with C++** workload:
