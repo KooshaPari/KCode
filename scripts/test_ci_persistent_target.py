@@ -1,12 +1,37 @@
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
-import textwrap
 import unittest
 
 
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"
+STEP_NAME = "Configure persistent cargo target dir"
+
+
+def extract_run_script(text, step_name):
+    """Return the shell body of a workflow step's `run: |` block.
+
+    Fails loudly instead of raising IndexError when the step is renamed,
+    re-indented, or switches away from a block scalar.
+    """
+    marker = re.search(rf"^ *- name: {re.escape(step_name)} *$", text, re.MULTILINE)
+    if marker is None:
+        raise AssertionError(f"workflow step not found: {step_name!r}")
+    tail = text[marker.end():]
+    run_match = re.search(r"^( *)run: \|\n", tail, re.MULTILINE)
+    if run_match is None:
+        raise AssertionError(f"step {step_name!r} has no 'run: |' block")
+    body_indent = len(run_match.group(1)) + 2
+    lines = []
+    for line in tail[run_match.end():].splitlines():
+        if line.strip() and len(line) - len(line.lstrip()) < body_indent:
+            break
+        lines.append(line[body_indent:] if line.strip() else "")
+    if not lines:
+        raise AssertionError(f"step {step_name!r} has an empty 'run: |' block")
+    return "\n".join(lines) + "\n"
 
 
 class PersistentTargetTest(unittest.TestCase):
@@ -14,8 +39,7 @@ class PersistentTargetTest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        step = WORKFLOW.read_text().split("      - name: Configure persistent cargo target dir\n", 1)[1]
-        self.script = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0])
+        self.script = extract_run_script(WORKFLOW.read_text(), STEP_NAME)
 
     def run_step(self, home, runner=None):
         envfile = self.root / (home.name + ".env")
@@ -58,8 +82,21 @@ class PersistentTargetTest(unittest.TestCase):
         home.mkdir()
         result, assignment = self.run_step(home)
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn("RUNNER_NAME is unset", result.stderr)
         self.assertEqual(assignment, "")
         self.assertEqual(list(home.iterdir()), [])
+
+    def test_unsafe_runner_name_is_rejected(self):
+        home = self.root / "home"
+        home.mkdir()
+        for unsafe in ("../escape", "a/b", ".."):
+            with self.subTest(runner=unsafe):
+                result, assignment = self.run_step(home, unsafe)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("refusing unsafe RUNNER_NAME", result.stderr)
+                self.assertEqual(assignment, "")
+        # Nothing was created outside the intended target location.
+        self.assertEqual(sorted(p.name for p in home.iterdir()), [])
 
 
 if __name__ == "__main__":
