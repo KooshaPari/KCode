@@ -60,16 +60,23 @@ so later runs omit `--code`.
 - **Windows Firewall silently wins.** Auto-created inbound *block* rules for
   `kcode.exe` (created when someone dismisses the Windows network prompt)
   override any allow rule you add. `/health` will answer on the host itself and
-  time out from outside. Find and remove them:
+  time out from outside. List the block rules first and confirm which one
+  covers the gateway:
 
   ```powershell
   Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True |
     Where-Object { ($_ | Get-NetFirewallApplicationFilter).Program -match 'kcode|jcode' } |
-    Remove-NetFirewallRule
+    Select-Object DisplayName, @{n='Program';e={($_ | Get-NetFirewallApplicationFilter).Program}}
   ```
 
-  The filter matches `kcode` and the legacy `jcode` executable name, so a
-  block rule left by an older build is removed too.
+  Then remove only the confirmed rule, by name:
+
+  ```powershell
+  Remove-NetFirewallRule -DisplayName '<confirmed rule name>'
+  ```
+
+  Removing every matching rule at once would also drop unrelated block rules
+  for other programs whose path happens to contain "kcode" or "jcode".
 
   Then allow the port, scoped to the Tailscale CGNAT range rather than the world:
 

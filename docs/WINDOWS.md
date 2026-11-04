@@ -29,7 +29,7 @@ Build Tools with the **Desktop development with C++** workload:
 cargo build --release --locked --bin kcode
 if ($LASTEXITCODE -ne 0) { throw "KCode build failed" }
 $artifactVersion = ((& .\target\release\kcode.exe --version) -split '\s+')[1]
-.\scripts\install.ps1 -ArtifactExePath .\target\release\kcode.exe -Version $artifactVersion
+powershell -ExecutionPolicy RemoteSigned -File .\scripts\install.ps1 -ArtifactExePath .\target\release\kcode.exe -Version $artifactVersion
 ```
 
 The local-artifact installer uses these independent destinations:

@@ -679,6 +679,8 @@ jobs:
 
       - name: Record platform availability
         shell: bash
+        env:
+          WINDOWS_ARM64_QUALIFIED: ${{ vars.WINDOWS_ARM64_QUALIFIED }}
         run: |
           set -euo pipefail
           available() {
@@ -692,6 +694,13 @@ jobs:
           windows_x86_64=$(available artifacts/kcode-windows-x86_64/kcode-windows-x86_64.exe)
           windows_aarch64=$(available artifacts/kcode-windows-aarch64/kcode-windows-aarch64.exe)
           freebsd_x86_64=$(available artifacts/kcode-freebsd-x86_64/kcode-freebsd-x86_64.tar.gz)
+
+          # The ARM64 asset is published only after the separate ARM64 runtime
+          # qualification, so it is not available before that gate is set,
+          # even when the build produced the file.
+          if [ "${WINDOWS_ARM64_QUALIFIED:-}" != 'true' ]; then
+            windows_aarch64=false
+          fi
 
           homebrew_ready=false
           aur_ready=false

@@ -23,8 +23,21 @@ OLD_VERSION="${OLD_VERSION:-v0.14.6}"
 # The v0.14.6 pin predates the kcode rename, so it lives in the upstream repo
 # and ships jcode-* asset names. Override to test a fork release instead.
 OLD_RELEASE_REPO="${OLD_RELEASE_REPO:-1jehuang/jcode}"
-OLD_ASSET="jcode-linux-x86_64"
-OLD_DIR="${OLD_DIR:-/tmp/jcode-sandbox}"
+# The asset name follows the product the repository publishes: upstream ships
+# jcode-* names and a fork ships kcode-* names, so a fork pin would otherwise
+# resolve no URL. OLD_ASSET stays overridable for a repository that uses a
+# different asset naming scheme.
+if [[ -n "${OLD_ASSET:-}" ]]; then
+  :
+elif [[ "$OLD_RELEASE_REPO" == */* ]]; then
+  repo_name="$(basename "$OLD_RELEASE_REPO")"
+  OLD_ASSET="$(printf '%s' "$repo_name" | tr '[:upper:]' '[:lower:]')-linux-x86_64"
+else
+  OLD_ASSET="jcode-linux-x86_64"
+fi
+# Key the cache by repository and version, so changing either one does not
+# reuse a binary that a different pin produced.
+OLD_DIR="${OLD_DIR:-/tmp/jcode-sandbox/${OLD_RELEASE_REPO//\//_}/$OLD_VERSION}"
 OLD_WRAP="$OLD_DIR/$OLD_ASSET"
 
 [[ -x "$NEW_BIN" ]] || { echo "missing new client binary: $NEW_BIN (run: cargo build -p kcode --bin kcode)" >&2; exit 2; }
@@ -74,17 +87,17 @@ log() { printf '\n=== %s ===\n' "$*"; }
 # --- Install the OLD binary (with bundled libs) as version 0.14.6 ----------
 cp "$OLD_DIR/$OLD_ASSET.bin" "$OLD_DIR/libssl.so.10" \
    "$OLD_DIR/libcrypto.so.10" "$BUILDS/versions/0.14.6/"
-cat > "$BUILDS/versions/0.14.6/jcode" <<'WRAP'
+cat > "$BUILDS/versions/0.14.6/jcode" <<WRAP
 #!/usr/bin/env sh
 set -eu
-real=$0
+real=\$0
 if command -v readlink >/dev/null 2>&1; then
-  resolved=$(readlink -f -- "$0" 2>/dev/null || true)
-  [ -n "$resolved" ] && real=$resolved
+  resolved=\$(readlink -f -- "\$0" 2>/dev/null || true)
+  [ -n "\$resolved" ] && real=\$resolved
 fi
-self_dir=$(CDPATH= cd -- "$(dirname -- "$real")" && pwd)
-export LD_LIBRARY_PATH="$self_dir:${LD_LIBRARY_PATH:-}"
-exec "$self_dir/jcode-linux-x86_64.bin" "$@"
+self_dir=\$(CDPATH= cd -- "\$(dirname -- "\$real")" && pwd)
+export LD_LIBRARY_PATH="\$self_dir:\${LD_LIBRARY_PATH:-}"
+exec "\$self_dir/$OLD_ASSET.bin" "\$@"
 WRAP
 chmod +x "$BUILDS/versions/0.14.6/jcode"
 
@@ -108,7 +121,7 @@ SERVER_PID=""
 cleanup() {
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
   "$NEW_BIN" --no-update server stop >/dev/null 2>&1 || true
-  pkill -f "$BUILDS/versions/0.14.6/jcode-linux-x86_64.bin" 2>/dev/null || true
+  pkill -f "$BUILDS/versions/0.14.6/$OLD_ASSET.bin" 2>/dev/null || true
   pkill -f "$BUILDS/versions/0.22.0/jcode" 2>/dev/null || true
   rm -rf "$SANDBOX"
 }
