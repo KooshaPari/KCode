@@ -2364,11 +2364,10 @@ pub(super) async fn handle_client(
                 )
                 .await
                 {
-                    let _ = client_event_tx.send(ServerEvent::Error {
-                        id: request_id,
-                        message: error.to_string(),
-                        retry_after_secs: None,
-                    });
+                    super::wake_receipts::send_event(
+                        &client_event_tx,
+                        super::wake_receipts::error_event(request_id, &error.to_string()),
+                    );
                 }
             }
 

@@ -207,22 +207,18 @@ pub(super) async fn handle_lightweight_control_request(
             .await;
         }
         Request::GetWakeReceipt { id, receipt_id } => {
-            match super::wake_receipts::get(&receipt_id) {
+            let event = match super::wake_receipts::get(&receipt_id) {
                 Ok(Some(receipt))
                     if !super::wake_receipts::target_is_allowed(&receipt.session_id) =>
                 {
-                    let _ = client_event_tx.send(ServerEvent::Error {
-                        id,
-                        message: "Wake receipt target is not allowed".to_string(),
-                        retry_after_secs: None,
-                    });
+                    super::wake_receipts::error_event(id, "Wake receipt target is not allowed")
                 }
                 Ok(Some(receipt)) => {
                     // A busy or unattached target leaves the receipt queued at
                     // submit time. Let a poll advance it, so the caller is not
                     // required to resubmit an identical request indefinitely.
                     let status = if receipt.state == super::wake_receipts::WakeState::Queued {
-                        let _ = super::live_turn::run_receipt_turn_if_idle(
+                        if let Err(error) = super::live_turn::run_receipt_turn_if_idle(
                             &receipt.session_id,
                             &receipt.message,
                             &receipt.receipt_id,
@@ -235,31 +231,24 @@ pub(super) async fn handle_lightweight_control_request(
                                 swarm_event_tx,
                             ),
                         )
-                        .await;
-                        super::wake_receipts::get(&receipt_id)
-                            .ok()
-                            .flatten()
-                            .unwrap_or(receipt)
+                        .await
+                        {
+                            tracing::warn!(
+                                receipt_id = %receipt_id,
+                                %error,
+                                "wake receipt turn did not start; reporting stored state"
+                            );
+                        }
+                        super::wake_receipts::reread_or(receipt_id, receipt)
                     } else {
                         receipt
                     };
-                    let _ = client_event_tx.send(super::wake_receipts::status_event(id, status));
+                    super::wake_receipts::status_event(id, status)
                 }
-                Ok(None) => {
-                    let _ = client_event_tx.send(ServerEvent::Error {
-                        id,
-                        message: "Unknown wake receipt".to_string(),
-                        retry_after_secs: None,
-                    });
-                }
-                Err(error) => {
-                    let _ = client_event_tx.send(ServerEvent::Error {
-                        id,
-                        message: error.to_string(),
-                        retry_after_secs: None,
-                    });
-                }
-            }
+                Ok(None) => super::wake_receipts::error_event(id, "Unknown wake receipt"),
+                Err(error) => super::wake_receipts::error_event(id, &error.to_string()),
+            };
+            super::wake_receipts::send_event(&client_event_tx, event);
         }
         Request::AppletAction {
             id,

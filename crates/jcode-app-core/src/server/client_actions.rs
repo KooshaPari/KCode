@@ -236,20 +236,11 @@ pub(super) async fn handle_notify_session_receipt(
             .ok_or_else(|| anyhow::anyhow!("receipt disappeared after submission"))
     }
     .await;
-    match result {
-        Ok(receipt) => {
-            let _ = ctx
-                .client_event_tx
-                .send(super::wake_receipts::status_event(id, receipt));
-        }
-        Err(error) => {
-            let _ = ctx.client_event_tx.send(ServerEvent::Error {
-                id,
-                message: error.to_string(),
-                retry_after_secs: None,
-            });
-        }
-    }
+    let event = match result {
+        Ok(receipt) => super::wake_receipts::status_event(id, receipt),
+        Err(error) => super::wake_receipts::error_event(id, &error.to_string()),
+    };
+    super::wake_receipts::send_event(ctx.client_event_tx, event);
 }
 
 /// A user pressed something in an agent applet: store its state, publish, then

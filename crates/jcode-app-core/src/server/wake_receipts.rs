@@ -3,11 +3,13 @@
 //! A queued receipt is deliberately not an assertion that a turn consumed it.
 //! Callers must keep it pending until a separate turn-entry proof is recorded.
 
+use crate::protocol::ServerEvent;
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
+use tokio::sync::mpsc;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -113,9 +115,42 @@ fn validate(receipt_id: &str, session_id: &str, message: &str) -> Result<()> {
 /// Native bridge writes are opt-in and scoped to exact existing session IDs.
 /// The daemon reads this from its own environment, never from request data.
 pub(super) fn target_is_allowed(session_id: &str) -> bool {
-    std::env::var("JCODE_NATIVE_WAKE_SESSION_ALLOWLIST")
-        .ok()
-        .is_some_and(|list| list.split(',').map(str::trim).any(|id| id == session_id))
+    match std::env::var("JCODE_NATIVE_WAKE_SESSION_ALLOWLIST") {
+        Ok(list) => list.split(',').map(str::trim).any(|id| id == session_id),
+        Err(_) => false,
+    }
+}
+
+/// Deliver a server event, logging instead of silently dropping it when the
+/// client channel is already closed. Receipt handling is best-effort delivery:
+/// the receipt itself is durable, so a lost event is a missed notification, not
+/// lost work.
+pub(super) fn send_event(tx: &mpsc::UnboundedSender<ServerEvent>, event: ServerEvent) {
+    if let Err(error) = tx.send(event) {
+        tracing::debug!(%error, "wake receipt event not delivered: client closed");
+    }
+}
+
+/// A `ServerEvent::Error` naming the request that could not be answered.
+pub(super) fn error_event(id: u64, message: &str) -> ServerEvent {
+    ServerEvent::Error {
+        id,
+        message: message.to_string(),
+        retry_after_secs: None,
+    }
+}
+
+/// Re-read a receipt after attempting to advance it, keeping the value already
+/// in hand when the ledger cannot be read.
+pub(super) fn reread_or(receipt_id: &str, fallback: WakeReceipt) -> WakeReceipt {
+    match get(receipt_id) {
+        Ok(Some(updated)) => updated,
+        Ok(None) => fallback,
+        Err(error) => {
+            tracing::warn!(%error, receipt_id, "wake receipt re-read failed");
+            fallback
+        }
+    }
 }
 
 /// Returns the existing record on retry; a reused key with changed payload fails closed.
