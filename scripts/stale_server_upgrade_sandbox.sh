@@ -36,7 +36,9 @@ if [[ ! -x "$OLD_WRAP" ]]; then
   # prefix, so neither can be redirected to an insecure endpoint.
   api_url="https://api.github.com/repos/$OLD_RELEASE_REPO/releases/tags/$OLD_VERSION"
   asset_url="https://github.com/$OLD_RELEASE_REPO/releases/download/$OLD_VERSION/$OLD_ASSET.tar.gz"
-  url="$(curl -fsSL "$api_url" \
+  # --proto-redir restricts the protocols a redirect may use, so a redirect
+  # can never downgrade the request to plain HTTP.
+  url="$(curl -fsSL --proto '=https' --proto-redir '=https' "$api_url" \
         | grep -o "https://[^\"]*$OLD_ASSET.tar.gz" | head -1)"
   [[ -n "$url" ]] || { echo "could not resolve $OLD_VERSION linux asset URL" >&2; exit 2; }
   # The URL is read from a response body, so refuse anything that is not the
@@ -48,7 +50,7 @@ if [[ ! -x "$OLD_WRAP" ]]; then
     *) echo "refusing to download $OLD_VERSION asset from an unexpected URL: $url" >&2; exit 2 ;;
   esac
   echo "Downloading old server $OLD_VERSION ..."
-  curl -fsSL "$asset_url" -o "$OLD_DIR/old.tar.gz"
+  curl -fsSL --proto '=https' --proto-redir '=https' "$asset_url" -o "$OLD_DIR/old.tar.gz"
   tar -C "$OLD_DIR" -xzf "$OLD_DIR/old.tar.gz"
 fi
 [ -x "$OLD_WRAP" ] || { echo "missing old binary $OLD_WRAP after download"; exit 2; }
