@@ -664,8 +664,10 @@ jobs:
                   echo "Skipping unqualified Windows ARM64 asset: $asset"
                   continue
                   ;;
+                *)
+                  filtered+=("$asset")
+                  ;;
               esac
-              filtered+=("$asset")
             done
             assets=("${filtered[@]}")
           fi

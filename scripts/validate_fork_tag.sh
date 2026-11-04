@@ -86,10 +86,8 @@ numeric() {
       return 1
     fi
   done
-  if [[ "$nonzero" -eq 1 ]]; then
-    if [[ "${parts[0]}" == "0" && "${parts[1]}" == "0" && "${parts[2]}" == "0" ]]; then
-      return 1
-    fi
+  if [[ "$nonzero" -eq 1 && "${parts[0]}" == "0" && "${parts[1]}" == "0" && "${parts[2]}" == "0" ]]; then
+    return 1
   fi
   return 0
 }

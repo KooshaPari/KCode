@@ -463,9 +463,9 @@ wait $MACOS_PID || { echo "Error: macOS build failed"; exit 1; }
 echo ""
 echo "Build time: $(elapsed)s"
 ls -lh "$DIST"/*.tar.gz
-file "$DIST/kcode-linux-x86_64.bin" | grep -q 'ELF 64-bit' || { echo "Error: bad Linux binary"; exit 1; }
-head -1 "$DIST/kcode-linux-x86_64" | grep -q '^#!/' || { echo "Error: bad Linux wrapper"; exit 1; }
-file "$DIST/kcode-macos-aarch64" | grep -q 'Mach-O 64-bit' || { echo "Error: bad macOS binary"; exit 1; }
+file "$DIST/kcode-linux-x86_64.bin" | grep -q 'ELF 64-bit' || { echo "Error: bad Linux binary" >&2; exit 1; }
+head -1 "$DIST/kcode-linux-x86_64" | grep -q '^#!/' || { echo "Error: bad Linux wrapper" >&2; exit 1; }
+file "$DIST/kcode-macos-aarch64" | grep -q 'Mach-O 64-bit' || { echo "Error: bad macOS binary" >&2; exit 1; }
 
 if $DRY_RUN; then
     echo ""

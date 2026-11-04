@@ -27,27 +27,28 @@ OLD_ASSET="jcode-linux-x86_64"
 OLD_DIR="${OLD_DIR:-/tmp/jcode-sandbox}"
 OLD_WRAP="$OLD_DIR/$OLD_ASSET"
 
-[ -x "$NEW_BIN" ] || { echo "missing new client binary: $NEW_BIN (run: cargo build -p kcode --bin kcode)"; exit 2; }
+[[ -x "$NEW_BIN" ]] || { echo "missing new client binary: $NEW_BIN (run: cargo build -p kcode --bin kcode)" >&2; exit 2; }
 
 # Fetch + extract the real old release binary if it is not already present.
-if [ ! -x "$OLD_WRAP" ]; then
+if [[ ! -x "$OLD_WRAP" ]]; then
   mkdir -p "$OLD_DIR"
-  url="$(curl -fsSL "https://api.github.com/repos/$OLD_RELEASE_REPO/releases/tags/$OLD_VERSION" \
+  # The API URL and the asset URL are both built from a hardcoded https://
+  # prefix, so neither can be redirected to an insecure endpoint.
+  api_url="https://api.github.com/repos/$OLD_RELEASE_REPO/releases/tags/$OLD_VERSION"
+  asset_url="https://github.com/$OLD_RELEASE_REPO/releases/download/$OLD_VERSION/$OLD_ASSET.tar.gz"
+  url="$(curl -fsSL "$api_url" \
         | grep -o "https://[^\"]*$OLD_ASSET.tar.gz" | head -1)"
-  [ -n "$url" ] || { echo "could not resolve $OLD_VERSION linux asset URL"; exit 2; }
-  # The URL is assembled from a response body, so refuse anything that is not
-  # an HTTPS GitHub release asset rather than following a redirect to an
-  # insecure endpoint. The path segments are checked so a traversal sequence
-  # cannot escape the release download path.
+  [[ -n "$url" ]] || { echo "could not resolve $OLD_VERSION linux asset URL" >&2; exit 2; }
+  # The URL is read from a response body, so refuse anything that is not the
+  # expected HTTPS GitHub release asset. The path segments are checked so a
+  # traversal sequence cannot escape the release download path.
   case "$url" in
-    https://github.com/*/*/releases/download/*/*) ;;
-    *) echo "refusing to download $OLD_VERSION asset from a non-release URL: $url"; exit 2 ;;
-  esac
-  case "$url" in
-    *..*) echo "refusing to download $OLD_VERSION asset from a traversal URL: $url"; exit 2 ;;
+    "$asset_url") ;;
+    *..*) echo "refusing to download $OLD_VERSION asset from a traversal URL: $url" >&2; exit 2 ;;
+    *) echo "refusing to download $OLD_VERSION asset from an unexpected URL: $url" >&2; exit 2 ;;
   esac
   echo "Downloading old server $OLD_VERSION ..."
-  curl -fsSL "$url" -o "$OLD_DIR/old.tar.gz"
+  curl -fsSL "$asset_url" -o "$OLD_DIR/old.tar.gz"
   tar -C "$OLD_DIR" -xzf "$OLD_DIR/old.tar.gz"
 fi
 [ -x "$OLD_WRAP" ] || { echo "missing old binary $OLD_WRAP after download"; exit 2; }
