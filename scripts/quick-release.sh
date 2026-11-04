@@ -93,12 +93,26 @@ if [[ "$VERSION_NUM" =~ ^0\.0\.0-k ]]; then
 fi
 
 # No numeric component may carry a leading zero, matching fork_version::parse.
-# (0 itself is fine; 00, 01 and 007 are not.) The component may follow the
-# start of the string, a dot, a dash, or the "k" fork marker.
-if [[ "$VERSION_NUM" =~ (^|[.-k])0[0-9] ]]; then
-    echo "Error: Version components must not have leading zeros" >&2
-    exit 1
-fi
+# (0 itself is fine; 00, 01 and 007 are not.) Only the base and fork
+# components have this rule, so the check is applied to those two pieces
+# rather than to the whole version string. A channel component such as
+# "rc01" or "01" is alphanumeric and has no leading-zero rule.
+base_version="${VERSION_NUM%%-k*}"
+fork_version="${VERSION_NUM#*-k}"
+fork_version="${fork_version%%-*}"
+for component in ${base_version//./ } ${fork_version//./ }; do
+    if [[ "${#component}" -gt 1 && "$component" == 0* ]]; then
+        echo "Error: Version components must not have leading zeros" >&2
+        exit 1
+    fi
+    # fork_version::parse applies `part.parse::<u32>()`, so a component above
+    # u32::MAX is rejected there and the build would panic on it. The length
+    # guard keeps the bash arithmetic inside the 64-bit range.
+    if [[ "${#component}" -gt 10 ]] || (( 10#$component > 4294967295 )); then
+        echo "Error: Version components must fit in a 32-bit unsigned integer" >&2
+        exit 1
+    fi
+done
 
 cd "$(git rev-parse --show-toplevel)"
 

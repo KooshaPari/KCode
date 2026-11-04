@@ -162,7 +162,6 @@ RULES=(
 # so a justification containing tabs is still safe.
 # ---------------------------------------------------------------------------
 KNOWN_DRIFT=(
-  $'scripts/remote/README.md\twindows-exe-name\tLEGITIMATE\tProse describing a stray jcode.exe left in the user-scope remote dir by an older build; names an artifact on disk, selects nothing.\t1'
   $'scripts/docs/jcode_env.lst\tenv-release-build\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.\t1'
   $'scripts/docs/jcode_env.lst\tenv-ci-build\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.\t1'
   $'scripts/docs/jcode_env.lst\tenv-build-semver\tLEGITIMATE\tGenerated inventory (scripts/docs/build_env_table.py) of the fork JCODE_ env namespace; a docs data file that never sets a variable. Stale entry, prune on next regeneration.\t1'

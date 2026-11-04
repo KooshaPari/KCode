@@ -58,20 +58,23 @@ so later runs omit `--code`.
 ## Gotchas found in practice
 
 - **Windows Firewall silently wins.** Auto-created inbound *block* rules for
-  `jcode.exe` (created when someone dismisses the Windows network prompt)
+  `kcode.exe` (created when someone dismisses the Windows network prompt)
   override any allow rule you add. `/health` will answer on the host itself and
   time out from outside. Find and remove them:
 
   ```powershell
   Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True |
-    Where-Object { ($_ | Get-NetFirewallApplicationFilter).Program -like '*jcode*' } |
+    Where-Object { ($_ | Get-NetFirewallApplicationFilter).Program -match 'kcode|jcode' } |
     Remove-NetFirewallRule
   ```
+
+  The filter matches `kcode` and the legacy `jcode` executable name, so a
+  block rule left by an older build is removed too.
 
   Then allow the port, scoped to the Tailscale CGNAT range rather than the world:
 
   ```powershell
-  netsh advfirewall firewall add rule name="jcode-gateway-tailscale" `
+  netsh advfirewall firewall add rule name="kcode-gateway-tailscale" `
     dir=in action=allow protocol=TCP localport=7643 remoteip=100.64.0.0/10
   ```
 
