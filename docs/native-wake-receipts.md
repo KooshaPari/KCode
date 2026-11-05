@@ -28,7 +28,11 @@ recovers the prior `.bak` generation. A corrupt primary also falls back to
 starting from an empty ledger. The Windows replacement gap remains until a
 platform atomic replace is adopted; recovery may lose the most recent store
 update if the crash falls between moving the primary and installing the new
-file. Filesystem or device failures after a successful sync cannot be ruled
+file. On Unix, a receipt store write reports success only after syncing its
+parent directory; sync failure leaves the caller without a receipt ack, and a
+retry can recover the write if the rename had already succeeded. Windows has
+no corresponding directory sync in this implementation. Filesystem or device
+failures after a successful sync cannot be ruled
 out by the application. It does not claim exactly-once execution, provider
 completion, or that the model responded. A bridge must acknowledge only an
 exact `awakened` status for its own receipt ID and session ID. A `queued`

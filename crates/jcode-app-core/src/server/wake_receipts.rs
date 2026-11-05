@@ -51,7 +51,28 @@ fn load() -> Result<BTreeMap<String, WakeReceipt>> {
 }
 
 fn save(receipts: &BTreeMap<String, WakeReceipt>) -> Result<()> {
-    crate::storage::write_json(&path()?, receipts)
+    save_with_sync(receipts, sync_parent_directory)
+}
+
+fn save_with_sync(
+    receipts: &BTreeMap<String, WakeReceipt>,
+    sync_parent: impl FnOnce(&std::path::Path) -> Result<()>,
+) -> Result<()> {
+    let path = path()?;
+    crate::storage::write_json(&path, receipts)?;
+    sync_parent(&path)
+}
+
+fn sync_parent_directory(path: &std::path::Path) -> Result<()> {
+    // The generic JSON writer treats a failed directory sync as best effort.
+    // A receipt cannot acknowledge acceptance unless its new name is durable.
+    #[cfg(unix)]
+    if let Some(parent) = path.parent() {
+        std::fs::File::open(parent)?.sync_all()?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
 }
 
 fn validate(receipt_id: &str, session_id: &str, message: &str) -> Result<()> {
@@ -227,6 +248,38 @@ mod tests {
         assert!(get("bridge:event:old").is_err());
         assert!(submit("bridge:event:third", "ses_target", "third").is_err());
 
+        if let Some(old_home) = old_home {
+            crate::env::set_var("JCODE_HOME", old_home);
+        } else {
+            crate::env::remove_var("JCODE_HOME");
+        }
+    }
+
+    #[test]
+    fn failed_directory_sync_does_not_acknowledge_receipt() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let old_home = std::env::var_os("JCODE_HOME");
+        crate::env::set_var("JCODE_HOME", temp.path());
+        let receipt = WakeReceipt {
+            receipt_id: "bridge:event:sync".into(),
+            session_id: "ses_target".into(),
+            message: "wake".into(),
+            state: WakeState::Queued,
+        };
+        let receipts = BTreeMap::from([(receipt.receipt_id.clone(), receipt.clone())]);
+        assert!(
+            save_with_sync(&receipts, |_| anyhow::bail!(
+                "injected directory sync failure"
+            ))
+            .is_err()
+        );
+        // The rename may have reached disk even though the caller received
+        // an error. A retry must recover the same receipt, not create a new one.
+        assert_eq!(
+            get(&receipt.receipt_id).expect("retry lookup"),
+            Some(receipt)
+        );
         if let Some(old_home) = old_home {
             crate::env::set_var("JCODE_HOME", old_home);
         } else {
