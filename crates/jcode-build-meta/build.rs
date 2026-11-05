@@ -16,23 +16,27 @@ use std::process::Command;
 // parse the root `Cargo.toml` `[package].version` for the base semver instead
 // of `CARGO_PKG_VERSION`.
 
-fn main() {
+fn main() -> Result<(), String> {
     let repo_root = repo_root();
 
     let pkg_version =
-        root_package_version(&repo_root).expect("KCode root package version is required");
+        root_package_version(&repo_root).ok_or("KCode root package version is required")?;
     let pkg_version = fork_version::parse(&pkg_version)
-        .expect("KCode root version must use nonzero BASE-kFORK_SEMVER identity");
+        .ok_or("KCode root version must use nonzero BASE-kFORK_SEMVER identity")?;
     let base_version =
-        parse_semver(&pkg_version).expect("KCode root package version must be nonzero");
-    let build_semver = resolve_build_semver(
-        base_version,
-        pkg_version.split_once('-').map(|(_, suffix)| suffix),
-    )
-    .unwrap_or_else(|err| {
-        eprintln!("cargo:warning=failed to resolve auto build semver: {err}");
-        pkg_version.clone()
-    });
+        parse_semver(&pkg_version).ok_or("KCode root package version must be nonzero")?;
+    let explicit_override = explicit_build_semver_override()?;
+    let build_semver = match &explicit_override {
+        Some(value) => value.clone(),
+        None => resolve_build_semver(
+            base_version,
+            pkg_version.split_once('-').map(|(_, suffix)| suffix),
+        )
+        .unwrap_or_else(|err| {
+            eprintln!("cargo:warning=failed to resolve auto build semver: {err}");
+            pkg_version.clone()
+        }),
+    };
     // Parse the resolved build semver into (major, minor, patch) + optional
     // channel segment (e.g. `k0.1.2` in `1.5.3-k0.1.2`). The channel is
     // preserved through KCODE_VERSION, KCODE_BASE_SEMVER, and KCODE_UPDATE_SEMVER
@@ -53,7 +57,7 @@ fn main() {
         "{}.{}.{}{}",
         base_version.0, base_version.1, base_version.2, channel_suffix
     );
-    let update_semver = if explicit_build_semver_override().is_some() {
+    let update_semver = if explicit_override.is_some() {
         build_semver.clone()
     } else {
         base_semver.clone()
@@ -213,6 +217,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=KCODE_BUILD_GIT_DATE");
     println!("cargo:rerun-if-env-changed=KCODE_BUILD_GIT_DIRTY");
     println!("cargo:rerun-if-env-changed=KCODE_BUILD_GIT_TAG");
+    Ok(())
 }
 
 /// Workspace root, derived from this crate's manifest dir (`crates/jcode-build-meta`).
@@ -303,14 +308,15 @@ fn channel_suffix(channel: Option<&str>) -> String {
     }
 }
 
-fn explicit_build_semver_override() -> Option<String> {
+fn explicit_build_semver_override() -> Result<Option<String>, String> {
     match std::env::var("KCODE_BUILD_SEMVER") {
-        Ok(value) => Some(
-            fork_version::parse(&value)
-                .expect("KCODE_BUILD_SEMVER must use nonzero BASE-kFORK_SEMVER identity"),
-        ),
-        Err(std::env::VarError::NotPresent) => None,
-        Err(err) => panic!("invalid KCODE_BUILD_SEMVER: {err}"),
+        Ok(value) => fork_version::parse(&value).map(Some).ok_or_else(|| {
+            "KCODE_BUILD_SEMVER must use nonzero BASE-kFORK_SEMVER identity".to_string()
+        }),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            Err("KCODE_BUILD_SEMVER is not valid Unicode".to_string())
+        }
     }
 }
 
@@ -318,10 +324,6 @@ fn resolve_build_semver(
     base_version: (u32, u32, u32),
     channel: Option<&str>,
 ) -> Result<String, String> {
-    if let Some(explicit) = explicit_build_semver_override() {
-        return Ok(explicit);
-    }
-
     // Dev builds derive the patch number deterministically from committed git
     // state: `base.patch + <commits since the base-version tag>`. This is a pure
     // function of HEAD, so the emitted KCODE_SEMVER/KCODE_VERSION only change when
