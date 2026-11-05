@@ -1687,13 +1687,7 @@ impl App {
         self.push_display_message(DisplayMessage::system(format!(
             "Agent repair brief (paste into your coding agent):\n\n{brief}"
         )));
-        use super::helpers::CopyOutcome;
-        self.report_clipboard_copy(
-            copy,
-            onboarding_repair::repair_brief_status_for(agent, CopyOutcome::Copied),
-            onboarding_repair::repair_brief_status_for(agent, CopyOutcome::Unconfirmed),
-            onboarding_repair::repair_brief_status_for(agent, CopyOutcome::Failed),
-        );
+        self.report_repair_brief_copy(copy, agent);
     }
 
     /// Drive auto-advancing phases. Call once per tick/redraw. Returns true if

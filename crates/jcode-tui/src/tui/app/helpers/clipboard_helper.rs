@@ -58,11 +58,7 @@ impl HelperOutcome {
 
 #[cfg(not(any(windows, target_os = "macos")))]
 #[cfg_attr(test, allow(dead_code))]
-pub(crate) fn copy_via_clipboard_helper(
-    program: &str,
-    args: &[&str],
-    text: &str,
-) -> HelperOutcome {
+pub(crate) fn copy_via_clipboard_helper(program: &str, args: &[&str], text: &str) -> HelperOutcome {
     copy_via_clipboard_helper_within(program, args, text, HELPER_FAIL_FAST_WINDOW)
 }
 
@@ -190,7 +186,7 @@ pub(super) const TEST_SETTLE_WINDOW: std::time::Duration = std::time::Duration::
 mod tests {
     use super::test_support::StubPath;
     use super::{
-        Duration, HelperOutcome, HelperExit, Instant, TEST_SETTLE_WINDOW,
+        Duration, HelperExit, HelperOutcome, Instant, TEST_SETTLE_WINDOW,
         copy_via_clipboard_helper_within,
     };
 
@@ -252,12 +248,8 @@ mod tests {
         let _lock = crate::storage::lock_test_env();
         let _stubs = StubPath::with(&[("late-fail", "sleep 0.25; exit 1")]);
         let start = Instant::now();
-        let outcome = copy_via_clipboard_helper_within(
-            "late-fail",
-            &[],
-            "hello",
-            LIVE_OWNER_WINDOW,
-        );
+        let outcome =
+            copy_via_clipboard_helper_within("late-fail", &[], "hello", LIVE_OWNER_WINDOW);
         assert!(
             start.elapsed() < Duration::from_secs(1),
             "spawn path blocked for {:?}",
@@ -266,7 +258,11 @@ mod tests {
         let HelperOutcome::Unconfirmed(watch) = outcome else {
             panic!("a helper that outlived the window was reported as {outcome:?}");
         };
-        assert_eq!(watch.try_settle(), None, "unobserved helper must not settle");
+        assert_eq!(
+            watch.try_settle(),
+            None,
+            "unobserved helper must not settle"
+        );
         let mut settled = None;
         for _ in 0..200 {
             if let Some(exit) = watch.try_settle() {
@@ -297,12 +293,8 @@ mod tests {
         let _stubs = StubPath::with(&[("resident-helper", body.as_str())]);
 
         let start = Instant::now();
-        let outcome = copy_via_clipboard_helper_within(
-            "resident-helper",
-            &[],
-            "hello",
-            LIVE_OWNER_WINDOW,
-        );
+        let outcome =
+            copy_via_clipboard_helper_within("resident-helper", &[], "hello", LIVE_OWNER_WINDOW);
         let elapsed = start.elapsed();
         assert!(
             elapsed < Duration::from_secs(1),
@@ -345,9 +337,7 @@ mod tests {
 #[cfg(all(test, not(any(windows, target_os = "macos"))))]
 mod ordering_tests {
     use super::test_support::StubPath;
-    use super::{
-        Duration, HelperOutcome, TEST_SETTLE_WINDOW, copy_via_clipboard_helper_within,
-    };
+    use super::{Duration, HelperOutcome, TEST_SETTLE_WINDOW, copy_via_clipboard_helper_within};
 
     /// Same chain as the Linux arm of `copy_to_clipboard`, returning the first
     /// helper whose probe did not fail.
@@ -357,12 +347,8 @@ mod ordering_tests {
             ("xclip", &["-selection", "clipboard"][..]),
             ("xsel", &["--clipboard", "--input"][..]),
         ] {
-            let outcome = copy_via_clipboard_helper_within(
-                program,
-                args,
-                "payload",
-                TEST_SETTLE_WINDOW,
-            );
+            let outcome =
+                copy_via_clipboard_helper_within(program, args, "payload", TEST_SETTLE_WINDOW);
             if !outcome.failed() {
                 return Some((program, outcome));
             }

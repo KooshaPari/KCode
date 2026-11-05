@@ -193,13 +193,7 @@ impl App {
         };
         crate::tui::mermaid::set_mermaid_inline_expand_level(image_id, level as u8);
         if let Some(source) = crate::tui::mermaid::mermaid_source_for_hash(image_id) {
-            let copy = super::helpers::copy_to_clipboard(&source);
-            self.report_clipboard_copy(
-                copy,
-                format!("Image size: {size} · Mermaid code copied"),
-                format!("Image size: {size} · Mermaid copy sent (unconfirmed)"),
-                format!("Image size: {size} · Could not copy Mermaid code"),
-            );
+            self.report_mermaid_copy(&source, size);
         } else if let Some((media_type, data)) =
             super::super::ui::inline_image_ui::payload_for_copy(image_id)
         {
@@ -1780,20 +1774,7 @@ impl App {
         if matches!(mouse.kind, MouseEventKind::Up(MouseButton::Left))
             && let Some(target) = crate::tui::ui::visible_copy_target_at(mouse.column, mouse.row)
         {
-            let copy = super::helpers::copy_to_clipboard(&target.content);
-            self.record_copy_badge_key_press(target.key);
-            // Only an observed outcome earns badge feedback; unconfirmed must
-            // not render as a failure checkmark.
-            if copy.outcome != super::helpers::CopyOutcome::Unconfirmed {
-                let success = copy.outcome == super::helpers::CopyOutcome::Copied;
-                self.record_copy_badge_feedback(target.key, success);
-            }
-            self.report_clipboard_copy(
-                copy,
-                target.copied_notice,
-                format!("Copy sent (unconfirmed) · {}", target.kind_label),
-                format!("Failed to copy {}", target.kind_label),
-            );
+            self.copy_visible_badge_target(&target, target.key);
             finish_mouse_event!(false, "copy_badge_click");
         }
 

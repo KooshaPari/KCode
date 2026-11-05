@@ -71,24 +71,49 @@ pub(super) struct ClipboardCopy {
 
 impl ClipboardCopy {
     pub(super) fn copied() -> Self {
-        Self { outcome: CopyOutcome::Copied, watch: None }
+        Self {
+            outcome: CopyOutcome::Copied,
+            watch: None,
+        }
     }
 
     pub(super) fn failed() -> Self {
-        Self { outcome: CopyOutcome::Failed, watch: None }
+        Self {
+            outcome: CopyOutcome::Failed,
+            watch: None,
+        }
     }
 
     // Only the Linux-only helper module produces an unconfirmed copy.
     #[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
     pub(super) fn unconfirmed(watch: ClipboardWatch) -> Self {
-        Self { outcome: CopyOutcome::Unconfirmed, watch: Some(watch) }
+        Self {
+            outcome: CopyOutcome::Unconfirmed,
+            watch: Some(watch),
+        }
     }
 }
 
 impl From<bool> for ClipboardCopy {
     fn from(success: bool) -> Self {
-        if success { Self::copied() } else { Self::failed() }
+        if success {
+            Self::copied()
+        } else {
+            Self::failed()
+        }
     }
+}
+
+/// Clipboard notice state owned by `App`.
+///
+/// One field keeps the state out of the already-oversized `app.rs` struct
+/// while still giving tests and production identical isolation.
+#[derive(Debug, Default)]
+pub(super) struct ClipboardState {
+    /// A copy whose helper outlived the fail-fast window.
+    pub(super) pending: Option<PendingCopy>,
+    /// Monotonic token so a late outcome cannot overwrite a newer copy.
+    pub(super) token: u64,
 }
 
 /// A copy whose helper is still running. The tick poll watches for its late

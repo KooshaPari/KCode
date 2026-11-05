@@ -474,16 +474,13 @@ pub(super) fn copy_to_clipboard(text: &str) -> ClipboardCopy {
                     ("xclip", &["-selection", "clipboard"][..]),
                     ("xsel", &["--clipboard", "--input"][..]),
                 ] {
-                    let outcome =
-                        clipboard_helper::copy_via_clipboard_helper(program, args, text);
+                    let outcome = clipboard_helper::copy_via_clipboard_helper(program, args, text);
                     match outcome {
                         clipboard_helper::HelperOutcome::Accepted => {
                             return ClipboardCopy::copied();
                         }
-                        // Still running: it may own the selection and it may
-                        // not. Stop the chain (starting a second owner could
-                        // steal or race it) but report Unconfirmed, never a
-                        // copy.
+                        // Running: it may or may not own the selection. Stop
+                        // the chain rather than race a second owner.
                         clipboard_helper::HelperOutcome::Unconfirmed(watch) => {
                             return ClipboardCopy::unconfirmed(watch);
                         }

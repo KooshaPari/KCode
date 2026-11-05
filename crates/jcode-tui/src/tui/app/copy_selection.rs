@@ -376,10 +376,7 @@ impl App {
         self.copy_current_selection_to_clipboard_with(super::helpers::copy_to_clipboard)
     }
 
-    pub(super) fn copy_current_selection_to_clipboard_with<F, R>(
-        &mut self,
-        copy_text: F,
-    ) -> bool
+    pub(super) fn copy_current_selection_to_clipboard_with<F, R>(&mut self, copy_text: F) -> bool
     where
         F: FnOnce(&str) -> R,
         R: Into<super::helpers::ClipboardCopy>,

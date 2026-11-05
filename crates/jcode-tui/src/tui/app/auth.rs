@@ -1690,15 +1690,8 @@ impl App {
             let verification_uri = device_resp.verification_uri.clone();
 
             let clipboard = copy_to_clipboard(&user_code);
-            let clipboard_msg = match clipboard.outcome {
-                super::helpers::CopyOutcome::Copied => {
-                    " (copied to clipboard - just paste it!)"
-                }
-                super::helpers::CopyOutcome::Unconfirmed => {
-                    " (copy sent - paste to check it arrives)"
-                }
-                super::helpers::CopyOutcome::Failed => "",
-            };
+            let clipboard_msg =
+                super::clipboard_notice::login_device_code_suffix(clipboard.outcome);
 
             Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
                 provider: "copilot_code".to_string(),

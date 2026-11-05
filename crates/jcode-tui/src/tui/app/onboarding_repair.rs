@@ -295,10 +295,7 @@ mod tests {
         assert!(s.contains("Claude Code"), "{s}");
         assert!(s.contains("claude"), "{s}");
         assert!(s.contains("copied"), "{s}");
-        let none = repair_brief_status_for(
-            None,
-            super::super::helpers::CopyOutcome::Failed,
-        );
+        let none = repair_brief_status_for(None, super::super::helpers::CopyOutcome::Failed);
         assert!(none.contains("coding agent"), "{none}");
     }
 
