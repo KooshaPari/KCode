@@ -13,21 +13,26 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
 sdk_dir="$repo_root/sdk/typescript"
-socket="${TMPDIR:-/tmp}/jcode-sdk-e2e-$$.sock"
-log="${TMPDIR:-/tmp}/jcode-sdk-e2e-$$.log"
+# Every path the SDK is handed goes through `assertKcodePath`, which rejects any
+# segment matching /^jcode[.-].*|\.jcode.*$/i. A `jcode-sdk-e2e-` prefix made
+# `KCODE_API_SOCKET` throw `cross_product_path` before the bridge ever started.
+socket="${TMPDIR:-/tmp}/kcode-sdk-e2e-$$.sock"
+log="${TMPDIR:-/tmp}/kcode-sdk-e2e-$$.log"
 
 echo "== building SDK =="
 npm --prefix "$sdk_dir" install --no-audit --no-fund --silent
 npm --prefix "$sdk_dir" run build --silent
 
 # The full binary, for the `launch()` checks: those start a real instance via
-# `jcode api-bridge`, which only the shipped binary provides.
-echo "== building jcode =="
-cargo build --profile selfdev -p jcode --bin jcode
-jcode_bin="$repo_root/target/selfdev/jcode"
+# `kcode api-bridge`, which only the shipped binary provides. The package and
+# the bin target were both renamed to `kcode` in the rebrand; `--bin jcode` no
+# longer resolves, so this script could not build at all.
+echo "== building kcode =="
+cargo build --profile selfdev -p kcode --bin kcode
+kcode_bin="$repo_root/target/selfdev/kcode"
 
 echo "== building bridge =="
-# The standalone bridge binary, not `jcode api-bridge`, because the full jcode
+# The standalone bridge binary, not `kcode api-bridge`, because the full kcode
 # binary takes minutes to link and this script must stay fast enough to run
 # per-change. The subcommand is a thin wrapper over the same `run_bridge`, and
 # `api_bridge_socket_flags_do_not_collide` covers the wiring it adds.
@@ -70,13 +75,13 @@ KCODE_API_SOCKET="$socket" node "$sdk_dir/test/live-capabilities.mjs"
 # isolation they check is a property of a *separate* instance, and running
 # them against the shared bridge would prove nothing.
 echo "== launching a private instance =="
-node "$sdk_dir/test/live-launch.mjs" "$jcode_bin"
+node "$sdk_dir/test/live-launch.mjs" "$kcode_bin"
 
 echo "== checking instance isolation and path safety =="
-node "$sdk_dir/test/live-isolation.mjs" "$jcode_bin"
+node "$sdk_dir/test/live-isolation.mjs" "$kcode_bin"
 
 echo "== checking every documented launch option =="
-node "$sdk_dir/test/live-options.mjs" "$jcode_bin"
+node "$sdk_dir/test/live-options.mjs" "$kcode_bin"
 
 echo "== bridge log =="
 cat "$log"
