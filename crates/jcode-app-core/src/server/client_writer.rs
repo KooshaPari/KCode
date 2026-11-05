@@ -1,5 +1,5 @@
 use crate::protocol::{ServerEvent, encode_event};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
@@ -30,7 +30,9 @@ pub(super) async fn write_direct_event(
 ) -> Result<()> {
     let json = encode_event(event);
     let mut w = writer.lock().await;
-    w.write_all(json.as_bytes()).await?;
+    w.write_all(json.as_bytes())
+        .await
+        .context(super::client_error_context::DirectEventWrite)?;
     Ok(())
 }
 
@@ -40,6 +42,56 @@ mod tests {
     use crate::side_panel::{
         SidePanelPage, SidePanelPageFormat, SidePanelPageSource, SidePanelSnapshot,
     };
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+
+    #[tokio::test]
+    async fn direct_event_peer_close_preserves_operation_and_io_cause() {
+        let (server, client) = crate::transport::Stream::pair().expect("socket pair");
+        let (mut server_reader, writer) = server.into_split();
+        let writer = Arc::new(Mutex::new(writer));
+        let (reader, client_writer) = client.into_split();
+        let mut reader = BufReader::new(reader);
+        write_direct_event(&writer, &ServerEvent::Ack { id: 41 })
+            .await
+            .expect("connected peer accepts a response");
+        let mut line = String::new();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            reader.read_line(&mut line),
+        )
+        .await
+        .expect("response deadline")
+        .expect("response bytes");
+        assert!(matches!(
+            serde_json::from_str::<ServerEvent>(&line).expect("response event"),
+            ServerEvent::Ack { id: 41 }
+        ));
+        drop(reader);
+        drop(client_writer);
+
+        let mut byte = [0];
+        let closed = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            server_reader.read(&mut byte),
+        )
+        .await
+        .expect("peer-close observation deadline");
+        match closed {
+            Ok(0) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::BrokenPipe => {}
+            other => panic!("expected peer closure before response write, got {other:?}"),
+        }
+
+        let error = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            write_direct_event(&writer, &ServerEvent::Ack { id: 42 }),
+        )
+        .await
+        .expect("peer-close deadline")
+        .expect_err("closed peer must reject the response");
+        assert!(format!("{error:#}").contains("operation=write_direct_event"));
+        assert!(error.downcast_ref::<std::io::Error>().is_some());
+    }
 
     #[test]
     fn pdf_panels_live_projection_preserves_fallback_and_opted_in_payload() {
