@@ -81,6 +81,20 @@ is regenerated on each release cut.
 | `JCODE_MCP_TOOLS` | (unset) | jcode-base | Override `tools.mcp_tools` config field |
 | `JCODE_MCP_TOOLS_TOKEN_THRESHOLD` | (unset) | jcode-base | Override `tools.mcp_tools_token_threshold` config field |
 
+### Isolated provider-client qualification
+
+`KCODE_QUALIFICATION_NO_PROXY=1` opts only generic shared/fresh provider HTTP
+clients (including their fallback construction) out of environment and system
+proxy discovery using reqwest's `ClientBuilder::no_proxy()`. Unset and all other
+values retain the normal production proxy behavior. Set it in the isolated child
+process environment before startup; the shared client is cached on first use.
+
+This flag is not a network/offline security boundary. Use it only within an
+already restricted qualification sandbox that continues denying outbound network
+and Mach access; it neither changes sandbox grants nor prevents direct HTTP
+requests. It does not change provider-specific clients outside these generic
+constructors or modify installed binaries, shared services, or user profiles.
+
 ### ACP adapter
 
 | Env var | Default | Used by | Description |
