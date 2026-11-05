@@ -1,5 +1,5 @@
 use crate::protocol::{ServerEvent, encode_event};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
@@ -30,9 +30,10 @@ pub(super) async fn write_direct_event(
 ) -> Result<()> {
     let json = encode_event(event);
     let mut w = writer.lock().await;
-    w.write_all(json.as_bytes())
-        .await
-        .context(super::client_error_context::DirectEventWrite)?;
+    w.write_all(json.as_bytes()).await.map_err(|error| {
+        let operation = super::client_error_context::DirectEventWrite::new(&error);
+        anyhow::Error::new(error).context(operation)
+    })?;
     Ok(())
 }
 
@@ -90,7 +91,19 @@ mod tests {
         .expect("peer-close deadline")
         .expect_err("closed peer must reject the response");
         assert!(format!("{error:#}").contains("operation=write_direct_event"));
-        assert!(error.downcast_ref::<std::io::Error>().is_some());
+        let native = error
+            .downcast_ref::<std::io::Error>()
+            .expect("native IO cause");
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("io_error_kind={:?}", native.kind()))
+        );
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("raw_os_error={:?}", native.raw_os_error()))
+        );
     }
 
     #[test]

@@ -1,11 +1,27 @@
 use std::fmt;
 
 #[derive(Debug)]
-pub(super) struct DirectEventWrite;
+pub(super) struct DirectEventWrite {
+    kind: std::io::ErrorKind,
+    raw_os_error: Option<i32>,
+}
+
+impl DirectEventWrite {
+    pub(super) fn new(error: &std::io::Error) -> Self {
+        Self {
+            kind: error.kind(),
+            raw_os_error: error.raw_os_error(),
+        }
+    }
+}
 
 impl fmt::Display for DirectEventWrite {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("operation=write_direct_event")
+        write!(
+            formatter,
+            "operation=write_direct_event io_error_kind={:?} raw_os_error={:?}",
+            self.kind, self.raw_os_error,
+        )
     }
 }
 
@@ -33,12 +49,13 @@ mod tests {
 
     #[test]
     fn initial_control_context_omits_sensitive_error_messages() {
-        let error = anyhow::Error::new(std::io::Error::new(
-            std::io::ErrorKind::BrokenPipe,
-            "private-io-sentinel",
-        ))
-        .context("private-context-sentinel")
-        .context(DirectEventWrite);
+        let native = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "private-io-sentinel");
+        let operation = DirectEventWrite::new(&native);
+        let error = anyhow::Error::new(native)
+            .context("private-context-sentinel")
+            .context(operation);
+        assert!(error.to_string().contains("io_error_kind=BrokenPipe"));
+        assert!(!error.to_string().contains("private-"));
         let context = initial_lightweight_error_context(&error, "ping", 42);
         let error = error.context(context);
         let logged = error.to_string();
@@ -53,5 +70,24 @@ mod tests {
         assert!(context.contains("operation=handle_lightweight_control"));
         assert!(context.contains("io_error_kind=None raw_os_error=None"));
         assert!(!context.contains("private-"));
+    }
+
+    #[test]
+    fn unwrapped_write_context_preserves_safe_os_metadata() {
+        let native = std::io::Error::from_raw_os_error(232);
+        let expected = format!(
+            "operation=write_direct_event io_error_kind={:?} raw_os_error=Some(232)",
+            native.kind(),
+        );
+        let operation = DirectEventWrite::new(&native);
+        let error = anyhow::Error::new(native).context(operation);
+        assert_eq!(error.to_string(), expected);
+        assert_eq!(
+            error
+                .downcast_ref::<std::io::Error>()
+                .unwrap()
+                .raw_os_error(),
+            Some(232)
+        );
     }
 }
