@@ -7,7 +7,7 @@
  * cannot see the user's sessions, it inherits credentials well enough to reach
  * a model, and it leaves nothing behind.
  *
- * Usage: node test/live-launch.mjs [path-to-jcode-binary]
+ * Usage: node test/live-launch.mjs [path-to-kcode-binary]
  */
 
 import assert from "node:assert/strict";
@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { JcodeClient, userJcodeHome } from "../dist/index.js";
 
-const binary = process.argv[2] ?? "jcode";
+const binary = process.argv[2] ?? "kcode";
 const failures = [];
 async function step(name, fn) {
   try {
@@ -121,7 +121,7 @@ await step("the user's jcode never saw the instance", async () => {
 await step("an exit without close() does not leak the daemon", async () => {
   const { execFileSync, execSync } = await import("node:child_process");
   const countDaemons = () =>
-    Number(execSync("pgrep -cf 'jcode --provider auto serve' || true", { encoding: "utf8" }).trim());
+    Number(execSync("pgrep -cf 'kcode --provider auto serve' || true", { encoding: "utf8" }).trim());
 
   const before = countDaemons();
   const script = `

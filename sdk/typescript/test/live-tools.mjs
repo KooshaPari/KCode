@@ -1,4 +1,4 @@
-/** Opt-in real daemon/provider test: JCODE_SDK_TEST_BINARY=/absolute/jcode node test/live-tools.mjs */
+/** Opt-in real daemon/provider test: JCODE_SDK_TEST_BINARY=/absolute/kcode node test/live-tools.mjs */
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -6,7 +6,7 @@ import os from "node:os";
 import { JcodeClient } from "../dist/index.js";
 
 const binary = process.env.JCODE_SDK_TEST_BINARY;
-assert.ok(binary, "Set JCODE_SDK_TEST_BINARY to the freshly built jcode binary");
+assert.ok(binary, "Set JCODE_SDK_TEST_BINARY to the freshly built kcode binary");
 const root = await fs.mkdtemp(path.join(process.env.JCODE_SCRATCH_DIR ?? os.tmpdir(), "sdk-tools-live-"));
 const client = await JcodeClient.launch({
   binary, jcodeHome: path.join(root, "home"), workingDir: root,

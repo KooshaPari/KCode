@@ -2,7 +2,7 @@
  * Opt-in acceptance check using the real SDK, private daemon, bridge, provider,
  * and bash tool. Requires a working provider login. No mocks or shared daemon.
  *
- * Usage: node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/jcode
+ * Usage: node sdk/typescript/test/live-text-framing.mjs ./target/selfdev/kcode
  * Optional: JCODE_SDK_TEST_MODEL (defaults to the daemon's chosen route).
  */
 import assert from "node:assert/strict";
@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { JcodeClient } from "../dist/index.js";
 
-const binary = path.resolve(process.argv[2] ?? "target/selfdev/jcode");
+const binary = path.resolve(process.argv[2] ?? "target/selfdev/kcode");
 const workingDir = fs.mkdtempSync(path.join(process.env.JCODE_SCRATCH_DIR ?? os.tmpdir(), "guy-live-"));
 const client = await JcodeClient.launch({
   binary,
