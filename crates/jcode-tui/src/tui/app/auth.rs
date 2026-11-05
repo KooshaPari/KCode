@@ -1689,11 +1689,15 @@ impl App {
             let user_code = device_resp.user_code.clone();
             let verification_uri = device_resp.verification_uri.clone();
 
-            let clipboard_ok = copy_to_clipboard(&user_code);
-            let clipboard_msg = if clipboard_ok {
-                " (copied to clipboard - just paste it!)"
-            } else {
-                ""
+            let clipboard = copy_to_clipboard(&user_code);
+            let clipboard_msg = match clipboard.outcome {
+                super::helpers::CopyOutcome::Copied => {
+                    " (copied to clipboard - just paste it!)"
+                }
+                super::helpers::CopyOutcome::Unconfirmed => {
+                    " (copy sent - paste to check it arrives)"
+                }
+                super::helpers::CopyOutcome::Failed => "",
             };
 
             Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {

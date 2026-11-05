@@ -549,14 +549,13 @@ impl App {
                 self.model_status_scroll = Some(usize::MAX);
             }
             KeyCode::Char('c') => {
-                let success = super::helpers::copy_to_clipboard(&self.model_status_content);
-                if success {
-                    self.set_status_notice("Copied provider test coverage report".to_string());
-                } else {
-                    self.set_status_notice(
-                        "Failed to copy provider test coverage report".to_string(),
-                    );
-                }
+                let copy = super::helpers::copy_to_clipboard(&self.model_status_content);
+                self.report_clipboard_copy(
+                    copy,
+                    "Copied provider test coverage report",
+                    "Coverage report copy sent (unconfirmed)",
+                    "Failed to copy provider test coverage report",
+                );
             }
             _ => {}
         }

@@ -54,6 +54,8 @@ mod auth;
 mod auth_account_picker_saved_accounts;
 mod auth_remote;
 mod catchup;
+mod clipboard_copy;
+mod clipboard_notice;
 mod commands;
 mod commands_cloud;
 mod commands_colors;
@@ -1583,6 +1585,11 @@ pub struct App {
     history_draft: Option<(String, usize)>,
     // Short-lived notice for status feedback (model switch, cycle diff mode, etc.)
     status_notice: Option<(String, Instant)>,
+    // A clipboard helper still running past the fail-fast window. Its notice
+    // is provisional until the tick observes the exit (issue #231).
+    pending_copy: Option<PendingCopy>,
+    // Monotonic token so a late outcome can never overwrite a newer copy.
+    copy_notice_token: u64,
     // Distinct learned-keybinding nudge ("you keep doing X the slow way, press
     // <key>"). Rendered in its own pop-out color, separate from status_notice,
     // and shown at most once per session.

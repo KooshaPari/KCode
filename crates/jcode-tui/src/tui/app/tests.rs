@@ -37,6 +37,7 @@ include!("tests/scroll_copy_03.rs");
 include!("tests/resize_viewport.rs");
 include!("tests/resize_anchor.rs");
 include!("tests/input_copy_selection.rs");
+include!("tests/clipboard_notice_231.rs");
 include!("tests/onboarding_flow.rs");
 include!("tests/onboarding_golden.rs");
 include!("tests/onboarding_eval.rs");

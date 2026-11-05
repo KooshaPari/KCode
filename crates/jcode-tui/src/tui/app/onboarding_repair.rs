@@ -217,13 +217,21 @@ pub(crate) fn persist_repair_brief(brief: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-/// One-line status to show after preparing the brief, naming the agent and how
-/// to use the copied brief.
-pub(crate) fn repair_brief_status(agent: Option<RepairAgent>, copied: bool) -> String {
-    let copied_part = if copied {
-        "Repair brief copied to clipboard"
-    } else {
-        "Repair brief ready (clipboard unavailable)"
+/// Truthful variant for issue #231: an unconfirmed helper is not a copy.
+///
+/// There is deliberately no `bool`-shaped wrapper: a two-state answer cannot
+/// express "sent but ownership unconfirmed", and collapsing it to either
+/// "copied" or "failed" is exactly the false report this issue tracks.
+pub(crate) fn repair_brief_status_for(
+    agent: Option<RepairAgent>,
+    outcome: super::helpers::CopyOutcome,
+) -> String {
+    let copied_part = match outcome {
+        super::helpers::CopyOutcome::Copied => "Repair brief copied to clipboard",
+        super::helpers::CopyOutcome::Unconfirmed => {
+            "Repair brief copy sent (unconfirmed - check the clipboard)"
+        }
+        super::helpers::CopyOutcome::Failed => "Repair brief ready (clipboard unavailable)",
     };
     match agent {
         Some(agent) => format!(
@@ -280,11 +288,27 @@ mod tests {
 
     #[test]
     fn status_names_the_agent_and_launch_command() {
-        let s = repair_brief_status(Some(RepairAgent::ClaudeCode), true);
+        let s = repair_brief_status_for(
+            Some(RepairAgent::ClaudeCode),
+            super::super::helpers::CopyOutcome::Copied,
+        );
         assert!(s.contains("Claude Code"), "{s}");
         assert!(s.contains("claude"), "{s}");
         assert!(s.contains("copied"), "{s}");
-        let none = repair_brief_status(None, false);
+        let none = repair_brief_status_for(
+            None,
+            super::super::helpers::CopyOutcome::Failed,
+        );
         assert!(none.contains("coding agent"), "{none}");
+    }
+
+    #[test]
+    fn status_distinguishes_unconfirmed_from_a_copy() {
+        let s = repair_brief_status_for(
+            Some(RepairAgent::ClaudeCode),
+            super::super::helpers::CopyOutcome::Unconfirmed,
+        );
+        assert!(s.contains("unconfirmed"), "{s}");
+        assert!(!s.contains("copied to clipboard"), "{s}");
     }
 }

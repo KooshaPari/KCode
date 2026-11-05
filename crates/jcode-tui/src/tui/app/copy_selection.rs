@@ -341,9 +341,13 @@ impl App {
         self.copy_chat_viewport_context_to_clipboard_with(super::helpers::copy_to_clipboard)
     }
 
-    pub(super) fn copy_chat_viewport_context_to_clipboard_with<F>(&mut self, copy_text: F) -> bool
+    pub(super) fn copy_chat_viewport_context_to_clipboard_with<F, R>(
+        &mut self,
+        copy_text: F,
+    ) -> bool
     where
-        F: FnOnce(&str) -> bool,
+        F: FnOnce(&str) -> R,
+        R: Into<super::helpers::ClipboardCopy>,
     {
         if !self.select_chat_viewport_context() {
             self.set_status_notice("Nothing visible to copy");
@@ -358,37 +362,43 @@ impl App {
             return false;
         }
 
-        let success = copy_text(&text);
-        if success {
-            self.set_status_notice("Copied viewport context");
-        } else {
-            self.set_status_notice("Failed to copy viewport context");
-        }
+        let accepted = self.report_clipboard_copy(
+            copy_text(&text).into(),
+            "Copied viewport context",
+            "Viewport context copy sent (unconfirmed)",
+            "Failed to copy viewport context",
+        );
         self.exit_copy_selection_mode();
-        success
+        accepted
     }
 
     pub(super) fn copy_current_selection_to_clipboard(&mut self) -> bool {
         self.copy_current_selection_to_clipboard_with(super::helpers::copy_to_clipboard)
     }
 
-    pub(super) fn copy_current_selection_to_clipboard_with<F>(&mut self, copy_text: F) -> bool
+    pub(super) fn copy_current_selection_to_clipboard_with<F, R>(
+        &mut self,
+        copy_text: F,
+    ) -> bool
     where
-        F: FnOnce(&str) -> bool,
+        F: FnOnce(&str) -> R,
+        R: Into<super::helpers::ClipboardCopy>,
     {
         let text = self.current_copy_selection_text().unwrap_or_default();
         if text.is_empty() {
             self.set_status_notice("Selection is empty");
             return false;
         }
-        let success = copy_text(&text);
-        if success {
-            self.set_status_notice("Copied selection");
+        let accepted = self.report_clipboard_copy(
+            copy_text(&text).into(),
+            "Copied selection",
+            "Selection copy sent (unconfirmed)",
+            "Failed to copy selection",
+        );
+        if accepted {
             self.exit_copy_selection_mode();
-        } else {
-            self.set_status_notice("Failed to copy selection");
         }
-        success
+        accepted
     }
 
     /// Copy a mouse-drag selection without clearing its visual highlight.
@@ -397,9 +407,10 @@ impl App {
     /// release, but the selected text remains visibly selected until the next
     /// click. Clearing it immediately made successful selections look
     /// as though they had failed, especially for short or precise drags.
-    fn copy_current_selection_preserving_highlight<F>(&mut self, copy_text: F) -> bool
+    fn copy_current_selection_preserving_highlight<F, R>(&mut self, copy_text: F) -> bool
     where
-        F: FnOnce(&str) -> bool,
+        F: FnOnce(&str) -> R,
+        R: Into<super::helpers::ClipboardCopy>,
     {
         let text = self.current_copy_selection_text().unwrap_or_default();
         if text.is_empty() {
@@ -407,17 +418,17 @@ impl App {
             return false;
         }
 
-        let success = copy_text(&text);
+        let copy = copy_text(&text).into();
         self.copy_selection_mode = false;
         self.copy_selection_dragging = false;
         self.copy_selection_pending_anchor = None;
         self.copy_selection_edge_autoscroll = None;
-        self.set_status_notice(if success {
-            "Copied selection · highlight remains visible"
-        } else {
-            "Failed to copy selection"
-        });
-        success
+        self.report_clipboard_copy(
+            copy,
+            "Copied selection · highlight remains visible",
+            "Selection copy sent (unconfirmed) · highlight remains visible",
+            "Failed to copy selection",
+        )
     }
 
     pub(super) fn handle_copy_selection_key(
@@ -520,13 +531,14 @@ impl App {
         self.handle_copy_selection_mouse_with(mouse, super::helpers::copy_to_clipboard)
     }
 
-    pub(super) fn handle_copy_selection_mouse_with<F>(
+    pub(super) fn handle_copy_selection_mouse_with<F, R>(
         &mut self,
         mouse: MouseEvent,
         copy_text: F,
     ) -> Option<bool>
     where
-        F: FnOnce(&str) -> bool,
+        F: FnOnce(&str) -> R,
+        R: Into<super::helpers::ClipboardCopy>,
     {
         let point = crate::tui::ui::copy_point_from_screen(mouse.column, mouse.row);
         match mouse.kind {

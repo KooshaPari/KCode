@@ -378,21 +378,16 @@ pub(crate) fn stop_capturing_clipboard_for_tests() {
     }
 }
 
-/// Copy text to clipboard. On Windows and macOS, the native clipboard API
-/// (arboard) is authoritative, with OSC 52 as a remote-session fallback.
-/// Elsewhere, try wl-copy (Wayland), then xclip/xsel (X11, which keep owning
-/// the selection unlike arboard), then arboard, then OSC 52 as the
-/// remote-session fallback (SSH / Docker / tmux).
-pub(super) fn copy_to_clipboard(text: &str) -> bool {
-    // Under test, never touch the OS clipboard. Beyond making results identical
-    // on a desktop and a headless runner, the Linux path below spawns `wl-copy`,
-    // which forks a clipboard server that does not exit; waiting on it hangs the
-    // test binary indefinitely. Tests that assert copied text call
-    // `capture_clipboard_for_tests` first and then read the sink; tests that
-    // only assert "a copy happened" get a truthy result either way.
-    //
-    // The OS paths are cfg'd out (not merely skipped) so the test build does
-    // not carry an unreachable tail after this block's `return`.
+// Re-exported so existing `helpers::` paths stay valid.
+pub(super) use super::clipboard_copy::*;
+
+/// Copy text to clipboard: native/OSC 52 on Windows and macOS; elsewhere
+/// wl-copy, then xclip/xsel (which keep owning the selection), then arboard,
+/// then OSC 52 for SSH / Docker / tmux.
+pub(super) fn copy_to_clipboard(text: &str) -> ClipboardCopy {
+    // Tests never touch the OS clipboard: the Linux path spawns `wl-copy`, which
+    // forks a server that does not exit. The OS paths are cfg'd out rather than
+    // skipped so the test build carries no unreachable tail past this return.
     #[cfg(test)]
     {
         if let Ok(mut sink) = TEST_CLIPBOARD.lock() {
@@ -404,7 +399,7 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
                 None => *sink = Some(text.to_string()),
             }
         }
-        true
+        ClipboardCopy::copied()
     }
 
     #[cfg(not(test))]
@@ -420,9 +415,9 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
                 .and_then(|mut cb| cb.set_text(text.to_string()))
                 .is_ok()
             {
-                return true;
+                return ClipboardCopy::copied();
             }
-            return copy_to_clipboard_osc52(text);
+            return ClipboardCopy::from(copy_to_clipboard_osc52(text));
         }
 
         // Same class of bug on macOS: Apple Terminal (Terminal.app) silently
@@ -436,7 +431,7 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
                 .and_then(|mut cb| cb.set_text(text.to_string()))
                 .is_ok()
             {
-                return true;
+                return ClipboardCopy::copied();
             }
             if let Ok(mut child) = std::process::Command::new("pbcopy")
                 .stdin(std::process::Stdio::piped())
@@ -450,11 +445,11 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
                 {
                     drop(child.stdin.take());
                     if child.wait().map(|s| s.success()).unwrap_or(false) {
-                        return true;
+                        return ClipboardCopy::copied();
                     }
                 }
             }
-            copy_to_clipboard_osc52(text)
+            ClipboardCopy::from(copy_to_clipboard_osc52(text))
         }
 
         // Linux has the same failure class (issue #504, Kali/X11): wl-copy fails
@@ -467,36 +462,43 @@ pub(super) fn copy_to_clipboard(text: &str) -> bool {
         // fail fast for lack of a display server.
         #[cfg(not(any(windows, target_os = "macos")))]
         {
-            if clipboard_helper::copy_via_clipboard_helper("wl-copy", &[], text) {
-                return true;
-            }
-            // X11: prefer xclip/xsel over arboard. arboard's X11 backend sets the
-            // selection on a connection it owns and then closes it when the
+            // X11: prefer xclip/xsel over arboard. arboard's X11 backend sets
+            // the selection on a connection it owns and then closes it when the
             // `Clipboard` is dropped, so the selection owner disappears and the
             // clipboard silently reverts (issue #684) even though `set_text`
             // returned Ok. xclip and xsel fork a background process that keeps
             // owning the selection until a paste, which is what users expect.
-            if clipboard_helper::copy_via_clipboard_helper(
-                "xclip",
-                &["-selection", "clipboard"],
-                text,
-            ) {
-                return true;
-            }
-            if clipboard_helper::copy_via_clipboard_helper(
-                "xsel",
-                &["--clipboard", "--input"],
-                text,
-            ) {
-                return true;
-            }
-            if arboard::Clipboard::new()
-                .and_then(|mut cb| cb.set_text(text.to_string()))
-                .is_ok()
-            {
-                return true;
-            }
-            copy_to_clipboard_osc52(text)
+            let fallback = || {
+                for (program, args) in [
+                    ("wl-copy", &[][..]),
+                    ("xclip", &["-selection", "clipboard"][..]),
+                    ("xsel", &["--clipboard", "--input"][..]),
+                ] {
+                    let outcome =
+                        clipboard_helper::copy_via_clipboard_helper(program, args, text);
+                    match outcome {
+                        clipboard_helper::HelperOutcome::Accepted => {
+                            return ClipboardCopy::copied();
+                        }
+                        // Still running: it may own the selection and it may
+                        // not. Stop the chain (starting a second owner could
+                        // steal or race it) but report Unconfirmed, never a
+                        // copy.
+                        clipboard_helper::HelperOutcome::Unconfirmed(watch) => {
+                            return ClipboardCopy::unconfirmed(watch);
+                        }
+                        clipboard_helper::HelperOutcome::Failed => {}
+                    }
+                }
+                if arboard::Clipboard::new()
+                    .and_then(|mut cb| cb.set_text(text.to_string()))
+                    .is_ok()
+                {
+                    return ClipboardCopy::copied();
+                }
+                ClipboardCopy::from(copy_to_clipboard_osc52(text))
+            };
+            fallback()
         }
     }
 }

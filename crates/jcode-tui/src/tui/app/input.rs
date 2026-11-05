@@ -401,16 +401,35 @@ pub(super) fn cut_input_line_to_clipboard(app: &mut App) -> bool {
     cut_input_line_to_clipboard_with(app, super::copy_to_clipboard)
 }
 
-pub(super) fn cut_input_line_to_clipboard_with<F>(app: &mut App, mut copy_text: F) -> bool
+pub(super) fn cut_input_line_to_clipboard_with<F, R>(app: &mut App, mut copy_text: F) -> bool
 where
-    F: FnMut(&str) -> bool,
+    F: FnMut(&str) -> R,
+    R: Into<super::helpers::ClipboardCopy>,
 {
     if app.input.is_empty() {
         return false;
     }
 
-    if !copy_text(&app.input) {
-        app.set_status_notice("Failed to copy input line");
+    let copy: super::helpers::ClipboardCopy = copy_text(&app.input).into();
+    let outcome = copy.outcome;
+    // A late confirmed exit may arrive for a cut we did not apply (the input
+    // was kept because ownership was unconfirmed). Its correction must not
+    // claim the input was cleared.
+    let late_success = if outcome == super::helpers::CopyOutcome::Copied {
+        "✂ Cut input line"
+    } else {
+        "Cut copy confirmed · input kept so you can clear it"
+    };
+    app.report_clipboard_copy(
+        copy,
+        late_success,
+        "Cut copy sent (unconfirmed) · input kept so you can retry",
+        "Failed to copy input line",
+    );
+    // Only a confirmed write justifies clearing the input. An unconfirmed
+    // helper may never have owned the selection, so losing the text would be
+    // unrecoverable.
+    if outcome != super::helpers::CopyOutcome::Copied {
         return false;
     }
 
@@ -419,7 +438,6 @@ where
     app.cursor_pos = 0;
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
-    app.set_status_notice("✂ Cut input line");
     true
 }
 
@@ -2543,14 +2561,20 @@ pub(super) fn handle_visible_copy_shortcut(
     if let Some(target) = crate::tui::ui::recent_flicker_copy_target_for_key(c)
         .or_else(|| crate::tui::ui::visible_copy_target_for_key(c))
     {
-        let success = super::copy_to_clipboard(&target.content);
+        let copy = super::copy_to_clipboard(&target.content);
         app.record_copy_badge_key_press(c);
-        app.record_copy_badge_feedback(c, success);
-        if success {
-            app.set_status_notice(target.copied_notice);
-        } else {
-            app.set_status_notice(format!("Failed to copy {}", target.kind_label));
+        // Only an observed outcome earns badge feedback. Unconfirmed must not
+        // render as either a success or a failure checkmark.
+        if copy.outcome != super::helpers::CopyOutcome::Unconfirmed {
+            let success = copy.outcome == super::helpers::CopyOutcome::Copied;
+            app.record_copy_badge_feedback(c, success);
         }
+        app.report_clipboard_copy(
+            copy,
+            target.copied_notice,
+            format!("Copy sent (unconfirmed) · {}", target.kind_label),
+            format!("Failed to copy {}", target.kind_label),
+        );
         return true;
     }
 
