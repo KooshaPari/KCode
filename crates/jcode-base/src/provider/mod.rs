@@ -3096,7 +3096,7 @@ mod bedrock_placeholder_default_tests {
     #[test]
     fn new_bedrock_provider_starts_on_newest_cached_flagship() {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir().expect("tempdir");
+        let temp = crate::test_temp::tempdir().expect("tempdir");
         let keys = [
             "KCODE_HOME",
             "KCODE_BEDROCK_MODEL",
