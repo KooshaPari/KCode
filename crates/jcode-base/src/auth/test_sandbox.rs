@@ -12,9 +12,7 @@ pub struct AuthTestSandbox {
 impl AuthTestSandbox {
     pub fn new() -> anyhow::Result<Self> {
         let lock = crate::storage::lock_test_env();
-        let temp = tempfile::Builder::new()
-            .prefix("kcode-auth-lifecycle-")
-            .tempdir()?;
+        let temp = crate::test_temp::tempdir_with_prefix("kcode-auth-lifecycle-")?;
         let saved_env = tracked_env_vars()
             .into_iter()
             .map(|key| {
