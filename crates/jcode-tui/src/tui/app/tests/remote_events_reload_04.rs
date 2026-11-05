@@ -2433,6 +2433,49 @@ fn test_remote_btw_stages_question_in_forked_session() {
 }
 
 #[test]
+fn test_remote_poke_context_preserves_prompt_and_attached_images() {
+    with_temp_jcode_home(|| {
+        let mut app = create_test_app();
+        app.is_remote = true;
+        app.input = "/poke jcode".to_string();
+        app.cursor_pos = app.input.len();
+        let expected_images = vec![("image/png".to_string(), "ZmFrZQ==".to_string())];
+        app.pending_images = expected_images.clone();
+
+        let rt = tokio::runtime::Runtime::new().expect("runtime");
+        let _guard = rt.enter();
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
+        remote.mark_history_loaded();
+
+        rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::empty(), &mut remote))
+            .expect("/poke should launch split request");
+
+        let startup = app
+            .pending_split_prompt
+            .as_ref()
+            .expect("context prompt should be staged for the new session");
+        assert!(startup.content.contains("Scope: repository `jcode`."));
+        assert_eq!(startup.images, expected_images);
+        let expected_prompt = startup.content.clone();
+
+        app.handle_server_event(
+            crate::protocol::ServerEvent::SplitResponse {
+                id: 1,
+                new_session_id: "session_poke_context_child".to_string(),
+                new_session_name: "poke_context_child".to_string(),
+            },
+            &mut remote,
+        );
+
+        let restored = App::restore_input_for_reload("session_poke_context_child")
+            .expect("context prompt should be saved for the new session");
+        assert_eq!(restored.input, expected_prompt);
+        assert_eq!(restored.pending_images, expected_images);
+        assert!(restored.submit_on_restore);
+    });
+}
+
+#[test]
 fn test_remote_fork_without_prompt_splits_immediately() {
     let mut app = create_test_app();
     app.is_remote = true;
