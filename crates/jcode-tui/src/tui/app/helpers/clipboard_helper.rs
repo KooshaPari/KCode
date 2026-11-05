@@ -45,8 +45,11 @@ pub(crate) enum HelperOutcome {
     Unconfirmed(ClipboardWatch),
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(all(test, not(any(windows, target_os = "macos"))))]
 impl HelperOutcome {
+    // The production chain matches variants directly; these predicates exist so
+    // the ordering tests read as intent rather than as pattern matches. Keeping
+    // them test-only avoids a dead-code warning in the plain lib build.
     pub(crate) fn accepted(&self) -> bool {
         matches!(self, Self::Accepted)
     }
@@ -132,8 +135,10 @@ pub(super) mod test_support {
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
 
-    /// Puts only the named stubs on PATH, so any helper not listed behaves as
-    /// if it is not installed.
+    /// Puts the named stubs first on PATH. A listed helper always resolves to
+    /// its stub; a helper that is not listed falls through to the real PATH, so
+    /// tests that depend on a helper being absent must stub it as failing
+    /// explicitly instead of relying on the host not having it installed.
     pub(super) struct StubPath {
         _dir: tempfile::TempDir,
         prev: Option<std::ffi::OsString>,
@@ -152,7 +157,15 @@ pub(super) mod test_support {
                     .expect("chmod stub");
             }
             let prev = std::env::var_os("PATH");
-            crate::env::set_var("PATH", dir.path());
+            // Stub dir first so the named helpers win, while the real PATH stays
+            // behind it: stub bodies legitimately run ordinary coreutils
+            // (`sleep`, `cat`) and need them resolvable.
+            let mut joined = dir.path().as_os_str().to_os_string();
+            if let Some(prev) = prev.as_ref().filter(|p| !p.is_empty()) {
+                joined.push(":");
+                joined.push(prev);
+            }
+            crate::env::set_var("PATH", joined);
             Self { _dir: dir, prev }
         }
     }
@@ -385,9 +398,13 @@ mod ordering_tests {
     }
 
     #[test]
-    fn xsel_takes_over_when_wl_copy_and_xclip_are_missing() {
+    fn xsel_takes_over_when_wl_copy_and_xclip_fail() {
         let _lock = crate::storage::lock_test_env();
-        let _stubs = StubPath::with(&[("xsel", "cat > /dev/null; exit 0")]);
+        let _stubs = StubPath::with(&[
+            ("wl-copy", "exit 1"),
+            ("xclip", "exit 1"),
+            ("xsel", "cat > /dev/null; exit 0"),
+        ]);
         assert_eq!(first_helper_that_accepts(), Some("xsel"));
     }
 
@@ -402,7 +419,11 @@ mod ordering_tests {
             ("xclip", "exit 1"),
             ("xsel", "exit 1"),
         ]);
-        assert_eq!(first_helper_outcome(), None);
+        // `HelperOutcome` carries a `ClipboardWatch`, so it has no `PartialEq`.
+        assert!(
+            first_helper_outcome().is_none(),
+            "a chain of failing helpers must report no outcome"
+        );
     }
 
     /// #231: a resident helper must stop the chain without claiming a copy.
