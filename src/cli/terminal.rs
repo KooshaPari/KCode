@@ -115,6 +115,10 @@ fn has_terminal_exec_handoff(
 pub struct TuiRuntimeGuard {
     state: TuiRuntimeState,
     armed: bool,
+    #[cfg(test)]
+    cleanup_override: Option<fn(bool)>,
+    #[cfg(test)]
+    handoff_override: Option<fn()>,
 }
 
 #[cfg(test)]
@@ -122,16 +126,43 @@ thread_local! {
     /// Counts how many times the guard's `Drop` performed an emergency restore.
     /// Used by tests to verify the error/panic safety net fires exactly once.
     static GUARD_DROP_RESTORES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static TEST_CLEANUP_CALLS: std::cell::RefCell<Vec<bool>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TEST_HANDOFF_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 impl TuiRuntimeGuard {
     fn new(state: TuiRuntimeState) -> Self {
-        Self { state, armed: true }
+        Self {
+            state,
+            armed: true,
+            #[cfg(test)]
+            cleanup_override: None,
+            #[cfg(test)]
+            handoff_override: None,
+        }
+    }
+
+    fn cleanup(&self, restore_terminal: bool) {
+        #[cfg(test)]
+        if let Some(cleanup) = self.cleanup_override {
+            cleanup(restore_terminal);
+            return;
+        }
+        cleanup_tui_runtime(&self.state, restore_terminal);
+    }
+
+    fn export_handoff(&self) {
+        #[cfg(test)]
+        if let Some(export) = self.handoff_override {
+            export();
+            return;
+        }
+        export_tui_exec_handoff(&self.state);
     }
 
     /// Normal teardown for the simple case: restore the terminal and disarm.
     pub fn finish(mut self, restore_terminal: bool) {
-        cleanup_tui_runtime(&self.state, restore_terminal);
+        self.cleanup(restore_terminal);
         self.armed = false;
     }
 
@@ -141,9 +172,9 @@ impl TuiRuntimeGuard {
     pub fn finish_for_run_result(&mut self, run_result: &crate::tui::RunResult, extra_exec: bool) {
         let will_exec = run_result_will_exec(run_result, extra_exec);
         if will_exec {
-            export_tui_exec_handoff(&self.state);
+            self.export_handoff();
         }
-        cleanup_tui_runtime_for_run_result(&self.state, run_result, extra_exec);
+        self.cleanup(!will_exec);
         self.armed = will_exec;
     }
 }
@@ -154,7 +185,7 @@ impl Drop for TuiRuntimeGuard {
             // Reached only on an error/panic path that skipped explicit
             // teardown. Always perform a full restore so the user's terminal is
             // not left corrupted.
-            cleanup_tui_runtime(&self.state, true);
+            self.cleanup(true);
             self.armed = false;
             #[cfg(test)]
             GUARD_DROP_RESTORES.with(|c| c.set(c.get() + 1));
@@ -562,14 +593,6 @@ fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
     }
 }
 
-fn cleanup_tui_runtime_for_run_result(
-    state: &TuiRuntimeState,
-    run_result: &crate::tui::RunResult,
-    extra_exec: bool,
-) {
-    cleanup_tui_runtime(state, !run_result_will_exec(run_result, extra_exec));
-}
-
 fn run_result_will_exec(run_result: &crate::tui::RunResult, extra_exec: bool) -> bool {
     run_result.exit_code.is_none()
         && (extra_exec
@@ -727,13 +750,18 @@ mod tests {
     static TEST_SESSION_LOCK: Mutex<()> = Mutex::new(());
 
     fn test_guard() -> TuiRuntimeGuard {
-        // All terminal-mode flags disabled so teardown only performs the minimal
-        // (and TTY-safe) restore path during tests.
-        TuiRuntimeGuard::new(TuiRuntimeState {
+        let mut guard = TuiRuntimeGuard::new(TuiRuntimeState {
             mouse_capture: false,
             keyboard_enhanced: false,
             focus_change: false,
-        })
+        });
+        TEST_CLEANUP_CALLS.with(|calls| calls.borrow_mut().clear());
+        TEST_HANDOFF_CALLS.with(|calls| calls.set(0));
+        guard.cleanup_override =
+            Some(|restore| TEST_CLEANUP_CALLS.with(|calls| calls.borrow_mut().push(restore)));
+        guard.handoff_override =
+            Some(|| TEST_HANDOFF_CALLS.with(|calls| calls.set(calls.get() + 1)));
+        guard
     }
 
     #[cfg(unix)]
@@ -855,6 +883,7 @@ mod tests {
             restores, 1,
             "dropping an un-finished guard must restore the terminal once"
         );
+        TEST_CLEANUP_CALLS.with(|calls| assert_eq!(&*calls.borrow(), &[true]));
     }
 
     #[test]
@@ -868,6 +897,7 @@ mod tests {
             restores, 0,
             "finish() should disarm the guard so drop does not double-restore"
         );
+        TEST_CLEANUP_CALLS.with(|calls| assert_eq!(&*calls.borrow(), &[true]));
     }
 
     #[test]
@@ -880,6 +910,8 @@ mod tests {
             guard.finish_for_run_result(&result, false);
         }
         assert_eq!(GUARD_DROP_RESTORES.with(|c| c.get()), 1);
+        TEST_CLEANUP_CALLS.with(|calls| assert_eq!(&*calls.borrow(), &[false, true]));
+        assert_eq!(TEST_HANDOFF_CALLS.with(|calls| calls.get()), 1);
     }
 
     #[test]
