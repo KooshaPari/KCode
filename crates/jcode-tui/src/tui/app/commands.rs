@@ -120,7 +120,10 @@ pub(super) fn disable_auto_poke(app: &mut App) -> usize {
 
 #[path = "commands_auto_poke_errors.rs"]
 mod auto_poke_errors;
+#[path = "commands_editor.rs"]
+mod editor;
 pub(super) use auto_poke_errors::is_non_retryable_auto_poke_error;
+use editor::run_interactive_editor_with;
 
 /// Whether `error` is a transient connectivity failure (DNS, name resolution,
 /// routing, unreachable host) that the agent itself cannot repair by resending
@@ -3171,17 +3174,6 @@ fn run_interactive_editor(
     )
 }
 
-fn run_interactive_editor_with(
-    command: &mut std::process::Command,
-    suspend: impl FnOnce(),
-    resume: impl FnOnce(),
-) -> std::io::Result<std::process::ExitStatus> {
-    suspend();
-    let result = command.status();
-    resume();
-    result
-}
-
 fn suspend_terminal_for_editor() {
     use crossterm::event::{DisableBracketedPaste, DisableFocusChange, DisableMouseCapture};
 
@@ -3214,11 +3206,7 @@ fn resume_terminal_after_editor() {
     if policy.enable_keyboard_enhancement {
         crate::tui::enable_keyboard_enhancement();
     }
-    if let Err(error) = crate::tui::prepare_keyboard_input(false) {
-        crate::logging::warn(&format!(
-            "failed to prepare keyboard input after editor: {error}"
-        ));
-    }
+    crate::tui::keyboard_protocol::prepare_keyboard_input_after_editor();
 }
 
 #[cfg(all(test, unix))]

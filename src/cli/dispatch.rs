@@ -1452,16 +1452,13 @@ async fn spawn_server_with_executable(
     {
         use std::io::Read;
 
-        cmd.stdin(Stdio::null());
-        // Redirected stdio still shares console modes; isolate the server and its tools.
-        let mut child = crate::platform::spawn_detached_without_console_window(&mut cmd)?;
+        let mut child =
+            crate::platform::spawn_detached_without_console_window(cmd.stdin(Stdio::null()))?;
         let start = std::time::Instant::now();
         // Windows server bootstrap can legitimately take tens of seconds on
         // slow hosts (auth preflights + provider init were observed at 15-60s
         // on a Windows Server VPS, issue #503). The child's liveness is
-        // checked every poll, so a generous budget only delays the error for
-        // a genuinely hung server, while a crashed server still fails fast
-        // with its stderr.
+        // checked every poll, so crashes fail fast with stderr even with this budget.
         let timeout = std::time::Duration::from_secs(120);
         while start.elapsed() < timeout {
             if server::has_live_listener(&socket_path).await {

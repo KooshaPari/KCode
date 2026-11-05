@@ -252,24 +252,23 @@ pub(crate) fn process_alive(pid: u32) -> bool {
 
 #[cfg(windows)]
 pub(crate) fn process_alive(pid: u32) -> bool {
-    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER, STILL_ACTIVE};
-    use windows_sys::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
+    use windows_sys::Win32::Foundation::{CloseHandle, ERROR_INVALID_PARAMETER, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
+
+    const SYNCHRONIZE: u32 = 0x0010_0000;
 
     if pid == 0 {
         return false;
     }
     unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        let handle = OpenProcess(SYNCHRONIZE, 0, pid);
         if handle.is_null() {
             return std::io::Error::last_os_error().raw_os_error()
                 != Some(ERROR_INVALID_PARAMETER as i32);
         }
-        let mut exit_code = 0;
-        let queried = GetExitCodeProcess(handle, &mut exit_code);
+        let wait_result = WaitForSingleObject(handle, 0);
         CloseHandle(handle);
-        queried == 0 || exit_code == STILL_ACTIVE as u32
+        wait_result != WAIT_OBJECT_0
     }
 }
 
@@ -293,6 +292,18 @@ mod tests {
             .unwrap();
         let pid = child.id();
         assert!(child.wait().unwrap().success());
+        assert!(!process_alive(pid));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn exited_process_with_still_active_exit_code_is_not_alive() {
+        let mut child = std::process::Command::new("cmd.exe")
+            .args(["/C", "exit 259"])
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        assert_eq!(child.wait().unwrap().code(), Some(259));
         assert!(!process_alive(pid));
     }
 

@@ -5,6 +5,23 @@
 //! or modifyOtherKeys reporting can otherwise lose special keys/modifiers.
 use std::io::{self, Write};
 
+pub(super) fn inside_tmux() -> bool {
+    std::env::var_os("TMUX").is_some_and(|value| !value.is_empty())
+}
+
+/// Clear stale reporting before native input, including policy-disabled exec handoffs.
+pub fn prepare_keyboard_input(enhanced: bool) -> io::Result<bool> {
+    prepare_input(&mut io::stdout(), enhanced)
+}
+
+pub(super) fn prepare_keyboard_input_after_editor() {
+    if let Err(error) = prepare_keyboard_input(false) {
+        crate::logging::warn(&format!(
+            "failed to prepare keyboard input after editor: {error}"
+        ));
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum Action {
     Push,
