@@ -729,6 +729,50 @@ async fn detect_auto_provider_flags() -> AutoProviderAvailability {
             serde_json::from_str::<auth::AuthStatus>(&snapshot).ok()
         })
         .unwrap_or_else(auth::AuthStatus::check_fast);
+
+    // When the config declares a default_provider that maps to an
+    // OpenAI-compatible profile (e.g. "openai-compatible") or a named
+    // `[providers.<name>]` block, apply its env vars before checking
+    // credentials.  Without this, `openrouter::has_credentials()` sees
+    // the bare OPENROUTER_API_KEY slot and returns false for a profile
+    // that carries its own api_key_env/env_file, causing Auto to
+    // silently discard the user's configured default.
+    //
+    // Mirrors the server path in startup.rs which applies the config
+    // default before building ProviderAvailability.
+    //
+    // Guard: skip when an explicit profile lock is already active
+    // (KCODE_PROVIDER_PROFILE_ACTIVE) to avoid overwriting a prior
+    // --provider-profile selection.
+    if std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none()
+        && std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none()
+    {
+        let cfg = crate::config::config();
+        if let Some(default_provider) = cfg
+            .provider
+            .default_provider
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            // A user-declared `[providers.<name>]` block wins over a
+            // built-in profile with the same id (same ordering as the
+            // server path in startup.rs).
+            if cfg.providers.contains_key(default_provider) {
+                let _ = crate::provider_catalog::apply_named_provider_profile_env_from_config(
+                    default_provider,
+                    cfg,
+                );
+            } else if let Some(profile) =
+                crate::provider_catalog::resolve_openai_compatible_profile_selection(
+                    default_provider,
+                )
+            {
+                crate::provider_catalog::apply_openai_compatible_profile_env(Some(profile));
+            }
+        }
+    }
+
     AutoProviderAvailability {
         has_claude: auth_status.anthropic.has_oauth || auth_status.anthropic.has_api_key,
         has_openai: auth_status.openai_has_oauth || auth_status.openai_has_api_key,
@@ -736,7 +780,7 @@ async fn detect_auto_provider_flags() -> AutoProviderAvailability {
         has_antigravity: auth::antigravity::load_tokens().is_ok(),
         has_gemini: auth_status.gemini == auth::AuthState::Available,
         has_cursor: auth_status.cursor == auth::AuthState::Available,
-        has_openrouter: auth_status.openrouter == auth::AuthState::Available,
+        has_openrouter: provider::openrouter::has_credentials(),
         auth_status,
     }
 }

@@ -180,6 +180,47 @@ mod tests {
     }
 
     #[test]
+    fn config_declared_openai_compatible_profile_with_own_api_key_counts_as_configured() {
+        // A config default_provider pointing at an OpenAI-compatible profile
+        // (e.g. "openai-compatible") should count as configured when
+        // availability.openrouter is true.  The openrouter flag is set by
+        // detect_auto_provider_flags after applying the profile's own
+        // api_key_env/env_file bindings to the OpenRouter credential slot.
+        let mut cfg = Config::default();
+        cfg.provider.default_provider = Some("openai-compatible".to_string());
+        cfg.provider.default_model = Some("MiniMax-M3.1-Flash-Preview".to_string());
+        let auth = AuthStatus::default();
+        let state = ProviderState::from_parts(&cfg, &auth);
+
+        // "openai-compatible" resolves to OpenRouter via the built-in profile
+        assert_eq!(state.default_provider_key(), Some("openai-compatible"));
+        assert_eq!(
+            state.preferred_active_provider(),
+            Some(ActiveProvider::OpenRouter)
+        );
+
+        // When availability.openrouter is true (profile has credentials),
+        // preferred_provider_is_configured must return Some(true).
+        assert_eq!(
+            state.preferred_provider_is_configured(ProviderAvailability {
+                openrouter: true,
+                ..ProviderAvailability::default()
+            }),
+            Some(true)
+        );
+
+        // When availability.openrouter is false (no credentials), it must
+        // return Some(false).
+        assert_eq!(
+            state.preferred_provider_is_configured(ProviderAvailability {
+                openrouter: false,
+                ..ProviderAvailability::default()
+            }),
+            Some(false)
+        );
+    }
+
+    #[test]
     fn runtime_state_tracks_user_selection_after_auth_generation() {
         let mut state = ProviderRuntimeState::observed("startup-model");
         assert_eq!(state.selection_generation(), 0);
