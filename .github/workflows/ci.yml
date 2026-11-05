@@ -329,6 +329,42 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Test persistent cargo target setup
+        run: python3 scripts/test_ci_persistent_target.py
+
+      # Persistent, per-runner cargo target dir.
+      #
+      # Self-hosted runner with durable disk, so caching `target/` via
+      # actions/cache is unnecessary and - at a 2GB blob that aborts restore at
+      # the ~600s cap (#167) - actively harmful: every run went in cold, then
+      # died on the compile cap.
+      #
+      # Set here rather than in the job-level `env:` because the `runner`
+      # context is not available there (actionlint: "context runner is not
+      # allowed here"). RUNNER_NAME is a default environment variable in every
+      # step, so it is legal here and still gives each runner its own dir.
+      #
+      # Per-runner (not shared) on purpose: concurrent cargo builds take an
+      # exclusive lock on one target dir and would serialise against each other.
+      #
+      - name: Configure persistent cargo target dir
+        run: |
+          set -euo pipefail
+          # RUNNER_NAME becomes a path component, so a value containing a
+          # separator or `..` could point the target dir outside $HOME.
+          # Runner names are admin-controlled, but a rejected build with a
+          # clear error beats silently writing outside the home directory.
+          case "${RUNNER_NAME:-}" in
+            "") printf 'error: RUNNER_NAME is unset\n' >&2; exit 1 ;;
+            */*|*\\*|*..*)
+              printf 'error: refusing unsafe RUNNER_NAME: %s\n' "$RUNNER_NAME" >&2
+              exit 1
+              ;;
+          esac
+          T="$HOME/kcode-target-${RUNNER_NAME}"
+          mkdir -p "$T"
+          echo "CARGO_TARGET_DIR=$T" >> "$GITHUB_ENV"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
