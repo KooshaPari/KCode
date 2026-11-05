@@ -240,7 +240,7 @@ pub fn reject_dev_home_symlink_path(path: &Path) -> Result<()> {
         );
     }
     if std::fs::symlink_metadata(&home).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-        anyhow::bail!("jcode-dev state path traverses symlink {}", home.display());
+        anyhow::bail!("kcode-dev state path traverses symlink {}", home.display());
     }
     let relative = path.strip_prefix(&home)?;
     let mut current = home;
@@ -263,7 +263,7 @@ pub fn reject_dev_home_symlink_path(path: &Path) -> Result<()> {
             }
             std::path::Component::Prefix(_) | std::path::Component::RootDir => {
                 anyhow::bail!(
-                    "jcode-dev state path is not relative to JCODE_HOME: {}",
+                    "kcode-dev state path is not relative to KCODE_HOME: {}",
                     path.display()
                 );
             }

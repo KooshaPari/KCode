@@ -48,6 +48,7 @@ fn dev_namespace_path_guard_rejects_symlink_components_without_touching_target()
     kcode_core::env::set_var("KCODE_HOME", &home);
     kcode_core::env::set_var("KCODE_DEV_NAMESPACE", "1");
 
+    assert!(running_in_dev_namespace());
     assert!(reject_dev_home_symlink_path(&link).is_err());
     assert_eq!(
         std::fs::read(&stable).expect("sentinel bytes"),

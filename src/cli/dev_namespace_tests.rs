@@ -2,16 +2,10 @@ use super::*;
 use std::ffi::OsString;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::sync::MutexGuard;
 
 #[cfg(unix)]
 #[path = "dev_namespace_tests/store_roots.rs"]
 mod store_roots;
-
-fn env_lock() -> MutexGuard<'static, ()> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    LOCK.lock().unwrap_or_else(|e| e.into_inner())
-}
 
 fn setup_env(home: &Path) -> Vec<(&'static str, Option<OsString>)> {
     let vars = [
@@ -184,7 +178,7 @@ fn rejects_overlapping_parent_fallback_paths() {
 
 #[test]
 fn validates_roots_and_fails_closed_on_inherited_path_overrides() {
-    let _lock = env_lock();
+    let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
     assert!(validate_environment().is_ok());
@@ -214,7 +208,7 @@ fn validates_roots_and_fails_closed_on_inherited_path_overrides() {
 
 #[test]
 fn rejects_socket_override_outside_dev_runtime() {
-    let _lock = env_lock();
+    let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
     crate::env::set_var("KCODE_SOCKET", temp.path().join(".kcode/kcode.sock"));
@@ -232,7 +226,7 @@ fn rejects_socket_override_outside_dev_runtime() {
 
 #[test]
 fn dev_marker_is_not_accepted_without_the_verified_dev_home() {
-    let _lock = env_lock();
+    let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
     crate::env::set_var("KCODE_HOME", temp.path().join(".kcode"));
@@ -242,7 +236,7 @@ fn dev_marker_is_not_accepted_without_the_verified_dev_home() {
 
 #[test]
 fn verified_dev_namespace_denies_global_integrations() {
-    let _lock = env_lock();
+    let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
     assert!(ensure_global_integrations_allowed("setup-hotkey").is_err());
@@ -251,7 +245,7 @@ fn verified_dev_namespace_denies_global_integrations() {
 
 #[test]
 fn provider_environment_isolated_from_inherited_keys_and_profiles() {
-    let _lock = env_lock();
+    let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
     crate::env::set_var("OPENAI_API_KEY", "inherited-test-secret");
@@ -341,7 +335,7 @@ fn rejects_target_path_fallback_into_repo_or_production_home() {
 #[cfg(unix)]
 #[test]
 fn legacy_import_copies_only_selected_session_without_credentials_or_shared_inode() {
-    let _lock = env_lock();
+    let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
     let source_dir = temp.path().join(".kcode/sessions");
@@ -379,7 +373,7 @@ fn legacy_import_copies_only_selected_session_without_credentials_or_shared_inod
 #[cfg(unix)]
 #[test]
 fn legacy_import_refuses_overwrite_and_path_traversal() {
-    let _lock = env_lock();
+    let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
     let source = temp.path().join(".kcode/sessions");
@@ -397,7 +391,7 @@ fn legacy_import_refuses_overwrite_and_path_traversal() {
 #[cfg(unix)]
 #[test]
 fn legacy_import_retries_when_stale_stage_directory_exists() {
-    let _lock = env_lock();
+    let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
     let source = temp.path().join(".kcode/sessions");
@@ -423,7 +417,7 @@ fn legacy_import_retries_when_stale_stage_directory_exists() {
 #[cfg(unix)]
 #[test]
 fn legacy_import_refuses_symlink_source_file() {
-    let _lock = env_lock();
+    let _lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().unwrap();
     let _restore = RestoreEnv(setup_env(temp.path()));
     let source = temp.path().join(".kcode/sessions");
