@@ -137,6 +137,32 @@ pub fn runtime_dir() -> PathBuf {
     dir
 }
 
+/// Stable per-user directory for the *shared* daemon socket.
+///
+/// `runtime_dir()` is process-environment dependent: on macOS it resolves to
+/// `$TMPDIR`, which differs between launchers (a Herdr pane inherits the system
+/// per-user temp dir, a shell started under `TMPDIR=~/.jcode/scratch` gets a
+/// different one). Using it for the shared socket therefore split one user
+/// across several socket namespaces, so a client silently attached to a daemon
+/// launched by somebody else while the daemon it asked for was never dialed.
+///
+/// The shared socket must be stable per user, so it lives under the jcode home
+/// and only honors an explicit `$KCODE_SOCKET` override, never `TMPDIR`.
+///
+/// The directory is NOT created here. Resolving a path must not have the
+/// side effect of creating it: `KCODE_HOME` may be a symlink, and creating a
+/// directory through one is not the same operation as creating it directly.
+/// The caller that binds the socket creates the parent it needs.
+pub fn shared_runtime_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("KCODE_SHARED_RUNTIME_DIR") {
+        return PathBuf::from(dir);
+    }
+    match jcode_dir() {
+        Ok(dir) => dir.join("run"),
+        Err(_) => fallback_runtime_dir(),
+    }
+}
+
 fn fallback_runtime_dir() -> PathBuf {
     std::env::temp_dir().join(format!("kcode-{}", runtime_user_discriminator()))
 }

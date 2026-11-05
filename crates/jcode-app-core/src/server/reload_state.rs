@@ -1,4 +1,4 @@
-use super::{has_live_listener, is_server_ready};
+use super::socket::{has_live_listener, is_server_ready};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -26,9 +26,35 @@ pub fn clear_reload_marker() {
     let _ = std::fs::remove_file(reload_marker_path());
 }
 
-pub(super) fn clear_reload_marker_if_stale_for_pid(current_pid: u32) {
+/// Who owns the runtime-dir reload marker.
+///
+/// The marker lives at a runtime-dir-scoped path, so a custom-socket server
+/// and the shared daemon share the same file. They do not share the
+/// *ownership*: the shared daemon owns the marker and cleans up after stale
+/// predecessors, while a custom-socket server must leave a marker it does not
+/// own alone. Clearing it would strand the shared daemon in `Starting` and make
+/// it reject messages until the marker expired (issue #1748).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ForeignMarkerPolicy {
+    /// The shared daemon owns the runtime-dir marker and cleans up after
+    /// stale predecessors.
+    MayClear,
+    /// A custom-socket server shares the file but not the ownership.
+    Preserve,
+}
+
+impl ForeignMarkerPolicy {
+    fn preserves(self, state_pid: u32, current_pid: u32) -> bool {
+        self == Self::Preserve && state_pid != current_pid
+    }
+}
+
+pub(super) fn clear_reload_marker_if_stale_for_pid(current_pid: u32, policy: ForeignMarkerPolicy) {
     if let Some(state) = ReloadState::load() {
         if state.phase == ReloadPhase::Starting && state.pid == current_pid {
+            return;
+        }
+        if policy.preserves(state.pid, current_pid) {
             return;
         }
         clear_reload_marker();
@@ -803,7 +829,7 @@ mod tests {
         }
         .write();
 
-        clear_reload_marker_if_stale_for_pid(current);
+        clear_reload_marker_if_stale_for_pid(current, ForeignMarkerPolicy::MayClear);
         assert!(
             reload_marker_exists(),
             "an in-flight Starting marker owned by this pid must survive cleanup"
@@ -829,7 +855,7 @@ mod tests {
             detail: None,
         }
         .write();
-        clear_reload_marker_if_stale_for_pid(current);
+        clear_reload_marker_if_stale_for_pid(current, ForeignMarkerPolicy::MayClear);
         assert!(
             !reload_marker_exists(),
             "a foreign Starting marker must be cleared"
@@ -845,10 +871,70 @@ mod tests {
             detail: None,
         }
         .write();
-        clear_reload_marker_if_stale_for_pid(current);
+        clear_reload_marker_if_stale_for_pid(current, ForeignMarkerPolicy::MayClear);
         assert!(
             !reload_marker_exists(),
             "a completed marker must be cleared on stale check"
+        );
+    }
+
+    /// A custom-socket server shares the runtime-dir marker file with the
+    /// shared daemon, but not its ownership. Clearing a marker it does not own
+    /// would strand the shared daemon in `Starting` and make it reject messages
+    /// until the marker expired.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn clear_reload_marker_if_stale_for_pid_preserves_a_foreign_marker() {
+        let _lock = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::set_runtime_dir(temp.path());
+
+        let current = std::process::id();
+
+        // A foreign pid still in Starting: stale for the shared daemon, but
+        // owned by someone else for a custom-socket server.
+        ReloadState {
+            request_id: "req-foreign".to_string(),
+            hash: "hash-foreign".to_string(),
+            phase: ReloadPhase::Starting,
+            pid: current.wrapping_add(1),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            detail: None,
+        }
+        .write();
+
+        clear_reload_marker_if_stale_for_pid(current, ForeignMarkerPolicy::Preserve);
+        assert!(
+            reload_marker_exists(),
+            "a custom-socket server must not clear a marker it does not own"
+        );
+    }
+
+    /// A custom-socket server still reloads itself, and on Unix the exec keeps
+    /// the same pid, so its *own* marker must still be clearable.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn clear_reload_marker_if_stale_for_pid_preserves_only_foreign_markers() {
+        let _lock = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let _guard = EnvGuard::set_runtime_dir(temp.path());
+
+        let current = std::process::id();
+
+        ReloadState {
+            request_id: "req-own".to_string(),
+            hash: "hash-own".to_string(),
+            phase: ReloadPhase::SocketReady,
+            pid: current,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            detail: None,
+        }
+        .write();
+
+        clear_reload_marker_if_stale_for_pid(current, ForeignMarkerPolicy::Preserve);
+        assert!(
+            !reload_marker_exists(),
+            "a custom-socket server must still clear its own completed marker"
         );
     }
 

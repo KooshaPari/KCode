@@ -1,14 +1,16 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
+use super::socket::cleanup_socket_pair;
+use super::socket::daemon_lock_path_for;
 use super::socket::sibling_socket_path;
 #[cfg(unix)]
 use super::socket::{
     daemon_lock_path, server_start_matches_existing_server, try_acquire_daemon_lock,
 };
 use super::{
-    ReloadPhase, ReloadState, ReloadWaitStatus, await_reload_handoff, cleanup_socket_pair,
-    clear_reload_marker, inspect_reload_wait_status, publish_reload_socket_ready,
-    reload_marker_active, reload_marker_path, reload_process_alive, write_reload_state,
+    ReloadPhase, ReloadState, ReloadWaitStatus, await_reload_handoff, clear_reload_marker,
+    inspect_reload_wait_status, publish_reload_socket_ready, reload_marker_active,
+    reload_marker_path, reload_process_alive, write_reload_state,
 };
 #[cfg(unix)]
 use super::{connect_socket, reap_stale_socket_if_dead};
@@ -114,7 +116,10 @@ async fn reap_stale_socket_removes_dead_socket_pair_and_lock() {
 
     let socket = temp.path().join("kcode.sock");
     let debug = temp.path().join("kcode-debug.sock");
-    let lock = daemon_lock_path();
+    // The lock that guards this socket is the socket-scoped one: a custom
+    // socket gets its own sibling lock, so a daemon on it does not block the
+    // reap of an unrelated socket.
+    let lock = daemon_lock_path_for(&socket);
 
     // Simulate the post-upgrade/crash state: socket + debug + lock files left
     // behind, but no process is listening on the socket.
@@ -172,7 +177,7 @@ async fn reap_stale_socket_spares_socket_when_lock_is_held() {
 
     // Hold the daemon lock, emulating a live daemon whose socket probe happens
     // to be momentarily unanswerable. The reaper must not unlink the socket.
-    let lock_path = daemon_lock_path();
+    let lock_path = daemon_lock_path_for(&socket);
     let held = try_acquire_daemon_lock(&lock_path)
         .expect("acquire lock")
         .expect("lock should be free");
@@ -535,5 +540,47 @@ async fn await_reload_handoff_returns_failed_after_marker_transition() {
         crate::env::set_var("KCODE_RUNTIME_DIR", prev_runtime);
     } else {
         crate::env::remove_var("KCODE_RUNTIME_DIR");
+    }
+}
+
+/// A socket override that resolves to the shared socket is not "custom": the
+/// shared daemon owns that path, so nothing may start a second server there.
+/// A genuinely different path is custom, and gets its own daemon lock and
+/// reload-marker policy.
+#[test]
+fn socket_override_is_reported_as_custom() {
+    let _guard = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("tempdir");
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let prev_socket = std::env::var_os("KCODE_SOCKET");
+    // The shared socket lives under `shared_runtime_dir()`, which resolves
+    // from `KCODE_HOME` - not from `KCODE_RUNTIME_DIR`, which is a different
+    // directory entirely. The temp dir must also be one
+    // `require_kcode_path` accepts, so it cannot live under a jcode
+    // directory.
+    crate::env::set_var("KCODE_HOME", temp.path());
+
+    crate::env::remove_var("KCODE_SOCKET");
+    let shared = super::default_socket_path();
+    assert_eq!(super::socket_path(), shared);
+    assert!(!super::socket::is_private_socket(&super::socket_path()));
+
+    // An override that resolves to the shared socket is not "custom": the
+    // shared daemon owns that path, so nothing may start a second server there.
+    crate::env::set_var("KCODE_SOCKET", shared.as_os_str());
+    assert!(!super::socket::is_private_socket(&super::socket_path()));
+
+    crate::env::set_var("KCODE_SOCKET", temp.path().join("run-isolated.sock"));
+    assert!(super::socket::is_private_socket(&super::socket_path()));
+
+    if let Some(prev_socket) = prev_socket {
+        crate::env::set_var("KCODE_SOCKET", prev_socket);
+    } else {
+        crate::env::remove_var("KCODE_SOCKET");
+    }
+    if let Some(prev_home) = prev_home {
+        crate::env::set_var("KCODE_HOME", prev_home);
+    } else {
+        crate::env::remove_var("KCODE_HOME");
     }
 }

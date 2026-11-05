@@ -40,6 +40,7 @@ mod maintenance;
 mod memory_profile;
 mod model;
 mod persistence;
+mod provider_identity;
 mod render;
 mod storage_paths;
 pub use crash::{
@@ -58,6 +59,7 @@ use memory_profile::{
 };
 use model::SESSION_CONTEXT_PREFIX;
 pub use model::{StoredReplayEvent, StoredReplayEventKind};
+pub use provider_identity::derive_session_provider_key;
 pub use render::{
     RenderedCompactedHistoryInfo, RenderedImage, RenderedImageAnchor, RenderedImageSource,
     RenderedMessage, has_rendered_images, is_attached_image_label_text, render_images,
@@ -306,48 +308,6 @@ fn is_zero_u64(value: &u64) -> bool {
 
 fn default_fork_max_depth() -> u8 {
     jcode_permission_bubble::MAX_FORK_DEPTH as u8
-}
-
-pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
-    let normalized_name = provider_name.trim().to_ascii_lowercase();
-    if normalized_name == "jcode" {
-        return Some("jcode".to_string());
-    }
-
-    if let Ok(runtime_provider) = std::env::var("KCODE_RUNTIME_PROVIDER") {
-        let runtime_provider = runtime_provider.trim().to_ascii_lowercase();
-        if !runtime_provider.is_empty() && runtime_provider != "openai-compatible" {
-            return Some(runtime_provider);
-        }
-    }
-
-    if let Ok(namespace) = std::env::var("KCODE_OPENROUTER_CACHE_NAMESPACE") {
-        let namespace = namespace.trim().to_ascii_lowercase();
-        if !namespace.is_empty() {
-            return Some(namespace);
-        }
-    }
-
-    if let Ok(active) = std::env::var("KCODE_ACTIVE_PROVIDER") {
-        let active = active.trim().to_ascii_lowercase();
-        if !active.is_empty() {
-            return Some(active);
-        }
-    }
-
-    let fallback = match normalized_name.as_str() {
-        "anthropic" | "claude" | "claude cli" => "claude",
-        "openai" => "openai",
-        "github copilot" | "copilot" => "copilot",
-        "openrouter" => "openrouter",
-        "cursor" => "cursor",
-        "gemini" => "gemini",
-        "antigravity" => "antigravity",
-        "" => return None,
-        other => other,
-    };
-
-    Some(fallback.to_string())
 }
 
 impl Session {
