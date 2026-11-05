@@ -83,3 +83,172 @@ The complete Windows build-support suite and the repository code-size budget
 are not green. Full workspace/default-feature release validation and live
 ConPTY behavior are not claimed by these checks. The anchor and kitty fixes
 remain separate stacked changes.
+
+## Forward delivery work breakdown
+
+Audit anchor: `master` at `2aea04dd871f21da5c5b21800d156a2c9b0830b1`,
+2026-10-21. Hosted source/release inspection is evidence about repository state;
+it is not a local build, device install, CI pass, or remote-session receipt.
+The initial Windows execution helper failed before command execution with
+`orchestrator_helper_incomplete: setup helper exited successfully before setup completed`.
+The execution transport was subsequently restored. Standalone native metadata
+checks passed: nine build-script tests, three runtime tests, and actual generated
+identity/override/rejection assertions. A persistent isolated Windows source build is now running; completion is not
+claimed. Installation, live-server and terminal acceptance remain pending.
+The current acceptance scope is Windows Terminal and Windows HERDR only.
+Preserve shared agents and the separate stock jcode installation.
+
+### Findings and existing work
+
+- Root Cargo package and binary are `kcode`, version `0.93.0-k0.1.0`.
+  The build metadata script parsed the fork-bearing patch as an integer,
+  defaulted the numeric base to zero, and dropped the fork suffix while deriving
+  a development version. This change uses its existing channel-aware parser,
+  preserves the suffix and requires nonzero `BASE-kFORK_SEMVER` identity for
+  root metadata and build overrides. Invalid runtime overrides preserve compiled
+  KCode identity. A shared parser rejects bare stock, empty and malformed suffixes. This is source reasoning; the old installed
+  Jaguar client's origin has not been demonstrated.
+- `docs/sessions/20260917-herdr-pwsh-triage/FINDINGS.md` is historical
+  source-based triage with estimated reproduction steps. Its OSC/PowerShell
+  explanation remains a hypothesis until isolated reproduction proves it.
+  Do not drain arbitrary queued input or suppress escapes based on that note.
+- Fork PR [#124](https://github.com/KooshaPari/KCode/pull/124) already landed
+  native Windows keyboard negotiation; inspect its behavior before another fix.
+  The isolation document's earlier checks exclude full default-feature release
+  validation and live ConPTY acceptance.
+- Existing open convergence work includes [#152](https://github.com/KooshaPari/KCode/pull/152)
+  (test binary identity), [#156](https://github.com/KooshaPari/KCode/pull/156)
+  (format/lint), [#157](https://github.com/KooshaPari/KCode/pull/157)
+  (turn notification identity), [#160](https://github.com/KooshaPari/KCode/pull/160)
+  (SDK assertions), [#163](https://github.com/KooshaPari/KCode/pull/163)
+  (Windows pipe fallback), and [#166](https://github.com/KooshaPari/KCode/pull/166),
+  [#168](https://github.com/KooshaPari/KCode/pull/168),
+  [#169](https://github.com/KooshaPari/KCode/pull/169) (workspace lint/build
+  cache convergence). Reuse reviewed fixes; do not assume open means integrated.
+- The published [v0.85.0-k1.0.0](https://github.com/KooshaPari/KCode/releases/tag/v0.85.0-k1.0.0)
+  contains only a jcode-named FreeBSD asset. There is no verified Windows
+  artifact in that release. The v0.90.0-k1.0.0 tag is not a published release;
+  [Release run 37421410488](https://github.com/KooshaPari/KCode/actions/runs/37421410488)
+  skipped.
+- [Windows Smoke run 39111372009](https://github.com/KooshaPari/KCode/actions/runs/39111372009)
+  failed runtime smoke. x64 build/test compilation passed, but 13 targeted filters discovered zero
+  tests and only the final filter ran one test. Runtime smoke failed at
+  provider_behavior::test_model_switch_resets_provider_session with
+  'Did not receive Done for first message' (30.30s, exit 101).
+  Lifecycle, version, and installer steps did not execute; ARM64 skipped and
+  there were no downloadable artifacts. These partial passes do not clear the
+  installation gate.
+- The historical `docs/drafts/pr-fix-build-meta-channel.md` acceptance of
+  zero versions and its test-pass assertions are superseded by this plan;
+  they are not current validation receipts.
+- The release workflow is guarded to upstream `1jehuang/jcode`; its packaging
+  and Windows smoke paths still use `jcode.exe`, `jcode-*`, and
+  `JCODE_BUILD_SEMVER`. Removing that guard alone cannot produce a safe fork
+  channel. Dependabot alert state is UNKNOWN because the connector rejected
+  that endpoint; no security pass is claimed.
+
+
+### Windows console and input findings
+
+- [Console isolation commit 3bf72746](https://github.com/KooshaPari/KCode/commit/3bf72746fce8185e15921d93ce8f6f56c36d7ab2)
+  gives a newly spawned Windows KCode server null stdin and its own hidden
+  console through the existing platform helper. Null/piped standard handles
+  alone do not isolate console modes. The native regression passed one test:
+  an inherited-child negative control changed input/output modes from
+  `(503, 3)` to `(499, 7)`; the isolated child preserved `(503, 3)`.
+  The Unix spawn path is unchanged. This proves the ownership mechanism,
+  not the cause or resolution of every reported symptom.
+- Existing live servers are adopted before the spawn path. Installing the
+  candidate does not retrofit console isolation onto an already running
+  stock server; preserve that server and verify KCode's separate runtime.
+- `scripts/test_windows_conpty_input.ps1 -CompareVT` passed 48 isolated
+  backend/case assertions at
+  [b1672882](https://github.com/KooshaPari/KCode/commit/b16728829e9479c44e2bcf17248ae4f22b8c3bbd).
+  Native console input with VT-input bit 512 off strips complete paste
+  framing; splitting the initial escape can instead expose literal marker
+  characters. With bit 512 on, both the record and byte readers preserve
+  framing, including short/leading-newline and delayed payloads. These are
+  transport fixtures, not KCode application acceptance.
+- Locked Crossterm 0.29.0 preserves an inherited VT-input bit during raw-mode
+  changes but uses its Win32 key decoder on Windows. Enabling VT input alone,
+  disabling paste mode, or applying a typing-speed heuristic is not a complete
+  fix: multiline input can reach deliberate submit shortcuts.
+- Borrow candidate [Crossterm PR #1030](https://github.com/crossterm-rs/crossterm/pull/1030),
+  exact revision `94ed7154e35d24a2f643c61760e1eb05b8ca9e63`, remains
+  unmerged and is not a production dependency change here. It combines scoped
+  VT-input mode with the shared ANSI decoder. Qualification must cover actual
+  `Event::Paste`, ordinary keys, mouse/focus/resize, mode restoration and the
+  reachable Windows restart/reload handoff. Its process-local original-mode
+  snapshot does not by itself preserve ownership across a replacement process.
+  Split opening escapes and unbounded unterminated paste remain explicit
+  review gates; do not treat this candidate as a complete fix.
+  The subsequent actual-Crossterm-event ConPTY probe passed 13 of 15 cases
+  and failed both cases that split the opening escape by 30 ms: it emitted
+  an Escape press and literal marker/payload key presses instead of one paste.
+  Complete CR/LF/CRLF, leading-newline, delayed payload, trailing-escape split,
+  ordinary controls, focus and resize cases passed. The exact candidate is
+  rejected for a production dependency pin in this pass. Its successful
+  transport cases do not clear the failing application-input boundary.
+  Qualify the narrower console-isolation artifact before expanding backend work.
+
+The observed failure domains are separate; failures are intermittent within
+their reported ranges, not guaranteed message-count triggers:
+
+| Route/domain | Reported behavior | Required distinction |
+| --- | --- | --- |
+| Direct Windows Terminal, before a message | Cursor can move above the composer into PowerShell; `exit` returns to Jcode, which may then continue working | Distinguish a child shell/console reader from TUI exit and from a visual cursor error |
+| Direct and HERDR, reported around chats 2-5 | Literal `[200~` / `[43d` fragments and consumed Esc/Backspace make input unusable | Paste framing and cursor-output fragments are different evidence; correlate input/output mode ownership |
+| Windows HERDR, including at startup | Cursor can fall below the composer into PowerShell; `exit` closes the pane | Preserve the difference from the direct route; identify which process and pane actually exited |
+
+Do not extrapolate these symptoms outside their reported domains or use the
+historical OpenSSH control as proof of native desktop PowerShell behavior.
+
+### Dependency order and acceptance
+
+```text
+W1 transport + exact identity
+  -> W2 version + existing convergence -> W3 native terminal matrix
+  -> W4 Windows HERDR matrix
+  -> W5 fork artifacts -> W6 coexistence install -> W7 update channel
+```
+
+| Work | Owner lane | Current state | Exit evidence |
+| --- | --- | --- | --- |
+| W1 | Windows runtime | Transport restored; complete runtime receipt pending | Resolve all PATH candidates. Record installed client and long-lived server executable, SHA-256, fork version, runtime directory, socket/pipe/port, lock and launch owner on this device. Distinguish a source archive from a checkout and a file version from a running service. Preserve stock processes/data. |
+| W2 | KCode metadata/convergence | Focused native metadata gate passed; broader gates pending | Run metadata build-script tests, crate tests, product-isolation tests, formatting and required local gates; require nonzero discovered/passed test counts at the exact candidate SHA. Built client and daemon must report a nonzero BASEVERSION-kSEMVER; reject zero, malformed or mismatched release identity. Reuse open fixes after review. |
+| W3 | Windows Terminal | Native mechanism fixtures passed; live application pending | Test direct Windows Terminal with PowerShell: ordinary typing, deliberate Enter/Esc/Backspace, Shift+Enter, short and leading-newline paste, delayed chunks, resize, reconnect, Ctrl+C and exit. Repeat within the observed failure ranges. Use process-owned input/output logs only; no screenshots/recordings. |
+| W4 | Windows HERDR | UNKNOWN live application behavior | Repeat the Windows terminal matrix inside HERDR, including pane exit and session continuity; compare with the direct Windows Terminal control. Resolve the actual host/pane process and launch owner. Mac client, build and remote-view acceptance are outside this pass. |
+| W5 | Build/release | BLOCKED by validation | Use suitable existing self-hosted/free compute; record placement. Produce a KCode-only Windows x64 artifact for this device from the exact tested SHA (qualify ARM64 separately before publishing an ARM64 asset), fork versions, hashes, signing/provenance and nonzero client/server output. Add fork-specific workflow/installer-smoke paths; preserve upstream guard until replacement is validated. |
+| W6 | Device install/coexistence | BLOCKED: no verified artifact/transport | Install trusted local artifact with scripts/install.ps1; verify user/process PATH in a fresh shell, executable hash/version, and correct server attachment. Stock jcode must remain separately launchable. Compare stock state bytes/mtimes/permissions before and after imports and KCode operations. |
+| W7 | Maintained channel | Disabled intentionally | Publish only verified fork artifacts and correct release notes. Then enable fork-only authenticated/checksummed update discovery/install and test upgrade, failed download, wrong product/version/hash and rollback without touching jcode. |
+
+W2 focused commands (standalone metadata gate executed on Windows in the
+2026-10-21 follow-up; remaining workspace/isolation gates still unexecuted):
+
+```text
+pwsh -NoProfile -File scripts/test_build_meta.ps1
+cargo test -p jcode-build-meta
+python -m unittest discover -s tests -p test_kcode_product_isolation.py
+cargo fmt --all -- --check
+```
+
+Before declaring W2 complete, verify that valid explicit fork overrides retain
+precedence, zero overrides cannot produce zero output, missing/invalid root
+metadata fails instead of manufacturing a version, and the selected Windows
+release build preserves the full fork suffix. A test build alone does not
+replace the W1 client/server runtime receipt.
+
+The operator confirmed the one-way boundary: Jcode data may be imported into
+KCode only. Imports remain explicit and opt-in; KCode must never write back
+into Jcode or share a writable home with it. The existing importer implements:
+
+```text
+stock jcode sessions --explicit selected snapshot import--> KCode sessions
+stock jcode state   <------------- no write-back ---------- KCode
+```
+
+Configuration, credentials, caches, logs, sockets/ports, locks, launchers,
+application/package identifiers and update channels require independent KCode
+ownership. Internal Rust/API compatibility names may remain when they cannot
+route runtime writes or stock launches. Continuous cross-device sync is not
+implemented by the snapshot importer and is not claimed here.
