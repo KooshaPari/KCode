@@ -1,5 +1,4 @@
 use super::*;
-use tempfile::TempDir;
 
 fn write_auth_file(path: &std::path::Path, value: serde_json::Value) {
     if let Some(parent) = path.parent() {
@@ -11,7 +10,7 @@ fn write_auth_file(path: &std::path::Path, value: serde_json::Value) {
 #[test]
 fn novita_api_key_import_requires_trust() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -37,7 +36,7 @@ fn novita_api_key_import_requires_trust() {
 #[test]
 fn opencode_api_key_imports_from_trusted_file() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -66,7 +65,7 @@ fn opencode_api_key_imports_from_trusted_file() {
 #[test]
 fn pi_api_key_env_reference_uses_named_env_var() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev_home = std::env::var_os("KCODE_HOME");
     let prev_key = std::env::var_os("PI_OPENAI_KEY");
     crate::env::set_var("KCODE_HOME", dir.path());
@@ -101,7 +100,7 @@ fn pi_api_key_env_reference_uses_named_env_var() {
 #[test]
 fn pi_shell_command_api_keys_are_not_executed() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -126,7 +125,7 @@ fn pi_shell_command_api_keys_are_not_executed() {
 #[test]
 fn load_copilot_oauth_token_from_pi_auth() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -156,7 +155,7 @@ fn load_copilot_oauth_token_from_pi_auth() {
 #[test]
 fn unconsented_source_detects_supported_api_key_files() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -183,7 +182,7 @@ fn unconsented_source_detects_supported_api_key_files() {
 #[test]
 fn source_provider_labels_reports_supported_oauth_and_api_key_imports() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -222,7 +221,7 @@ fn source_provider_labels_reports_supported_oauth_and_api_key_imports() {
 #[test]
 fn openclaw_api_key_imports_from_trusted_file() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -251,7 +250,7 @@ fn openclaw_api_key_imports_from_trusted_file() {
 #[test]
 fn openclaw_oauth_tokens_import_like_pi() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -284,7 +283,7 @@ fn openclaw_oauth_tokens_import_like_pi() {
 #[test]
 fn hermes_api_key_imports_from_credential_pool() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -326,7 +325,7 @@ fn hermes_api_key_imports_from_credential_pool() {
 #[test]
 fn hermes_oauth_tokens_import_from_credential_pool() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -368,7 +367,7 @@ fn hermes_oauth_tokens_import_from_credential_pool() {
 #[test]
 fn hermes_oauth_tokens_parse_rfc3339_expiry() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -406,7 +405,7 @@ fn hermes_oauth_tokens_parse_rfc3339_expiry() {
 #[test]
 fn openclaw_auth_profiles_store_resolves_and_flattens() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
@@ -463,7 +462,7 @@ fn openclaw_auth_profiles_store_resolves_and_flattens() {
 #[test]
 fn openclaw_legacy_flat_auth_json_still_wins_when_present() {
     let _guard = crate::storage::lock_test_env();
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let prev = std::env::var_os("KCODE_HOME");
     crate::env::set_var("KCODE_HOME", dir.path());
 
