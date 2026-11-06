@@ -52,6 +52,11 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
+          # Passed through the environment, never interpolated into the script.
+          # A `${{ inputs.* }}` expression placed directly inside `run:` lets
+          # whoever triggers the workflow inject shell syntax into the step
+          # (SonarCloud githubactions:S7630).
+          RELEASE_TAG: ${{ inputs.jcode_release_tag }}
           # Windows ARM64 is published only after the separate ARM64 runtime
           # qualification, so asking for that asset unconditionally makes
           # `gh release download` fail on an unqualified release.
@@ -74,7 +79,7 @@ jobs:
           for pattern in "${patterns[@]}"; do
             args+=(--pattern "$pattern")
           done
-          gh release download "${{ inputs.jcode_release_tag }}" \
+          gh release download "$RELEASE_TAG" \
             --dir sdk-runtime-assets "${args[@]}"
 
       - name: Prepare platform packages
