@@ -31,4 +31,12 @@ prepare linux-arm64 kcode-linux-aarch64.tar.gz kcode-linux-aarch64 kcode
 prepare darwin-x64 kcode-macos-x86_64.tar.gz kcode-macos-x86_64 kcode
 prepare darwin-arm64 kcode-macos-aarch64.tar.gz kcode-macos-aarch64 kcode
 prepare win32-x64 kcode-windows-x86_64.tar.gz kcode-windows-x86_64.exe kcode.exe
-prepare win32-arm64 kcode-windows-aarch64.tar.gz kcode-windows-aarch64.exe kcode.exe
+# Windows ARM64 is published only after the separate ARM64 runtime
+# qualification (docs/KCODE_ISOLATION.md), so the asset is absent on an
+# unqualified release and preparing this package would fail on a missing
+# tarball. Skip it to keep the rest of the SDK publishable.
+if [[ "${WINDOWS_ARM64_QUALIFIED:-}" == 'true' ]]; then
+  prepare win32-arm64 kcode-windows-aarch64.tar.gz kcode-windows-aarch64.exe kcode.exe
+else
+  echo "skipping win32-arm64: WINDOWS_ARM64_QUALIFIED is not 'true'" >&2
+fi
