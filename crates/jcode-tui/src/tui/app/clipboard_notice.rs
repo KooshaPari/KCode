@@ -78,11 +78,12 @@ impl App {
         let Some(exit) = pending.watch.try_settle() else {
             return false;
         };
-        let pending = self
-            .clipboard
-            .pending
-            .take()
-            .expect("pending copy checked above");
+        // Already checked above, but taking hands ownership of the texts; an
+        // `expect` here would add to the panic-prone budget for a case that
+        // cannot happen, so fall back to "nothing settled" instead.
+        let Some(pending) = self.clipboard.pending.take() else {
+            return false;
+        };
         // A newer copy superseded this one; drop the stale outcome.
         if pending.token != self.clipboard.token {
             return false;
