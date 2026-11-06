@@ -259,7 +259,15 @@ mod tests {
     #[test]
     fn delayed_nonzero_exit_is_unconfirmed_then_fails() {
         let _lock = crate::storage::lock_test_env();
-        let _stubs = StubPath::with(&[("late-fail", "sleep 0.25; exit 1")]);
+        let dir = tempfile::tempdir().expect("temp dir");
+        let sentinel = dir.path().join("release");
+        // The helper exits nonzero only once the test says so, so a descheduled
+        // test thread cannot let it exit before the unconfirmed assertions run.
+        let body = format!(
+            "while [ ! -f '{sentinel}' ]; do sleep 0.02; done; exit 1",
+            sentinel = sentinel.display()
+        );
+        let _stubs = StubPath::with(&[("late-fail", body.as_str())]);
         let start = Instant::now();
         let outcome =
             copy_via_clipboard_helper_within("late-fail", &[], "hello", LIVE_OWNER_WINDOW);
@@ -276,6 +284,7 @@ mod tests {
             None,
             "unobserved helper must not settle"
         );
+        std::fs::write(&sentinel, b"go").expect("release late-failing helper");
         let mut settled = None;
         for _ in 0..200 {
             if let Some(exit) = watch.try_settle() {
@@ -352,16 +361,25 @@ mod ordering_tests {
     use super::test_support::StubPath;
     use super::{Duration, HelperOutcome, TEST_SETTLE_WINDOW, copy_via_clipboard_helper_within};
 
+    /// Short enough that a never-exiting helper is reported unconfirmed quickly,
+    /// so the resident-helper case does not wait out the settle window.
+    const LIVE_OWNER_WINDOW: Duration = Duration::from_millis(10);
+
     /// Same chain as the Linux arm of `copy_to_clipboard`, returning the first
-    /// helper whose probe did not fail.
+    /// helper whose probe did not fail. Tests that expect a resident (never
+    /// exiting) helper pass the short window so the suite does not wait out the
+    /// generous settle window.
     fn first_helper_outcome() -> Option<(&'static str, HelperOutcome)> {
+        first_helper_outcome_within(TEST_SETTLE_WINDOW)
+    }
+
+    fn first_helper_outcome_within(window: Duration) -> Option<(&'static str, HelperOutcome)> {
         for (program, args) in [
             ("wl-copy", &[][..]),
             ("xclip", &["-selection", "clipboard"][..]),
             ("xsel", &["--clipboard", "--input"][..]),
         ] {
-            let outcome =
-                copy_via_clipboard_helper_within(program, args, "payload", TEST_SETTLE_WINDOW);
+            let outcome = copy_via_clipboard_helper_within(program, args, "payload", window);
             if !outcome.failed() {
                 return Some((program, outcome));
             }
@@ -442,7 +460,8 @@ mod ordering_tests {
             ("xclip", "cat > /dev/null; exit 0"),
         ]);
 
-        let (program, outcome) = first_helper_outcome().expect("wl-copy must be tried first");
+        let (program, outcome) =
+            first_helper_outcome_within(LIVE_OWNER_WINDOW).expect("wl-copy must be tried first");
         assert_eq!(program, "wl-copy");
         assert!(
             matches!(&outcome, HelperOutcome::Unconfirmed(_)),

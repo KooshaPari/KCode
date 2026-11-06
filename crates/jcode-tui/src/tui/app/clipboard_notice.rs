@@ -124,8 +124,12 @@ impl App {
     ) {
         let copy = super::helpers::copy_to_clipboard(&target.content);
         self.record_copy_badge_key_press(key);
-        if copy.outcome != CopyOutcome::Unconfirmed {
-            self.record_copy_badge_feedback(key, copy.outcome == CopyOutcome::Copied);
+        match copy.outcome {
+            CopyOutcome::Copied => self.record_copy_badge_feedback(key, true),
+            CopyOutcome::Failed => self.record_copy_badge_feedback(key, false),
+            // Neither a checkmark nor a cross is honest here, and a feedback mark
+            // left over from an earlier copy would claim this one succeeded.
+            CopyOutcome::Unconfirmed => self.copy_badge_ui.copied_feedback = None,
         }
         self.report_clipboard_copy(
             copy,
