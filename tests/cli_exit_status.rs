@@ -7,14 +7,14 @@ fn invoke(args: &[&str]) -> Output {
         .current_dir(root.path())
         .env_clear()
         .env("HOME", root.path())
-        .env("JCODE_HOME", root.path().join("jcode"))
+        .env("KCODE_HOME", root.path().join("kcode"))
         .env("JCODE_NO_TELEMETRY", "1")
         .env("NO_COLOR", "1")
         .args(args)
         .output()
         .expect("run jcode CLI");
     assert!(
-        !root.path().join("jcode").exists(),
+        !root.path().join("kcode").exists(),
         "parsing must exit before creating application state"
     );
     output
