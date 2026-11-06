@@ -101,6 +101,7 @@ pub mod subscription_api;
 pub mod subscription_catalog;
 pub mod subscription_notice;
 pub mod telegram;
+pub mod test_temp;
 pub mod telemetry {
     pub use jcode_telemetry_core::*;
 }

@@ -86,7 +86,7 @@ fn oauth_tokens_without_id_token() -> Result<()> {
 #[test]
 fn save_openai_tokens_uses_jcode_home_sandbox() -> Result<()> {
     let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().map_err(|e| anyhow!(e))?;
+    let temp = crate::test_temp::tempdir().map_err(|e| anyhow!(e))?;
     let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
 
     let tokens = OAuthTokens {
@@ -113,7 +113,7 @@ fn save_openai_tokens_uses_jcode_home_sandbox() -> Result<()> {
 #[test]
 fn save_claude_tokens_preserves_existing_account_metadata() -> Result<()> {
     let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().map_err(|e| anyhow!(e))?;
+    let temp = crate::test_temp::tempdir().map_err(|e| anyhow!(e))?;
     let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
 
     crate::auth::claude::upsert_account(crate::auth::claude::AnthropicAccount {

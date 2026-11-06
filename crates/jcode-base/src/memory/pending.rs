@@ -759,7 +759,7 @@ mod scoped_tests {
             .unwrap_or_else(|error| error.into_inner());
         let home = HomeGuard {
             previous: std::env::var_os("KCODE_HOME"),
-            _dir: tempfile::tempdir().expect("isolated memory home"),
+            _dir: crate::test_temp::tempdir().expect("isolated memory home"),
         };
         crate::env::set_var("KCODE_HOME", home._dir.path());
         clear_all_pending_memory();

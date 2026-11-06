@@ -78,7 +78,7 @@ where
         .duration_since(UNIX_EPOCH)
         .expect("time went backwards")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("kcode-test-{}", unique));
+    let dir = crate::test_temp::root().join(format!("kcode-test-{}", unique));
     fs::create_dir_all(&dir).expect("create temp dir");
     crate::env::set_var("KCODE_HOME", &dir);
 
