@@ -532,6 +532,16 @@ jobs:
         # tests are not otherwise run here at all, so without this step it would
         # never execute. Fetch the model first (~87MB) so the cohort is real
         # rather than a silent skip.
+        #
+        # 1800s, not 600s, for the same reason as the retention-readiness cohort
+        # above: the workspace declares no `default-members`, so the 3300s
+        # "Compile library and binary tests" step builds only the default member
+        # `kcode` and never pre-builds the jcode-embedding harness. This cohort
+        # therefore absorbs a cold compile of tract-data/tract-core/tract-
+        # nnef/tract-hir. It hit exactly 600s and failed with exit 124 on run
+        # 42002567377 (a warm run of the same step takes 215s), so 600s was
+        # measuring the compile, not the test. 1800s covers the one-time cold
+        # compile and nothing more; the test itself is sub-second once built.
         run: |
           set -euo pipefail
           model_dir="$HOME/.jcode/models/all-MiniLM-L6-v2"
@@ -543,7 +553,7 @@ jobs:
           # degrade back into a silent skip.
           test -s "$model_dir/model.onnx"
           test -s "$model_dir/tokenizer.json"
-          python3 .github/scripts/run_with_timeout.py 600 \
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-embedding --lib -- --nocapture \
             | tee /tmp/embedding-cohort.log
