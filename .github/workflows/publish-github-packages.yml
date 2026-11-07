@@ -303,8 +303,10 @@ jobs:
           fi
           CRANE=$(command -v crane 2>/dev/null || echo "./crane")
 
+          # Authenticate from the step env only. Do not pass the token inline
+          # as `env TOKEN=... cmd`: that puts the secret in /proc/<pid>/cmdline
+          # where `ps` and other local users can read it.
           echo "$GHCR_TOKEN" | $CRANE auth login ghcr.io -u "$GHCR_USER" --password-stdin 2>/dev/null || true
-          env GHCR_TOKEN="${{ secrets.GITHUB_TOKEN }}" $CRANE auth login ghcr.io -u "$GHCR_USER" --password-stdin 2>/dev/null || true
 
           # Verify the tag exists and is resolvable
           if $CRANE digest "${FULL_TAG}" >/dev/null 2>&1; then
