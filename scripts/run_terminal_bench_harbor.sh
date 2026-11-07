@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 DEFAULT_BINARY_DIR=${KCODE_HARBOR_BINARY_DIR:-/tmp/jcode-compat-dist}
-DEFAULT_BINARY_PATH=${KCODE_HARBOR_BINARY:-$DEFAULT_BINARY_DIR/jcode-linux-x86_64}
+DEFAULT_BINARY_PATH=${KCODE_HARBOR_BINARY:-$DEFAULT_BINARY_DIR/kcode-linux-x86_64}
 DEFAULT_MODEL=${KCODE_TB_MODEL:-openai/gpt-5.4}
 DEFAULT_PATH=${KCODE_TB_PATH:-/tmp/terminal-bench-2}
 

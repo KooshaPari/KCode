@@ -38,11 +38,11 @@ import time
 from pathlib import Path
 
 ASSET_STEM = {
-    ("linux", "x86_64"): "jcode-linux-x86_64",
-    ("linux", "aarch64"): "jcode-linux-aarch64",
-    ("darwin", "x86_64"): "jcode-macos-x86_64",
-    ("darwin", "arm64"): "jcode-macos-aarch64",
-    ("darwin", "aarch64"): "jcode-macos-aarch64",
+    ("linux", "x86_64"): "kcode-linux-x86_64",
+    ("linux", "aarch64"): "kcode-linux-aarch64",
+    ("darwin", "x86_64"): "kcode-macos-x86_64",
+    ("darwin", "arm64"): "kcode-macos-aarch64",
+    ("darwin", "aarch64"): "kcode-macos-aarch64",
 }
 
 REPO_DIR = Path(__file__).resolve().parent.parent
