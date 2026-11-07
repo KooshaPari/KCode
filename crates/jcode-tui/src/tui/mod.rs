@@ -152,9 +152,9 @@ pub fn enable_keyboard_enhancement() -> bool {
     result
 }
 
-fn inside_tmux() -> bool {
-    std::env::var_os("TMUX").is_some_and(|value| !value.is_empty())
-}
+pub use keyboard_protocol::prepare_keyboard_input;
+
+use keyboard_protocol::inside_tmux;
 
 fn enable_keyboard_enhancement_to(
     writer: &mut impl std::io::Write,

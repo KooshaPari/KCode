@@ -917,7 +917,10 @@ jobs:
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, desk-linux]
-    timeout-minutes: 35
+    # Two attempts spent over 20 minutes restoring cache; one completed the
+    # x64 check but was cancelled shortly after starting ARM64. Allow both
+    # targets time to run without changing their checks.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:

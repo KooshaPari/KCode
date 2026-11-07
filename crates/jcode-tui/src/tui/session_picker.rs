@@ -25,6 +25,7 @@ pub use jcode_tui_session_picker::{
     SessionSource,
 };
 
+mod entry;
 mod filter;
 mod loading;
 mod memory;
@@ -2378,11 +2379,12 @@ impl SessionPicker {
         // Initialize mermaid image picker (fast default, optional probe via env)
         super::mermaid::init_picker();
         let perf_policy = crate::perf::tui_policy();
-        let keyboard_enhanced = if perf_policy.enable_keyboard_enhancement {
-            super::enable_keyboard_enhancement()
-        } else {
-            false
-        };
+        let keyboard_enhanced =
+            perf_policy.enable_keyboard_enhancement && super::enable_keyboard_enhancement();
+        let keyboard_enhanced =
+            super::prepare_keyboard_input(keyboard_enhanced).inspect_err(|_| {
+                jcode_tui_style::restore_terminal_quietly();
+            })?;
         let mouse_capture = perf_policy.enable_mouse_capture;
         crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
         if mouse_capture {
@@ -2437,34 +2439,7 @@ impl SessionPicker {
     }
 }
 
-/// Run the interactive session picker
-/// Returns the selected session ID, or None if the user cancelled
-pub fn pick_session() -> Result<Option<PickerResult>> {
-    // Check if we have a TTY
-    if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
-        anyhow::bail!(
-            "Session picker requires an interactive terminal. Use --resume <session_id> directly."
-        );
-    }
-
-    // Load sessions grouped by server
-    let (server_groups, orphan_sessions) = load_sessions_grouped()?;
-
-    // Check if there are any sessions at all
-    let total_sessions: usize = server_groups
-        .iter()
-        .map(|g| g.sessions.len())
-        .sum::<usize>()
-        + orphan_sessions.len();
-
-    if total_sessions == 0 {
-        eprintln!("No sessions found.");
-        return Ok(None);
-    }
-
-    let picker = SessionPicker::new_grouped(server_groups, orphan_sessions);
-    picker.run()
-}
+pub use entry::pick_session;
 
 #[cfg(test)]
 #[path = "session_picker_tests.rs"]

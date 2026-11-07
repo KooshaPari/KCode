@@ -1,3 +1,6 @@
+#[path = "src/fork_version.rs"]
+mod fork_version;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -13,15 +16,27 @@ use std::process::Command;
 // parse the root `Cargo.toml` `[package].version` for the base semver instead
 // of `CARGO_PKG_VERSION`.
 
-fn main() {
+fn main() -> Result<(), String> {
     let repo_root = repo_root();
 
-    let pkg_version = root_package_version(&repo_root).unwrap_or_else(|| "0.0.0".to_string());
-    let base_version = parse_semver(&pkg_version).unwrap_or((0, 0, 0));
-    let build_semver = resolve_build_semver(base_version).unwrap_or_else(|err| {
-        eprintln!("cargo:warning=failed to resolve auto build semver: {err}");
-        pkg_version.clone()
-    });
+    let pkg_version =
+        root_package_version(&repo_root).ok_or("KCode root package version is required")?;
+    let pkg_version = fork_version::parse(&pkg_version)
+        .ok_or("KCode root version must use nonzero BASE-kFORK_SEMVER identity")?;
+    let base_version =
+        parse_semver(&pkg_version).ok_or("KCode root package version must be nonzero")?;
+    let explicit_override = explicit_build_semver_override()?;
+    let build_semver = match &explicit_override {
+        Some(value) => value.clone(),
+        None => resolve_build_semver(
+            base_version,
+            pkg_version.split_once('-').map(|(_, suffix)| suffix),
+        )
+        .unwrap_or_else(|err| {
+            eprintln!("cargo:warning=failed to resolve auto build semver: {err}");
+            pkg_version.clone()
+        }),
+    };
     // Parse the resolved build semver into (major, minor, patch) + optional
     // channel segment (e.g. `k0.1.2` in `1.5.3-k0.1.2`). The channel is
     // preserved through KCODE_VERSION, KCODE_BASE_SEMVER, and KCODE_UPDATE_SEMVER
@@ -42,7 +57,7 @@ fn main() {
         "{}.{}.{}{}",
         base_version.0, base_version.1, base_version.2, channel_suffix
     );
-    let update_semver = if explicit_build_semver_override().is_some() {
+    let update_semver = if explicit_override.is_some() {
         build_semver.clone()
     } else {
         base_semver.clone()
@@ -202,6 +217,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=KCODE_BUILD_GIT_DATE");
     println!("cargo:rerun-if-env-changed=KCODE_BUILD_GIT_DIRTY");
     println!("cargo:rerun-if-env-changed=KCODE_BUILD_GIT_TAG");
+    Ok(())
 }
 
 /// Workspace root, derived from this crate's manifest dir (`crates/jcode-build-meta`).
@@ -241,12 +257,7 @@ fn root_package_version(repo_root: &Path) -> Option<String> {
 }
 
 fn parse_semver(value: &str) -> Option<(u32, u32, u32)> {
-    let trimmed = value.trim().trim_start_matches('v');
-    let mut parts = trimmed.split('.');
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next()?.parse().ok()?;
-    let patch = parts.next()?.parse().ok()?;
-    Some((major, minor, patch))
+    parse_semver_with_channel(value).map(|(major, minor, patch, _)| (major, minor, patch))
 }
 
 /// Like `parse_semver` but also extracts an optional channel segment that
@@ -256,7 +267,7 @@ fn parse_semver(value: &str) -> Option<(u32, u32, u32)> {
 /// `MAJOR.MINOR.PATCH` semver — including empty channels (`1.2.3-`).
 ///
 /// Examples:
-///   `0.0.0`              -> Some((0, 0, 0, None))
+///   `0.0.0`              -> None (placeholder identity)
 ///   `1.2.3`              -> Some((1, 2, 3, None))
 ///   `v1.2.3`             -> Some((1, 2, 3, None))
 ///   `1.2.3-k0.1.2`       -> Some((1, 2, 3, Some("k0.1.2")))
@@ -277,7 +288,7 @@ fn parse_semver_with_channel(value: &str) -> Option<(u32, u32, u32, Option<Strin
     let major = nums.next()?.parse().ok()?;
     let minor = nums.next()?.parse().ok()?;
     let patch = nums.next()?.parse().ok()?;
-    if nums.next().is_some() {
+    if nums.next().is_some() || (major, minor, patch) == (0, 0, 0) || channel_part == Some("") {
         return None;
     }
     let channel = channel_part
@@ -297,18 +308,22 @@ fn channel_suffix(channel: Option<&str>) -> String {
     }
 }
 
-fn explicit_build_semver_override() -> Option<String> {
-    std::env::var("KCODE_BUILD_SEMVER")
-        .ok()
-        .map(|value| value.trim().trim_start_matches('v').to_string())
-        .filter(|value| parse_semver_with_channel(value).is_some())
+fn explicit_build_semver_override() -> Result<Option<String>, String> {
+    match std::env::var("KCODE_BUILD_SEMVER") {
+        Ok(value) => fork_version::parse(&value).map(Some).ok_or_else(|| {
+            "KCODE_BUILD_SEMVER must use nonzero BASE-kFORK_SEMVER identity".to_string()
+        }),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            Err("KCODE_BUILD_SEMVER is not valid Unicode".to_string())
+        }
+    }
 }
 
-fn resolve_build_semver(base_version: (u32, u32, u32)) -> Result<String, String> {
-    if let Some(explicit) = explicit_build_semver_override() {
-        return Ok(explicit);
-    }
-
+fn resolve_build_semver(
+    base_version: (u32, u32, u32),
+    channel: Option<&str>,
+) -> Result<String, String> {
     // Dev builds derive the patch number deterministically from committed git
     // state: `base.patch + <commits since the base-version tag>`. This is a pure
     // function of HEAD, so the emitted KCODE_SEMVER/KCODE_VERSION only change when
@@ -323,7 +338,13 @@ fn resolve_build_semver(base_version: (u32, u32, u32)) -> Result<String, String>
     // keeps incremental rebuilds incremental.
     let offset = commits_since_base_tag(base_version).unwrap_or(0);
     let patch = base_version.2.saturating_add(offset);
-    Ok(format!("{}.{}.{}", base_version.0, base_version.1, patch))
+    Ok(format!(
+        "{}.{}.{}{}",
+        base_version.0,
+        base_version.1,
+        patch,
+        channel_suffix(channel)
+    ))
 }
 
 /// Count commits between the base-version tag (`vMAJOR.MINOR.PATCH`) and HEAD.
@@ -399,7 +420,7 @@ mod tests {
 
     #[test]
     fn parse_semver_with_channel_strict_semver() {
-        assert_eq!(parse_semver_with_channel("0.0.0"), Some((0, 0, 0, None)));
+        assert_eq!(parse_semver_with_channel("0.0.0"), None);
         assert_eq!(parse_semver_with_channel("1.2.3"), Some((1, 2, 3, None)));
         assert_eq!(
             parse_semver_with_channel("0.91.42"),
@@ -409,7 +430,7 @@ mod tests {
 
     #[test]
     fn parse_semver_with_channel_strips_v_prefix() {
-        assert_eq!(parse_semver_with_channel("v0.0.0"), Some((0, 0, 0, None)));
+        assert_eq!(parse_semver_with_channel("v0.0.0"), None);
         assert_eq!(parse_semver_with_channel("v1.2.3"), Some((1, 2, 3, None)));
     }
 
@@ -450,6 +471,16 @@ mod tests {
         assert_eq!(parse_semver_with_channel("a.b.c"), None);
         // Empty channel is not a real channel.
         assert_eq!(parse_semver_with_channel("1.2.3-"), None);
+    }
+
+    #[test]
+    fn fork_package_version_preserves_numeric_base_and_channel() {
+        assert_eq!(parse_semver("0.93.0-k0.1.0"), Some((0, 93, 0)));
+        assert_eq!(
+            parse_semver_with_channel("0.93.0-k0.1.0"),
+            Some((0, 93, 0, Some("k0.1.0".to_string())))
+        );
+        assert_eq!(parse_semver_with_channel("0.0.0-k0.1.0-dev"), None);
     }
 
     #[test]
