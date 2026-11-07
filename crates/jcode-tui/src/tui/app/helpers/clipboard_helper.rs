@@ -31,6 +31,25 @@ use std::time::{Duration, Instant};
 #[cfg(not(any(windows, target_os = "macos")))]
 pub(crate) const HELPER_FAIL_FAST_WINDOW: Duration = Duration::from_millis(150);
 
+#[cfg(not(any(windows, target_os = "macos")))]
+#[derive(Debug, PartialEq, Eq)]
+enum PollDecision {
+    Accepted,
+    Failed,
+    Continue,
+    Unconfirmed,
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn poll_decision(exit: Result<Option<bool>, ()>, deadline_reached: bool) -> PollDecision {
+    match exit {
+        Ok(Some(true)) => PollDecision::Accepted,
+        Ok(Some(false)) | Err(()) => PollDecision::Failed,
+        Ok(None) if deadline_reached => PollDecision::Unconfirmed,
+        Ok(None) => PollDecision::Continue,
+    }
+}
+
 /// What the fail-fast probe observed.
 #[cfg(not(any(windows, target_os = "macos")))]
 #[derive(Debug)]
@@ -99,35 +118,32 @@ pub(crate) fn copy_via_clipboard_helper_within(
 
     let deadline = Instant::now() + window;
     loop {
-        match child.try_wait() {
-            // Exited zero: the write was accepted.
-            Ok(Some(status)) if status.success() => return HelperOutcome::Accepted,
-            // Exited nonzero (e.g. xclip with no DISPLAY): let the next
-            // fallback try.
-            Ok(Some(_)) => return HelperOutcome::Failed,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    // Unproven. The reaper owns the child from here, waits for
-                    // it, and publishes the real exit status later.
-                    let (watch, tx) = ClipboardWatch::channel();
-                    std::thread::spawn(move || {
-                        let exit = match child.wait() {
-                            Ok(status) if status.success() => HelperExit::ExitedZero,
-                            _ => HelperExit::ExitedNonZero,
-                        };
-                        // Dropping the watch before the exit is observed is
-                        // fine; the send fails and this thread has still
-                        // reaped the child.
-                        let _ = tx.send(exit);
-                    });
-                    return HelperOutcome::Unconfirmed(watch);
-                }
-                std::thread::sleep(Duration::from_millis(5));
+        let exit = child
+            .try_wait()
+            .map(|status| status.map(|status| status.success()))
+            .map_err(|_| ());
+        match poll_decision(exit, Instant::now() >= deadline) {
+            PollDecision::Accepted => return HelperOutcome::Accepted,
+            PollDecision::Failed => return HelperOutcome::Failed,
+            PollDecision::Unconfirmed => {
+                let (watch, tx) = ClipboardWatch::channel();
+                std::thread::spawn(move || {
+                    let exit = match child.wait() {
+                        Ok(status) if status.success() => HelperExit::ExitedZero,
+                        _ => HelperExit::ExitedNonZero,
+                    };
+                    let _ = tx.send(exit);
+                });
+                return HelperOutcome::Unconfirmed(watch);
             }
-            Err(_) => return HelperOutcome::Failed,
+            PollDecision::Continue => std::thread::sleep(Duration::from_millis(5)),
         }
     }
 }
+
+#[cfg(all(test, not(any(windows, target_os = "macos"))))]
+#[path = "clipboard_poll_tests.rs"]
+mod poll_decision_tests;
 
 /// Test-only stub PATH harness shared by the helper and ordering tests.
 #[cfg(all(test, not(any(windows, target_os = "macos"))))]
