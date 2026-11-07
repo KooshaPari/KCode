@@ -37,6 +37,7 @@ include!("tests/scroll_copy_03.rs");
 include!("tests/resize_viewport.rs");
 include!("tests/resize_anchor.rs");
 include!("tests/input_copy_selection.rs");
+include!("tests/clipboard_notice_231.rs");
 include!("tests/onboarding_flow.rs");
 include!("tests/onboarding_golden.rs");
 include!("tests/onboarding_eval.rs");
@@ -105,10 +106,9 @@ fn kv_cache_signature_prefix_match_detects_prefix_mutation() {
 fn kv_cache_signature_ignores_non_transmitted_message_metadata() {
     use crate::message::{ContentBlock, Message, Role};
 
-    // A boundary assistant message that has already been sent upstream. The
-    // provider only ever receives its `Text` block; the struct-level timestamp
-    // and tool_duration_ms, plus any history-only ReasoningTrace block, are
-    // never part of the prompt token stream.
+    // A boundary assistant message already sent upstream: the provider only ever
+    // receives its `Text` block, never the struct-level timestamp/tool_duration_ms
+    // or any history-only ReasoningTrace block.
     let baseline_messages = vec![
         Message::user("first prompt"),
         Message {

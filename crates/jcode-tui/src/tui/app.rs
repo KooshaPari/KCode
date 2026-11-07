@@ -54,6 +54,8 @@ mod auth;
 mod auth_account_picker_saved_accounts;
 mod auth_remote;
 mod catchup;
+mod clipboard_copy;
+mod clipboard_notice;
 mod commands;
 mod commands_cloud;
 mod commands_colors;
@@ -169,10 +171,9 @@ struct PendingLocalTransfer {
 }
 
 /// A reasoning trace anchored in the transcript during the current turn
-/// (`current` display mode). `wrapped_lines_at_anchor` snapshots the
-/// transcript's total wrapped-line count when the trace anchored; once the
-/// transcript grows a viewport past that point the trace is provably above
-/// the tail-following viewport and can be removed with zero visible motion.
+/// (`current` display mode). `wrapped_lines_at_anchor` snapshots the total
+/// wrapped-line count at anchor; once the transcript grows a viewport past it,
+/// the trace is provably above the tail-following viewport and can be removed.
 #[derive(Debug, Clone, Copy)]
 struct TurnReasoningTrace {
     display_index: usize,
@@ -212,10 +213,9 @@ pub(in crate::tui::app) struct KvCacheRequestSignature {
 
 #[derive(Debug, Clone)]
 struct KvCacheBaseline {
-    /// Session this baseline was captured for. Baselines must only be diffed
-    /// against requests from the same session; otherwise a session switch makes
-    /// the new (often smaller) history look like a broken prefix and produces a
-    /// spurious `harness:_prefix_changed` miss.
+    /// Session this baseline was captured for. Diff only against requests from
+    /// the same session: a switch makes the new (often smaller) history look
+    /// like a broken prefix and produces a spurious `harness:_prefix_changed` miss.
     session_id: Option<String>,
     /// Cache-history generation this baseline belongs to. Compaction replaces
     /// the provider-facing transcript, so a baseline captured before it must
@@ -371,8 +371,7 @@ struct PendingFallbackOffer {
     remote_resend: Option<FallbackResendPayload>,
 }
 
-/// The failed remote turn's payload, held by a [`PendingFallbackOffer`] so a
-/// one-keypress accept can resend it after the route switch completes.
+/// Payload of the failed remote turn, resent by a one-keypress fallback accept.
 #[derive(Debug, Clone)]
 struct FallbackResendPayload {
     /// Expanded message content that was sent to the server.
@@ -1583,6 +1582,7 @@ pub struct App {
     history_draft: Option<(String, usize)>,
     // Short-lived notice for status feedback (model switch, cycle diff mode, etc.)
     status_notice: Option<(String, Instant)>,
+    clipboard: ClipboardState,
     // Distinct learned-keybinding nudge ("you keep doing X the slow way, press
     // <key>"). Rendered in its own pop-out color, separate from status_notice,
     // and shown at most once per session.
