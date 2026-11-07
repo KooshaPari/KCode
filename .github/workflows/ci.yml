@@ -933,9 +933,10 @@ jobs:
           # job 121317250103 (2026-10-26), blocking the self-hosted runner the
           # whole time. The `-notarget` key + `cache-targets: "false"` make the
           # restore miss fast; PR #183 already applies this to the Build job.
-          key: windows-cross-check-notarget
+          key: windows-cross-check-notarget-nobin
           cache-all-crates: "true"
           cache-targets: "false"
+          cache-bin: "false"
 
       - name: Install LLVM toolchain for cargo-xwin
         run: |
