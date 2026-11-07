@@ -221,6 +221,7 @@ jobs:
         shell: bash
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
           RELEASE_TAG: ${{ inputs.jcode_release_tag }}
         run: |
           set -euo pipefail
@@ -245,7 +246,7 @@ jobs:
           ./crane --version
 
           # Authenticate crane to GHCR
-          echo "$GHCR_TOKEN" | ./crane auth login ghcr.io -u ${{ github.actor }} --password-stdin
+          echo "$GHCR_TOKEN" | ./crane auth login ghcr.io -u "$GHCR_USER" --password-stdin
 
           # Create a minimal OCI image with the binary as the sole layer
           VERSION="$RELEASE_TAG"
@@ -302,8 +303,8 @@ jobs:
           fi
           CRANE=$(command -v crane 2>/dev/null || echo "./crane")
 
-          echo "$GHCR_TOKEN" | $CRANE auth login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null || true
-          env GHCR_TOKEN="${{ secrets.GITHUB_TOKEN }}" $CRANE auth login ghcr.io -u ${{ github.actor }} --password-stdin 2>/dev/null || true
+          echo "$GHCR_TOKEN" | $CRANE auth login ghcr.io -u "$GHCR_USER" --password-stdin 2>/dev/null || true
+          env GHCR_TOKEN="${{ secrets.GITHUB_TOKEN }}" $CRANE auth login ghcr.io -u "$GHCR_USER" --password-stdin 2>/dev/null || true
 
           # Verify the tag exists and is resolvable
           if $CRANE digest "${FULL_TAG}" >/dev/null 2>&1; then
@@ -313,6 +314,7 @@ jobs:
           fi
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
           RELEASE_TAG: ${{ inputs.jcode_release_tag }}
 
   summary:
