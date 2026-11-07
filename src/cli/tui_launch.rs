@@ -91,7 +91,7 @@ pub async fn run_tui_client(
     update_sim: bool,
 ) -> Result<()> {
     startup_profile::mark("tui_client_enter");
-    let (terminal, tui_runtime) = init_tui_runtime()?;
+    let (terminal, mut tui_runtime) = init_tui_runtime()?;
     startup_profile::mark("tui_terminal_init");
     startup_profile::mark("mermaid_picker");
     startup_profile::mark("config_load");
