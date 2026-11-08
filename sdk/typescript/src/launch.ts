@@ -613,15 +613,15 @@ export async function launchInstance(options: LaunchOptions = {}): Promise<Launc
       cwd: options.workingDir ?? process.cwd(),
       env: {
         ...process.env,
-        JCODE_HOME: kcodeHome,
-        JCODE_RUNTIME_DIR: runtimeDir,
-        JCODE_API_SOCKET: socketPath,
-        JCODE_SOCKET: path.join(runtimeDir, "kcode.sock"),
+        KCODE_HOME: kcodeHome,
+        KCODE_RUNTIME_DIR: runtimeDir,
+        KCODE_API_SOCKET: socketPath,
+        KCODE_SOCKET: path.join(runtimeDir, "kcode.sock"),
         ...options.env,
         ...(options.swarmModel === undefined
           ? {}
-          : { JCODE_SWARM_MODEL: options.swarmModel }),
-        ...(options.wakeMode === undefined ? {} : { JCODE_WAKE_MODE: options.wakeMode }),
+          : { KCODE_SWARM_MODEL: options.swarmModel }),
+        ...(options.wakeMode === undefined ? {} : { KCODE_WAKE_MODE: options.wakeMode }),
       },
       stdio: ["ignore", "ignore", options.inheritStderr ? "inherit" : "pipe"],
       detached: false,
@@ -640,7 +640,7 @@ export async function launchInstance(options: LaunchOptions = {}): Promise<Launc
     exited = { code, signal };
   });
 
-  // A spawn failure (jcode not installed, which is the most likely first-run
+  // A spawn failure (kcode not installed, which is the most likely first-run
   // problem) emits "error" on the child. Node treats an unlistened "error" as
   // a fatal throw from deep inside child_process, so without this the caller
   // cannot catch it at all: their process dies with a raw ENOENT stack instead

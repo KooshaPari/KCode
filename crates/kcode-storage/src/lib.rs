@@ -16,6 +16,10 @@ const JCODE_TO_KCODE_ENV: &[(&str, &str)] = &[
     ("JCODE_BINARY", "KCODE_BINARY"),
     ("JCODE_API_SOCKET", "KCODE_API_SOCKET"),
     ("JCODE_CONFIG", "KCODE_CONFIG"),
+    ("JCODE_RUNTIME_DIR", "KCODE_RUNTIME_DIR"),
+    ("JCODE_SOCKET", "KCODE_SOCKET"),
+    ("JCODE_SWARM_MODEL", "KCODE_SWARM_MODEL"),
+    ("JCODE_WAKE_MODE", "KCODE_WAKE_MODE"),
     // JCODE_HOME handled in kcode_dir() with explicit deprecation message
 ];
 
