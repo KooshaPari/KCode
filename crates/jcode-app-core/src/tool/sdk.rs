@@ -135,7 +135,7 @@ pub(crate) fn apply_definitions(
                 defer_loading: false,
             });
         }
-        tools.retain(|t| !tool_name_is_disabled(&disabled, &t.name));
+        tools.retain(|t| !tool_name_is_disabled(&disabled, &t.name, &[]));
     }
     tools.sort_by(|a, b| a.name.cmp(&b.name));
     tools
@@ -184,7 +184,7 @@ async fn execute_with_timeout(
             .ok_or_else(|| anyhow::anyhow!("SDK tool configuration disappeared"))?;
         anyhow::ensure!(
             overlay.config.custom.iter().any(|tool| tool.name == name)
-                && !tool_name_is_disabled(&overlay.config.disabled.iter().cloned().collect(), name),
+                && !tool_name_is_disabled(&overlay.config.disabled.iter().cloned().collect(), name, &[]),
             "SDK tool is no longer enabled: {name}"
         );
         let sender = overlay
