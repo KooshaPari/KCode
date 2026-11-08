@@ -5,6 +5,13 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  # Needed for two real cases, both observed on this fork:
+  #   1. Re-running CI for a commit that was pushed while the self-hosted
+  #      runners were offline. No run is created, so `gh run rerun` has nothing
+  #      to target, and pushing an empty commit to nudge CI is not acceptable.
+  #   2. Validating a long job (Build & Test is ~45 min) without adding a
+  #      throwaway commit to the branch under review.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -125,12 +132,6 @@ jobs:
         continue-on-error: true
         run: cargo fmt --all -- --check
 
-      - name: Check all targets and all features
-        run: cargo check --all-targets --all-features
-
-      - name: Run clippy with warnings denied
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
       - name: Enforce Cargo.lock is up to date
         shell: bash
         # Adding a dependency without regenerating Cargo.lock breaks every
@@ -152,6 +153,23 @@ jobs:
         shell: bash
         run: python3 scripts/check_code_size_budget.py
 
+      - name: Enforce no pre-rename symbols in build paths
+        shell: bash
+        # A build-config file is not compiled, so nothing type-checks the target
+        # names and environment variables it sets. Three real defects shipped
+        # this way: CI ran `cargo build -p jcode --bin jcode` and referenced
+        # `jcode.exe` (no such package, no such binary); release.yml set
+        # JCODE_RELEASE_BUILD / JCODE_CI_BUILD / JCODE_BUILD_SEMVER, which
+        # crates/jcode-build-meta/build.rs never reads, so every release was a
+        # dev-mode build whose own installer rejected it; and
+        # .github/scripts/verify_windows_install.ps1 verified a `.jcode` install
+        # the fork never performs. The gate scans .github/workflows/,
+        # .github/scripts/, scripts/, install.sh, install.ps1, Cargo.toml and
+        # .cargo/; crates/, src/ and tests/ keep `jcode` crate, library and
+        # ~/.jcode data names legitimately. Known pre-existing occurrences are
+        # enumerated in the gate's ratchet register and printed each run.
+        run: bash scripts/check_symbol_drift.sh
+
       - name: Enforce oversized-test ratchet
         shell: bash
         run: python3 scripts/check_test_size_budget.py
@@ -168,19 +186,84 @@ jobs:
         shell: bash
         run: python3 scripts/check_dependency_boundaries.py
 
-      - name: Enforce Rust and TypeScript SDK surface parity
-        shell: bash
-        run: cargo test -p jcode-sdk parity -- --nocapture
-
       - name: Enforce wildcard re-export ratchet
         shell: bash
         run: python3 scripts/check_wildcard_reexport_budget.py
+
+  cargo-check:
+    name: Cargo Check & Parity
+    # Split out of `Quality Guardrails` for the same reason `clippy` was
+    # (#1796, #1803) and `fmt` before that: `cargo check --all-targets
+    # --all-features` compiles the entire workspace and pushed the quality
+    # job past its 45-minute limit at run 41416765384, cancelling it at
+    # step 8 before the seventeen cheap ratchet gates above could run. Those
+    # gates take seconds and must never be blinded by a compile. Cargo check,
+    # the parity test and cargo-machete get their own 90-minute budget so
+    # their cost is their own signal.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    runs-on: [self-hosted, desk-linux]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: quality-ubuntu-notarget
+          cache-all-crates: "true"
+          cache-targets: "false"
+
+      - name: Check all targets and all features
+        run: cargo check --all-targets --all-features
+
+      - name: Enforce Rust and TypeScript SDK surface parity
+        shell: bash
+        run: cargo test -p jcode-sdk parity -- --nocapture
 
       - name: Enforce no unused dependencies
         shell: bash
         run: |
           cargo install cargo-machete --locked
           cargo machete
+
+  clippy:
+    name: Clippy
+    # Decoupled from `Quality Guardrails` for the same reason `fmt` was
+    # (#1796, #1803): clippy compiles the whole workspace and took the quality
+    # job past its 45-minute limit at run 41021250873, cancelling the job at
+    # step 9 before seventeen cheap budget/ratchet gates could run. Those gates
+    # need seconds, not an hour, and must never be blinded by a compile.
+    # Clippy gets its own budget here so its cost is its own signal.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    runs-on: [self-hosted, desk-linux]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          # Same `-notarget` eviction as the quality and build jobs: the old
+          # ~881 MB `quality-ubuntu` blob hung the runner for 26+ minutes
+          # (job 121317250103).
+          key: quality-ubuntu-notarget
+          cache-all-crates: "true"
+          cache-targets: "false"
+
+      - name: Run clippy with warnings denied
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   release-automation:
     name: Release Automation
@@ -245,6 +328,42 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Test persistent cargo target setup
+        run: python3 scripts/test_ci_persistent_target.py
+
+      # Persistent, per-runner cargo target dir.
+      #
+      # Self-hosted runner with durable disk, so caching `target/` via
+      # actions/cache is unnecessary and - at a 2GB blob that aborts restore at
+      # the ~600s cap (#167) - actively harmful: every run went in cold, then
+      # died on the compile cap.
+      #
+      # Set here rather than in the job-level `env:` because the `runner`
+      # context is not available there (actionlint: "context runner is not
+      # allowed here"). RUNNER_NAME is a default environment variable in every
+      # step, so it is legal here and still gives each runner its own dir.
+      #
+      # Per-runner (not shared) on purpose: concurrent cargo builds take an
+      # exclusive lock on one target dir and would serialise against each other.
+      #
+      - name: Configure persistent cargo target dir
+        run: |
+          set -euo pipefail
+          # RUNNER_NAME becomes a path component, so a value containing a
+          # separator or `..` could point the target dir outside $HOME.
+          # Runner names are admin-controlled, but a rejected build with a
+          # clear error beats silently writing outside the home directory.
+          case "${RUNNER_NAME:-}" in
+            "") printf 'error: RUNNER_NAME is unset\n' >&2; exit 1 ;;
+            */*|*\\*|*..*)
+              printf 'error: refusing unsafe RUNNER_NAME: %s\n' "$RUNNER_NAME" >&2
+              exit 1
+              ;;
+          esac
+          T="$HOME/kcode-target-${RUNNER_NAME}"
+          mkdir -p "$T"
+          echo "CARGO_TARGET_DIR=$T" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -413,6 +532,16 @@ jobs:
         # tests are not otherwise run here at all, so without this step it would
         # never execute. Fetch the model first (~87MB) so the cohort is real
         # rather than a silent skip.
+        #
+        # 1800s, not 600s, for the same reason as the retention-readiness cohort
+        # above: the workspace declares no `default-members`, so the 3300s
+        # "Compile library and binary tests" step builds only the default member
+        # `kcode` and never pre-builds the jcode-embedding harness. This cohort
+        # therefore absorbs a cold compile of tract-data/tract-core/tract-
+        # nnef/tract-hir. It hit exactly 600s and failed with exit 124 on run
+        # 42002567377 (a warm run of the same step takes 215s), so 600s was
+        # measuring the compile, not the test. 1800s covers the one-time cold
+        # compile and nothing more; the test itself is sub-second once built.
         run: |
           set -euo pipefail
           model_dir="$HOME/.jcode/models/all-MiniLM-L6-v2"
@@ -424,7 +553,7 @@ jobs:
           # degrade back into a silent skip.
           test -s "$model_dir/model.onnx"
           test -s "$model_dir/tokenizer.json"
-          python3 .github/scripts/run_with_timeout.py 600 \
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-embedding --lib -- --nocapture \
             | tee /tmp/embedding-cohort.log
@@ -733,7 +862,7 @@ jobs:
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          & "target/x86_64-pc-windows-msvc/release/jcode.exe" --version
+          & "target/x86_64-pc-windows-msvc/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows binary failed to run --version'
           }
@@ -756,7 +885,7 @@ jobs:
           # this identity from the root package version and appends `-dev`.
           $version = 'v' + $cargoVersion.Matches[0].Groups[1].Value + '-dev'
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/jcode.exe' `
+            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/kcode.exe' `
             -Version $version
 
   fmt:

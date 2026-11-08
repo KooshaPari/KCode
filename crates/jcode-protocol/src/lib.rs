@@ -657,6 +657,8 @@ impl Request {
             Request::ResumeSession { id, .. } => *id,
             Request::ResumeAllSessions { id } => *id,
             Request::NotifySession { id, .. } => *id,
+            Request::NotifySessionReceipt { id, .. } => *id,
+            Request::GetWakeReceipt { id, .. } => *id,
             Request::AppletAction { id, .. } => *id,
             Request::CloseApplet { id, .. } => *id,
             Request::Transcript { id, .. } => *id,
@@ -732,6 +734,8 @@ impl Request {
                 | Request::InvalidateOpenAiUsage { .. }
                 | Request::InvalidateAnthropicUsage { .. }
                 | Request::NotifySession { .. }
+                | Request::NotifySessionReceipt { .. }
+                | Request::GetWakeReceipt { .. }
                 | Request::AppletAction { .. }
                 | Request::CloseApplet { .. }
                 | Request::CommShare { .. }

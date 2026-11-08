@@ -181,7 +181,7 @@ pub(crate) enum Command {
     /// Run as an Agent Client Protocol (ACP) adapter backed by the Jcode daemon
     Acp,
 
-    /// Manage the background server daemon (e.g. `jcode server stop`).
+    /// Manage the background server daemon (e.g. `kcode server stop --force`).
     Server {
         #[command(subcommand)]
         action: ServerCommand,
@@ -670,7 +670,7 @@ pub(crate) enum ServerCommand {
     /// Pin the shared server channel to an installed version.
     ///
     /// Defaults to the active `current` version. This only selects the daemon's
-    /// binary; run `jcode server reload` separately to apply it.
+    /// binary; run `kcode server reload` separately to apply it.
     Promote {
         /// Installed version to promote (defaults to the current channel)
         version: Option<String>,

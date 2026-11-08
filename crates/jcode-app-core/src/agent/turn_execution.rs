@@ -119,7 +119,12 @@ impl Agent {
 
         self.announce_late_mcp_tools().await;
         self.announce_late_skills();
-        self.append_user_context_message_with_display_role(user_message, images, display_role)?;
+        self.append_user_context_message_with_display_role(
+            user_message,
+            images,
+            display_role,
+            false,
+        )?;
         crate::telemetry::record_turn();
         let turn_started_at = Instant::now();
         let start_message_index = self.message_count();
@@ -130,13 +135,47 @@ impl Agent {
         result
     }
 
+    /// Enter a native receipt turn. The durable state advances only after the
+    /// exact message has been committed to this session's transcript.
+    pub(crate) async fn run_once_streaming_mpsc_with_receipt(
+        &mut self,
+        message: &str,
+        receipt_id: &str,
+        event_tx: mpsc::UnboundedSender<ServerEvent>,
+    ) -> Result<()> {
+        // Receipt turns carry no reminder. A turn that panicked before its own
+        // cleanup can leave the field set on this reused agent, and the stale
+        // reminder would then ride along with the synthetic wake input.
+        self.current_turn_system_reminder = None;
+        self.announce_late_mcp_tools().await;
+        self.announce_late_skills();
+        self.append_user_context_message_with_display_role(
+            message,
+            Vec::new(),
+            Some(crate::session::StoredDisplayRole::System),
+            false,
+        )?;
+        // System-displayed inputs do not count as visible conversation for
+        // the normal first-save guard. Force the first snapshot before proof.
+        self.session.save_prepared()?;
+        self.session.sync_wake_turn_entry()?;
+        crate::server::wake_receipts::mark_awakened(receipt_id, self.session_id())?;
+        crate::telemetry::record_turn();
+        let started_at = Instant::now();
+        let start_message_index = self.message_count();
+        self.fire_turn_start_hook("native_wake_receipt");
+        let result = self.run_turn_streaming_mpsc(event_tx).await;
+        self.fire_turn_end_hook(&result, started_at, start_message_index);
+        result
+    }
+
     /// Append and persist a user message without starting a model turn.
     pub(crate) fn append_user_context_message(
         &mut self,
         user_message: &str,
         images: Vec<(String, String)>,
     ) -> Result<()> {
-        self.append_user_context_message_with_display_role(user_message, images, None)
+        self.append_user_context_message_with_display_role(user_message, images, None, false)
     }
 
     fn append_user_context_message_with_display_role(
@@ -144,6 +183,9 @@ impl Agent {
         user_message: &str,
         images: Vec<(String, String)>,
         display_role: Option<crate::session::StoredDisplayRole>,
+        // A synthetic continuation (reload recovery) resumes the previous
+        // turn, so it must not start a new model-usage turn.
+        continues_turn: bool,
     ) -> Result<()> {
         let mut blocks: Vec<ContentBlock> = images
             .into_iter()
@@ -161,7 +203,7 @@ impl Agent {
             ));
         }
 
-        let starts_turn = blocks.len() > 1 || !user_message.trim().is_empty();
+        let starts_turn = !continues_turn && (blocks.len() > 1 || !user_message.trim().is_empty());
         let input_id = self.add_message_with_display_role(Role::User, blocks, display_role);
         if starts_turn {
             self.begin_model_usage_turn(&input_id);
@@ -1297,7 +1339,11 @@ impl Agent {
             io::stdout().flush()?;
 
             let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
+            if io::stdin().read_line(&mut input)? == 0 {
+                // EOF (Ctrl-D, closed pipe, /dev/null): break instead of re-prompting forever.
+                println!();
+                break;
+            }
 
             let input = input.trim();
             if input.is_empty() {

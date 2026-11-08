@@ -1689,12 +1689,9 @@ impl App {
             let user_code = device_resp.user_code.clone();
             let verification_uri = device_resp.verification_uri.clone();
 
-            let clipboard_ok = copy_to_clipboard(&user_code);
-            let clipboard_msg = if clipboard_ok {
-                " (copied to clipboard - just paste it!)"
-            } else {
-                ""
-            };
+            let clipboard = copy_to_clipboard(&user_code);
+            let clipboard_msg =
+                super::clipboard_notice::login_device_code_suffix(clipboard.outcome);
 
             Bus::global().publish(BusEvent::LoginCompleted(LoginCompleted {
                 provider: "copilot_code".to_string(),

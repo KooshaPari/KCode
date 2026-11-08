@@ -821,7 +821,7 @@ mod tests {
         let payload = temp.path().join("kcode-linux-x86_64.bin");
         std::fs::write(
             &wrapper,
-            "#!/usr/bin/env sh\nexec ./jcode-linux-x86_64.bin \"$@\"\n",
+            "#!/usr/bin/env sh\nexec ./kcode-linux-x86_64.bin \"$@\"\n",
         )
         .expect("wrapper");
         std::fs::write(&payload, vec![0x7fu8; 64]).expect("payload");

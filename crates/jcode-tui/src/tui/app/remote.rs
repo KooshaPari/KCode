@@ -25,8 +25,8 @@ mod server_events;
 mod session_persistence;
 mod swarm_plan_core;
 mod swarm_status_core;
+mod version_ordering;
 mod workspace;
-
 #[cfg(test)]
 pub(super) use key_handling::reload_stale_remote_server_before_update;
 use queue_recovery::{
@@ -48,8 +48,7 @@ use session_persistence::{
 };
 use workspace::{handle_workspace_command, handle_workspace_navigation_key};
 
-// Re-export the remote input dispatch helpers for sibling modules/tests that go
-// through the `remote` facade instead of private submodule paths.
+// Re-export remote input dispatch helpers for sibling modules/tests.
 #[allow(unused_imports)]
 pub(super) use input_dispatch::{
     apply_remote_transcript_event, apply_transcript_event, begin_remote_send,
@@ -100,6 +99,7 @@ pub(super) async fn handle_tick(app: &mut App, remote: &mut RemoteConnection) ->
     });
     let mut needs_redraw = crate::tui::periodic_redraw_required(app);
     needs_redraw |= app.retire_expired_status_notice();
+    needs_redraw |= app.poll_clipboard_outcome(); // settle a late copy outcome (#231)
     needs_redraw |= app.poll_usage_reset();
     if let Some(account) = app.usage_reset.invalidate_account.take() {
         match remote.invalidate_openai_usage(account).await {

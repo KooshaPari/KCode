@@ -397,31 +397,9 @@ where
 #[cfg(test)]
 mod inline_tests;
 
-pub(super) fn cut_input_line_to_clipboard(app: &mut App) -> bool {
-    cut_input_line_to_clipboard_with(app, super::copy_to_clipboard)
-}
-
-pub(super) fn cut_input_line_to_clipboard_with<F>(app: &mut App, mut copy_text: F) -> bool
-where
-    F: FnMut(&str) -> bool,
-{
-    if app.input.is_empty() {
-        return false;
-    }
-
-    if !copy_text(&app.input) {
-        app.set_status_notice("Failed to copy input line");
-        return false;
-    }
-
-    app.remember_input_undo_state();
-    app.input.clear();
-    app.cursor_pos = 0;
-    app.reset_tab_completion();
-    app.sync_model_picker_preview_from_input();
-    app.set_status_notice("✂ Cut input line");
-    true
-}
+pub(super) use super::clipboard_notice::cut_input_line_to_clipboard;
+#[cfg(test)]
+pub(super) use super::clipboard_notice::cut_input_line_to_clipboard_with;
 
 pub(in crate::tui::app) mod newline;
 mod paste_guard;
@@ -2543,14 +2521,7 @@ pub(super) fn handle_visible_copy_shortcut(
     if let Some(target) = crate::tui::ui::recent_flicker_copy_target_for_key(c)
         .or_else(|| crate::tui::ui::visible_copy_target_for_key(c))
     {
-        let success = super::copy_to_clipboard(&target.content);
-        app.record_copy_badge_key_press(c);
-        app.record_copy_badge_feedback(c, success);
-        if success {
-            app.set_status_notice(target.copied_notice);
-        } else {
-            app.set_status_notice(format!("Failed to copy {}", target.kind_label));
-        }
+        app.copy_visible_badge_target(&target, c);
         return true;
     }
 

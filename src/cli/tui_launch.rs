@@ -33,7 +33,11 @@ pub async fn run_client() -> Result<()> {
         io::stdout().flush()?;
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
+        if io::stdin().read_line(&mut input)? == 0 {
+            // EOF (Ctrl-D, closed pipe, /dev/null): break instead of re-prompting forever.
+            println!();
+            break;
+        }
 
         let input = input.trim();
         if input.is_empty() {

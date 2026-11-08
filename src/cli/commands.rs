@@ -2088,13 +2088,13 @@ pub fn run_server_promote_command(version: Option<&str>, emit_json: bool) -> Res
     let promoted = previous.as_deref() != Some(version.as_str());
     let detail = if promoted {
         format!(
-            "shared-server channel {} -> {}. Run `jcode server reload` to apply it to the running daemon.",
+            "shared-server channel {} -> {}. Run `kcode server reload` to apply it to the running daemon.",
             previous.as_deref().unwrap_or("<unset>"),
             version
         )
     } else {
         format!(
-            "shared-server channel already points to {}. Run `jcode server reload` if the running daemon has not applied it.",
+            "shared-server channel already points to {}. Run `kcode server reload` if the running daemon has not applied it.",
             version
         )
     };
@@ -2332,8 +2332,8 @@ pub async fn run_server_stop_command(force: bool, emit_json: bool) -> Result<()>
     use std::time::{Duration, Instant};
 
     if !force {
-        let msg = "`jcode server stop` terminates the daemon and drops any live headless/swarm sessions. \
-Prefer `jcode server reload` to pick up an upgrade gracefully. \
+        let msg = "`kcode server stop` terminates the daemon and drops any live headless/swarm sessions. \
+Prefer `kcode server reload` to pick up an upgrade gracefully. \
 Re-run with `--force` if you really want to stop the server.";
         if emit_json {
             println!(
