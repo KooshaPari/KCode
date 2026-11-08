@@ -135,6 +135,30 @@ async fn failed_server_resume_keeps_original_concurrency_owner() -> Result<()> {
 async fn viewer_attach_reuses_live_owner_without_tracking_placeholder() -> Result<()> {
     let _lock = crate::storage::lock_test_env();
     let _env = IsolatedConcurrencyEnv::new();
+    // This test holds the process-wide test-env mutex for its whole body, and a
+    // `std::sync::Mutex` guard held across awaits inside a `current_thread`
+    // runtime parks that thread. A stack sample of the hung suite showed this
+    // test parked in `TimeDriver::park` with `lock_test_env`, while three sibling
+    // tests sat in `__psynch_mutexwait` behind it, so the whole group never
+    // finished although each passes alone in under a second.
+    //
+    // Bounding the body converts "hold the process lock forever" into a fast,
+    // self-describing failure. It does not change what the test asserts.
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        viewer_attach_body(),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => anyhow::bail!(
+            "viewer attach exceeded 30s while holding the process-wide test-env lock; \
+             this test must not hold a std::sync::Mutex across unbounded awaits"
+        ),
+    }
+}
+
+async fn viewer_attach_body() -> Result<()> {
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider.clone()).await;
     let live = Arc::new(Mutex::new(Agent::new(provider.clone(), registry.clone())));
