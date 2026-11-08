@@ -78,13 +78,13 @@ where
     futures::stream::unfold((stream, file), |(mut stream, mut file)| async move {
         match stream.as_mut().next().await {
             Some(item) => {
-                if let (Some(f), Ok(bytes)) = (file.as_mut(), item.as_ref()) {
-                    if let Err(error) = f.write_all(bytes) {
-                        kcode_base::logging::warn(&format!(
-                            "[openrouter] Disabling failed SSE capture: {error}"
-                        ));
-                        file = None;
-                    }
+                if let (Some(f), Ok(bytes)) = (file.as_mut(), item.as_ref())
+                    && let Err(error) = f.write_all(bytes)
+                {
+                    kcode_base::logging::warn(&format!(
+                        "[openrouter] Disabling failed SSE capture: {error}"
+                    ));
+                    file = None;
                 }
                 Some((item, (stream, file)))
             }
@@ -198,7 +198,7 @@ mod sse_log_tests {
             Some(dir),
         ));
         while let Some(_c) = s.next().await {}
-        let mut entries: Vec<_> = std::fs::read_dir(&dir)
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
             .expect("sse capture dir must be created")
             .filter_map(|e| e.ok())
             .collect();
@@ -240,9 +240,9 @@ mod body_log_tests {
             "model": "minimax-m3",
             "messages": [{"role": "user", "content": "hi"}]
         });
-        dump_request_body("minimax-m3", &request, Some(&dir));
+        dump_request_body("minimax-m3", &request, Some(dir));
 
-        let mut entries: Vec<_> = std::fs::read_dir(&dir)
+        let mut entries: Vec<_> = std::fs::read_dir(dir)
             .expect("body-log dir must be created")
             .filter_map(|e| e.ok())
             .collect();
@@ -263,8 +263,8 @@ mod body_log_tests {
     fn invalid_chars_in_model_are_sanitized() {
         let temp = super::private_test_directory();
         let dir = temp.path();
-        dump_request_body("z-ai/glm:5.3", &json!({"model": "x"}), Some(&dir));
-        let entries: Vec<_> = std::fs::read_dir(&dir)
+        dump_request_body("z-ai/glm:5.3", &json!({"model": "x"}), Some(dir));
+        let entries: Vec<_> = std::fs::read_dir(dir)
             .expect("body-log dir must be created")
             .filter_map(|e| e.ok())
             .collect();

@@ -62,3 +62,80 @@ root-cause write-up, build/install verification, and lesson notes).
 
 Lesson: verify a diagnosis against a *running* instance before changing
 shared launcher state.
+
+## Pane ID mapping (session.json ↔ herdr CLI)
+
+**Discovered 2026-10-09** during round 8.1 followup. The
+session.json persistence file and the herdr CLI use two
+DIFFERENT pane ID schemes:
+
+| Source | Format | Example | Notes |
+|---|---|---|---|
+| `session.json` (key) | numeric | `"19"` | Internal sequence number; order in which panes were created |
+| herdr CLI `pane list` | `workspace:pane` | `w7:p1R` | Stable identifier; the same pane across calls |
+| herdr `pane_id` field | `workspace:tab:pane` | `w7:p1R` | Same as above; herdr CLI normalizes to 2-segment form |
+
+The session.json pane ID 19 is NOT the same as herdr's `w7:p19`.
+The mapping is established by matching fields like
+`agent_resume.argv`, `agent_resume.source`, `agent_session.value`,
+`terminal_id`, or `terminal_title` between the two sources.
+
+Example from 2026-10-09 health check #2:
+
+- session.json pane `19`:
+  - `agent_resume: {source: "herdr:kcode", agent: "kcode", argv: ["kcode", "--resume", "session_evergreen_1791516626775_251c14ff3297d065"]}`
+- herdr CLI `w7:p1R`:
+  - `agent: kcode, agent_status: idle, terminal_id: term_65d602e1519b113, terminal_title: "🌲 I dont see my prior jcode sessions, theres a ton…"`
+- herdr `pane process-info --pane w7:p1R`:
+  - `pid: 22365, argv: ["/Users/kooshapari/.local/bin/kcode", "--resume", "session_evergreen_1791516626775_251c14ff3297d065"]`
+
+The session.json `argv` matches herdr's `pane process-info`
+`argv` exactly. The mapping is confirmed.
+
+**To map session.json pane IDs to herdr CLI pane IDs:**
+
+1. Get the session.json pane's `agent_resume.argv` (or
+   `agent_session.value`)
+2. Get `pane process-info` for each herdr CLI pane
+3. Match the `argv` (or `agent_session.value`) — the
+   kcode/jcode binaries include the session_id in argv;
+   the codex binary uses a separate `agent_session.value`
+
+**Why this matters for diagnostics:**
+
+When investigating herdr behavior, the operator often needs
+to correlate the persistence-layer state (session.json) with
+the runtime state (`pane list`, `pane process-info`). The
+two use different IDs, so a mapping step is required. This
+section is the canonical reference for that mapping.
+
+**Panes observed 2026-10-09 05:34 PDT (health check #2):**
+
+| session.json | herdr CLI | agent | note |
+|---|---|---|---|
+| 2 | w7:p1A | jcode | Port |
+| 3 | w7:p17 | jcode | Fabric |
+| 5 | w7:p1E | jcode | KCode (done) |
+| 6 | w7:p1J | jcode | ShareCLI |
+| 7 | w7:p1D | jcode | Omni |
+| 8 | w7:p1M | jcode | Agile |
+| 9 | w7:p1Q | jcode | Mux |
+| 13 | w8:pR | jcode | PhenoShared |
+| 14 | w8:pP | jcode | Byte |
+| 16 | w8:pS | jcode | HelioLite |
+| **19** | **w7:p1R** | **kcode** | **kcode test pane (PID 22365)** |
+| (no entry) | w7:p19 | jcode | Khostty |
+| (no entry) | w7:p1R | (root) | (matches pane 19) |
+| (canonical) | w8:pB | codex | Jcode? |
+| (canonical) | w8:pT | codex | Clarify (FOCUSED) |
+| (canonical) | w8:pE | codex | MoshClone |
+| (canonical) | w8:pH | codex | (unknown) |
+| (no entry) | w8:pN | unknown | Cockpit |
+| (no entry) | w8:pW | kcode | KCode (?) |
+
+The four `codex` panes have `agent_session.value` (the
+canonical path); the 12 `jcode`/`kcode` panes have
+`agent_resume` (the rescue path); the 2 unknown panes
+(w7:p19 Khostty, w8:pN Cockpit) have neither — these are
+likely auto-created Herdr TUI panes that haven't reported
+agent yet.

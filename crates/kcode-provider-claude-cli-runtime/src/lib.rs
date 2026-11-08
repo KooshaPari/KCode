@@ -897,6 +897,7 @@ async fn run_claude_cli(
     tx: mpsc::Sender<Result<StreamEvent>>,
 ) -> Result<()> {
     let mut cmd = Command::new(&config.cli_path);
+    apply_dev_home(&mut cmd);
     cmd.arg("-p")
         .arg("--verbose")
         .arg("--output-format")
@@ -1065,6 +1066,70 @@ async fn run_claude_cli(
     }
 
     Ok(())
+}
+
+fn apply_dev_home(command: &mut Command) {
+    apply_dev_home_values(
+        command,
+        dev_namespace_enabled(),
+        std::env::var_os("KCODE_HOME").as_deref(),
+    );
+}
+
+fn dev_namespace_enabled() -> bool {
+    dev_namespace_enabled_value(std::env::var_os("KCODE_DEV_NAMESPACE").as_deref())
+}
+
+fn dev_namespace_enabled_value(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("1"))
+}
+
+fn apply_dev_home_values(command: &mut Command, dev: bool, home: Option<&std::ffi::OsStr>) {
+    if !dev {
+        return;
+    }
+    let Some(home) = home.map(PathBuf::from) else {
+        return;
+    };
+    command
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("CLAUDE_CONFIG_DIR", home.join(".claude"))
+        .env("XDG_CONFIG_HOME", home.join("xdg/config"))
+        .env("XDG_DATA_HOME", home.join("xdg/data"));
+}
+
+#[cfg(test)]
+mod dev_namespace_tests {
+    use super::{apply_dev_home_values, dev_namespace_enabled_value};
+    use tokio::process::Command;
+
+    #[test]
+    fn namespace_marker_requires_exact_one() {
+        assert!(dev_namespace_enabled_value(Some(std::ffi::OsStr::new("1"))));
+        assert!(!dev_namespace_enabled_value(Some(std::ffi::OsStr::new(
+            "0"
+        ))));
+        assert!(!dev_namespace_enabled_value(None));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn claude_cli_child_uses_dev_home_and_xdg_sentinel() {
+        let dev_home = "/tmp/kcode-dev-sentinel";
+        let mut command = Command::new("/bin/sh");
+        command.args([
+            "-c",
+            "printf '%s\\n%s\\n%s\\n%s' \"$HOME\" \"$CLAUDE_CONFIG_DIR\" \"$XDG_CONFIG_HOME\" \"$XDG_DATA_HOME\"",
+        ]);
+        apply_dev_home_values(&mut command, true, Some(std::ffi::OsStr::new(dev_home)));
+        let output = command.output().await.unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            format!("{dev_home}\n{dev_home}/.claude\n{dev_home}/xdg/config\n{dev_home}/xdg/data")
+        );
+    }
 }
 
 /// Check if an error is transient and should be retried

@@ -99,6 +99,17 @@ async fn wait_for_reloading_server() -> bool {
 }
 
 pub async fn run_self_dev(should_build: bool, resume_session: Option<String>) -> Result<()> {
+    let dev_namespace = if super::dev_namespace::launcher_requested() {
+        Some(super::dev_namespace::validate_environment()?)
+    } else {
+        if should_build {
+            anyhow::bail!(
+                "Refusing to publish this self-dev build into the normal kcode installation. \
+                 Use `kcode-dev self-dev --build` to build in ~/.kcode-dev."
+            );
+        }
+        None
+    };
     startup_profile::mark("run_self_dev_enter");
     crate::env::set_var(CLIENT_SELFDEV_ENV, "1");
 
@@ -134,7 +145,15 @@ pub async fn run_self_dev(should_build: bool, resume_session: Option<String>) ->
 
         build::publish_local_current_build_for_source(&repo_dir, &source)?;
 
-        output::stderr_info("✓ Build complete; updated current launcher");
+        if dev_namespace.is_some() {
+            build::promote_version_to_shared_server(&source.version_label)?;
+        }
+
+        output::stderr_info(if dev_namespace.is_some() {
+            "✓ Build complete; updated the isolated kcode-dev channels"
+        } else {
+            "✓ Build complete; updated current launcher"
+        });
     }
 
     let target_binary = build::client_update_candidate(true)

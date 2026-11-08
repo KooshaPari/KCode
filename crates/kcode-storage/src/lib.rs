@@ -1,3 +1,6 @@
+mod remove;
+pub use remove::{remove_durable_state_file, remove_state_file};
+
 use anyhow::Result;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -20,6 +23,11 @@ const JCODE_TO_KCODE_ENV: &[(&str, &str)] = &[
     ("JCODE_SOCKET", "KCODE_SOCKET"),
     ("JCODE_SWARM_MODEL", "KCODE_SWARM_MODEL"),
     ("JCODE_WAKE_MODE", "KCODE_WAKE_MODE"),
+    ("JCODE_DEV_NAMESPACE", "KCODE_DEV_NAMESPACE"),
+    (
+        "JCODE_SESSION_MEMORY_TEMPLATE",
+        "KCODE_SESSION_MEMORY_TEMPLATE",
+    ),
     // JCODE_HOME handled in kcode_dir() with explicit deprecation message
 ];
 
@@ -29,14 +37,14 @@ pub fn migrate_legacy_jcode_env() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         for (jcode_name, kcode_name) in JCODE_TO_KCODE_ENV {
-            if let Ok(value) = std::env::var(jcode_name) {
-                if std::env::var_os(kcode_name).is_none() {
-                    // SAFETY: We only ever set this from a single call_once closure
-                    // at process startup, before any threads have read these env vars.
-                    // The values are simple strings migrated from a legacy var.
-                    unsafe {
-                        std::env::set_var(kcode_name, value);
-                    }
+            if let Ok(value) = std::env::var(jcode_name)
+                && std::env::var_os(kcode_name).is_none()
+            {
+                // SAFETY: We only ever set this from a single call_once closure
+                // at process startup, before any threads have read these env vars.
+                // The values are simple strings migrated from a legacy var.
+                unsafe {
+                    std::env::set_var(kcode_name, value);
                 }
             }
         }
@@ -216,6 +224,61 @@ pub fn kcode_dir() -> Result<PathBuf> {
     Ok(new)
 }
 
+#[cfg(test)]
+pub(crate) fn lock_test_env() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Reject symlink traversal for a KCODE_HOME path while kcode-dev is active.
+/// Call before reading, writing, removing, or traversing private state files.
+pub fn reject_dev_home_symlink_path(path: &Path) -> Result<()> {
+    if std::env::var_os("KCODE_DEV_NAMESPACE").as_deref() != Some(std::ffi::OsStr::new("1")) {
+        return Ok(());
+    }
+    if !running_in_dev_namespace() {
+        anyhow::bail!("kcode-dev requires the canonical ~/.kcode-dev home");
+    }
+    let home = kcode_dir()?;
+    if !home.is_absolute() || !path.is_absolute() || !path.starts_with(&home) {
+        anyhow::bail!(
+            "kcode-dev state path is outside KCODE_HOME: {}",
+            path.display()
+        );
+    }
+    if std::fs::symlink_metadata(&home).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        anyhow::bail!("kcode-dev state path traverses symlink {}", home.display());
+    }
+    let relative = path.strip_prefix(&home)?;
+    let mut current = home;
+    for component in relative.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                anyhow::bail!("kcode-dev state path contains '..': {}", path.display());
+            }
+            std::path::Component::Normal(part) => {
+                current.push(part);
+                if std::fs::symlink_metadata(&current)
+                    .is_ok_and(|metadata| metadata.file_type().is_symlink())
+                {
+                    anyhow::bail!(
+                        "kcode-dev state path traverses symlink {}",
+                        current.display()
+                    );
+                }
+            }
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
+                anyhow::bail!(
+                    "kcode-dev state path is not relative to KCODE_HOME: {}",
+                    path.display()
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Whether `KCODE_HOME` redirects this process away from the user's real
 /// `~/.kcode` directory.
 ///
@@ -233,6 +296,31 @@ pub fn running_with_sandboxed_home() -> bool {
         (Ok(configured), Ok(default)) => configured != default,
         _ => configured != default,
     }
+}
+
+/// Whether the launcher marker is backed by the exact per-user dev data root.
+/// The marker alone is never sufficient to enable dev-only behavior.
+pub fn running_in_dev_namespace() -> bool {
+    if std::env::var_os("KCODE_DEV_NAMESPACE").as_deref() != Some(std::ffi::OsStr::new("1")) {
+        return false;
+    }
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return false;
+    };
+    let Ok(configured) = kcode_dir() else {
+        return false;
+    };
+    if !home.is_absolute() || !configured.is_absolute() {
+        return false;
+    }
+    let Ok(home) = std::fs::canonicalize(home) else {
+        return false;
+    };
+    let expected = home.join(".kcode-dev");
+    if std::fs::symlink_metadata(&expected).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        return false;
+    }
+    std::fs::canonicalize(configured).is_ok_and(|resolved| resolved == expected)
 }
 
 pub fn logs_dir() -> Result<PathBuf> {
@@ -324,11 +412,10 @@ pub fn user_home_path(relative: impl AsRef<Path>) -> Result<PathBuf> {
 pub fn harden_user_config_permissions() {
     #[cfg(windows)]
     {
-        if let Some(config_dir) = dirs::config_dir() {
-            let kcode_config_dir = config_dir.join("kcode");
-            if kcode_config_dir.exists() {
-                schedule_windows_path_hardening(&kcode_config_dir, true);
-            }
+        if let Ok(kcode_config_dir) = app_config_dir()
+            && kcode_config_dir.exists()
+        {
+            schedule_windows_path_hardening(&kcode_config_dir, true);
         }
 
         if let Ok(kcode_home) = kcode_dir()
@@ -341,11 +428,10 @@ pub fn harden_user_config_permissions() {
 
     #[cfg(not(windows))]
     {
-        if let Some(config_dir) = dirs::config_dir() {
-            let kcode_config_dir = config_dir.join("kcode");
-            if kcode_config_dir.exists() {
-                let _ = kcode_core::fs::set_directory_permissions_owner_only(&kcode_config_dir);
-            }
+        if let Ok(kcode_config_dir) = app_config_dir()
+            && kcode_config_dir.exists()
+        {
+            let _ = kcode_core::fs::set_directory_permissions_owner_only(&kcode_config_dir);
         }
 
         if let Ok(kcode_home) = kcode_dir()
@@ -729,11 +815,13 @@ where
     T: DeserializeOwned,
     F: FnMut(StorageRecoveryEvent<'_>),
 {
+    reject_dev_home_symlink_path(path)?;
     let data = std::fs::read_to_string(path)?;
     match serde_json::from_str(&data) {
         Ok(val) => Ok(val),
         Err(e) => {
             let bak_path = path.with_extension("bak");
+            reject_dev_home_symlink_path(&bak_path)?;
             if bak_path.exists() {
                 on_recovery(StorageRecoveryEvent::CorruptPrimary { path, error: &e });
                 let bak_data = std::fs::read_to_string(&bak_path)?;
@@ -742,6 +830,8 @@ where
                         on_recovery(StorageRecoveryEvent::RecoveredFromBackup {
                             backup_path: &bak_path,
                         });
+                        reject_dev_home_symlink_path(path)?;
+                        reject_dev_home_symlink_path(&bak_path)?;
                         let _ = std::fs::copy(&bak_path, path);
                         Ok(val)
                     }
@@ -867,3 +957,7 @@ mod env_file_tests {
         );
     }
 }
+
+#[cfg(all(test, unix))]
+#[path = "dev_namespace_tests.rs"]
+mod dev_namespace_tests;

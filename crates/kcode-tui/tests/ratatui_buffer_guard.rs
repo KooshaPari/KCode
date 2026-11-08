@@ -38,7 +38,10 @@ fn gate_rejects_zero_size() {
         msg.contains(&format!("{MIN_WIDTH}x{MIN_HEIGHT}")),
         "error must mention the required size (60x20), got: {msg}"
     );
-    assert!(msg.contains("0x0"), "error must echo the actual size, got: {msg}");
+    assert!(
+        msg.contains("0x0"),
+        "error must echo the actual size, got: {msg}"
+    );
 }
 
 /// 2. The cricket incident's exact geometry: 57x1. Below the 60-col minimum

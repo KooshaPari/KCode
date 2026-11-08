@@ -508,6 +508,43 @@ mod tests {
         assert_eq!(reporter.source, "herdr:kcode");
     }
 
+    // C1 fix coverage: the source namespace is `herdr:{agent_label}` regardless of
+    // which agent. A bug that hardcoded `kcode` or dropped the namespace for a
+    // non-kcode agent would slip past the single-case test above, so pin down
+    // the shape across the agents that actually run today.
+    #[test]
+    fn reporter_source_format_claude() {
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let reporter = HerdrReporter::new("claude");
+        assert_eq!(reporter.source, "herdr:claude");
+    }
+
+    #[test]
+    fn reporter_source_format_gpt() {
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let reporter = HerdrReporter::new("gpt");
+        assert_eq!(reporter.source, "herdr:gpt");
+    }
+
+    #[test]
+    fn reporter_source_format_omlx() {
+        // The Phenotype omlx adapter runs as a herdr agent under the
+        // label `omlx`; verify the source namespace is preserved.
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let reporter = HerdrReporter::new("omlx");
+        assert_eq!(reporter.source, "herdr:omlx");
+    }
+
+    #[test]
+    fn reporter_source_format_unknown_agent() {
+        // Defensive: arbitrary agent label still gets the right namespace.
+        // This is the case that catches a future "well-known agents only"
+        // refactor in `new()`.
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let reporter = HerdrReporter::new("some-experimental-agent");
+        assert_eq!(reporter.source, "herdr:some-experimental-agent");
+    }
+
     #[test]
     fn inactive_reporter_is_noop() {
         let _env_lock = crate::env::test_support::lock_test_env();

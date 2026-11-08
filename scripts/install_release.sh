@@ -7,6 +7,17 @@
 # - ~/.kcode/builds/stable/kcode -> .../versions/<hash>/kcode
 # - ~/.kcode/builds/current/kcode -> .../versions/<hash>/kcode
 # - ~/.local/bin/kcode -> ~/.kcode/builds/current/kcode (launcher)
+#
+# Profile selection:
+# - Default: `release` (no LTO) — reliable macOS CS_LINKER_SIGNED.
+#   See scripts/lib_install_signature.sh and
+#   docs/sessions/20261001-herdr-crash-persistence/10_SIGKILL_NON_TTY.md
+#   for why thin LTO is fragile for amfid.
+# - `--fast`: alias for `release` (no LTO).
+# - `--lto`: opt in to the `release-lto` profile. The post-install
+#   codesign verifier will warn (or abort on KCODE_REQUIRE_LINKER_SIGNED=1)
+#   if the LTO path drops CS_LINKER_SIGNED.
+# - KCODE_RELEASE_PROFILE=<name>: override the default profile.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"

@@ -20,6 +20,41 @@ pub async fn run() -> Result<()> {
     // must not harden credential files or create configuration/telemetry state.
     let args = Args::parse();
 
+    let dev_namespace =
+        if std::env::var_os("KCODE_DEV_NAMESPACE").as_deref() == Some(std::ffi::OsStr::new("1")) {
+            let paths = crate::cli::dev_namespace::validate_environment()?;
+            crate::cli::dev_namespace::isolate_provider_environment(&paths);
+            crate::cli::dev_namespace::validate_socket_override(&paths, args.socket.as_deref())?;
+            let command_socket = match args.command.as_ref() {
+                Some(Command::Debug { socket, .. }) => socket.as_deref(),
+                _ => None,
+            };
+            crate::cli::dev_namespace::validate_socket_override(&paths, command_socket)?;
+            #[cfg(unix)]
+            let api_socket = match args.command.as_ref() {
+                Some(Command::ApiBridge { api_socket, .. }) => api_socket.as_deref(),
+                _ => None,
+            };
+            #[cfg(not(unix))]
+            let api_socket: Option<&str> = None;
+            crate::cli::dev_namespace::validate_api_socket_override(&paths, api_socket)?;
+            true
+        } else if std::env::var_os("KCODE_DEV_NAMESPACE").is_some() {
+            anyhow::bail!("KCODE_DEV_NAMESPACE is reserved for the validated kcode-dev launcher");
+        } else {
+            false
+        };
+    if matches!(
+        args.command.as_ref(),
+        Some(Command::SelfDev { build: true })
+    ) && !dev_namespace
+    {
+        anyhow::bail!(
+            "Refusing to build self-dev into the normal jcode installation. \
+             Use `kcode-dev self-dev --build` to build in ~/.kcode-dev."
+        );
+    }
+
     // Propagate agent mode to env so tool-gating and status bar can read it.
     let resolved_mode = kcode_config_types::AgentMode::parse(&args.mode)
         .unwrap_or(kcode_config_types::AgentMode::Execute);
@@ -145,7 +180,12 @@ pub async fn run() -> Result<()> {
     }
     startup_profile::mark("telemetry_check");
 
-    let args = parse_and_prepare_args(args)?;
+    let mut args = parse_and_prepare_args(args)?;
+    if dev_namespace {
+        // Dev builds are local branch builds. Never let a release updater
+        // replace this namespace or fetch a mainline binary over the fork.
+        args.no_update = true;
+    }
     spawn_background_update_check(&args);
 
     // Initialize HERDR terminal runtime reporter. No-op when not inside

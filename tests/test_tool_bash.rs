@@ -1,7 +1,7 @@
 //! Tests for the `bash` tool (shell execution, schema validation, stderr).
 
-use kcode::tool::{Tool, ToolContext, ToolExecutionMode};
 use kcode::tool::bash::BashTool;
+use kcode::tool::{Tool, ToolContext, ToolExecutionMode};
 use serde_json::json;
 
 fn make_ctx(dir: &std::path::Path) -> ToolContext {

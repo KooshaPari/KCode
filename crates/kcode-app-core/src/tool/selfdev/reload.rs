@@ -26,16 +26,19 @@ impl ReloadContext {
 
     pub fn save(&self) -> Result<()> {
         let path = Self::path_for_session(&self.session_id)?;
+        storage::reject_dev_home_symlink_path(&path)?;
         storage::write_json(&path, self)?;
         Ok(())
     }
 
     pub fn load() -> Result<Option<Self>> {
         let legacy = Self::legacy_path()?;
+        storage::reject_dev_home_symlink_path(&legacy)?;
         if !legacy.exists() {
             return Ok(None);
         }
         let ctx: Self = storage::read_json(&legacy)?;
+        storage::reject_dev_home_symlink_path(&legacy)?;
         let _ = std::fs::remove_file(&legacy);
         Ok(Some(ctx))
     }
@@ -43,12 +46,14 @@ impl ReloadContext {
     /// Peek at context for a specific session without consuming it.
     pub fn peek_for_session(session_id: &str) -> Result<Option<Self>> {
         let session_path = Self::path_for_session(session_id)?;
+        storage::reject_dev_home_symlink_path(&session_path)?;
         if session_path.exists() {
             let ctx: Self = storage::read_json(&session_path)?;
             return Ok(Some(ctx));
         }
 
         let legacy = Self::legacy_path()?;
+        storage::reject_dev_home_symlink_path(&legacy)?;
         if !legacy.exists() {
             return Ok(None);
         }
@@ -64,19 +69,23 @@ impl ReloadContext {
     /// Load context only if it belongs to the given session; consumes on success.
     pub fn load_for_session(session_id: &str) -> Result<Option<Self>> {
         let session_path = Self::path_for_session(session_id)?;
+        storage::reject_dev_home_symlink_path(&session_path)?;
         if session_path.exists() {
             let ctx: Self = storage::read_json(&session_path)?;
+            storage::reject_dev_home_symlink_path(&session_path)?;
             let _ = std::fs::remove_file(&session_path);
             return Ok(Some(ctx));
         }
 
         let legacy = Self::legacy_path()?;
+        storage::reject_dev_home_symlink_path(&legacy)?;
         if !legacy.exists() {
             return Ok(None);
         }
 
         let ctx: Self = storage::read_json(&legacy)?;
         if ctx.session_id == session_id {
+            storage::reject_dev_home_symlink_path(&legacy)?;
             let _ = std::fs::remove_file(&legacy);
             Ok(Some(ctx))
         } else {

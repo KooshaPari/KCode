@@ -41,16 +41,37 @@ pub struct GrokBuildProcess {
 
 impl GrokBuildProcess {
     pub fn from_env() -> Self {
-        let command = std::env::var_os("KCODE_GROK_CLI_PATH")
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("grok"));
+        let command = grok_command_from_env(
+            dev_namespace_enabled(),
+            std::env::var_os("KCODE_HOME"),
+            std::env::var_os("KCODE_GROK_CLI_PATH"),
+        );
         Self {
             command,
             args: vec!["agent".to_string(), "stdio".to_string()],
             env: BTreeMap::new(),
         }
     }
+}
+
+fn grok_command_from_env(
+    dev_namespace: bool,
+    kcode_home: Option<std::ffi::OsString>,
+    override_path: Option<std::ffi::OsString>,
+) -> PathBuf {
+    if dev_namespace {
+        if let Some(home) = kcode_home {
+            return PathBuf::from(home)
+                .join("provider-backends")
+                .join("grok-build")
+                .join(if cfg!(windows) { "grok.exe" } else { "grok" });
+        }
+        return PathBuf::new();
+    }
+    override_path
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("grok"))
 }
 
 #[derive(Clone)]
@@ -548,9 +569,9 @@ where
     Fut: std::future::Future<Output = Result<T>> + 'static,
 {
     let mut command = Command::new(&process.command);
+    command.args(&process.args).envs(&process.env);
+    apply_dev_home(&mut command);
     command
-        .args(&process.args)
-        .envs(&process.env)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -610,6 +631,31 @@ where
             error.context(format!("Grok CLI stderr: {stderr}"))
         }
     })
+}
+
+fn dev_namespace_enabled() -> bool {
+    dev_namespace_enabled_value(std::env::var_os("KCODE_DEV_NAMESPACE").as_deref())
+}
+
+fn dev_namespace_enabled_value(value: Option<&std::ffi::OsStr>) -> bool {
+    value == Some(std::ffi::OsStr::new("1"))
+}
+
+fn apply_dev_home(command: &mut Command) {
+    let home = dev_namespace_enabled()
+        .then(|| std::env::var_os("KCODE_HOME").map(PathBuf::from))
+        .flatten();
+    apply_dev_home_values(command, home.as_deref());
+}
+
+fn apply_dev_home_values(command: &mut Command, home: Option<&std::path::Path>) {
+    let Some(home) = home else { return };
+    command
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("GROK_HOME", home.join(".grok"))
+        .env("XDG_CONFIG_HOME", home.join("xdg/config"))
+        .env("XDG_DATA_HOME", home.join("xdg/data"));
 }
 
 fn stderr_reports_provider_failure(stderr: &str) -> bool {
@@ -770,6 +816,67 @@ fn cached_login_hint(prefix: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn namespace_marker_requires_exact_one() {
+        assert!(dev_namespace_enabled_value(Some(std::ffi::OsStr::new("1"))));
+        assert!(!dev_namespace_enabled_value(Some(std::ffi::OsStr::new(
+            "0"
+        ))));
+        assert!(!dev_namespace_enabled_value(None));
+    }
+
+    #[test]
+    fn dev_namespace_ignores_stable_cli_override() {
+        assert_eq!(
+            grok_command_from_env(
+                true,
+                Some(std::ffi::OsString::from("/private/kcode-dev")),
+                Some(std::ffi::OsString::from("/stable/grok")),
+            ),
+            PathBuf::from("/private/kcode-dev")
+                .join("provider-backends/grok-build")
+                .join(if cfg!(windows) { "grok.exe" } else { "grok" })
+        );
+    }
+
+    #[test]
+    fn dev_namespace_fails_closed_without_kcode_home() {
+        assert!(
+            grok_command_from_env(true, None, Some(std::ffi::OsString::from("/stable/grok")),)
+                .as_os_str()
+                .is_empty()
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn grok_cli_child_cannot_read_stable_auth_home() {
+        let temp = tempfile::tempdir().unwrap();
+        let stable_home = temp.path().join("stable");
+        let dev_home = temp.path().join(".kcode-dev");
+        let stable_auth = stable_home.join(".grok/auth.json");
+        std::fs::create_dir_all(stable_auth.parent().unwrap()).unwrap();
+        std::fs::write(&stable_auth, br#"{"account":{"key":"stable-secret"}}"#).unwrap();
+
+        let mut command = Command::new("/bin/sh");
+        command
+            .env("HOME", &stable_home)
+            .env("GROK_HOME", stable_home.join(".grok"))
+            .arg("-c")
+            .arg("printf '%s\\n%s\\n' \"$HOME\" \"$GROK_HOME\"; if [ -f \"$HOME/.grok/auth.json\" ]; then echo credential=present; else echo credential=absent; fi");
+        apply_dev_home_values(&mut command, Some(&dev_home));
+        let output = command.output().await.unwrap();
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            format!(
+                "{}\n{}\ncredential=absent\n",
+                dev_home.display(),
+                dev_home.join(".grok").display()
+            )
+        );
+    }
 
     #[test]
     fn chooses_cached_subscription_auth_and_rejects_api_key_only() {

@@ -1,5 +1,6 @@
 use super::widget_render::set_cell_if_visible;
 use super::*;
+use ratatui::buffer::CellDiffOption;
 
 fn load_source_image(hash: u64, path: &Path) -> Option<Arc<DynamicImage>> {
     if let Ok(mut cache) = SOURCE_CACHE.lock()
@@ -481,7 +482,7 @@ pub(super) fn render_kitty_virtual_viewport(
             for x in 0..area.width {
                 if let Some(cell) = buf.cell_mut((area.left() + x, y)) {
                     cell.set_symbol(" ");
-                    cell.set_skip(false);
+                    cell.set_diff_option(CellDiffOption::None);
                 }
             }
             continue;
@@ -506,10 +507,10 @@ pub(super) fn render_kitty_virtual_viewport(
             if let Some(cell) = buf.cell_mut((area.left() + x, y)) {
                 if x < visible_width {
                     symbol.push('\u{10EEEE}');
-                    cell.set_skip(true);
+                    cell.set_diff_option(CellDiffOption::Skip);
                 } else {
                     cell.set_symbol(" ");
-                    cell.set_skip(false);
+                    cell.set_diff_option(CellDiffOption::None);
                 }
             }
         }
@@ -1822,7 +1823,7 @@ mod kitty_viewport_leak_tests {
             );
         }
         assert!(
-            SOURCE_CACHE.lock().unwrap().entries.get(&HASH).is_none(),
+            !SOURCE_CACHE.lock().unwrap().entries.contains_key(&HASH),
             "full decoded original should be released after fitting"
         );
         assert_eq!(

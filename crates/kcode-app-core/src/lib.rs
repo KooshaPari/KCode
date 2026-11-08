@@ -55,8 +55,8 @@ pub mod update;
 /// integration for kcode.  Delegates to `kcode-terminal-detect` and
 /// `kcode-shell-integration`.
 pub mod terminal {
-    pub use kcode_terminal_detect as detect;
     pub use kcode_shell_integration as shell;
+    pub use kcode_terminal_detect as detect;
 }
 
 use std::sync::Mutex;

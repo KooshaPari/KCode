@@ -13,5 +13,10 @@ bytes = "1"
 futures = "0.3"
 kcode-core = { path = "../kcode-core" }
 kcode-logging = { path = "../kcode-logging" }
+kcode-storage = { path = "../kcode-storage" }
 kcode-message-types = { path = "../kcode-message-types" }
+libc = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["stream"] }
+
+[dev-dependencies]
+tempfile = "3"

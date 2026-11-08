@@ -73,8 +73,9 @@ pub use structured::{
 
 /// The protocol types, re-exported so a client needs one dependency, not two.
 pub use kcode_harness_api as api;
-pub use kcode_harness_api::{ModelUsage, compare_model_usage};
 pub use kcode_harness_api::{
     ApiEvent, ApiRequest, HistoryMessage, ModelRouteInfo, PermissionDecision, RenderedImage,
-    RenderedImageAnchor, RenderedImageSource, ResponseStats, SessionInfo, TextMatch, api_socket_path,
+    RenderedImageAnchor, RenderedImageSource, ResponseStats, SessionInfo, TextMatch,
+    api_socket_path,
 };
+pub use kcode_harness_api::{ModelUsage, compare_model_usage};

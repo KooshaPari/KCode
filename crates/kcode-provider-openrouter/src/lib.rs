@@ -3,7 +3,7 @@ pub mod stream;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Instant, SystemTime};
 
@@ -346,25 +346,121 @@ fn configured_cache_namespace() -> String {
 
 fn cache_path_for_namespace(namespace: &str) -> PathBuf {
     let namespace = sanitize_cache_namespace(namespace);
-    if let Ok(path) = std::env::var("KCODE_HOME") {
-        return PathBuf::from(path)
-            .join("cache")
-            .join(format!("{}_models.json", namespace));
-    }
+    kcode_cache_dir().join(format!("{}_models.json", namespace))
+}
 
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".kcode")
-        .join("cache")
-        .join(format!("{}_models.json", namespace))
+fn kcode_cache_dir() -> PathBuf {
+    kcode_storage::kcode_dir()
+        .map(|home| home.join("cache"))
+        .unwrap_or_else(|_| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".kcode")
+                .join("cache")
+        })
 }
 
 fn cache_path() -> PathBuf {
     cache_path_for_namespace(&configured_cache_namespace())
 }
 
-fn disk_cache_modified_at(path: &PathBuf) -> Option<SystemTime> {
+fn disk_cache_modified_at(path: &Path) -> Option<SystemTime> {
+    kcode_storage::reject_dev_home_symlink_path(path).ok()?;
     std::fs::metadata(path).ok()?.modified().ok()
+}
+
+fn read_cache_content(path: &Path) -> Option<String> {
+    kcode_storage::reject_dev_home_symlink_path(path).ok()?;
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    if kcode_storage::running_in_dev_namespace() {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    if kcode_storage::running_in_dev_namespace() {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let mut file = options.open(path).ok()?;
+    #[cfg(windows)]
+    if kcode_storage::running_in_dev_namespace() && file.metadata().ok()?.file_type().is_symlink() {
+        return None;
+    }
+    use std::io::Read;
+    let mut content = String::new();
+    file.read_to_string(&mut content).ok()?;
+    Some(content)
+}
+
+fn write_cache_content(path: &Path, content: &str) -> std::io::Result<()> {
+    write_cache_content_with_resolution_hook(path, content, |_| Ok(()))
+}
+
+fn write_cache_content_with_resolution_hook(
+    path: &Path,
+    content: &str,
+    after_resolve: impl FnOnce(&Path) -> std::io::Result<()>,
+) -> std::io::Result<()> {
+    kcode_storage::reject_dev_home_symlink_path(path)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidInput, error))?;
+    let resolved = resolve_cache_write_target(path)?;
+    after_resolve(&resolved)?;
+    write_cache_content_to_resolved_target(&resolved, content)
+}
+
+fn resolve_cache_write_target(path: &Path) -> std::io::Result<PathBuf> {
+    match std::fs::canonicalize(path) {
+        Ok(target) => Ok(target),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let parent = path.parent().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "cache path has no parent")
+            })?;
+            let name = path.file_name().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "cache path has no name")
+            })?;
+            Ok(std::fs::canonicalize(parent)?.join(name))
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn write_cache_content_to_resolved_target(target: &Path, content: &str) -> std::io::Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW).truncate(true);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    use std::io::Write;
+    let mut file = options.open(target)?;
+    #[cfg(windows)]
+    {
+        if file.metadata()?.file_type().is_symlink() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "cache target became a reparse point",
+            ));
+        }
+        file.set_len(0)?;
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "safe cache replacement is unavailable on this platform",
+        ));
+    }
+    file.write_all(content.as_bytes())
 }
 
 fn fresh_disk_cache(cache: Option<DiskCache>) -> Option<DiskCache> {
@@ -378,6 +474,7 @@ fn fresh_disk_cache(cache: Option<DiskCache>) -> Option<DiskCache> {
 }
 
 fn load_disk_cache_entry_from_path(path: PathBuf) -> Option<DiskCache> {
+    kcode_storage::reject_dev_home_symlink_path(&path).ok()?;
     let modified_at = disk_cache_modified_at(&path);
 
     if let Ok(memo) = DISK_CACHE_MEMO.lock()
@@ -387,8 +484,7 @@ fn load_disk_cache_entry_from_path(path: PathBuf) -> Option<DiskCache> {
         return fresh_disk_cache(entry.cache.clone());
     }
 
-    let loaded = std::fs::read_to_string(&path)
-        .ok()
+    let loaded = read_cache_content(&path)
         .and_then(|content| serde_json::from_str::<DiskCache>(&content).ok());
 
     if let Ok(mut memo) = DISK_CACHE_MEMO.lock() {
@@ -521,6 +617,9 @@ fn save_disk_cache_with_source_to_path(
     models: &[ModelInfo],
     source_api_base: Option<&str>,
 ) {
+    if kcode_storage::reject_dev_home_symlink_path(&path).is_err() {
+        return;
+    }
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -537,7 +636,7 @@ fn save_disk_cache_with_source_to_path(
     };
 
     if let Ok(content) = serde_json::to_string(&cache) {
-        let _ = std::fs::write(&path, content);
+        let _ = write_cache_content(&path, &content);
     }
 
     if let Ok(mut memo) = DISK_CACHE_MEMO.lock() {
@@ -554,15 +653,12 @@ fn save_disk_cache_with_source_to_path(
 fn endpoints_cache_path(model: &str) -> PathBuf {
     let safe_name = model.replace('/', "__");
     let namespace = configured_cache_namespace();
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".kcode")
-        .join("cache")
-        .join(format!("{}_endpoints_{}.json", namespace, safe_name))
+    kcode_cache_dir().join(format!("{}_endpoints_{}.json", namespace, safe_name))
 }
 
 pub fn load_endpoints_disk_cache_public(model: &str) -> Option<(Vec<EndpointInfo>, u64)> {
     let path = endpoints_cache_path(model);
+    kcode_storage::reject_dev_home_symlink_path(&path).ok()?;
     let modified_at = disk_cache_modified_at(&path);
     let cache = if let Ok(memo) = ENDPOINTS_DISK_CACHE_MEMO.lock()
         && let Some(entry) = memo.get(&path)
@@ -570,8 +666,7 @@ pub fn load_endpoints_disk_cache_public(model: &str) -> Option<(Vec<EndpointInfo
     {
         entry.cache.clone()?
     } else {
-        let loaded = std::fs::read_to_string(&path)
-            .ok()
+        let loaded = read_cache_content(&path)
             .and_then(|content| serde_json::from_str::<EndpointsDiskCache>(&content).ok());
         if let Ok(mut memo) = ENDPOINTS_DISK_CACHE_MEMO.lock() {
             memo.insert(
@@ -597,6 +692,7 @@ pub fn load_endpoints_disk_cache_public(model: &str) -> Option<(Vec<EndpointInfo
 
 pub fn load_endpoints_disk_cache(model: &str) -> Option<Vec<EndpointInfo>> {
     let path = endpoints_cache_path(model);
+    kcode_storage::reject_dev_home_symlink_path(&path).ok()?;
     let modified_at = disk_cache_modified_at(&path);
     let cache = if let Ok(memo) = ENDPOINTS_DISK_CACHE_MEMO.lock()
         && let Some(entry) = memo.get(&path)
@@ -604,8 +700,7 @@ pub fn load_endpoints_disk_cache(model: &str) -> Option<Vec<EndpointInfo>> {
     {
         entry.cache.clone()?
     } else {
-        let loaded = std::fs::read_to_string(&path)
-            .ok()
+        let loaded = read_cache_content(&path)
             .and_then(|content| serde_json::from_str::<EndpointsDiskCache>(&content).ok());
         if let Ok(mut memo) = ENDPOINTS_DISK_CACHE_MEMO.lock() {
             memo.insert(
@@ -631,6 +726,9 @@ pub fn load_endpoints_disk_cache(model: &str) -> Option<Vec<EndpointInfo>> {
 
 pub fn save_endpoints_disk_cache(model: &str, endpoints: &[EndpointInfo]) {
     let path = endpoints_cache_path(model);
+    if kcode_storage::reject_dev_home_symlink_path(&path).is_err() {
+        return;
+    }
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -643,7 +741,7 @@ pub fn save_endpoints_disk_cache(model: &str, endpoints: &[EndpointInfo]) {
         endpoints: endpoints.to_vec(),
     };
     if let Ok(content) = serde_json::to_string(&cache) {
-        let _ = std::fs::write(&path, content);
+        let _ = write_cache_content(&path, &content);
     }
 
     if let Ok(mut memo) = ENDPOINTS_DISK_CACHE_MEMO.lock() {
@@ -798,7 +896,6 @@ pub fn rank_providers_from_endpoints(endpoints: &[EndpointInfo]) -> Vec<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn parse_model_spec_handles_provider_aliases_and_auto() {
         let (model, provider) = parse_model_spec("anthropic/claude-sonnet-4@Fireworks");
@@ -930,3 +1027,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "dev_namespace_tests.rs"]
+mod dev_namespace_tests;

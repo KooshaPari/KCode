@@ -2786,13 +2786,13 @@ impl OpenRouterProvider {
     }
 }
 
+mod body_log;
 mod models_catalog_parse;
 mod ollama_context;
 #[path = "openrouter_provider_impl.rs"]
 mod openrouter_provider_impl;
 #[path = "openrouter_sse_stream.rs"]
 mod openrouter_sse_stream;
-mod body_log;
 
 #[cfg(test)]
 #[allow(clippy::await_holding_lock)]

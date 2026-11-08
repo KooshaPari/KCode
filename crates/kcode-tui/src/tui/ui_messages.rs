@@ -2446,7 +2446,8 @@ fn truncate_connection_line(input: &str, width: usize) -> String {
 }
 
 fn parse_connection_retry_message(content: &str) -> Option<(String, String, Option<String>)> {
-    let rest = content.strip_prefix("⚡ Connection lost - retrying (attempt ")
+    let rest = content
+        .strip_prefix("⚡ Connection lost - retrying (attempt ")
         .or_else(|| content.strip_prefix("◈ Connection lost - retrying (attempt "))?;
     let (attempt_and_elapsed, detail) = rest.split_once(") - ")?;
     let (attempt, elapsed) = attempt_and_elapsed
@@ -2461,7 +2462,8 @@ fn parse_connection_retry_message(content: &str) -> Option<(String, String, Opti
 }
 
 fn parse_connection_waiting_message(content: &str) -> Option<(String, String, Option<String>)> {
-    let rest = content.strip_prefix("⚡ Server reload in progress - waiting for handoff (")
+    let rest = content
+        .strip_prefix("⚡ Server reload in progress - waiting for handoff (")
         .or_else(|| content.strip_prefix("◈ Server reload in progress - waiting for handoff ("))?;
     let (elapsed, detail) = rest.split_once(") - ")?;
     let (detail, hint) = split_resume_hint(detail);

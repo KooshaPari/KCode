@@ -9,10 +9,18 @@
 //! The file is advisory: a corrupt or unreadable store degrades to "learn it
 //! again", never to a failure.
 
+#[cfg(test)]
+pub(crate) fn lock_test_env() -> std::sync::MutexGuard<'static, ()> {
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    ENV_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 use crate::dialect::LearnedQuirks;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -96,7 +104,14 @@ fn cache() -> &'static Mutex<BTreeMap<PathBuf, QuirkFile>> {
     CACHE.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
+fn path_is_safe(path: &Path) -> bool {
+    kcode_storage::reject_dev_home_symlink_path(path).is_ok()
+}
+
 fn load_file(path: &PathBuf) -> QuirkFile {
+    if !path_is_safe(path) {
+        return QuirkFile::default();
+    }
     std::fs::read_to_string(path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
@@ -109,6 +124,9 @@ fn with_store<T>(f: impl FnOnce(&mut QuirkFile) -> (T, bool)) -> T {
     let Some(path) = store_path() else {
         return f(&mut QuirkFile::default()).0;
     };
+    if !path_is_safe(&path) {
+        return f(&mut QuirkFile::default()).0;
+    }
     let mut guard = cache().lock().unwrap_or_else(|e| e.into_inner());
     let file = guard
         .entry(path.clone())
@@ -117,7 +135,9 @@ fn with_store<T>(f: impl FnOnce(&mut QuirkFile) -> (T, bool)) -> T {
     if changed {
         // Best-effort persistence: an unwritable home must not break the turn
         // that just recovered.
-        if let Ok(serialized) = serde_json::to_string_pretty(file) {
+        if path_is_safe(&path)
+            && let Ok(serialized) = serde_json::to_string_pretty(file)
+        {
             if let Some(parent) = path.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
@@ -200,8 +220,104 @@ pub fn reset_cache_for_tests() {
 mod tests {
     use super::*;
 
+    struct EnvRestore(
+        Option<std::ffi::OsString>,
+        Option<std::ffi::OsString>,
+        Option<std::ffi::OsString>,
+    );
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            match self.2.take() {
+                Some(v) => kcode_core::env::set_var("HOME", v),
+                None => kcode_core::env::remove_var("HOME"),
+            }
+            if let Some(value) = self.0.take() {
+                kcode_core::env::set_var("KCODE_HOME", value);
+            } else {
+                kcode_core::env::remove_var("KCODE_HOME");
+            }
+            if let Some(value) = self.1.take() {
+                kcode_core::env::set_var("KCODE_DEV_NAMESPACE", value);
+            } else {
+                kcode_core::env::remove_var("KCODE_DEV_NAMESPACE");
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn schema_quirks_read_and_write_reject_a_symlinked_store() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let _lock = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join(".kcode-dev");
+        std::fs::create_dir_all(&home).unwrap();
+        let target = temp.path().join("stable-schema.json");
+        let contents = br#"{"dialects":{"gemini":{"rejected_keywords":["sentinel"]}}}"#;
+        std::fs::write(&target, contents).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o640)).unwrap();
+        let before = std::fs::symlink_metadata(&target).unwrap();
+        let identity = (before.dev(), before.ino(), before.permissions().mode());
+        let store = home.join("schema-quirks.json");
+        std::os::unix::fs::symlink(&target, &store).unwrap();
+        let _restore = EnvRestore(
+            std::env::var_os("KCODE_HOME"),
+            std::env::var_os("KCODE_DEV_NAMESPACE"),
+            std::env::var_os("HOME"),
+        );
+        kcode_core::env::set_var("HOME", home.parent().unwrap());
+        kcode_core::env::set_var("KCODE_HOME", &home);
+        kcode_core::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        use_test_path(store.clone());
+
+        assert!(learned_for("gemini").is_empty());
+        assert!(record_keyword("gemini", "propertyNames"));
+        assert_eq!(std::fs::read(&target).unwrap(), contents);
+        let after = std::fs::symlink_metadata(&target).unwrap();
+        assert_eq!(
+            (after.dev(), after.ino(), after.permissions().mode()),
+            identity
+        );
+        assert!(store.is_symlink());
+        reset_cache_for_tests();
+        TEST_PATH.with(|path| *path.borrow_mut() = None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn schema_quirks_persist_beneath_symlinked_home_ancestor() {
+        use std::os::unix::fs::symlink;
+
+        let _lock = lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let real_parent = temp.path().join("real");
+        std::fs::create_dir_all(&real_parent).unwrap();
+        let alias = temp.path().join("alias");
+        symlink(&real_parent, &alias).unwrap();
+        let home = alias.join(".kcode-dev");
+        std::fs::create_dir_all(&home).unwrap();
+        let path = home.join("schema-quirks.json");
+        let _restore = EnvRestore(
+            std::env::var_os("KCODE_HOME"),
+            std::env::var_os("KCODE_DEV_NAMESPACE"),
+            std::env::var_os("HOME"),
+        );
+        kcode_core::env::set_var("HOME", home.parent().unwrap());
+        kcode_core::env::set_var("KCODE_HOME", &home);
+        kcode_core::env::set_var("KCODE_DEV_NAMESPACE", "1");
+        use_test_path(path.clone());
+
+        assert!(record_keyword("gemini", "propertyNames"));
+        assert!(path.exists());
+        reset_cache_for_tests();
+        TEST_PATH.with(|slot| *slot.borrow_mut() = None);
+    }
+
     #[test]
     fn learns_persists_and_forgets() {
+        let _lock = lock_test_env();
         let dir = tempfile::tempdir().unwrap();
         use_test_path(dir.path().join("schema-quirks.json"));
 
@@ -233,6 +349,7 @@ mod tests {
     /// to a failed turn.
     #[test]
     fn an_unwritable_store_still_reports_what_it_learned() {
+        let _lock = lock_test_env();
         use_test_path(PathBuf::from("/proc/definitely-not-writable/quirks.json"));
         assert!(record_keyword("gemini", "somethingNew"));
         assert_eq!(

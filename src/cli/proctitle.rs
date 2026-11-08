@@ -25,6 +25,7 @@ pub(crate) fn initial_title(args: &Args) -> String {
         Some(Command::Usage { .. }) => "kcode usage".to_string(),
         Some(Command::Telemetry(_)) => "kcode telemetry".to_string(),
         Some(Command::SelfDev { .. }) => "kcode:selfdev".to_string(),
+        Some(Command::ImportLegacySession { .. }) => "kcode import-legacy-session".to_string(),
         Some(Command::Debug { .. }) => "kcode debug".to_string(),
         Some(Command::Auth(_)) => "kcode auth".to_string(),
         Some(Command::Provider(_)) => "kcode provider".to_string(),

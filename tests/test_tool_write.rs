@@ -1,7 +1,7 @@
 //! Tests for the `write` tool (file creation, overwrite, diff output, schema validation).
 
-use kcode::tool::{Tool, ToolContext, ToolExecutionMode};
 use kcode::tool::write::WriteTool;
+use kcode::tool::{Tool, ToolContext, ToolExecutionMode};
 use serde_json::json;
 
 fn make_ctx(dir: &std::path::Path) -> ToolContext {
