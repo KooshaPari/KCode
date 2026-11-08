@@ -1,12 +1,15 @@
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
+mod cache_vectors;
 mod compaction;
 mod environment;
 mod inline_tail;
 mod interrupts;
 mod messages;
+mod micro_compact;
 #[cfg(test)]
 mod model_usage_tests;
+pub(crate) mod permission_bubble;
 mod prompting;
 mod provider;
 mod response_recovery;
@@ -16,9 +19,6 @@ mod tools;
 mod turn_execution;
 mod turn_loops;
 mod turn_streaming_mpsc;
-mod micro_compact;
-mod cache_vectors;
-pub(crate) mod permission_bubble;
 mod utils;
 
 use self::streaming::{send_stream_keepalive_mpsc, stream_keepalive_ticker};
@@ -30,7 +30,6 @@ use self::utils::trace_enabled;
 use crate::build;
 use crate::bus::{Bus, BusEvent, SubagentStatus, ToolEvent, ToolStatus};
 use crate::cache_tracker::CacheTracker;
-use cache_vectors::CacheVectorsTracker;
 use crate::compaction::CompactionEvent;
 use crate::id;
 use crate::logging;
@@ -43,6 +42,7 @@ use crate::session::{GitState, Session, SessionStatus, StoredDisplayRole, Stored
 use crate::skill::SkillRegistry;
 use crate::tool::{Registry, ToolContext, ToolExecutionMode};
 use anyhow::Result;
+use cache_vectors::CacheVectorsTracker;
 use futures::StreamExt;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -61,7 +61,7 @@ pub use jcode_agent_runtime::{
 const JCODE_NATIVE_TOOLS: &[&str] = &["selfdev", "desktop_selfdev", "communicate"];
 static RECOVERED_TEXT_WRAPPED_TOOL_CALLS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
-static JCODE_REPO_SOURCE_STATE: LazyLock<(Option<String>, Option<bool>)> = LazyLock::new(|| {
+static KCODE_REPO_SOURCE_STATE: LazyLock<(Option<String>, Option<bool>)> = LazyLock::new(|| {
     crate::build::get_repo_dir()
         .map(|repo_dir| {
             (
@@ -125,6 +125,87 @@ fn kv_cache_request_event(
         ephemeral_hash,
         ephemeral_chars: stable_json_len(ephemeral_messages),
         ephemeral_message_count: ephemeral_messages.len(),
+    }
+}
+
+impl Agent {
+    /// Provider identity used for cache retention lookups. Generic OpenAI is
+    /// only refined when the credential mode is explicitly pinned.
+    fn kv_cache_provider_identity(&self) -> String {
+        let name = self.provider.name().to_string();
+        if !name.eq_ignore_ascii_case("openai") {
+            return name;
+        }
+        match self.provider.active_explicit_credential() {
+            Some(jcode_provider_core::ResolvedCredential::ApiKey) => "openai-api".into(),
+            Some(jcode_provider_core::ResolvedCredential::Oauth) => "openai-oauth".into(),
+            None => name,
+        }
+    }
+
+    fn begin_kv_cache_monitor_request(&mut self, event: &ServerEvent, model: &str) {
+        let ServerEvent::KvCacheRequest {
+            system_static_hash,
+            tools_hash,
+            messages_hash,
+            message_hashes,
+            message_count,
+            tool_count,
+            ..
+        } = event
+        else {
+            return;
+        };
+        let provider = self.kv_cache_provider_identity();
+        let route = crate::kv_cache_monitor::RequestRoute {
+            cache_ttl_secs: crate::provider::cache_ttl_for_provider_model(&provider, Some(model)),
+            ttl_is_estimate: crate::provider::cache_ttl_is_estimate(&provider),
+            provider,
+            model: model.to_string(),
+            upstream_provider: self.last_upstream_provider.clone(),
+        };
+        let signature = crate::kv_cache_monitor::RequestSignature {
+            system_static_hash: *system_static_hash,
+            tools_hash: *tools_hash,
+            tool_count: *tool_count,
+            messages_hash: *messages_hash,
+            message_hashes: message_hashes.clone(),
+            message_count: *message_count,
+        };
+        self.kv_cache_monitor.begin_request(route, signature);
+    }
+
+    /// Classify the completed request's usage. Returns the event to send when
+    /// the request missed the KV cache.
+    fn finish_kv_cache_monitor_request(
+        &mut self,
+        input: u64,
+        cache_read: Option<u64>,
+        cache_creation: Option<u64>,
+    ) -> Option<ServerEvent> {
+        let effective = self.effective_context_tokens_from_usage(input, cache_read, cache_creation);
+        let miss = self
+            .kv_cache_monitor
+            .finish_request(effective, cache_read)?;
+        logging::warn(&format!(
+            "KV_CACHE_MISS session={} reason={} harness_caused={} missed={} expected={} read={} documented={:?}",
+            self.session.id,
+            miss.reason.id(),
+            miss.reason.harness_caused(),
+            miss.missed_tokens,
+            miss.expected_tokens,
+            miss.read_tokens,
+            miss.documented_cause,
+        ));
+        Some(ServerEvent::KvCacheMiss {
+            reason: miss.reason.id().to_string(),
+            harness_caused: miss.reason.harness_caused(),
+            missed_tokens: miss.missed_tokens,
+            expected_tokens: miss.expected_tokens,
+            read_tokens: miss.read_tokens,
+            message: miss.message(),
+            documented_cause: miss.documented_cause,
+        })
     }
 }
 
@@ -196,8 +277,6 @@ pub struct Agent {
     _tool_policy_registration: crate::tool::SessionToolPolicyRegistration,
     /// MCP top-level definition exposure policy captured when the session starts.
     mcp_tools_mode: crate::config::McpToolsMode,
-    /// Auto-mode token estimate above which MCP definitions are deferred.
-    mcp_tools_token_threshold: usize,
     /// Provider-specific session ID for conversation resume (e.g., Claude Code CLI session)
     provider_session_id: Option<String>,
     /// Last upstream provider (OpenRouter) observed for this session
@@ -226,6 +305,8 @@ pub struct Agent {
     graceful_shutdown: InterruptSignal,
     /// Client-side cache tracking for detecting append-only violations
     cache_tracker: CacheTracker,
+    /// Classifies provider-reported KV cache misses for every client.
+    kv_cache_monitor: crate::kv_cache_monitor::KvCacheMonitor,
     /// Prompt-cache vector tracking for detecting which cache vectors changed
     cache_vectors: CacheVectorsTracker,
     /// Last token usage from API request (for debug socket queries)
@@ -248,6 +329,16 @@ pub struct Agent {
     /// AGENTS.md is session bootstrap input. Keep the captured text stable so
     /// tool writes do not mutate the provider's cacheable prefix mid-session.
     agents_md_snapshot: (Option<String>, crate::prompt::ContextInfo),
+    /// The "Available Skills" system-prompt section is session bootstrap input
+    /// too. Installing a skill mid-session must not rewrite the cached system
+    /// prefix (that forces a KV cache miss on everything after it), so the
+    /// list is frozen here and later installs are announced in the transcript.
+    prompt_skills_snapshot: Vec<crate::prompt::SkillInfo>,
+    /// Skill names already described to the model, either in the frozen
+    /// system-prompt list or by a late-skill transcript announcement.
+    announced_skills: HashSet<String>,
+    /// Transcript index already scanned for late-skill announcements.
+    announced_skills_scan_index: usize,
     /// Whether memory features are enabled for this session
     memory_enabled: bool,
     /// One-step undo snapshot captured before the most recent rewind.
@@ -282,10 +373,34 @@ impl Agent {
             .as_deref()
             .map(std::path::Path::new);
         self.agents_md_snapshot = crate::prompt::load_agents_md_files_from_dir(working_dir);
+        self.refresh_prompt_skills_snapshot();
+    }
+
+    /// Re-capture the frozen skills list. Only called at session boundaries
+    /// (new/restored session, working directory change), never mid-turn.
+    fn refresh_prompt_skills_snapshot(&mut self) {
+        self.prompt_skills_snapshot = self.current_prompt_skill_infos();
+        self.announced_skills = self
+            .prompt_skills_snapshot
+            .iter()
+            .map(|skill| skill.name.clone())
+            .collect();
+        self.announced_skills_scan_index = 0;
+    }
+
+    fn current_prompt_skill_infos(&self) -> Vec<crate::prompt::SkillInfo> {
+        self.current_skills_snapshot()
+            .list()
+            .iter()
+            .map(|skill| crate::prompt::SkillInfo {
+                name: skill.name.clone(),
+                description: skill.description.clone(),
+            })
+            .collect()
     }
 
     fn should_track_client_cache(&self) -> bool {
-        match std::env::var("JCODE_TRACK_CLIENT_CACHE") {
+        match std::env::var("KCODE_TRACK_CLIENT_CACHE") {
             Ok(value) => {
                 let value = value.trim();
                 !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
@@ -311,7 +426,7 @@ impl Agent {
             allowed_tools.clone(),
             disabled_tools.clone(),
         );
-        Self {
+        let mut agent = Self {
             provider,
             registry,
             skills,
@@ -321,7 +436,6 @@ impl Agent {
             disabled_tools,
             _tool_policy_registration: tool_policy_registration,
             mcp_tools_mode: tool_config.mcp_tools,
-            mcp_tools_token_threshold: tool_config.mcp_tools_token_threshold,
             provider_session_id: None,
             last_upstream_provider: None,
             last_connection_type: None,
@@ -335,11 +449,15 @@ impl Agent {
             background_tool_signal: InterruptSignal::new(),
             graceful_shutdown: InterruptSignal::new(),
             cache_tracker: CacheTracker::new(),
+            kv_cache_monitor: Default::default(),
             cache_vectors: CacheVectorsTracker::new(),
             last_usage: TokenUsage::default(),
             locked_tools: None,
             mcp_late_register_resolved: false,
             agents_md_snapshot,
+            prompt_skills_snapshot: Vec::new(),
+            announced_skills: HashSet::new(),
+            announced_skills_scan_index: 0,
             memory_enabled: crate::config::config().features.memory,
             rewind_undo_snapshot: None,
             stdin_request_tx: None,
@@ -349,7 +467,9 @@ impl Agent {
             transcript_telemetry_sent: false,
             concurrency_session: None,
             micro_compact_trigger: micro_compact::new_trigger(),
-        }
+        };
+        agent.refresh_prompt_skills_snapshot();
+        agent
     }
 
     fn current_skills_snapshot(&self) -> Arc<SkillRegistry> {
@@ -647,6 +767,7 @@ impl Agent {
         self.background_tool_signal.reset();
         self.graceful_shutdown.reset();
         self.cache_tracker.reset();
+        self.kv_cache_monitor.reset();
         self.cache_vectors.reset();
         self.last_usage = TokenUsage::default();
         self.locked_tools = None;
@@ -720,6 +841,7 @@ impl Agent {
         }
 
         self.cache_tracker.reset();
+        self.kv_cache_monitor.reset();
         self.cache_vectors.reset();
         self.locked_tools = None;
         self.mcp_late_register_resolved = false;
@@ -973,6 +1095,7 @@ impl Agent {
         if repaired > 0 {
             self.persist_session_best_effort("missing tool-output repair");
             self.cache_tracker.reset();
+            self.kv_cache_monitor.reset();
             self.cache_vectors.reset();
             self.locked_tools = None;
             self.mcp_late_register_resolved = false;
@@ -1015,7 +1138,21 @@ impl Agent {
         self.finish_concurrency_tracking();
         self.persist_soft_interrupt_snapshot();
         self.session.mark_closed();
-        if !self.session.messages.is_empty() {
+        // KCode fork: `Agent::new_with_session` always stamps `model`/
+        // `provider_key` and installs the hidden session-context header, so
+        // `messages` is never empty for an agent-held session and the upstream
+        // `!messages.is_empty()` guard never fires. Persisting on close is only
+        // correct when there is something on disk to update: real (model-visible)
+        // conversation content, or a session file that already exists (so the
+        // Closed status and any buffered env snapshots get flushed into it).
+        // A blank in-memory panel must stay invisible on close — materializing
+        // a transcript file here would break the "unsaved session never
+        // persists" contract that the disconnect-grace tests
+        // (`grace_tests::*unsaved_idle*`) rely on, mirroring the
+        // `log_env_snapshot` fix.
+        if self.visible_conversation_message_count() > 0
+            || crate::session::session_exists(self.session_id())
+        {
             self.persist_session_best_effort("session close state");
         }
         self.upload_transcript_telemetry(crate::telemetry::SessionEndReason::NormalExit);
@@ -1080,6 +1217,15 @@ impl Agent {
         if let Some(mut guard) = self.concurrency_session.take() {
             guard.finish();
         }
+    }
+
+    /// Detach the concurrency telemetry guard so the caller can finish it off
+    /// a latency-sensitive path. `finish` performs a blocking delivery (up to
+    /// ~800ms) that must not run under server-wide locks.
+    pub(crate) fn take_concurrency_session(
+        &mut self,
+    ) -> Option<crate::telemetry::ConcurrencySession> {
+        self.concurrency_session.take()
     }
 
     #[cfg(test)]
@@ -1182,6 +1328,7 @@ impl Agent {
                     ContentBlock::OpenAICompaction { .. } => {
                         md.push_str("[OpenAI native compaction]\n\n");
                     }
+                    ContentBlock::ToolReference { .. } | ContentBlock::ProviderNative { .. } => {}
                 }
             }
         }

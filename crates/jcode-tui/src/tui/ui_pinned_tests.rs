@@ -160,7 +160,7 @@ fn side_panel_markdown_image_path_renders_as_image_placement() {
     with_serialized_mermaid_state(|| {
         clear_side_panel_render_caches();
         let dir = std::env::temp_dir().join(format!(
-            "jcode-side-panel-image-test-{}",
+            "kcode-side-panel-image-test-{}",
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).expect("create temp image dir");
@@ -192,7 +192,7 @@ fn side_panel_image_zoom_uses_scrollable_viewport_layout() {
     with_serialized_mermaid_state(|| {
         clear_side_panel_render_caches();
         let dir = std::env::temp_dir().join(format!(
-            "jcode-side-panel-image-zoom-test-{}",
+            "kcode-side-panel-image-zoom-test-{}",
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).expect("create temp image dir");

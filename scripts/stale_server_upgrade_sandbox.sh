@@ -2,70 +2,102 @@
 # Live end-to-end sandbox for the "current client, stale older server" fix.
 #
 #   Server: the REAL released v0.14.6 binary (downloaded from GitHub).
-#   Client: the freshly built current binary (target/debug/jcode, has the fix).
+#   Client: the freshly built current binary (target/debug/kcode, has the fix).
 #   Field state: shared-server channel pinned to OLD (v0.14.6); stable -> NEW.
 #
-# It starts the real old daemon, then runs the NEW client's `jcode server reload`
+# It starts the real old daemon, then runs the NEW client's `kcode server reload`
 # (which repairs the stale shared-server channel, then forces a reload). PASS iff
 # the resulting daemon is running v0.22.x.
 #
 # Usage:
-#   cargo build -p jcode --bin jcode
+#   cargo build -p kcode --bin kcode
 #   scripts/stale_server_upgrade_sandbox.sh
 #
-# Linux x86_64 only (uses the published jcode-linux-x86_64 release asset).
+# Linux x86_64 only (uses the published jcode-linux-x86_64 release asset;
+# v0.14.6 predates the kcode asset rename and is published upstream).
 set -uo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-NEW_BIN="${NEW_BIN:-$REPO_ROOT/target/debug/jcode}"
+NEW_BIN="${NEW_BIN:-$REPO_ROOT/target/debug/kcode}"
 OLD_VERSION="${OLD_VERSION:-v0.14.6}"
-OLD_DIR="${OLD_DIR:-/tmp/jcode-sandbox}"
-OLD_WRAP="$OLD_DIR/jcode-linux-x86_64"
+# The v0.14.6 pin predates the kcode rename, so it lives in the upstream repo
+# and ships jcode-* asset names. Override to test a fork release instead.
+OLD_RELEASE_REPO="${OLD_RELEASE_REPO:-1jehuang/jcode}"
+# The asset name follows the product the repository publishes: upstream ships
+# jcode-* names and a fork ships kcode-* names, so a fork pin would otherwise
+# resolve no URL. OLD_ASSET stays overridable for a repository that uses a
+# different asset naming scheme.
+if [[ -n "${OLD_ASSET:-}" ]]; then
+  :
+elif [[ "$OLD_RELEASE_REPO" == */* ]]; then
+  repo_name="$(basename "$OLD_RELEASE_REPO")"
+  OLD_ASSET="$(printf '%s' "$repo_name" | tr '[:upper:]' '[:lower:]')-linux-x86_64"
+else
+  OLD_ASSET="jcode-linux-x86_64"
+fi
+# Key the cache by repository and version, so changing either one does not
+# reuse a binary that a different pin produced.
+OLD_DIR="${OLD_DIR:-/tmp/jcode-sandbox/${OLD_RELEASE_REPO//\//_}/$OLD_VERSION}"
+OLD_WRAP="$OLD_DIR/$OLD_ASSET"
 
-[ -x "$NEW_BIN" ] || { echo "missing new client binary: $NEW_BIN (run: cargo build -p jcode --bin jcode)"; exit 2; }
+[[ -x "$NEW_BIN" ]] || { echo "missing new client binary: $NEW_BIN (run: cargo build -p kcode --bin kcode)" >&2; exit 2; }
 
 # Fetch + extract the real old release binary if it is not already present.
-if [ ! -x "$OLD_WRAP" ]; then
+if [[ ! -x "$OLD_WRAP" ]]; then
   mkdir -p "$OLD_DIR"
-  url="$(curl -fsSL "https://api.github.com/repos/1jehuang/jcode/releases/tags/$OLD_VERSION" \
-        | grep -o 'https://[^"]*jcode-linux-x86_64.tar.gz' | head -1)"
-  [ -n "$url" ] || { echo "could not resolve $OLD_VERSION linux asset URL"; exit 2; }
+  # The API URL and the asset URL are both built from a hardcoded https://
+  # prefix, so neither can be redirected to an insecure endpoint.
+  api_url="https://api.github.com/repos/$OLD_RELEASE_REPO/releases/tags/$OLD_VERSION"
+  asset_url="https://github.com/$OLD_RELEASE_REPO/releases/download/$OLD_VERSION/$OLD_ASSET.tar.gz"
+  # --proto-redir restricts the protocols a redirect may use, so a redirect
+  # can never downgrade the request to plain HTTP.
+  url="$(curl -fsSL --proto '=https' --proto-redir '=https' "$api_url" \
+        | grep -o "https://[^\"]*$OLD_ASSET.tar.gz" | head -1)"
+  [[ -n "$url" ]] || { echo "could not resolve $OLD_VERSION linux asset URL" >&2; exit 2; }
+  # The URL is read from a response body, so refuse anything that is not the
+  # expected HTTPS GitHub release asset. The path segments are checked so a
+  # traversal sequence cannot escape the release download path.
+  case "$url" in
+    "$asset_url") ;;
+    *..*) echo "refusing to download $OLD_VERSION asset from a traversal URL: $url" >&2; exit 2 ;;
+    *) echo "refusing to download $OLD_VERSION asset from an unexpected URL: $url" >&2; exit 2 ;;
+  esac
   echo "Downloading old server $OLD_VERSION ..."
-  curl -fsSL "$url" -o "$OLD_DIR/old.tar.gz"
+  curl -fsSL --proto '=https' --proto-redir '=https' "$asset_url" -o "$OLD_DIR/old.tar.gz"
   tar -C "$OLD_DIR" -xzf "$OLD_DIR/old.tar.gz"
 fi
 [ -x "$OLD_WRAP" ] || { echo "missing old binary $OLD_WRAP after download"; exit 2; }
 
 SANDBOX="$(mktemp -d /tmp/jcode-stale-sandbox.XXXXXX)"
-export JCODE_HOME="$SANDBOX/home"
-export JCODE_RUNTIME_DIR="$SANDBOX/runtime"
+export KCODE_HOME="$SANDBOX/home"
+export KCODE_RUNTIME_DIR="$SANDBOX/runtime"
 # Hard isolation: pin the socket explicitly so we can NEVER touch the real
 # global daemon at /run/user/<uid>/jcode.sock.
-export JCODE_SOCKET="$SANDBOX/runtime/jcode.sock"
+export KCODE_SOCKET="$SANDBOX/runtime/jcode.sock"
 # Make the new client's clean release version comparable (debug build is dirty).
-export JCODE_TEST_CLIENT_VERSION_OVERRIDE="v0.22.0 (sandbox)"
-mkdir -p "$JCODE_HOME" "$JCODE_RUNTIME_DIR"
+export KCODE_TEST_CLIENT_VERSION_OVERRIDE="v0.22.0 (sandbox)"
+mkdir -p "$KCODE_HOME" "$KCODE_RUNTIME_DIR"
 
-BUILDS="$JCODE_HOME/builds"
+BUILDS="$KCODE_HOME/builds"
 mkdir -p "$BUILDS/versions/0.14.6" "$BUILDS/versions/0.22.0" \
          "$BUILDS/shared-server" "$BUILDS/stable" "$BUILDS/current"
 
 log() { printf '\n=== %s ===\n' "$*"; }
 
 # --- Install the OLD binary (with bundled libs) as version 0.14.6 ----------
-cp "$OLD_DIR/jcode-linux-x86_64.bin" "$OLD_DIR/libssl.so.10" \
+cp "$OLD_DIR/$OLD_ASSET.bin" "$OLD_DIR/libssl.so.10" \
    "$OLD_DIR/libcrypto.so.10" "$BUILDS/versions/0.14.6/"
-cat > "$BUILDS/versions/0.14.6/jcode" <<'WRAP'
+cat > "$BUILDS/versions/0.14.6/jcode" <<WRAP
 #!/usr/bin/env sh
 set -eu
-real=$0
+real=\$0
 if command -v readlink >/dev/null 2>&1; then
-  resolved=$(readlink -f -- "$0" 2>/dev/null || true)
-  [ -n "$resolved" ] && real=$resolved
+  resolved=\$(readlink -f -- "\$0" 2>/dev/null || true)
+  [ -n "\$resolved" ] && real=\$resolved
 fi
-self_dir=$(CDPATH= cd -- "$(dirname -- "$real")" && pwd)
-export LD_LIBRARY_PATH="$self_dir:${LD_LIBRARY_PATH:-}"
-exec "$self_dir/jcode-linux-x86_64.bin" "$@"
+self_dir=\$(CDPATH= cd -- "\$(dirname -- "\$real")" && pwd)
+export LD_LIBRARY_PATH="\$self_dir:\${LD_LIBRARY_PATH:-}"
+exec "\$self_dir/$OLD_ASSET.bin" "\$@"
 WRAP
 chmod +x "$BUILDS/versions/0.14.6/jcode"
 
@@ -89,7 +121,7 @@ SERVER_PID=""
 cleanup() {
   [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null || true
   "$NEW_BIN" --no-update server stop >/dev/null 2>&1 || true
-  pkill -f "$BUILDS/versions/0.14.6/jcode-linux-x86_64.bin" 2>/dev/null || true
+  pkill -f "$BUILDS/versions/0.14.6/$OLD_ASSET.bin" 2>/dev/null || true
   pkill -f "$BUILDS/versions/0.22.0/jcode" 2>/dev/null || true
   rm -rf "$SANDBOX"
 }
@@ -108,7 +140,7 @@ log "Starting OLD v0.14.6 daemon"
 SERVER_PID=$!
 # Wait for the socket to appear.
 for _ in $(seq 1 40); do
-  [ -S "$JCODE_SOCKET" ] && break
+  [ -S "$KCODE_SOCKET" ] && break
   sleep 0.25
 done
 sleep 1
@@ -124,7 +156,7 @@ echo "shared-server-version after repair: $(cat "$BUILDS/shared-server-version")
 
 # Give the handoff a moment.
 for _ in $(seq 1 40); do
-  [ -S "$JCODE_SOCKET" ] && break
+  [ -S "$KCODE_SOCKET" ] && break
   sleep 0.25
 done
 sleep 2

@@ -3,10 +3,10 @@ use super::*;
 /// Explicit opt-in: uses an installed CLI, isolated empty credential homes,
 /// and only offline begin/cancel. Never opens a browser or exchanges tokens.
 #[test]
-#[ignore = "set JCODE_AUTH_TEST_BINARY to an installed CLI for compatibility validation"]
+#[ignore = "set KCODE_AUTH_TEST_BINARY to an installed CLI for compatibility validation"]
 fn installed_cli_begin_cancel_isolated() {
     let binary =
-        PathBuf::from(std::env::var_os("JCODE_AUTH_TEST_BINARY").expect("explicit CLI path"));
+        PathBuf::from(std::env::var_os("KCODE_AUTH_TEST_BINARY").expect("explicit CLI path"));
     for provider in ["claude", "openai"] {
         let home = tempfile::tempdir().unwrap();
         let client = AuthClient::new(AuthOptions {
@@ -100,7 +100,7 @@ mod processes {
             r#"#!/usr/bin/env python3
 import json, os, sys, time
 from pathlib import Path
-home = Path(os.environ['JCODE_HOME'])
+home = Path(os.environ['KCODE_HOME'])
 args = sys.argv[1:]
 provider = args[args.index('--provider') + 1]
 flow = args[args.index('--flow-id') + 1]

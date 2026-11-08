@@ -3,11 +3,11 @@ use super::*;
 #[test]
 fn create_and_resume_goal_persists_project_goal() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
+    let temp = crate::test_temp::tempdir().expect("tempdir");
     let project = temp.path().join("repo");
     std::fs::create_dir_all(&project).expect("project dir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let goal = create_goal(
         GoalCreateInput {
@@ -43,20 +43,20 @@ fn create_and_resume_goal_persists_project_goal() {
     assert_eq!(resumed.id, goal.id);
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
 #[test]
 fn write_goal_page_auto_focuses_first_goal_only() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
+    let temp = crate::test_temp::tempdir().expect("tempdir");
     let project = temp.path().join("repo");
     std::fs::create_dir_all(&project).expect("project dir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let session_id = "ses_goal_panel";
     let goal = create_goal(
@@ -83,8 +83,8 @@ fn write_goal_page_auto_focuses_first_goal_only() {
     assert_eq!(second.focused_page_id.as_deref(), Some("notes"));
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }

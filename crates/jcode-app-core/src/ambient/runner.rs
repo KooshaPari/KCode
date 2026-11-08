@@ -6,12 +6,12 @@
 //! ambient cycles: scheduling, spawning agent sessions, handling results, and
 //! providing status for the TUI widget and debug socket.
 
+use super::auto_dream;
 use crate::agent::Agent;
 use crate::ambient::{
     self, AmbientCycleResult, AmbientLock, AmbientManager, AmbientState, AmbientStatus,
     CycleStatus, ScheduleTarget, ScheduledItem,
 };
-use super::auto_dream;
 use crate::ambient_scheduler::{AdaptiveScheduler, AmbientSchedulerConfig};
 use crate::config::config;
 use crate::logging;
@@ -785,7 +785,8 @@ impl AmbientRunnerHandle {
                         let dream_provider = provider.clone();
                         tokio::spawn(async move {
                             if let Ok(data_dir) = crate::storage::jcode_dir() {
-                                auto_dream::maybe_dream(data_dir, total_cycles, dream_provider).await;
+                                auto_dream::maybe_dream(data_dir, total_cycles, dream_provider)
+                                    .await;
                             }
                         });
                     }
@@ -1043,7 +1044,7 @@ impl AmbientRunnerHandle {
 
         // Clear any previous result file
         if let Ok(result_path) = VisibleCycleContext::result_path() {
-            let _ = std::fs::remove_file(&result_path);
+            let _ = crate::storage::remove_state_file(&result_path);
         }
 
         // Spawn kitty with `jcode ambient run-visible`
@@ -1067,7 +1068,7 @@ impl AmbientRunnerHandle {
                     && let Ok(result) =
                         crate::storage::read_json::<AmbientCycleResult>(&result_path)
                 {
-                    let _ = std::fs::remove_file(&result_path);
+                    let _ = crate::storage::remove_state_file(&result_path);
                     return Ok(VisibleCycleOutcome::Completed(Box::new(
                         AmbientCycleResult {
                             started_at,

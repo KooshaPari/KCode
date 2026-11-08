@@ -188,6 +188,125 @@ pub(super) async fn handle_notify_session(
     }
 }
 
+pub(super) async fn handle_notify_session_receipt(
+    id: u64,
+    session_id: String,
+    message: String,
+    receipt_id: String,
+    ctx: NotifySessionContext<'_>,
+) {
+    let result = async {
+        if !super::wake_receipts::target_is_allowed(&session_id) {
+            anyhow::bail!("Session '{}' is not allowed for native wakes", session_id);
+        }
+        // Only new admissions need a live target. An identical replay must keep
+        // returning the stored state even if the target transcript was removed
+        // since, which is why the replay lookup runs before this guard.
+        if super::wake_receipts::get(&receipt_id)?.is_none() {
+            // A receipt names one existing target in this profile. Never create a
+            // new session implicitly from untrusted bridge input. An attached
+            // live session counts as existing before its first transcript save.
+            let attached = ctx.sessions.read().await.contains_key(&session_id);
+            if !attached && !crate::session::session_exists(&session_id) {
+                anyhow::bail!("Session '{}' does not exist in this profile", session_id);
+            }
+        }
+        let receipt = super::wake_receipts::submit(&receipt_id, &session_id, &message)?;
+        if receipt.state == super::wake_receipts::WakeState::Queued {
+            let has_client = ctx
+                .client_connections
+                .read()
+                .await
+                .values()
+                .any(|connection| connection.session_id == session_id);
+            if has_client {
+                super::live_turn::run_receipt_turn_if_idle(
+                    &session_id,
+                    &message,
+                    &receipt_id,
+                    ctx.sessions,
+                    super::live_turn::LiveTurnSwarmContext::new(
+                        ctx.swarm_members,
+                        ctx.swarms_by_id,
+                        ctx.event_history,
+                        ctx.event_counter,
+                        ctx.swarm_event_tx,
+                    ),
+                )
+                .await;
+            }
+        }
+        super::wake_receipts::get(&receipt_id)?
+            .ok_or_else(|| anyhow::anyhow!("receipt disappeared after submission"))
+    }
+    .await;
+    let event = match result {
+        Ok(receipt) => super::wake_receipts::status_event(id, receipt),
+        Err(error) => super::wake_receipts::error_event(id, &error.to_string()),
+    };
+    super::wake_receipts::send_event(ctx.client_event_tx, event);
+}
+
+/// A user pressed something in an agent applet: store its state, publish, then
+/// resolve a waiting `applet` tool call or wake the agent like a notification.
+pub(super) async fn handle_applet_action(
+    id: u64,
+    session_id: String,
+    instance: String,
+    action: jcode_applet_types::Action,
+    state: serde_json::Value,
+    source_key: Option<String>,
+    ctx: NotifySessionContext<'_>,
+) {
+    let stored = match crate::applets::set_state(&session_id, &instance, state) {
+        Ok(stored) => stored,
+        Err(error) => {
+            let _ = ctx.client_event_tx.send(ServerEvent::Error {
+                id,
+                message: error.to_string(),
+                retry_after_secs: None,
+            });
+            return;
+        }
+    };
+    let (snapshot, inst) = stored;
+    crate::tool::applet::publish(&session_id, snapshot);
+    let message = crate::tool::applet::format_action_message(
+        &instance,
+        &inst.document.title,
+        &action,
+        &inst.document.state,
+        source_key.as_deref(),
+    );
+    if crate::tool::applet::deliver_to_waiter(&session_id, &instance, message.clone()) {
+        let _ = ctx.client_event_tx.send(ServerEvent::Done { id });
+        return;
+    }
+    handle_notify_session(id, session_id, message, ctx).await;
+}
+
+/// The user closed an agent applet. No agent wake.
+pub(super) fn handle_close_applet(
+    id: u64,
+    session_id: String,
+    instance: String,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+) {
+    match crate::applets::close(&session_id, &instance) {
+        Ok((snapshot, _)) => {
+            crate::tool::applet::publish(&session_id, snapshot);
+            let _ = client_event_tx.send(ServerEvent::Done { id });
+        }
+        Err(error) => {
+            let _ = client_event_tx.send(ServerEvent::Error {
+                id,
+                message: error.to_string(),
+                retry_after_secs: None,
+            });
+        }
+    }
+}
+
 pub(super) fn handle_input_shell(
     id: u64,
     command: String,
@@ -343,31 +462,32 @@ pub(super) fn handle_run_subagent(
         let tool_name_for_exec = tool_name.clone();
 
         // Agent mode tool gating: block write/build tools in manager/researcher modes.
-        let mode_str = std::env::var("JCODE_AGENT_MODE").unwrap_or_default();
+        let mode_str = std::env::var("KCODE_AGENT_MODE").unwrap_or_default();
         if let Some(mode) = crate::config::AgentMode::parse(&mode_str)
-            && mode.is_tool_blocked(&tool_name_for_exec) {
-                let msg = format!(
-                    "Tool '{}' is blocked in {} mode. {}",
-                    tool_name_for_exec,
-                    mode.as_str(),
-                    match mode {
-                        crate::config::AgentMode::Manager => {
-                            "Use 'swarm' to delegate implementation to a worker agent."
-                        }
-                        crate::config::AgentMode::Researcher => {
-                            "Researcher mode is read-only. Suggest changes without applying them."
-                        }
-                        _ => "",
+            && mode.is_tool_blocked(&tool_name_for_exec)
+        {
+            let msg = format!(
+                "Tool '{}' is blocked in {} mode. {}",
+                tool_name_for_exec,
+                mode.as_str(),
+                match mode {
+                    crate::config::AgentMode::Manager => {
+                        "Use 'swarm' to delegate implementation to a worker agent."
                     }
-                );
-                let _ = tx.send(ServerEvent::ToolDone {
-                    id: tool_call_id.clone(),
-                    name: tool_name,
-                    output: msg.clone(),
-                    error: Some(msg),
-                });
-                return;
-            }
+                    crate::config::AgentMode::Researcher => {
+                        "Researcher mode is read-only. Suggest changes without applying them."
+                    }
+                    _ => "",
+                }
+            );
+            let _ = tx.send(ServerEvent::ToolDone {
+                id: tool_call_id.clone(),
+                name: tool_name,
+                output: msg.clone(),
+                error: Some(msg),
+            });
+            return;
+        }
 
         let result = match tokio::spawn(async move {
             registry.execute(&tool_name_for_exec, tool_input, ctx).await
@@ -585,6 +705,75 @@ pub(super) async fn handle_set_feature(
     }
 }
 
+/// Bookmark or unbookmark the session. A save label is the name the user chose,
+/// so it doubles as the session title and is announced like a rename.
+pub(super) async fn handle_set_session_saved(
+    id: u64,
+    saved: bool,
+    label: Option<String>,
+    agent: &Arc<Mutex<Agent>>,
+    client_session_id: &str,
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+) {
+    let result = agent.lock().await.set_session_saved(saved, label.clone());
+    if let Err(error) = result {
+        let _ = client_event_tx.send(ServerEvent::Error {
+            id,
+            message: crate::util::format_error_chain(&error),
+            retry_after_secs: None,
+        });
+        return;
+    }
+    crate::session_list_cache::invalidate();
+    let label = label
+        .as_deref()
+        .map(str::trim)
+        .filter(|label| !label.is_empty());
+    if saved && label.is_some() {
+        let (session_id, display_title) = {
+            let agent = agent.lock().await;
+            (
+                agent.session_id().to_string(),
+                agent.session_display_title_or_name(),
+            )
+        };
+        broadcast_session_renamed(
+            swarm_members,
+            client_session_id,
+            client_event_tx,
+            ServerEvent::SessionRenamed {
+                session_id,
+                title: label.map(ToOwned::to_owned),
+                display_title,
+            },
+        )
+        .await;
+    }
+    let _ = client_event_tx.send(ServerEvent::Done { id });
+}
+
+async fn broadcast_session_renamed(
+    swarm_members: &Arc<RwLock<HashMap<String, SwarmMember>>>,
+    client_session_id: &str,
+    client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
+    event: ServerEvent,
+) -> usize {
+    let ServerEvent::SessionRenamed { session_id, .. } = &event else {
+        return 0;
+    };
+    let renamed_session_id = session_id.clone();
+    let mut delivered =
+        fanout_session_event(swarm_members, &renamed_session_id, event.clone()).await;
+    if renamed_session_id != client_session_id {
+        delivered += fanout_session_event(swarm_members, client_session_id, event.clone()).await;
+    }
+    if delivered == 0 {
+        let _ = client_event_tx.send(event);
+    }
+    delivered
+}
+
 pub(super) async fn handle_rename_session(
     id: u64,
     title: Option<String>,
@@ -616,7 +805,14 @@ pub(super) async fn handle_rename_session(
     );
 
     let (renamed_session_id, display_title) = {
-        let mut agent_guard = agent.lock().await;
+        let Ok(mut agent_guard) = agent.try_lock() else {
+            let _ = client_event_tx.send(ServerEvent::Error {
+                id,
+                message: "session is busy; retry rename when idle".to_string(),
+                retry_after_secs: None,
+            });
+            return;
+        };
         match agent_guard.rename_session_title(normalized_title.clone()) {
             Ok(display_title) => (agent_guard.session_id().to_string(), display_title),
             Err(error) => {
@@ -646,14 +842,8 @@ pub(super) async fn handle_rename_session(
         title: normalized_title,
         display_title,
     };
-    let mut delivered =
-        fanout_session_event(swarm_members, &renamed_session_id, event.clone()).await;
-    if renamed_session_id != client_session_id {
-        delivered += fanout_session_event(swarm_members, client_session_id, event.clone()).await;
-    }
-    if delivered == 0 {
-        let _ = client_event_tx.send(event);
-    }
+    let delivered =
+        broadcast_session_renamed(swarm_members, client_session_id, client_event_tx, event).await;
     let _ = client_event_tx.send(ServerEvent::Done { id });
     crate::logging::event_info(
         "SESSION_LIFECYCLE",
@@ -1064,6 +1254,7 @@ pub(super) async fn handle_resume_all_sessions(
             Some(reminder),
             None,
             Some("resuming interrupted session".to_string()),
+            None,
             super::live_turn::LiveTurnSwarmContext::new(
                 swarm_members,
                 swarms_by_id,

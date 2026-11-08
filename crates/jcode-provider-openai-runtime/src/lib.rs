@@ -15,7 +15,9 @@ use async_trait::async_trait;
 use futures::{FutureExt, SinkExt, StreamExt as FuturesStreamExt};
 use jcode_base::auth::codex::CodexCredentials;
 use jcode_base::auth::oauth;
-use jcode_base::provider::openai_request::{build_responses_input, build_tools};
+use jcode_base::provider::openai_request::{
+    build_responses_input, build_tools, insert_additional_tools,
+};
 #[cfg(test)]
 use jcode_message_types::TOOL_OUTPUT_MISSING_TEXT;
 use jcode_message_types::{Message as ChatMessage, StreamEvent, ToolDefinition};
@@ -56,6 +58,26 @@ pub(crate) fn is_chatgpt_web_model(model: &str) -> bool {
 /// The Responses backend only exposes `image_generation` to general
 /// ChatGPT/GPT models. Codex models (ids containing `codex`) reject unknown
 /// hosted tools, so they must not receive it. See issue #369.
+/// Responses `additional_tools` / deferred tool loading requires gpt-5.4 or
+/// newer. Unknown model families stay eager, which is always correct.
+fn model_supports_additional_tools(model_id: &str) -> bool {
+    let lower = model_id.to_ascii_lowercase();
+    let Some(rest) = lower.strip_prefix("gpt-") else {
+        return false;
+    };
+    let version: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
+    let mut parts = version.split('.').filter(|p| !p.is_empty());
+    let major: u32 = match parts.next().and_then(|p| p.parse().ok()) {
+        Some(major) => major,
+        None => return false,
+    };
+    let minor: u32 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+    major > 5 || (major == 5 && minor >= 4)
+}
+
 fn model_supports_image_generation(model_id: &str) -> bool {
     !model_id.to_ascii_lowercase().contains("codex")
 }
@@ -80,7 +102,7 @@ const WEBSOCKET_PERSISTENT_MAX_AGE_SECS: u64 = 3000; // 50 min (server limit is 
 /// and keep the warm cache. Dead/half-closed sockets are still detected by the
 /// ping and reconnect gracefully, and `WEBSOCKET_PERSISTENT_MAX_AGE_SECS` still
 /// caps total connection lifetime. Tunable via
-/// `JCODE_OPENAI_WS_IDLE_RECONNECT_SECS` (0 disables the idle reconnect entirely,
+/// `KCODE_OPENAI_WS_IDLE_RECONNECT_SECS` (0 disables the idle reconnect entirely,
 /// relying solely on the healthcheck + max-age cap).
 const WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT: u64 = 600; // 10 min
 /// If a persistent socket has been idle for a while, send a lightweight ping
@@ -96,24 +118,24 @@ const WEBSOCKET_PERSISTENT_KEEPALIVE_INTERVAL_SECS: u64 = 30;
 /// `Some(secs)` means reconnect after that idle duration; `None` means never
 /// force a reconnect on idle alone (healthcheck + max-age still apply).
 static WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS: LazyLock<Option<u64>> = LazyLock::new(|| {
-    match std::env::var("JCODE_OPENAI_WS_IDLE_RECONNECT_SECS") {
+    match std::env::var("KCODE_OPENAI_WS_IDLE_RECONNECT_SECS") {
         Ok(raw) => match raw.trim().parse::<u64>() {
             Ok(0) => {
                 jcode_base::logging::info(
-                    "OpenAI persistent WS idle reconnect disabled (JCODE_OPENAI_WS_IDLE_RECONNECT_SECS=0); relying on healthcheck + max-age",
+                    "OpenAI persistent WS idle reconnect disabled (KCODE_OPENAI_WS_IDLE_RECONNECT_SECS=0); relying on healthcheck + max-age",
                 );
                 None
             }
             Ok(secs) => {
                 jcode_base::logging::info(&format!(
-                    "OpenAI persistent WS idle reconnect threshold set to {}s (JCODE_OPENAI_WS_IDLE_RECONNECT_SECS)",
+                    "OpenAI persistent WS idle reconnect threshold set to {}s (KCODE_OPENAI_WS_IDLE_RECONNECT_SECS)",
                     secs
                 ));
                 Some(secs)
             }
             Err(_) => {
                 jcode_base::logging::info(&format!(
-                    "Warning: invalid JCODE_OPENAI_WS_IDLE_RECONNECT_SECS '{}'; using default {}s",
+                    "Warning: invalid KCODE_OPENAI_WS_IDLE_RECONNECT_SECS '{}'; using default {}s",
                     raw, WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT
                 ));
                 Some(WEBSOCKET_PERSISTENT_IDLE_RECONNECT_SECS_DEFAULT)
@@ -152,7 +174,7 @@ impl OpenAITransportMode {
             "https" | "http" | "sse" => Self::HTTPS,
             other => {
                 jcode_base::logging::warn(&format!(
-                    "Unknown JCODE_OPENAI_TRANSPORT '{}'; using auto. Use: auto, websocket, or https.",
+                    "Unknown KCODE_OPENAI_TRANSPORT '{}'; using auto. Use: auto, websocket, or https.",
                     other
                 ));
                 Self::Auto
@@ -784,16 +806,17 @@ impl OpenAIProvider {
         };
 
         // Check for model override from environment
+        let catalog_scope = Self::catalog_scope_for(&credentials);
         let mut model = if browser_only {
             CHATGPT_WEB_MODEL.to_string()
         } else {
-            std::env::var("JCODE_OPENAI_MODEL")
+            std::env::var("KCODE_OPENAI_MODEL")
                 .unwrap_or_else(|_| DEFAULT_MODEL.to_string())
                 .trim()
                 .to_string()
         };
         if !is_chatgpt_web_model(&model)
-            && !jcode_base::provider::known_openai_model_ids()
+            && !jcode_base::provider::known_openai_model_ids_for_scope(&catalog_scope)
                 .iter()
                 .any(|known| known == &model)
         {
@@ -804,7 +827,7 @@ impl OpenAIProvider {
             model = DEFAULT_MODEL.to_string();
         }
 
-        let prompt_cache_key = std::env::var("JCODE_OPENAI_PROMPT_CACHE_KEY")
+        let prompt_cache_key = std::env::var("KCODE_OPENAI_PROMPT_CACHE_KEY")
             .ok()
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty());
@@ -847,7 +870,8 @@ impl OpenAIProvider {
             .openai_native_compaction_threshold_tokens
             .max(1000);
         let model_reasoning_efforts =
-            jcode_base::provider::cached_openai_reasoning_efforts().unwrap_or_default();
+            jcode_base::provider::cached_openai_reasoning_efforts_for_scope(&catalog_scope)
+                .unwrap_or_default();
 
         let provider = Self {
             client: jcode_provider_core::shared_http_client(),
@@ -931,7 +955,7 @@ impl OpenAIProvider {
         // choice so UI surfaces report the auth method requests will actually use.
         // `Auto` leaves the existing identity untouched.
         if let Some(route) = mode.auth_route(jcode_provider_core::DualAuthProvider::OpenAI) {
-            jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
+            jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
         }
         // Drop any cached auth snapshot so surfaces that still consult the cheap
         // cached probe (auto-mode resolution, usage availability, account labels)
@@ -942,7 +966,9 @@ impl OpenAIProvider {
     }
 
     fn reload_cached_reasoning_efforts(&self) {
-        let cached = jcode_base::provider::cached_openai_reasoning_efforts().unwrap_or_default();
+        let cached =
+            jcode_base::provider::cached_openai_reasoning_efforts_for_scope(&self.catalog_scope())
+                .unwrap_or_default();
         match self.model_reasoning_efforts.write() {
             Ok(mut efforts) => *efforts = cached,
             Err(poisoned) => *poisoned.into_inner() = cached,
@@ -981,6 +1007,30 @@ impl OpenAIProvider {
 
     fn is_chatgpt_mode(credentials: &CodexCredentials) -> bool {
         !credentials.refresh_token.is_empty() || credentials.id_token.is_some()
+    }
+
+    /// Model-catalog scope for the credential this runtime will actually send.
+    /// ChatGPT/Codex OAuth and platform API keys expose different model lists,
+    /// so validation, availability, and refresh must all use the loaded
+    /// credential's own catalog instead of one shared per-account slot.
+    pub(crate) fn catalog_scope_for(credentials: &CodexCredentials) -> String {
+        jcode_base::provider::openai_catalog_scope_for_credential(
+            Self::is_chatgpt_mode(credentials),
+            &credentials.access_token,
+        )
+    }
+
+    pub(crate) fn catalog_scope(&self) -> String {
+        match self.credentials.try_read() {
+            Ok(credentials) => Self::catalog_scope_for(&credentials),
+            // Writers hold this lock only briefly (token refresh / mode swap).
+            // Fall back to the account scope rather than blocking.
+            Err(_) => jcode_base::provider::openai_catalog_scope_for_credential(true, ""),
+        }
+    }
+
+    async fn catalog_scope_async(&self) -> String {
+        Self::catalog_scope_for(&*self.credentials.read().await)
     }
 
     fn catalog_credential_identity(credentials: &CodexCredentials) -> String {
@@ -1123,7 +1173,7 @@ impl OpenAIProvider {
             Ok(value) => Some(value),
             Err(_) => {
                 jcode_base::logging::warn(&format!(
-                    "Invalid JCODE_OPENAI_MAX_OUTPUT_TOKENS='{}'; using default {}",
+                    "Invalid KCODE_OPENAI_MAX_OUTPUT_TOKENS='{}'; using default {}",
                     raw, DEFAULT_MAX_OUTPUT_TOKENS
                 ));
                 Some(DEFAULT_MAX_OUTPUT_TOKENS)
@@ -1139,10 +1189,11 @@ impl OpenAIProvider {
 
         match value.as_str() {
             "fast" | "priority" => Ok(Some("priority".to_string())),
+            "ultrafast" | "ultra" | "ultra-fast" => Ok(Some("ultrafast".to_string())),
             "flex" => Ok(Some("flex".to_string())),
             "default" | "auto" | "none" | "off" | "standard" => Ok(None),
             other => anyhow::bail!(
-                "Unsupported OpenAI service tier '{}'; expected priority|fast|flex|standard|default|off",
+                "Unsupported OpenAI service tier '{}'; expected priority|fast|ultrafast|flex|standard|default|off",
                 other
             ),
         }
@@ -1163,7 +1214,7 @@ impl OpenAIProvider {
     }
 
     fn load_max_output_tokens() -> Option<u32> {
-        let raw = std::env::var("JCODE_OPENAI_MAX_OUTPUT_TOKENS").ok();
+        let raw = std::env::var("KCODE_OPENAI_MAX_OUTPUT_TOKENS").ok();
         let parsed = Self::parse_max_output_tokens(raw.as_deref());
         if raw.is_some() {
             match parsed {
@@ -1172,7 +1223,7 @@ impl OpenAIProvider {
                     value
                 )),
                 None => jcode_base::logging::info(
-                    "OpenAI max_output_tokens disabled (JCODE_OPENAI_MAX_OUTPUT_TOKENS=0)",
+                    "OpenAI max_output_tokens disabled (KCODE_OPENAI_MAX_OUTPUT_TOKENS=0)",
                 ),
             }
         }
@@ -1195,7 +1246,7 @@ impl OpenAIProvider {
     /// Defaults to `https://api.openai.com/v1`, but honors a user override so
     /// the native `openai-api` provider can target a local/proxied Responses
     /// API endpoint (issue #343). Checked in order:
-    /// `JCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
+    /// `KCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
     ///
     /// The override must be an absolute `http(s)://` URL; anything else is
     /// logged and ignored so a malformed value never silently breaks requests.
@@ -1236,7 +1287,11 @@ impl OpenAIProvider {
         system: &str,
         is_chatgpt_mode: bool,
     ) -> Value {
-        let api_tools = build_tools(tools);
+        let hosted_tools =
+            native_web_search::hosted_tools_for_request(model_id, is_chatgpt_mode, tools);
+        let tools = native_web_search::without_local_websearch(tools, &hosted_tools);
+        let mut api_tools = build_tools(&tools);
+        api_tools.extend(hosted_tools);
         let reasoning_effort = self
             .reasoning_effort
             .read()
@@ -1344,7 +1399,8 @@ impl OpenAIProvider {
 
     async fn model_id(&self) -> String {
         let current = self.model.read().await.clone();
-        let availability = jcode_base::provider::model_availability_for_account(&current);
+        let scope = self.catalog_scope_async().await;
+        let availability = jcode_base::provider::model_availability_for_scope(&scope, &current);
 
         match availability.state {
             jcode_base::provider::AccountModelAvailabilityState::Unavailable => {
@@ -1354,7 +1410,8 @@ impl OpenAIProvider {
                         current, detail
                     ));
                 }
-                if let Some(fallback) = jcode_base::provider::get_best_available_openai_model()
+                if let Some(fallback) =
+                    jcode_base::provider::get_best_available_openai_model_for_scope(&scope)
                     && fallback != current
                 {
                     jcode_base::logging::info(&format!(
@@ -1373,8 +1430,8 @@ impl OpenAIProvider {
                 }
             }
             jcode_base::provider::AccountModelAvailabilityState::Unknown => {
-                if jcode_base::provider::should_refresh_openai_model_catalog()
-                    && jcode_base::provider::begin_openai_model_catalog_refresh()
+                if jcode_base::provider::should_refresh_openai_model_catalog_for_scope(&scope)
+                    && jcode_base::provider::begin_openai_model_catalog_refresh_for_scope(&scope)
                 {
                     let is_chatgpt_mode = {
                         let creds = self.credentials.read().await;
@@ -1438,6 +1495,7 @@ use self::stream::{OpenAIResponsesStream, parse_openai_response_event};
 use self::stream::{handle_openai_output_item, parse_text_wrapped_tool_call};
 
 mod chatgpt_web;
+mod native_web_search;
 #[path = "openai_provider_impl.rs"]
 mod openai_provider_impl;
 #[path = "openai_stream_runtime.rs"]

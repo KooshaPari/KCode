@@ -40,6 +40,7 @@ pub mod backend;
 pub(crate) mod color_support;
 mod core;
 pub(crate) mod fuzzy;
+pub mod herdr;
 // Terminal image display + metadata helpers now live in the dependency-free
 // `jcode-terminal-image` crate (shared with the `read` tool). Re-exported here
 // so existing `crate::tui::image` paths keep working.
@@ -50,6 +51,7 @@ mod info_widget_overview;
 mod info_widget_settle;
 pub mod info_widget_stability;
 pub mod keybind;
+mod keyboard_protocol;
 mod layout_utils;
 pub mod login_picker;
 pub mod markdown;
@@ -88,7 +90,7 @@ pub use crate::generated_image::{
     generated_image_side_panel_markdown, generated_image_side_panel_page_id,
     write_generated_image_side_panel_page,
 };
-pub use app::{App, CopyBadgeUiState, ProcessingStatus, RunResult};
+pub use app::{App, CloudHandoff, CopyBadgeUiState, ProcessingStatus, RunResult};
 
 use crate::message::ToolCall;
 use ratatui::prelude::Frame;
@@ -120,19 +122,22 @@ pub use jcode_tui_messages::DisplayMessage;
 fn keyboard_enhancement_flags() -> crossterm::event::KeyboardEnhancementFlags {
     use crossterm::event::KeyboardEnhancementFlags;
 
+    if std::env::var_os("KCODE_DISABLE_KITTY_KEYBOARD").is_some() {
+        return KeyboardEnhancementFlags::empty();
+    }
+    // Only disambiguate escape codes. REPORT_EVENT_TYPES makes terminals emit
+    // press AND release events; hosts that half-support the kitty protocol
+    // (herdr/conpty panes) leak releases into the prompt as "[<code>;1:3u".
     KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-        | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
-        | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
 }
 
 /// Request Kitty keyboard reporting and tmux's extended-key mode.
 ///
-/// Intentionally avoid REPORT_ALL_KEYS_AS_ESCAPE_CODES for now. When that flag is enabled,
-/// terminals such as kitty/Alacritty/Warp can report printable keys as a base key plus
-/// modifiers instead of the final text produced by the active keyboard layout. Crossterm does
-/// not yet expose kitty's associated text / alternate key data, so we cannot safely reconstruct
-/// shifted symbols for every keyboard layout. Prefer the terminal-delivered printable character
-/// and only synthesize ASCII letter casing in the input fallback.
+/// Avoids REPORT_ALL_KEYS_AS_ESCAPE_CODES: with it, kitty/Alacritty/Warp report
+/// printable keys as base key plus modifiers instead of the text the active
+/// layout produces, and crossterm cannot reconstruct shifted symbols for every
+/// layout. Prefer the terminal-delivered character and only synthesize ASCII
+/// letter casing in the input fallback.
 ///
 /// Returns whether the requests were written, not whether the terminal supports them.
 pub fn enable_keyboard_enhancement() -> bool {
@@ -305,7 +310,7 @@ mod terminal_mode_tests {
         let output = String::from_utf8(output).unwrap();
         assert!(output.starts_with("\x1b[?2004h\x1b[?1004h"));
         assert!(!output.contains("\x1b[?1000h"));
-        assert!(output.contains("\x1b[="));
+        assert_eq!(output.contains("\x1b[="), !cfg!(windows));
     }
 
     #[test]
@@ -317,7 +322,7 @@ mod terminal_mode_tests {
         assert!(output.contains("\x1b[?2004h"));
         assert!(output.contains("\x1b[?1004h"));
         assert!(output.contains("\x1b[?1000h"));
-        assert!(output.contains("\x1b[="), "must set Kitty keyboard flags");
+        assert_eq!(output.contains("\x1b[="), !cfg!(windows));
         assert!(
             !output.contains("\x1b[>7u"),
             "must not push the Kitty keyboard stack"
@@ -379,9 +384,9 @@ pub(crate) fn hash_rendered_image_anchor(
 }
 
 /// Hash every field that affects inline image rendering. The production App
-/// memoizes this signature until its image set changes, so exact payload hashing
-/// happens on image updates rather than during scrolling. Correctness matters
-/// here: sampling can miss a same-length change and reuse a stale prepared frame.
+/// memoizes this until its image set changes, so exact hashing happens on
+/// updates rather than during scrolling. Sampling could miss a same-length
+/// change and reuse a stale prepared frame, so hash every field.
 pub(crate) fn hash_rendered_image_signature_fields(
     image: &crate::session::RenderedImage,
     hasher: &mut impl std::hash::Hasher,
@@ -396,12 +401,11 @@ pub(crate) fn hash_rendered_image_signature_fields(
 
 /// Trait for TUI state consumed by the shared renderer.
 ///
-/// This is a wide (114-method) presentation interface: the read-only surface the
-/// renderer needs from `App`. The methods are grouped into the domain sections
-/// below (transcript, input, scroll, stream/status, provider, session/server,
+/// A wide (114-method) presentation interface: the read-only surface the
+/// renderer needs from `App`, grouped into the domain sections below
+/// (transcript, input, scroll, stream/status, provider, session/server,
 /// workspace, diagram pane, diff pane, side panel, inline, overlay, copy
-/// selection, onboarding, misc). See `docs/TUISTATE_TRAIT_DECOMPOSITION.md` for
-/// the incremental plan to split these into composable sub-traits.
+/// selection, onboarding, misc). See `docs/TUISTATE_TRAIT_DECOMPOSITION.md`.
 pub trait TuiState {
     // ---- Transcript ----
     fn display_messages(&self) -> &[DisplayMessage];
@@ -440,7 +444,7 @@ pub trait TuiState {
     fn pinned_todos_expanded(&self) -> bool {
         false
     }
-    /// Running and recently completed background tasks rendered beneath pinned todos.
+    /// Running and recently completed background tasks for the session.
     fn background_task_rows(&self) -> &[BackgroundTaskRow] {
         &[]
     }
@@ -468,27 +472,17 @@ pub trait TuiState {
     fn terminal_clear_collapsed(&self) -> bool {
         false
     }
+    /// Content-coordinate reading position captured before a resize rewrapped
+    /// the transcript. The renderer resolves it against the frame it is drawing
+    /// so the anchored message stays under the reader.
+    fn pending_resize_anchor(&self) -> Option<jcode_tui_messages::ContentPos> {
+        None
+    }
     /// When older compacted history is being loaded in, this is the reader's
     /// captured distance (in wrapped lines) from the bottom of the transcript.
     /// The renderer uses it to keep the viewport anchored to the same content as
     /// older messages are prepended above, instead of snapping to the new top.
     fn pending_history_anchor_lines_from_bottom(&self) -> Option<usize> {
-        None
-    }
-    /// Whether the elastic overscroll status line (revealed by scrolling past
-    /// the bottom of the transcript) is currently shown.
-    fn chat_overscroll_active(&self) -> bool {
-        false
-    }
-    /// Whether the overscroll status line is pinned permanently visible by
-    /// config (`display.overscroll_status = "on"`). A pinned line is part of
-    /// the stable layout, unlike the transient elastic reveal.
-    fn chat_overscroll_pinned(&self) -> bool {
-        false
-    }
-    /// Seconds remaining in the overscroll dwell window, used to render the
-    /// `(overscroll x.x)` countdown. `None` when not shown.
-    fn chat_overscroll_remaining(&self) -> Option<f32> {
         None
     }
     /// Whether a mouse drag-selection is currently held at the top/bottom edge of
@@ -513,9 +507,9 @@ pub trait TuiState {
     fn available_skills(&self) -> Vec<String>;
     /// Authoritative active credential (OAuth vs API key) for a dual-auth
     /// provider, as resolved from the live provider / remote server rather than
-    /// from the `JCODE_RUNTIME_PROVIDER` env var. The header must prefer this
+    /// from the `KCODE_RUNTIME_PROVIDER` env var. The header must prefer this
     /// over its own env-based heuristic: the TUI client process often does not
-    /// inherit `JCODE_RUNTIME_PROVIDER` (it is set inside the agent/server
+    /// inherit `KCODE_RUNTIME_PROVIDER` (it is set inside the agent/server
     /// process), so the env heuristic silently falls back to "auto prefers
     /// OAuth" and the header claimed OAuth while the info widget correctly
     /// reported an API key. Returns `None` when the credential cannot be
@@ -610,6 +604,11 @@ pub trait TuiState {
     fn connected_clients(&self) -> Option<usize>;
     /// Short-lived notice shown in the status line (e.g., model switch, toggle diff)
     fn status_notice(&self) -> Option<String>;
+    /// Built-in voice input status while recording or transcribing:
+    /// `(recording, text)`. Shown ahead of every other notice.
+    fn voice_input_status(&self) -> Option<(bool, String)> {
+        None
+    }
     /// How long since the user last pressed a key, scrolled, or pasted, or
     /// `None` when they have not interacted yet.
     ///
@@ -730,6 +729,12 @@ pub trait TuiState {
     fn swarm_rename_buffer(&self) -> &str {
         ""
     }
+    /// Drain a pending swarm rename (target_session_id, new_label) if the
+    /// RenameConfirm handler populated one. Returns `None` on subsequent calls
+    /// until the next RenameConfirm.
+    fn drain_pending_swarm_rename(&mut self) -> Option<(String, String)> {
+        None
+    }
     /// Indices of agents selected for batch operations (multi-select via Space).
     fn swarm_selected_set(&self) -> &std::collections::HashSet<usize> {
         // Return a static empty set as default; overridden by App impl.
@@ -805,6 +810,10 @@ pub trait TuiState {
     /// Session-scoped side panel state managed by the side_panel tool
     // ---- Side panel ----
     fn side_panel(&self) -> &crate::side_panel::SidePanelSnapshot;
+    /// Whether the side panel replaces the transcript (fullscreen mode).
+    fn side_panel_fullscreen(&self) -> bool {
+        false
+    }
     /// Whether to pin read images to a side pane
     fn pin_images(&self) -> bool;
     /// Whether inline transcript images render expanded. When false, each
@@ -1272,7 +1281,7 @@ pub struct LoginImportPrompt {
     /// `Some` while the telemetry settings sub-page is open, holding the
     /// highlighted choice.
     pub telemetry: Option<TelemetryChoice>,
-    /// Whether the environment (JCODE_NO_TELEMETRY / DO_NOT_TRACK) already
+    /// Whether the environment (KCODE_NO_TELEMETRY / DO_NOT_TRACK) already
     /// forces telemetry off, so the sub-page should say so.
     pub telemetry_env_forced_off: bool,
     /// How many rows are currently checked for import.
@@ -1286,8 +1295,6 @@ pub struct LoginImportPrompt {
 pub enum ImportSummaryPill {
     /// Import everything we detected (default).
     Continue,
-    /// Sign in with a Jcode subscription instead of importing.
-    Subscription,
     /// Open the per-login checkbox list to import fewer logins.
     ImportLess,
     /// Open the telemetry settings sub-page.
@@ -1831,7 +1838,7 @@ pub struct PickerOption {
 /// An SSH-backed socket is not a shared-filesystem local daemon. Keep this
 /// distinct from `App::is_remote`, which also describes ordinary local clients.
 pub(crate) fn ssh_remote_host() -> Option<String> {
-    std::env::var("JCODE_SSH_REMOTE")
+    std::env::var("KCODE_SSH_REMOTE")
         .ok()
         .filter(|host| !host.trim().is_empty())
 }
@@ -2229,9 +2236,10 @@ mod tests {
     fn keyboard_enhancement_flags_avoid_report_all_keys_escape_mode() {
         let flags = keyboard_enhancement_flags();
 
-        assert!(flags.contains(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES));
-        assert!(flags.contains(KeyboardEnhancementFlags::REPORT_EVENT_TYPES));
-        assert!(flags.contains(KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS));
+        // Deliberately DISAMBIGUATE-only: REPORT_EVENT_TYPES leaks key releases
+        // as stray input on hosts that half-support the kitty protocol
+        // (herdr/ConPTY panes); ALTERNATE/ALL_KEYS stay off as well.
+        assert_eq!(flags, KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES);
         assert!(!flags.contains(KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES));
     }
 }

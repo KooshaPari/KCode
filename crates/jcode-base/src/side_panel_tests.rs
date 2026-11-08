@@ -26,8 +26,8 @@ impl Drop for EnvVarGuard {
 #[test]
 fn side_panel_pages_persist_and_focus_latest() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let temp = crate::test_temp::tempdir().expect("tempdir");
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let session_id = "ses_side_panel_test";
     let first = write_markdown_page(session_id, "notes", Some("Notes"), "# Notes", true)
@@ -65,8 +65,8 @@ fn side_panel_pages_persist_and_focus_latest() {
 #[test]
 fn side_panel_delete_falls_back_to_most_recent_page() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let temp = crate::test_temp::tempdir().expect("tempdir");
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let session_id = "ses_side_panel_delete";
     write_markdown_page(session_id, "one", Some("One"), "# One", true).expect("page one");
@@ -80,8 +80,8 @@ fn side_panel_delete_falls_back_to_most_recent_page() {
 #[test]
 fn load_markdown_file_uses_source_path_content() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let temp = crate::test_temp::tempdir().expect("tempdir");
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let source = temp.path().join("guide.md");
     std::fs::write(&source, "# Guide\n\nHello").expect("write source file");
@@ -116,8 +116,8 @@ fn load_markdown_file_uses_source_path_content() {
 #[test]
 fn load_markdown_file_rejects_non_markdown_extensions() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let temp = crate::test_temp::tempdir().expect("tempdir");
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let source = temp.path().join("notes.txt");
     std::fs::write(&source, "not markdown").expect("write source file");
@@ -163,7 +163,7 @@ fn status_output_marks_linked_and_managed_pages() {
 
 #[test]
 fn refresh_linked_page_content_updates_snapshot_in_memory() {
-    let temp = tempfile::tempdir().expect("tempdir");
+    let temp = crate::test_temp::tempdir().expect("tempdir");
     let file_path = temp.path().join("linked.md");
     std::fs::write(&file_path, "# First").expect("write initial");
 

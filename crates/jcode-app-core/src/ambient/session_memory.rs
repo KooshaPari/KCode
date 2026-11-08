@@ -6,9 +6,8 @@
 //! to render custom templates with variable substitution.
 
 use jcode_session_memory::{
-    BudgetReport, TemplateLoader, VariableSubstitutor,
-    analyze_sections, check_budget, check_budget_from_content, generate_budget_warnings,
-    truncate_section,
+    BudgetReport, TemplateLoader, VariableSubstitutor, analyze_sections, check_budget,
+    check_budget_from_content, generate_budget_warnings, truncate_section,
 };
 use std::collections::HashMap;
 
@@ -26,9 +25,7 @@ pub fn validate_session_notes(content: &str) -> BudgetReport {
 }
 
 /// Check budget from a pre-built [`SectionAnalysis`].
-pub fn validate_from_analysis(
-    analysis: &jcode_session_memory::SectionAnalysis,
-) -> BudgetReport {
+pub fn validate_from_analysis(analysis: &jcode_session_memory::SectionAnalysis) -> BudgetReport {
     check_budget(analysis)
 }
 
@@ -44,12 +41,19 @@ pub fn fit_section(content: &str) -> String {
 
 /// Build a session notes prompt from a custom template.
 ///
-/// Loads `template.md` from `~/.jcode/session-memory/config/`, substitutes
+/// Loads `template.md` from `~/.kcode/session-memory/config/`, substitutes
 /// `{{variable}}` placeholders, and returns the rendered text. Falls back
 /// to the raw content if no template is found.
 pub fn render_session_template(content: &str, variables: &HashMap<String, String>) -> String {
     let substitutor = VariableSubstitutor::new(variables.clone());
-    let loader = TemplateLoader::new();
+    let Ok(root) = crate::storage::jcode_dir() else {
+        return substitutor.substitute(content);
+    };
+    let loader = TemplateLoader::with_base_dir(
+        root.join("session-memory/config")
+            .to_string_lossy()
+            .into_owned(),
+    );
 
     match loader.load_template() {
         Some(template) => {
@@ -58,7 +62,8 @@ pub fn render_session_template(content: &str, variables: &HashMap<String, String
             for section in &template.sections {
                 if let Some(value) = variables.get(&section.name) {
                     let section_header = format!("## {}", section.name);
-                    rendered = rendered.replace(&format!("{section_header}\n{}", section.body), value);
+                    rendered =
+                        rendered.replace(&format!("{section_header}\n{}", section.body), value);
                 }
             }
             substitutor.substitute(&rendered)
@@ -73,9 +78,7 @@ pub fn diagnose_sections(content: &str) -> jcode_session_memory::SectionAnalysis
 }
 
 /// Find sections that exceed the per-section token limit.
-pub fn oversized_sections(
-    content: &str,
-) -> Vec<(String, usize)> {
+pub fn oversized_sections(content: &str) -> Vec<(String, usize)> {
     let analysis = analyze_sections(content);
     jcode_session_memory::find_oversized_sections(&analysis, MAX_SECTION_TOKENS)
 }

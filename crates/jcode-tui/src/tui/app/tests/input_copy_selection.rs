@@ -21,11 +21,7 @@ fn input_pane_screen_points(
     points
 }
 
-fn drag_copy(
-    app: &mut App,
-    start: (u16, u16),
-    end: (u16, u16),
-) -> String {
+fn drag_copy(app: &mut App, start: (u16, u16), end: (u16, u16)) -> String {
     let copied = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
     let copied_for_closure = copied.clone();
     app.handle_copy_selection_mouse_with(
@@ -58,7 +54,7 @@ fn drag_copy(
             true
         },
     );
-    
+
     copied.lock().unwrap().clone()
 }
 

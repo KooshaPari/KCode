@@ -706,6 +706,9 @@ impl App {
         }
         self.last_side_panel_refresh = None;
         self.side_panel = snapshot;
+        if self.side_panel.focused_page().is_none() {
+            self.side_panel_fullscreen = false;
+        }
         self.note_runtime_memory_event("side_panel_updated", "side_panel_snapshot_applied");
         if focused_changed {
             self.diff_pane_scroll = 0;
@@ -986,7 +989,7 @@ impl App {
 
     /// Get the debug socket path
     pub fn debug_socket_path() -> std::path::PathBuf {
-        crate::storage::runtime_dir().join("jcode-debug.sock")
+        crate::storage::runtime_dir().join("kcode-debug.sock")
     }
 }
 
@@ -1770,7 +1773,7 @@ fn build_skills_report(app: &App) -> String {
         skills.sort_by(|a, b| a.name.cmp(&b.name));
         if skills.is_empty() {
             out.push_str(
-                "- none loaded\n  Add skills under ~/.jcode/skills/<name>/SKILL.md or ./.jcode/skills/<name>/SKILL.md\n",
+                "- none loaded\n  Add skills under ~/.kcode/skills/<name>/SKILL.md or ./.kcode/skills/<name>/SKILL.md\n",
             );
         } else {
             for skill in skills {

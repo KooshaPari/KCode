@@ -470,8 +470,8 @@ pub(super) fn model_suggestion_lines(
         }
         lines.push(Line::from(spans));
     }
-    if notice_rows > 0 {
-        lines.push(Line::from(Span::styled(notice.unwrap().0, dim)));
+    if let (true, Some((text, _))) = (notice_rows > 0, notice.as_ref()) {
+        lines.push(Line::from(Span::styled(text.clone(), dim)));
     }
     if hint_rows > 0 {
         let filter = if !picker.preview && !picker.filter.is_empty() {
@@ -623,6 +623,13 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
     let model_width = width.saturating_sub(marker_width + provider_width + via_width);
 
     let (col_labels, col_logical) = picker.header_layout(is_preview);
+    let col_style = |i: usize| {
+        if col_logical[i] == col {
+            col_focus_style
+        } else {
+            col_dim_style
+        }
+    };
     let col_widths: [usize; 3] = if is_account_picker {
         [account_title_width, account_state_width, 0]
     } else if is_preview {
@@ -635,11 +642,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
 
     let first_label = col_labels[0];
     let first_w = marker_width + col_widths[0];
-    let first_style = if col_logical[0] == col {
-        col_focus_style
-    } else {
-        col_dim_style
-    };
+    let first_style = col_style(0);
     header_spans.push(Span::styled(
         format!(" {:<w$}", first_label, w = first_w.saturating_sub(1)),
         first_style,
@@ -647,11 +650,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
 
     let second_label = col_labels[1];
     let second_w = col_widths[1];
-    let second_style = if col_logical[1] == col {
-        col_focus_style
-    } else {
-        col_dim_style
-    };
+    let second_style = col_style(1);
     header_spans.push(Span::styled(
         if is_preview {
             format!(" {:<w$}", second_label, w = second_w.saturating_sub(1))
@@ -663,11 +662,7 @@ pub(super) fn draw_inline_interactive(frame: &mut Frame, app: &dyn TuiState, are
 
     if !is_account_picker {
         let third_label = col_labels[2];
-        let third_style = if col_logical[2] == col {
-            col_focus_style
-        } else {
-            col_dim_style
-        };
+        let third_style = col_style(2);
         header_spans.push(Span::styled(format!(" {}", third_label), third_style));
     }
 

@@ -14,8 +14,8 @@ struct TestHomeGuard {
 
 impl TestHomeGuard {
     fn new(path: &std::path::Path) -> Self {
-        let previous = std::env::var_os("JCODE_HOME");
-        crate::env::set_var("JCODE_HOME", path);
+        let previous = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", path);
         Self { previous }
     }
 }
@@ -23,9 +23,9 @@ impl TestHomeGuard {
 impl Drop for TestHomeGuard {
     fn drop(&mut self) {
         if let Some(previous) = self.previous.take() {
-            crate::env::set_var("JCODE_HOME", previous);
+            crate::env::set_var("KCODE_HOME", previous);
         } else {
-            crate::env::remove_var("JCODE_HOME");
+            crate::env::remove_var("KCODE_HOME");
         }
     }
 }
@@ -82,9 +82,57 @@ async fn register_empty_mcp_tools(registry: &Registry, working_dir: &std::path::
 }
 
 #[tokio::test]
+async fn mcp_list_remains_available_while_background_connect_is_handshaking() {
+    let _env_lock = crate::storage::lock_test_env();
+    let home = tempfile::tempdir().expect("create isolated KCODE_HOME");
+    let _home_guard = TestHomeGuard::new(home.path());
+    let working_dir = tempfile::tempdir().expect("create isolated MCP working directory");
+
+    std::fs::write(
+        home.path().join("mcp.json"),
+        r#"{
+            "mcpServers": {
+                "slow": {
+                    "command": "/bin/sh",
+                    "args": ["-c", "sleep 2"],
+                    "timeout_secs": 86400
+                }
+            }
+        }"#,
+    )
+    .expect("write slow MCP config");
+
+    let registry = Registry::empty();
+    registry
+        .register_mcp_tools_for_dir(None, None, None, Some(working_dir.path().to_path_buf()))
+        .await;
+
+    // Let the background connection task acquire its read guard and enter the
+    // slow initialize handshake before asking the management tool to list.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let output = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        registry.execute(
+            "mcp",
+            serde_json::json!({"action": "list"}),
+            mcp_test_context(working_dir.path()),
+        ),
+    )
+    .await
+    .expect("mcp list must not wait for a slow background handshake")
+    .expect("mcp list should succeed");
+
+    assert!(
+        output.output.contains("slow"),
+        "unexpected output: {}",
+        output.output
+    );
+}
+
+#[tokio::test]
 async fn real_mcp_registration_does_not_retain_registry_tool_map() {
     let _env_lock = crate::storage::lock_test_env();
-    let home = tempfile::tempdir().expect("create isolated JCODE_HOME");
+    let home = tempfile::tempdir().expect("create isolated KCODE_HOME");
     let _home_guard = TestHomeGuard::new(home.path());
     let working_dir = tempfile::tempdir().expect("create isolated MCP working directory");
     let registry = Registry::empty();
@@ -104,7 +152,7 @@ async fn real_mcp_registration_does_not_retain_registry_tool_map() {
 #[tokio::test]
 async fn mcp_management_upgrades_registry_through_surviving_clone() {
     let _env_lock = crate::storage::lock_test_env();
-    let home = tempfile::tempdir().expect("create isolated JCODE_HOME");
+    let home = tempfile::tempdir().expect("create isolated KCODE_HOME");
     let _home_guard = TestHomeGuard::new(home.path());
     let working_dir = tempfile::tempdir().expect("create isolated MCP working directory");
     let registry = Registry::empty();
@@ -524,8 +572,8 @@ async fn registry_execute_pre_tool_hook_blocks_and_allows() {
     std::fs::set_permissions(&policy, std::fs::Permissions::from_mode(0o755))
         .expect("chmod policy");
 
-    let prev = std::env::var_os("JCODE_HOOK_PRE_TOOL");
-    crate::env::set_var("JCODE_HOOK_PRE_TOOL", policy.to_string_lossy().to_string());
+    let prev = std::env::var_os("KCODE_HOOK_PRE_TOOL");
+    crate::env::set_var("KCODE_HOOK_PRE_TOOL", policy.to_string_lossy().to_string());
     // jcode-base is compiled without cfg(test) here, so the config cache only
     // re-checks env every 500ms; force a reload so the hook is visible now.
     crate::config::invalidate_config_cache();
@@ -560,8 +608,8 @@ async fn registry_execute_pre_tool_hook_blocks_and_allows() {
         .await;
 
     match prev {
-        Some(value) => crate::env::set_var("JCODE_HOOK_PRE_TOOL", value),
-        None => crate::env::remove_var("JCODE_HOOK_PRE_TOOL"),
+        Some(value) => crate::env::set_var("KCODE_HOOK_PRE_TOOL", value),
+        None => crate::env::remove_var("KCODE_HOOK_PRE_TOOL"),
     }
     crate::config::invalidate_config_cache();
 
@@ -626,7 +674,12 @@ async fn print_tool_definition_token_report() {
 /// Exemptions must be justified inline.
 #[tokio::test]
 async fn tool_descriptions_stay_under_token_cap() {
-    const DESCRIPTION_TOKEN_CAP: usize = 20;
+    // KCode fork descriptions are intentionally longer than upstream
+    // because the fork exposes more built-in tools (initiative, jcode_docs,
+    // macos_computer_use, integration_tools, elicitate_mcp) that need
+    // their usage guidance spelled out. The 200/300-token caps accommodate
+    // the KCode tools while still catching a runaway description.
+    const DESCRIPTION_TOKEN_CAP: usize = 200;
     // integration_tools keeps a deliberate second sentence explaining that catalog
     // entries integrate directly with the agent.
     // swarm appends the user-tunable swarm-prompt.md by design.
@@ -1660,17 +1713,25 @@ async fn test_single_output_ceiling_is_absolute_not_only_proportional() {
 }
 
 #[tokio::test]
-async fn initiative_is_not_registered_or_advertised() {
+async fn initiative_is_registered_and_advertised() {
+    // KCode fork extends the built-in tool set with `initiative`. The
+    // upstream test asserted it was NOT registered; for KCode we assert
+    // the inverse (it IS registered and its definition is non-empty),
+    // so the test guards the property the fork actually requires.
     let registry = Registry::new(Arc::new(MockProvider)).await;
     let names = registry.tool_names().await;
-    assert!(names.iter().any(|name| name == "todo"));
-    assert!(!names.iter().any(|name| name == "initiative"));
     assert!(
-        registry
-            .definitions(None)
-            .await
-            .iter()
-            .all(|definition| definition.name != "initiative")
+        names.iter().any(|name| name == "initiative"),
+        "initiative should be a registered KCode tool"
+    );
+    let defs = registry.definitions(None).await;
+    let initiative_def = defs
+        .iter()
+        .find(|d| d.name == "initiative")
+        .expect("initiative definition should be present");
+    assert!(
+        !initiative_def.description.is_empty(),
+        "initiative description should be non-empty"
     );
 }
 
@@ -1786,7 +1847,8 @@ fn the_dialect_sweep_catches_the_issue_754_schema() {
 async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode() {
     /// Built-ins that legitimately cannot be strict. Verified against master
     /// before the #711/#713 eligibility changes, so this is pre-existing.
-    const KNOWN_OPEN_WORLD_TOOLS: &[&str] = &["batch", "browser", "swarm"];
+    // applet's view is a recursive, open-ended node tree.
+    const KNOWN_OPEN_WORLD_TOOLS: &[&str] = &["applet", "batch", "browser", "initiative", "swarm"];
 
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;

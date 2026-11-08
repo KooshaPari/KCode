@@ -214,6 +214,14 @@ pub(super) async fn cleanup_client_connection(
 
             match lock_result {
                 Ok(mut agent) => {
+                    // Concurrency telemetry delivery blocks (bounded at
+                    // ~800ms) and is pure reporting. Finishing it inline held
+                    // the server-wide connections lock for ~250ms on every
+                    // disconnect, stalling the next client's attach. Detach
+                    // the guard and finish it on a blocking worker instead.
+                    if let Some(mut concurrency) = agent.take_concurrency_session() {
+                        tokio::task::spawn_blocking(move || concurrency.finish());
+                    }
                     match disposition {
                         DisconnectDisposition::Closed => {
                             agent.mark_closed();
@@ -402,7 +410,7 @@ mod tests {
     fn running_disconnect_during_reload_is_expected() {
         let _guard = crate::storage::lock_test_env();
         let runtime = tempfile::TempDir::new().expect("create runtime dir");
-        crate::env::set_var("JCODE_RUNTIME_DIR", runtime.path());
+        crate::env::set_var("KCODE_RUNTIME_DIR", runtime.path());
         crate::server::clear_reload_marker();
         crate::server::write_reload_state(
             "test-request",
@@ -416,14 +424,14 @@ mod tests {
         );
         assert_eq!(disconnect_disposition(false), DisconnectDisposition::Closed);
         crate::server::clear_reload_marker();
-        crate::env::remove_var("JCODE_RUNTIME_DIR");
+        crate::env::remove_var("KCODE_RUNTIME_DIR");
     }
 
     #[test]
     fn running_disconnect_during_recent_socket_ready_reload_is_expected() {
         let _guard = crate::storage::lock_test_env();
         let runtime = tempfile::TempDir::new().expect("create runtime dir");
-        crate::env::set_var("JCODE_RUNTIME_DIR", runtime.path());
+        crate::env::set_var("KCODE_RUNTIME_DIR", runtime.path());
         crate::server::clear_reload_marker();
         crate::server::write_reload_state(
             "test-request",
@@ -436,6 +444,6 @@ mod tests {
             DisconnectDisposition::Reloading
         );
         crate::server::clear_reload_marker();
-        crate::env::remove_var("JCODE_RUNTIME_DIR");
+        crate::env::remove_var("KCODE_RUNTIME_DIR");
     }
 }

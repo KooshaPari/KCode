@@ -94,6 +94,10 @@ pub(super) async fn idle_live_agent(
 /// `failed` when it finishes. A synthetic terminal `Done { id: 0 }` (or
 /// `Error { id: 0, .. }`) is fanned out to attached clients so their UI can
 /// finish rendering the externally started turn.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a tracked wake turn carries routing, display, status and receipt identity plus the swarm context it fans out to"
+)]
 pub(super) async fn spawn_tracked_live_turn(
     session_id: &str,
     mut agent: OwnedMutexGuard<Agent>,
@@ -101,6 +105,7 @@ pub(super) async fn spawn_tracked_live_turn(
     system_reminder: Option<String>,
     display_role: Option<crate::session::StoredDisplayRole>,
     status_detail: Option<String>,
+    receipt_id: Option<String>,
     swarm: LiveTurnSwarmContext,
 ) {
     update_member_status(
@@ -220,6 +225,7 @@ pub(super) async fn run_live_turn_if_idle(
         system_reminder,
         None,
         detail,
+        None,
         swarm,
     )
     .await;
@@ -243,6 +249,7 @@ pub(super) async fn run_live_system_turn_if_idle(
         None,
         Some(crate::session::StoredDisplayRole::System),
         detail,
+        None,
         swarm,
     )
     .await;

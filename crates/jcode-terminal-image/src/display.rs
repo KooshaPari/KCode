@@ -132,10 +132,10 @@ fn in_tmux() -> bool {
 
 /// iTerm2's inline-image protocol corrupts jcode's TUI output in real iTerm2,
 /// so image display is disabled there unless the user opts back in with
-/// `JCODE_ITERM2_IMAGES=1`.
+/// `KCODE_ITERM2_IMAGES=1`.
 fn iterm2_images_enabled() -> bool {
     matches!(
-        std::env::var("JCODE_ITERM2_IMAGES")
+        std::env::var("KCODE_ITERM2_IMAGES")
             .unwrap_or_default()
             .trim()
             .to_ascii_lowercase()

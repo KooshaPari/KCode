@@ -21,7 +21,7 @@ mod callback;
 pub struct AuthOptions {
     /// Trusted local executable. No shell is used.
     pub binary: PathBuf,
-    /// Credential home. None inherits the current JCODE_HOME/default home.
+    /// Credential home. None inherits the current KCODE_HOME/default home.
     pub jcode_home: Option<PathBuf>,
     /// Native daemon socket, NOT the harness API socket.
     pub socket: Option<PathBuf>,
@@ -32,9 +32,9 @@ pub struct AuthOptions {
 impl Default for AuthOptions {
     fn default() -> Self {
         Self {
-            binary: std::env::var_os("JCODE_BIN")
+            binary: std::env::var_os("KCODE_BIN")
                 .map(PathBuf::from)
-                .unwrap_or_else(|| "jcode".into()),
+                .unwrap_or_else(|| "kcode".into()),
             jcode_home: None,
             socket: None,
             timeout: Duration::from_secs(900),
@@ -211,6 +211,71 @@ fn failed(message: &'static str) -> Error {
 fn cancelled() -> Error {
     failed("Login cancelled. Already issued credentials are not revoked.")
 }
+/// Convert a poisoned mutex into a transport error instead of panicking.
+fn locked<T>(guard: std::sync::LockResult<T>) -> Result<T> {
+    guard.map_err(|_| failed("internal state lock poisoned"))
+}
+
+fn parse_login_response(bytes: &[u8], operation: Operation) -> Result<serde_json::Value> {
+    if let Ok(value) = serde_json::from_slice(bytes) {
+        return Ok(value);
+    }
+    // Older CLIs append a human auth-test report after the authenticated JSON
+    // line. Recover only this known completion shape, never search arbitrary
+    // child output for a success object or expose the trailing report.
+    if matches!(
+        operation,
+        Operation::Callback | Operation::Code | Operation::Complete
+    ) && let Some(newline) = bytes.iter().position(|byte| *byte == b'\n')
+        && bytes[newline + 1..].starts_with(b"=== auth-test: ")
+        && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes[..newline])
+        && value["status"] == "authenticated"
+    {
+        return Ok(value);
+    }
+    Err(failed("Invalid login response. Update Jcode and retry."))
+}
+
+// Only fixed diagnostic messages cross the SDK boundary. Raw child output,
+// provider descriptions and callback query values stay private.
+fn login_process_failure(stderr: &[u8]) -> Error {
+    let text = String::from_utf8_lossy(stderr);
+    let message = if text.contains("OAuth state mismatch") {
+        "OAuth state mismatch. Start a new sign-in and use its latest callback URL."
+    } else if text.contains("login state expired") {
+        "The pending sign-in expired. Start a new sign-in."
+    } else if text.contains("No pending") && text.contains("login state") {
+        "The pending sign-in could not be found. Start a new sign-in."
+    } else if text.contains("Token exchange failed") {
+        "The provider rejected the authorization code during token exchange. Start a new sign-in."
+    } else if text.contains("unexpected argument") || text.contains("unrecognized option") {
+        "The installed Jcode executable does not support this login protocol. Update Jcode and retry."
+    } else if text.contains("Permission denied") {
+        "Jcode could not access its private login storage. Check local file permissions and retry."
+    } else if text.contains("error sending request") || text.contains("dns error") {
+        "Could not reach the authentication server. Check your connection and retry."
+    } else {
+        "The Jcode login process failed before completing authentication. Start a new sign-in or check your Jcode installation."
+    };
+    failed(message)
+}
+
+fn callback_provider_error(input: &str) -> Option<Error> {
+    let url = url::Url::parse(input).ok()?;
+    let error = url.query_pairs().find(|(key, _)| key == "error")?.1;
+    Some(failed(match error.as_ref() {
+        "access_denied" => {
+            "Browser authorization was denied. Start a new sign-in and approve access to continue."
+        }
+        "temporarily_unavailable" | "server_error" => {
+            "The authorization provider is temporarily unavailable. Try signing in again shortly."
+        }
+        "login_required" | "interaction_required" => {
+            "The provider requires you to sign in again. Start a new sign-in."
+        }
+        _ => "The provider returned an authorization error. Start a new sign-in.",
+    }))
+}
 
 fn parse_login_response(bytes: &[u8], operation: Operation) -> Result<serde_json::Value> {
     if let Ok(value) = serde_json::from_slice(bytes) {
@@ -275,7 +340,7 @@ fn callback_provider_error(input: &str) -> Option<Error> {
 
 impl AuthFlow {
     pub fn start(&self) -> Result<AuthPrompt> {
-        let mut state = self.0.state.lock().unwrap();
+        let mut state = locked(self.0.state.lock())?;
         if !matches!(*state, State::Created) {
             return Err(invalid("Login was already started"));
         }
@@ -389,7 +454,7 @@ impl AuthFlow {
                 "Login input must be a non-empty single line of at most 16 KiB",
             ));
         }
-        let mut state = self.0.state.lock().unwrap();
+        let mut state = locked(self.0.state.lock())?;
         let State::Pending(kind) = *state else {
             return Err(invalid("Login is not awaiting completion"));
         };
@@ -473,6 +538,7 @@ impl FlowInner {
         let _ = rx.recv_timeout(Duration::from_secs(1));
     }
 
+    #[allow(clippy::collapsible_if)]
     fn command(&self, operation: Operation) -> Command {
         let mut command = Command::new(&self.options.binary);
         command.args(["--no-update", "--no-selfdev"]);
@@ -480,7 +546,7 @@ impl FlowInner {
             command.arg("--socket").arg(socket);
         }
         if let Some(home) = &self.options.jcode_home {
-            command.env("JCODE_HOME", home);
+            command.env("KCODE_HOME", home);
         }
         command.args([
             "login",
@@ -508,7 +574,14 @@ impl FlowInner {
     }
 
     fn kill_child(&self) {
-        if let Some(child) = self.child.lock().unwrap().as_mut() {
+        // Recovery from a poisoned mutex is correct here: cleanup should proceed
+        // even if another thread panicked while holding the lock.
+        if let Some(child) = self
+            .child
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_mut()
+        {
             let _ = child.kill();
             let _ = child.wait();
         }
@@ -595,12 +668,9 @@ impl FlowInner {
                     std::thread::sleep(Duration::from_millis(10));
                 }
                 if status.is_none() {
-                    status = self
-                        .child
-                        .lock()
-                        .unwrap()
+                    status = locked(self.child.lock())?
                         .as_mut()
-                        .unwrap()
+                        .ok_or_else(|| failed("child process missing"))?
                         .try_wait()
                         .map_err(|_| failed("Could not wait for login process"))?;
                 }
@@ -626,7 +696,9 @@ impl FlowInner {
         if result.is_err() {
             self.kill_child();
         }
-        self.child.lock().unwrap().take();
+        // Poisoned mutexes are recovered silently here: nothing else cares
+        // about the child's stored handle after this point.
+        drop(self.child.lock().map(|mut c| c.take()));
         result
     }
 }

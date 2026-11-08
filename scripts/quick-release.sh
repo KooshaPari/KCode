@@ -66,10 +66,53 @@ VERSION="${1:?Usage: scripts/quick-release.sh [--prepare-fast | --fast-local | -
 TITLE="${2:-$VERSION}"
 VERSION_NUM="${VERSION#v}"
 
-if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Error: Version must be in format v0.5.4"
+# The version must carry the fork identity, because it is passed straight to
+# KCODE_BUILD_SEMVER and crates/jcode-build-meta/build.rs validates that
+# variable with fork_version::parse, which REQUIRES the BASE-kFORK form and
+# panics otherwise ("KCODE_BUILD_SEMVER must use nonzero BASE-kFORK_SEMVER
+# identity"). A plain v0.5.4 therefore builds nothing at all.
+#
+# The grammar mirrors fork_version::parse exactly:
+#   base    three dot-separated integers, none with a leading zero, not all zero
+#   fork    three dot-separated integers, none with a leading zero
+#   channel optional, dash-separated alphanumeric components, none empty
+# The no-leading-zero and no-empty-component rules are enforced below by
+# rejecting the shapes the Rust parser rejects, so the guard never accepts a
+# version the build would panic on.
+if [[ ! "$VERSION_NUM" =~ ^[0-9]+\.[0-9]+\.[0-9]+-k[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9]+([.-][A-Za-z0-9]+)*)?$ ]]; then
+    echo "Error: Version must be in format v0.93.398-k0.1.0 (fork identity required)" >&2
+    echo "       The fork identity is required: the build validates KCODE_BUILD_SEMVER" >&2
+    echo "       against the fork-version grammar and rejects a plain semver." >&2
     exit 1
 fi
+
+# The base version must not be all zeros, matching fork_version::parse.
+if [[ "$VERSION_NUM" =~ ^0\.0\.0-k ]]; then
+    echo "Error: Version base must not be 0.0.0" >&2
+    exit 1
+fi
+
+# No numeric component may carry a leading zero, matching fork_version::parse.
+# (0 itself is fine; 00, 01 and 007 are not.) Only the base and fork
+# components have this rule, so the check is applied to those two pieces
+# rather than to the whole version string. A channel component such as
+# "rc01" or "01" is alphanumeric and has no leading-zero rule.
+base_version="${VERSION_NUM%%-k*}"
+fork_version="${VERSION_NUM#*-k}"
+fork_version="${fork_version%%-*}"
+for component in ${base_version//./ } ${fork_version//./ }; do
+    if [[ "${#component}" -gt 1 && "$component" == 0* ]]; then
+        echo "Error: Version components must not have leading zeros" >&2
+        exit 1
+    fi
+    # fork_version::parse applies `part.parse::<u32>()`, so a component above
+    # u32::MAX is rejected there and the build would panic on it. The length
+    # guard keeps the bash arithmetic inside the 64-bit range.
+    if [[ "${#component}" -gt 10 ]] || (( 10#$component > 4294967295 )); then
+        echo "Error: Version components must fit in a 32-bit unsigned integer" >&2
+        exit 1
+    fi
+done
 
 cd "$(git rev-parse --show-toplevel)"
 
@@ -208,8 +251,8 @@ ensure_release_draft() {
 
 if [[ "$MODE" == "prepare-fast" ]]; then
     echo "▸ Refreshing the warm selfdev Linux build before the version bump..."
-    JCODE_REMOTE_CARGO=0 scripts/dev_cargo.sh build --profile selfdev -p jcode --bin jcode
-    source_bin="target/selfdev/jcode"
+    KCODE_REMOTE_CARGO=0 scripts/dev_cargo.sh build --profile selfdev -p kcode --bin kcode
+    source_bin="target/selfdev/kcode"
     [[ -x "$source_bin" ]] || { echo "Error: selfdev binary not found: $source_bin" >&2; exit 1; }
     prepared_marker="target/selfdev/fast-release-prepared"
     {
@@ -226,10 +269,10 @@ fi
 
 if [[ "$MODE" == "prepare-fast-macos" ]]; then
     echo "▸ Refreshing the macOS arm64 build before the version bump..."
-    JCODE_RELEASE_BUILD=1 JCODE_BUILD_SEMVER="$VERSION_NUM" \
+    KCODE_RELEASE_BUILD=1 KCODE_BUILD_SEMVER="$VERSION_NUM" \
         CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
-        cargo build --release --target aarch64-apple-darwin --bin jcode
-    source_bin="target/aarch64-apple-darwin/release/jcode"
+        cargo build --release --target aarch64-apple-darwin --bin kcode
+    source_bin="target/aarch64-apple-darwin/release/kcode"
     [[ -x "$source_bin" ]] || { echo "Error: macOS binary not found: $source_bin" >&2; exit 1; }
     file "$source_bin" | grep -q 'Mach-O 64-bit' || { echo "Error: bad macOS binary" >&2; exit 1; }
     prepared_marker="target/aarch64-apple-darwin/release/fast-macos-release-prepared"
@@ -263,7 +306,7 @@ fi
 if [[ "$MODE" == "fast-local" ]]; then
     echo "▸ Validating the prepared selfdev Linux build..."
     build_start=$(date +%s)
-    source_bin="target/selfdev/jcode"
+    source_bin="target/selfdev/kcode"
     [[ -x "$source_bin" ]] || { echo "Error: selfdev binary not found: $source_bin" >&2; exit 1; }
     prepared_marker="target/selfdev/fast-release-prepared"
     [[ -f "$prepared_marker" ]] || {
@@ -284,7 +327,7 @@ if [[ "$MODE" == "fast-local" ]]; then
     }
     actual_sha256="$(sha256sum "$source_bin" | cut -d' ' -f1)"
     [[ "$prepared_sha256" == "$actual_sha256" ]] || {
-        echo "Error: target/selfdev/jcode changed after fast-release preparation." >&2
+        echo "Error: target/selfdev/kcode changed after fast-release preparation." >&2
         exit 1
     }
     unexpected_release_files="$(git diff-tree --no-commit-id --name-only -r HEAD | grep -Ev '^(Cargo\.toml|Cargo\.lock|changelog/)' || true)"
@@ -294,29 +337,39 @@ if [[ "$MODE" == "fast-local" ]]; then
         exit 1
     }
 
-    cp "$source_bin" "$DIST/jcode-linux-x86_64.bin"
-    strip --strip-unneeded "$DIST/jcode-linux-x86_64.bin"
-    chmod +x "$DIST/jcode-linux-x86_64.bin"
-    cat > "$DIST/jcode-linux-x86_64" <<WRAPPER
+    cp "$source_bin" "$DIST/kcode-linux-x86_64.bin"
+    strip --strip-unneeded "$DIST/kcode-linux-x86_64.bin"
+    chmod +x "$DIST/kcode-linux-x86_64.bin"
+    cat > "$DIST/kcode-linux-x86_64" <<WRAPPER
 #!/usr/bin/env sh
 set -eu
-export JCODE_RUNTIME_RELEASE_SEMVER="$VERSION_NUM"
-export JCODE_RUNTIME_RELEASE_GIT_HASH="$(git rev-parse --short HEAD)"
-export JCODE_RUNTIME_RELEASE_GIT_DATE="$(git log -1 --format=%ci)"
-export JCODE_RUNTIME_RELEASE_GIT_TAG="$VERSION"
-self_dir=\$(CDPATH= cd -- "\$(dirname -- "\$0")" && pwd)
-exec "\$self_dir/jcode-linux-x86_64.bin" "\$@"
+export KCODE_RUNTIME_RELEASE_SEMVER="$VERSION_NUM"
+export KCODE_RUNTIME_RELEASE_GIT_HASH="$(git rev-parse --short HEAD)"
+export KCODE_RUNTIME_RELEASE_GIT_DATE="$(git log -1 --format=%ci)"
+export KCODE_RUNTIME_RELEASE_GIT_TAG="$VERSION"
+self=\$0
+# The launcher and channel entries are symlinks to this wrapper; resolve them
+# so the payload is found next to the real file, not next to the symlink.
+while [ -L "\$self" ]; do
+    link=\$(readlink -- "\$self")
+    case \$link in
+        /*) self=\$link ;;
+        *) self=\$(dirname -- "\$self")/\$link ;;
+    esac
+done
+self_dir=\$(CDPATH= cd -- "\$(dirname -- "\$self")" && pwd)
+exec "\$self_dir/kcode-linux-x86_64.bin" "\$@"
 WRAPPER
-    chmod +x "$DIST/jcode-linux-x86_64"
-    file "$DIST/jcode-linux-x86_64.bin" | grep -q 'ELF 64-bit' || { echo "Error: bad Linux binary" >&2; exit 1; }
-    version_output="$("$DIST/jcode-linux-x86_64" --version)"
+    chmod +x "$DIST/kcode-linux-x86_64"
+    file "$DIST/kcode-linux-x86_64.bin" | grep -q 'ELF 64-bit' || { echo "Error: bad Linux binary" >&2; exit 1; }
+    version_output="$("$DIST/kcode-linux-x86_64" --version)"
     printf '%s\n' "$version_output" | grep -Fq "v$VERSION_NUM" || {
         echo "Error: fast binary reports the wrong version: $version_output" >&2
         exit 1
     }
-    (cd "$DIST" && tar -cf - jcode-linux-x86_64 jcode-linux-x86_64.bin | gzip -1 > jcode-linux-x86_64.tar.gz)
-    (cd "$DIST" && sha256sum jcode-linux-x86_64.tar.gz > SHA256SUMS)
-    echo "  ✅ Linux artifact ready ($(( $(date +%s) - build_start ))s validation/package, $(du -h "$DIST/jcode-linux-x86_64.tar.gz" | cut -f1))"
+    (cd "$DIST" && tar -cf - kcode-linux-x86_64 kcode-linux-x86_64.bin | gzip -1 > kcode-linux-x86_64.tar.gz)
+    (cd "$DIST" && sha256sum kcode-linux-x86_64.tar.gz > SHA256SUMS)
+    echo "  ✅ Linux artifact ready ($(( $(date +%s) - build_start ))s validation/package, $(du -h "$DIST/kcode-linux-x86_64.tar.gz" | cut -f1))"
 
     if $DRY_RUN; then
         echo ""
@@ -329,7 +382,7 @@ WRAPPER
     echo "▸ Publishing immediate Linux release..."
     ensure_release_draft
     gh release upload "$VERSION" \
-        "$DIST/jcode-linux-x86_64.tar.gz" \
+        "$DIST/kcode-linux-x86_64.tar.gz" \
         "$DIST/SHA256SUMS" \
         --clobber
     gh release edit "$VERSION" --draft=false --latest
@@ -345,7 +398,7 @@ fi
 
 if [[ "$MODE" == "fast-macos-local" ]]; then
     echo "▸ Validating the prepared macOS arm64 build..."
-    source_bin="target/aarch64-apple-darwin/release/jcode"
+    source_bin="target/aarch64-apple-darwin/release/kcode"
     prepared_marker="target/aarch64-apple-darwin/release/fast-macos-release-prepared"
     [[ -x "$source_bin" ]] || { echo "Error: macOS binary not found: $source_bin" >&2; exit 1; }
     [[ -f "$prepared_marker" ]] || {
@@ -364,11 +417,11 @@ if [[ "$MODE" == "fast-macos-local" ]]; then
         printf '%s\n' "$unexpected_release_files" >&2
         exit 1
     }
-    cp "$source_bin" "$DIST/jcode-macos-aarch64"
-    chmod +x "$DIST/jcode-macos-aarch64"
-    file "$DIST/jcode-macos-aarch64" | grep -q 'Mach-O 64-bit' || { echo "Error: bad macOS binary" >&2; exit 1; }
-    (cd "$DIST" && tar czf jcode-macos-aarch64.tar.gz jcode-macos-aarch64)
-    (cd "$DIST" && sha256sum jcode-macos-aarch64.tar.gz > SHA256SUMS)
+    cp "$source_bin" "$DIST/kcode-macos-aarch64"
+    chmod +x "$DIST/kcode-macos-aarch64"
+    file "$DIST/kcode-macos-aarch64" | grep -q 'Mach-O 64-bit' || { echo "Error: bad macOS binary" >&2; exit 1; }
+    (cd "$DIST" && tar czf kcode-macos-aarch64.tar.gz kcode-macos-aarch64)
+    (cd "$DIST" && sha256sum kcode-macos-aarch64.tar.gz > SHA256SUMS)
 
     if $DRY_RUN; then
         echo "Fast macOS dry run complete in $(elapsed)s. Artifacts in: $DIST"
@@ -378,7 +431,7 @@ if [[ "$MODE" == "fast-macos-local" ]]; then
     tag_and_push
     echo "▸ Publishing immediate macOS arm64 release..."
     ensure_release_draft
-    gh release upload "$VERSION" "$DIST/jcode-macos-aarch64.tar.gz" "$DIST/SHA256SUMS" --clobber
+    gh release upload "$VERSION" "$DIST/kcode-macos-aarch64.tar.gz" "$DIST/SHA256SUMS" --clobber
     gh release edit "$VERSION" --draft=false --latest
     echo ""
     echo "=== Fast macOS release published in $(elapsed)s ==="
@@ -390,17 +443,17 @@ fi
 # Standard local distribution build: Linux + macOS in parallel.
 echo "▸ Building Linux x86_64 + macOS aarch64 in parallel..."
 (
-    JCODE_RELEASE_BUILD=1 JCODE_BUILD_SEMVER="$VERSION_NUM" scripts/build_linux_compat.sh "$DIST" >/dev/null
+    KCODE_RELEASE_BUILD=1 KCODE_BUILD_SEMVER="$VERSION_NUM" scripts/build_linux_compat.sh "$DIST" >/dev/null
     echo "  ✅ Linux done ($(elapsed)s)"
 ) &
 LINUX_PID=$!
 (
-    JCODE_RELEASE_BUILD=1 JCODE_BUILD_SEMVER="$VERSION_NUM" \
+    KCODE_RELEASE_BUILD=1 KCODE_BUILD_SEMVER="$VERSION_NUM" \
         CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
-        cargo build --release --target aarch64-apple-darwin --bin jcode 2>/dev/null
-    cp target/aarch64-apple-darwin/release/jcode "$DIST/jcode-macos-aarch64"
-    chmod +x "$DIST/jcode-macos-aarch64"
-    (cd "$DIST" && tar czf jcode-macos-aarch64.tar.gz jcode-macos-aarch64)
+        cargo build --release --target aarch64-apple-darwin --bin kcode 2>/dev/null
+    cp target/aarch64-apple-darwin/release/kcode "$DIST/kcode-macos-aarch64"
+    chmod +x "$DIST/kcode-macos-aarch64"
+    (cd "$DIST" && tar czf kcode-macos-aarch64.tar.gz kcode-macos-aarch64)
     echo "  ✅ macOS done ($(elapsed)s)"
 ) &
 MACOS_PID=$!
@@ -410,9 +463,9 @@ wait $MACOS_PID || { echo "Error: macOS build failed"; exit 1; }
 echo ""
 echo "Build time: $(elapsed)s"
 ls -lh "$DIST"/*.tar.gz
-file "$DIST/jcode-linux-x86_64.bin" | grep -q 'ELF 64-bit' || { echo "Error: bad Linux binary"; exit 1; }
-head -1 "$DIST/jcode-linux-x86_64" | grep -q '^#!/' || { echo "Error: bad Linux wrapper"; exit 1; }
-file "$DIST/jcode-macos-aarch64" | grep -q 'Mach-O 64-bit' || { echo "Error: bad macOS binary"; exit 1; }
+file "$DIST/kcode-linux-x86_64.bin" | grep -q 'ELF 64-bit' || { echo "Error: bad Linux binary" >&2; exit 1; }
+head -1 "$DIST/kcode-linux-x86_64" | grep -q '^#!/' || { echo "Error: bad Linux wrapper" >&2; exit 1; }
+file "$DIST/kcode-macos-aarch64" | grep -q 'Mach-O 64-bit' || { echo "Error: bad macOS binary" >&2; exit 1; }
 
 if $DRY_RUN; then
     echo ""
@@ -426,8 +479,8 @@ tag_and_push
 echo "▸ Staging GitHub draft release..."
 ensure_release_draft
 gh release upload "$VERSION" \
-    "$DIST/jcode-linux-x86_64.tar.gz" \
-    "$DIST/jcode-macos-aarch64.tar.gz" \
+    "$DIST/kcode-linux-x86_64.tar.gz" \
+    "$DIST/kcode-macos-aarch64.tar.gz" \
     --clobber
 
 echo ""

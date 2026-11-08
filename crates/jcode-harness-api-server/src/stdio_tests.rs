@@ -6,7 +6,7 @@ use tokio::io::{AsyncWriteExt, BufReader};
 #[tokio::test(flavor = "multi_thread")]
 async fn stdio_stream_handshake_ping_and_eof_release_daemon_connection() {
     let root = std::env::temp_dir().join(format!(
-        "jcode-stdio-test-{}-{}",
+        "kcode-stdio-test-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

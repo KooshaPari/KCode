@@ -7,56 +7,7 @@ use crate::tui::app::remote::swarm_plan_core::RemoteSwarmPlanSnapshot;
 use crate::tui::app::remote::swarm_status_core::swarm_status_transition_notice;
 
 fn allow_runtime_identity_mismatch() -> bool {
-    std::env::var_os("JCODE_ALLOW_SERVER_VERSION_MISMATCH").is_some()
-}
-
-/// Parse a jcode version string into an orderable `(major, minor, patch)`, but
-/// only for *clean release* builds.
-///
-/// Dev/dirty builds share a base semver and cannot be ordered against each other
-/// or against releases (issue #277/#291: a self-dev / branched daemon must never
-/// be force-downgraded just because its version string differs). So we refuse to
-/// classify anything carrying a `-dev` or `dirty` marker as an orderable version
-/// and return `None`, leaving such daemons to the existing `server_has_update`
-/// (mtime-directional) path.
-fn parse_release_semver(version: &str) -> Option<(u32, u32, u32)> {
-    let lower = version.trim().to_ascii_lowercase();
-    if lower.contains("-dev") || lower.contains("dirty") {
-        return None;
-    }
-    // Take the leading token, e.g. "v0.17.0 (d741696f)" -> "0.17.0".
-    let token = lower
-        .split([' ', '(', ')', ','])
-        .next()
-        .unwrap_or(&lower)
-        .trim();
-    let token = token.strip_prefix('v').unwrap_or(token);
-    let mut parts = token.split('.');
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next()?.parse().ok()?;
-    let patch = parts.next().unwrap_or("0").parse().ok()?;
-    Some((major, minor, patch))
-}
-
-/// True when the connected server reports a clean release version strictly older
-/// than this client's own clean release version.
-///
-/// This is the missing client-side staleness signal behind issue #295: a server
-/// old enough to predate the self-reported staleness machinery reports
-/// `server_has_update: None`, so it can never tell us it is stale and the client
-/// happily attaches to it (then a `set_route`-shaped request explodes against the
-/// ancient protocol). We detect that case independently here.
-///
-/// Gated on clean release semvers on BOTH sides, so dev/dirty/self-dev daemons
-/// (which cannot be ordered) are never affected.
-fn server_release_is_older_than_client(server_version: Option<&str>, client_version: &str) -> bool {
-    let Some(server) = server_version.and_then(parse_release_semver) else {
-        return false;
-    };
-    let Some(client) = parse_release_semver(client_version) else {
-        return false;
-    };
-    server < client
+    std::env::var_os("KCODE_ALLOW_SERVER_VERSION_MISMATCH").is_some()
 }
 
 /// Decide whether to defer applying remote session state because the server we
@@ -109,7 +60,7 @@ fn should_defer_history_for_runtime_identity_with_allow(
 /// unorderable and short-circuit the comparison).
 fn client_release_version() -> String {
     if (cfg!(test) || cfg!(debug_assertions))
-        && let Some(v) = std::env::var_os("JCODE_TEST_CLIENT_VERSION_OVERRIDE")
+        && let Some(v) = std::env::var_os("KCODE_TEST_CLIENT_VERSION_OVERRIDE")
     {
         return v.to_string_lossy().into_owned();
     }
@@ -121,7 +72,10 @@ fn should_defer_history_for_runtime_identity(
     server_version: Option<&str>,
 ) -> bool {
     let client_detected_stale =
-        server_release_is_older_than_client(server_version, &client_release_version());
+        crate::tui::app::remote::version_ordering::server_release_is_older_than_client(
+            server_version,
+            &client_release_version(),
+        );
     should_defer_history_for_runtime_identity_with_allow(
         server_has_update,
         client_detected_stale,
@@ -131,10 +85,7 @@ fn should_defer_history_for_runtime_identity(
 
 #[cfg(test)]
 mod runtime_identity_tests {
-    use super::{
-        parse_release_semver, server_release_is_older_than_client,
-        should_defer_history_for_runtime_identity_with_allow,
-    };
+    use super::should_defer_history_for_runtime_identity_with_allow;
 
     #[test]
     fn runtime_identity_gate_defers_stale_server_history_by_default() {
@@ -191,45 +142,6 @@ mod runtime_identity_tests {
             false,
             false
         ));
-    }
-
-    #[test]
-    fn parse_release_semver_refuses_unorderable_dev_builds() {
-        assert_eq!(parse_release_semver("v0.17.0 (d741696f)"), Some((0, 17, 0)));
-        assert_eq!(parse_release_semver("0.14.2"), Some((0, 14, 2)));
-        // Dev/dirty builds share a base semver and must not be ordered.
-        assert_eq!(parse_release_semver("v0.18.4-dev (102e9750, dirty)"), None);
-        assert_eq!(parse_release_semver("v0.14.2-dev (38452185, dirty)"), None);
-        assert_eq!(parse_release_semver("unknown"), None);
-    }
-
-    #[test]
-    fn server_release_older_than_client_is_selfdev_safe() {
-        // Clean release older than clean client -> stale.
-        assert!(server_release_is_older_than_client(
-            Some("v0.14.2 (38452185)"),
-            "v0.17.0 (d741696f)"
-        ));
-        // Equal or newer -> not stale.
-        assert!(!server_release_is_older_than_client(
-            Some("v0.17.0"),
-            "v0.17.0"
-        ));
-        assert!(!server_release_is_older_than_client(
-            Some("v0.18.0"),
-            "v0.17.0"
-        ));
-        // Either side dev/dirty/unparseable -> never claim staleness (protects
-        // self-dev and branched daemons from a forced downgrade).
-        assert!(!server_release_is_older_than_client(
-            Some("v0.14.2-dev (abc, dirty)"),
-            "v0.17.0"
-        ));
-        assert!(!server_release_is_older_than_client(
-            Some("v0.14.2"),
-            "v0.17.0-dev (abc, dirty)"
-        ));
-        assert!(!server_release_is_older_than_client(None, "v0.17.0"));
     }
 }
 
@@ -1089,6 +1001,13 @@ pub(in crate::tui::app) fn handle_server_event(
                 ));
             }
             app.schedule_queued_dispatch_after_interrupt();
+            // Esc redirect: the follow-up may live only in pending soft
+            // interrupts (not counted by has_queued_followups). Arm dispatch
+            // so recovery sends it as the next turn right away.
+            if app.remote_interrupt_ack_deadline.take().is_some() && app.has_pending_user_followup()
+            {
+                app.pending_queued_dispatch = true;
+            }
             app.push_display_message(DisplayMessage::system("Interrupted"));
             app.is_processing = false;
             app.status = ProcessingStatus::Idle;
@@ -1594,10 +1513,11 @@ pub(in crate::tui::app) fn handle_server_event(
                     server_version.as_deref(),
                 )
             {
-                let client_detected_stale = server_release_is_older_than_client(
-                    server_version.as_deref(),
-                    &client_release_version(),
-                );
+                let client_detected_stale =
+                    crate::tui::app::remote::version_ordering::server_release_is_older_than_client(
+                        server_version.as_deref(),
+                        &client_release_version(),
+                    );
                 app.remote_server_version = server_version;
                 app.remote_server_short_name = server_name.clone();
                 app.remote_server_icon = server_icon.clone();
@@ -1643,7 +1563,7 @@ pub(in crate::tui::app) fn handle_server_event(
                         "Connected server is an older release; reloading it before attach",
                     );
                     app.push_display_message(DisplayMessage::system(format!(
-                        "ℹ Connected server is running an older release ({}) than this client ({}). Reloading it before applying session state. If reload does not take, run `jcode server stop` and relaunch. Set JCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing.",
+                        "ℹ Connected server is running an older release ({}) than this client ({}). Reloading it before applying session state. If reload does not take, run `kcode server stop --force` and relaunch. Set KCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing.",
                         app.remote_server_version.as_deref().unwrap_or("unknown"),
                         jcode_build_meta::version(),
                     )));
@@ -1652,7 +1572,7 @@ pub(in crate::tui::app) fn handle_server_event(
                         "Server/runtime mismatch detected; reloading server before attach",
                     );
                     app.push_display_message(DisplayMessage::system(
-                        "ℹ Connected server binary differs from the installed client channel. Reloading the server before applying remote session state. Set JCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing."
+                        "ℹ Connected server binary differs from the installed client channel. Reloading the server before applying remote session state. Set KCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing."
                             .to_string(),
                     ));
                 }
@@ -1859,6 +1779,7 @@ pub(in crate::tui::app) fn handle_server_event(
             app.update_terminal_title();
 
             if !mcp_servers.is_empty() {
+                let previous = std::mem::take(&mut app.mcp_server_names);
                 app.mcp_server_names = mcp_servers
                     .iter()
                     .filter_map(|s| {
@@ -1867,6 +1788,9 @@ pub(in crate::tui::app) fn handle_server_event(
                         Some((name.to_string(), count))
                     })
                     .collect();
+                if previous != app.mcp_server_names {
+                    app.persist_remote_header_hint();
+                }
             }
 
             let should_apply_history_payload = session_changed || !remote.has_loaded_history();
@@ -2341,7 +2265,12 @@ pub(in crate::tui::app) fn handle_server_event(
                 ));
                 app.set_status_notice("Model switch failed");
             } else {
-                app.update_context_limit_for_model(&model);
+                // The server also re-sends ModelChanged on resume so the client
+                // learns the server-resolved context window. That is not a
+                // user-visible switch, so only announce an actual model change.
+                let model_actually_changed =
+                    app.remote_provider_model.as_deref() != Some(model.as_str());
+                app.update_context_limit_for_model(&model, context_window);
                 app.remote_provider_model = Some(model.clone());
                 app.clear_remote_startup_phase();
                 if let Some(ref pname) = provider_name {
@@ -2351,13 +2280,15 @@ pub(in crate::tui::app) fn handle_server_event(
                 // distinction must clear the previous route's credential too.
                 app.remote_resolved_credential = resolved_credential;
                 app.invalidate_model_picker_cache();
-                if !app.auth_catalog_refresh_pending {
+                if model_actually_changed && !app.auth_catalog_refresh_pending {
                     app.push_display_message(DisplayMessage::system(format!(
                         "✓ Switched to model: {}",
                         model
                     )));
                 }
-                app.set_status_notice(format!("Model → {}", model));
+                if model_actually_changed {
+                    app.set_status_notice(format!("Model → {}", model));
+                }
             }
             false
         }
@@ -2461,7 +2392,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 )));
             } else {
                 app.remote_service_tier = service_tier.clone();
-                let enabled = service_tier.as_deref() == Some("priority");
+                let enabled = app_mod::service_tier_is_fast(service_tier.as_deref());
                 let label = service_tier
                     .as_deref()
                     .map(app_mod::service_tier_display_label)
@@ -2471,7 +2402,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     app_mod::fast_mode_success_message(enabled, label, applies_next_request),
                 ));
                 app.set_status_notice(app_mod::fast_mode_status_notice(
-                    enabled,
+                    service_tier.as_deref(),
                     applies_next_request,
                 ));
             }
@@ -2884,7 +2815,7 @@ pub(in crate::tui::app) fn handle_server_event(
                 .filter(|path| path.is_dir())
                 .or_else(|| std::env::current_dir().ok())
                 .unwrap_or_else(|| std::path::PathBuf::from("."));
-            let socket = std::env::var("JCODE_SOCKET").ok();
+            let socket = std::env::var("KCODE_SOCKET").ok();
             match spawn_in_new_terminal(&exe, &new_session_id, &cwd, socket.as_deref()) {
                 Ok(true) => {
                     if let Some(label) = split_label.as_deref() {
@@ -2904,13 +2835,13 @@ pub(in crate::tui::app) fn handle_server_event(
                 Ok(false) => {
                     if let Some(label) = split_label.as_deref() {
                         app.push_display_message(DisplayMessage::system(format!(
-                            "🔍 {} session {} created.\n\nNo terminal found. Resume manually:\n  jcode --resume {}",
+                            "🔍 {} session {} created.\n\nNo terminal found. Resume manually:\n  kcode --resume {}",
                             label, new_session_name, new_session_id,
                         )));
                         app.set_status_notice(format!("{} session created", label));
                     } else {
                         app.push_display_message(DisplayMessage::system(format!(
-                            "✂ Split → {}\n\nNo terminal found. Resume manually:\n  jcode --resume {}",
+                            "✂ Split → {}\n\nNo terminal found. Resume manually:\n  kcode --resume {}",
                             new_session_name, new_session_id,
                         )));
                     }
@@ -2918,13 +2849,13 @@ pub(in crate::tui::app) fn handle_server_event(
                 Err(e) => {
                     if let Some(label) = split_label.as_deref() {
                         app.push_display_message(DisplayMessage::error(format!(
-                            "{} session {} was created but failed to open a window: {}\n\nResume manually: jcode --resume {}",
+                            "{} session {} was created but failed to open a window: {}\n\nResume manually: kcode --resume {}",
                             label, new_session_name, e, new_session_id,
                         )));
                         app.set_status_notice(format!("{} open failed", label));
                     } else {
                         app.push_display_message(DisplayMessage::error(format!(
-                            "Split created {} but failed to open window: {}\n\nResume manually: jcode --resume {}",
+                            "Split created {} but failed to open window: {}\n\nResume manually: kcode --resume {}",
                             new_session_name, e, new_session_id,
                         )));
                     }

@@ -5,6 +5,34 @@ pub enum StdinState {
     Unknown,
 }
 
+/// Returns `true` when stdin is connected to an interactive terminal
+/// (i.e., not piped or redirected).
+///
+/// This is the primary check for "should we show interactive UI?".
+/// Works correctly on Unix (`isatty`) and Windows (`GetConsoleMode` via
+/// `std::io::IsTerminal`).
+pub fn is_stdin_interactive() -> bool {
+    std::io::IsTerminal::is_terminal(&std::io::stdin())
+}
+
+/// Returns `true` when stdin is connected to a terminal device.
+///
+/// Equivalent to [`is_stdin_interactive`] — a terminal handle implies
+/// interactive, and piped/redirected stdin is never a terminal.
+pub fn is_stdin_terminal() -> bool {
+    std::io::IsTerminal::is_terminal(&std::io::stdin())
+}
+
+/// Returns `true` when stdin is being fed from a pipe or redirect
+/// (i.e., not a terminal).
+///
+/// On Unix this is the negation of `isatty(STDIN_FILENO)`.
+/// On Windows this is the negation of `GetConsoleMode` on the stdin handle,
+/// which correctly handles redirected handles, pipes, and conpty.
+pub fn is_stdin_pipe() -> bool {
+    !std::io::IsTerminal::is_terminal(&std::io::stdin())
+}
+
 pub fn is_waiting_for_stdin(pid: u32) -> StdinState {
     #[cfg(target_os = "linux")]
     return linux::check(pid);
@@ -285,7 +313,7 @@ mod macos {
                 pid,
                 PROC_PIDLISTFDS,
                 0,
-                buf.as_mut_ptr() as *mut libc::c_void,
+                buf.as_mut_ptr().cast::<libc::c_void>(),
                 buf_size,
             )
         };
@@ -296,7 +324,7 @@ mod macos {
 
         let num_fds = ret / fd_size;
         let fds = unsafe {
-            std::slice::from_raw_parts(buf.as_ptr() as *const proc_fdinfo, num_fds as usize)
+            std::slice::from_raw_parts(buf.as_ptr().cast::<proc_fdinfo>(), num_fds as usize)
         };
 
         // Check if fd 0 exists and is a pipe or vnode (pty)
@@ -318,7 +346,7 @@ mod macos {
                 pid,
                 PROC_PIDLISTTHREADS,
                 0,
-                thread_ids.as_mut_ptr() as *mut libc::c_void,
+                thread_ids.as_mut_ptr().cast::<libc::c_void>(),
                 (thread_ids.len() * mem::size_of::<u64>()) as i32,
             )
         };
@@ -337,7 +365,7 @@ mod macos {
                     pid,
                     PROC_PIDTHREADINFO,
                     thread_id,
-                    &mut tinfo as *mut _ as *mut libc::c_void,
+                    (&mut tinfo as *mut proc_threadinfo).cast::<libc::c_void>(),
                     mem::size_of::<proc_threadinfo>() as i32,
                 )
             };

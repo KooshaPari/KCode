@@ -58,7 +58,7 @@ fn parse_manual_subagent_spec_rejects_missing_prompt() {
 fn swarm_prompt_edit_path_prefers_nonblank_project_override() {
     let project = tempfile::tempdir().expect("project tempdir");
     let jcode_home = tempfile::tempdir().expect("jcode tempdir");
-    let project_prompt = project.path().join(".jcode/swarm-prompt.md");
+    let project_prompt = project.path().join(".kcode/swarm-prompt.md");
     std::fs::create_dir_all(project_prompt.parent().expect("prompt parent"))
         .expect("create project config dir");
     std::fs::write(&project_prompt, "project routing").expect("write project prompt");
@@ -74,7 +74,7 @@ fn swarm_prompt_edit_path_prefers_nonblank_project_override() {
 fn swarm_prompt_edit_path_falls_back_to_nonblank_global_override() {
     let project = tempfile::tempdir().expect("project tempdir");
     let jcode_home = tempfile::tempdir().expect("jcode tempdir");
-    let project_prompt = project.path().join(".jcode/swarm-prompt.md");
+    let project_prompt = project.path().join(".kcode/swarm-prompt.md");
     std::fs::create_dir_all(project_prompt.parent().expect("prompt parent"))
         .expect("create project config dir");
     std::fs::write(&project_prompt, "  \n").expect("write blank project prompt");
@@ -161,7 +161,7 @@ fn model_not_found_is_fatal_model_endpoint_error() {
 /// what a user actually types: dispatch, message text, config persistence, and
 /// error handling.
 ///
-/// These use an isolated `JCODE_HOME` (`create_test_app` sets one) so they write
+/// These use an isolated `KCODE_HOME` (`create_test_app` sets one) so they write
 /// to a throwaway config rather than the developer's real one.
 mod colors {
     use crate::tui::app::commands_dispatch::dispatch_local_command;

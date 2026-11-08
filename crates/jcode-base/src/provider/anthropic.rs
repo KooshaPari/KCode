@@ -78,13 +78,13 @@ pub fn apply_oauth_attribution_headers(
 pub const AVAILABLE_MODELS: &[&str] = jcode_provider_core::ALL_CLAUDE_MODELS;
 
 pub fn load_anthropic_api_key() -> Result<String> {
-    if std::env::var("JCODE_ANTHROPIC_AUTH")
+    if std::env::var("KCODE_ANTHROPIC_AUTH")
         .ok()
         .is_some_and(|value| value.eq_ignore_ascii_case("none"))
     {
         return Ok(String::new());
     }
-    if let Ok(env_name) = std::env::var("JCODE_ANTHROPIC_API_KEY_NAME") {
+    if let Ok(env_name) = std::env::var("KCODE_ANTHROPIC_API_KEY_NAME") {
         let env_name = env_name.trim();
         if !env_name.is_empty() {
             if let Ok(value) = std::env::var(env_name)
@@ -92,7 +92,7 @@ pub fn load_anthropic_api_key() -> Result<String> {
             {
                 return Ok(value);
             }
-            if let Ok(env_file) = std::env::var("JCODE_ANTHROPIC_ENV_FILE")
+            if let Ok(env_file) = std::env::var("KCODE_ANTHROPIC_ENV_FILE")
                 && let Some(value) = crate::provider_catalog::load_env_value_from_config_file(
                     env_name,
                     env_file.trim(),
@@ -117,7 +117,7 @@ pub fn load_anthropic_api_key() -> Result<String> {
         "anthropic.env",
     )
     .context("No Anthropic API key found")?;
-    if std::env::var("JCODE_LOG_SERVICE_TIER").is_ok() {
+    if std::env::var("KCODE_LOG_SERVICE_TIER").is_ok() {
         let prefix: String = key.chars().take(14).collect();
         eprintln!(
             "[anthropic] resolved API key prefix={prefix}... (len={})",

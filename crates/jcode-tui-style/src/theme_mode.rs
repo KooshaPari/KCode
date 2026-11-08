@@ -13,7 +13,7 @@
 //! it does on dark themes today.
 //!
 //! The mode itself is set once at startup by the TUI's terminal-background
-//! detection (OSC 11 query / `JCODE_THEME` / `display.theme` config) and
+//! detection (OSC 11 query / `KCODE_THEME` / `display.theme` config) and
 //! defaults to dark, which keeps every existing code path byte-identical.
 
 use ratatui::buffer::Buffer;
@@ -345,8 +345,9 @@ mod tests {
         }
     }
 
-    // The theme mode is a process-global; serialize tests that mutate it.
-    static TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // The theme mode and palette are process-global; the crate-level lock
+    // serializes every test that touches them.
+    use crate::STYLE_TEST_LOCK as TEST_LOCK;
 
     fn with_light_theme(f: impl FnOnce()) {
         let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());

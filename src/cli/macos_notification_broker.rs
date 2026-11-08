@@ -26,7 +26,7 @@ mod platform {
         UNUserNotificationCenter, UNUserNotificationCenterDelegate,
     };
 
-    const BROKER_EXECUTABLE_NAME: &str = "jcode-notification-broker";
+    const BROKER_EXECUTABLE_NAME: &str = "kcode-notification-broker";
     const POLL_INTERVAL_SECONDS: f64 = 0.25;
     const AUTHORIZATION_PENDING: u8 = 0;
     const AUTHORIZATION_GRANTED: u8 = 1;
@@ -151,7 +151,9 @@ mod platform {
             match authorization.load(Ordering::Acquire) {
                 AUTHORIZATION_GRANTED => drain_inbox(&center),
                 AUTHORIZATION_DENIED
-                    if ticks.fetch_add(1, Ordering::Relaxed).is_multiple_of(AUTHORIZATION_RETRY_TICKS) =>
+                    if ticks
+                        .fetch_add(1, Ordering::Relaxed)
+                        .is_multiple_of(AUTHORIZATION_RETRY_TICKS) =>
                 {
                     // Permission may be enabled while the helper is running.
                     // Re-query without dropping queued work; macOS only presents
@@ -265,7 +267,7 @@ mod platform {
             content.setSubtitle(&NSString::from_str(subtitle));
         }
         content.setBody(&NSString::from_str(&envelope.body));
-        content.setThreadIdentifier(&NSString::from_str("jcode-turn-complete"));
+        content.setThreadIdentifier(&NSString::from_str("kcode-turn-complete"));
         let route = serde_json::to_string(&envelope.origin)?;
         let metadata_key = NSString::from_str(ORIGIN_METADATA_KEY);
         let metadata_value = NSString::from_str(&route);

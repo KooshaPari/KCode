@@ -10,7 +10,23 @@ pub use keybindings::{
     keybinding_default, keybinding_defaults_report, validate_keybinding_defaults,
 };
 
-/// Compaction mode
+/// Compaction mode: when and how should the agent shrink its transcript
+/// into a shorter summary before sending it to the model again.
+///
+/// The workspace supports three policies:
+/// - [`Reactive`](CompactionMode::Reactive) (default): wait until the
+///   context budget is exhausted, then summarize.
+/// - [`Proactive`](CompactionMode::Proactive): estimate the next-turn
+///   growth rate (from the tool-definitions, message-rate, and recent
+///   output size) and preemptively compact before the budget runs out.
+/// - [`Semantic`](CompactionMode::Semantic): re-rank messages by
+///   topic-shift and relevance scoring so that compaction keeps the
+///   highest-signal turns even when many turns share a topic.
+///
+/// The choice is exposed at runtime via the
+/// `JCODE_OPENAI_NATIVE_COMPACTION_MODE` env var
+/// (see [`crates/jcode-base/src/config/env_overrides.rs`]) and
+/// serialized to JSON in lowercase.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum CompactionMode {
@@ -43,6 +59,23 @@ impl CompactionMode {
 }
 
 /// Agent operating mode: controls what the agent is allowed to do.
+///
+/// Three modes gate the tool surface:
+/// - [`Execute`](AgentMode::Execute) (default): autonomous implementation
+///   — read, edit, build, commit, push, open PRs. Tools are unrestricted.
+/// - [`Manager`](AgentMode::Manager): plans, delegates via swarm,
+///   reviews worker output. Cannot write files or run build commands
+///   directly (`write`, `edit`, `multiedit`, `apply_patch`, `patch`,
+///   `gmail` are all blocked — see
+///   [`AgentMode::is_tool_blocked`]). Used for
+///   the coordinator role in [`crate::SwarmRole::Coordinator`].
+/// - [`Researcher`](AgentMode::Researcher): read-only. May read, search,
+///   run tests, but never modifies the workspace. Used by the web search
+///   and analysis tools, and by ambient/autojudge workers.
+///
+/// The choice is serialized in lowercase ("execute", "manager",
+/// "researcher") on the wire; `parse` accepts a few short aliases
+/// ("exec", "mgr", "res", "research") for ergonomics.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AgentMode {
@@ -240,12 +273,35 @@ pub enum OverscrollStatusMode {
     Overscroll,
 }
 
-impl OverscrollStatusMode {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::On => "on",
-            Self::Overscroll => "overscroll",
+    #[test]
+    fn diff_mode_cycle_keeps_inline_and_file_modes() {
+        use DiffDisplayMode::*;
+        let mut mode = Off;
+        for expected in [Inline, FullInline, File, Off, Inline] {
+            mode = mode.cycle();
+            assert_eq!(mode, expected);
+        }
+        for mode in [Off, Inline, FullInline, File] {
+            assert_eq!(mode.has_side_pane(), mode == File);
+            assert_eq!(mode.is_inline(), matches!(mode, Inline | FullInline));
+            assert_eq!(mode.is_full_inline(), mode == FullInline);
+            assert_eq!(mode.is_file(), mode == File);
+        }
+    }
+
+    #[test]
+    fn diff_mode_remaining_values_round_trip() {
+        for mode in [
+            DiffDisplayMode::Off,
+            DiffDisplayMode::Inline,
+            DiffDisplayMode::FullInline,
+            DiffDisplayMode::File,
+        ] {
+            let encoded = serde_json::to_string(&mode).unwrap();
+            assert_eq!(
+                serde_json::from_str::<DiffDisplayMode>(&encoded).unwrap(),
+                mode
+            );
         }
     }
 }
@@ -706,12 +762,12 @@ pub struct AgentsConfig {
     #[serde(default = "default_memory_embedding_backend")]
     pub memory_embedding_backend: String,
     /// OpenAI embedding model name when `memory_embedding_backend = "openai"`.
-    /// Unset = `text-embedding-3-small`. Env: `JCODE_MEMORY_EMBEDDING_MODEL`.
+    /// Unset = `text-embedding-3-small`. Env: `KCODE_MEMORY_EMBEDDING_MODEL`.
     #[serde(default)]
     pub memory_embedding_model: Option<String>,
     /// Optional override for the embeddings API base URL (no trailing slash),
     /// for OpenAI-compatible gateways. Unset = `https://api.openai.com/v1`.
-    /// Env: `JCODE_MEMORY_EMBEDDING_BASE_URL`.
+    /// Env: `KCODE_MEMORY_EMBEDDING_BASE_URL`.
     #[serde(default)]
     pub memory_embedding_base_url: Option<String>,
     /// Optional override for the remote embedding dimensionality (vector-space
@@ -723,7 +779,7 @@ pub struct AgentsConfig {
     /// parallelism. Completed/stopped workers do not consume slots. Light mode
     /// still uses a smaller fixed fan-out. `0` disables this configurable guard,
     /// leaving only the absolute `MAX_SWARM_MEMBERS` hard cap.
-    /// Env override: `JCODE_SWARM_MAX_CONCURRENT_AGENTS`.
+    /// Env override: `KCODE_SWARM_MAX_CONCURRENT_AGENTS`.
     #[serde(default = "default_swarm_max_concurrent_agents")]
     pub swarm_max_concurrent_agents: usize,
 }
@@ -875,7 +931,7 @@ impl SwarmStripLayout {
 /// Terminal window/pane spawning configuration.
 ///
 /// Without a `spawn_hook`, Unix clients inside tmux are opened in a right-side
-/// pane by the built-in launcher. `JCODE_TERMINAL` explicitly selects a terminal
+/// pane by the built-in launcher. `KCODE_TERMINAL` explicitly selects a terminal
 /// emulator instead.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
@@ -884,7 +940,7 @@ pub struct TerminalConfig {
     /// windows for swarm agents, resume-in-new-terminal, self-dev, restarts).
     ///
     /// When set, jcode runs `<spawn_hook> <jcode-binary> <args...>` instead of
-    /// opening a terminal emulator itself, with `JCODE_SPAWN_*` metadata env
+    /// opening a terminal emulator itself, with `KCODE_SPAWN_*` metadata env
     /// vars describing the spawn (kind, session id, title, cwd, full command).
     /// This lets multiplexers and wrappers (tmux, kitty remote, zellij, herd
     /// runners, window managers) decide where and how the session appears.
@@ -893,25 +949,25 @@ pub struct TerminalConfig {
     /// tmux window in the current server. If the hook fails to launch, jcode
     /// falls back to its built-in terminal detection.
     ///
-    /// Env override: `JCODE_SPAWN_HOOK` (set empty to disable a config hook).
+    /// Env override: `KCODE_SPAWN_HOOK` (set empty to disable a config hook).
     pub spawn_hook: Option<String>,
     /// External command used to focus/raise an existing session window.
     ///
     /// When set, jcode runs the hook (instead of wmctrl/xdotool) whenever it
     /// wants to bring a session's window to the foreground, with
-    /// `JCODE_FOCUS_SESSION_ID` and `JCODE_FOCUS_TITLE` env vars. Pair this
+    /// `KCODE_FOCUS_SESSION_ID` and `KCODE_FOCUS_TITLE` env vars. Pair this
     /// with `spawn_hook` so wrappers that own placement (tmux, kitty remote,
     /// herd) also own focus (e.g. `tmux select-window`, Wayland compositor
     /// IPC like `niri msg`).
     ///
-    /// Env override: `JCODE_FOCUS_HOOK` (set empty to disable a config hook).
+    /// Env override: `KCODE_FOCUS_HOOK` (set empty to disable a config hook).
     pub focus_hook: Option<String>,
     /// Terminal used by the macOS Cmd+; launch hotkey and in-app session spawns.
     ///
     /// One of: `ghostty`, `iterm2`, `wezterm`, `warp`, `alacritty`, `vscode`,
     /// `terminal` (Apple Terminal). When set, this is the source of truth for
     /// which terminal jcode launches into and is preferred over the legacy
-    /// `~/.jcode/preferred_terminal.json` file. Re-run `jcode setup-hotkey`
+    /// `~/.kcode/preferred_terminal.json` file. Re-run `jcode setup-hotkey`
     /// after changing it so the generated launcher script picks up the change.
     ///
     /// macOS only; ignored on other platforms.
@@ -921,10 +977,10 @@ pub struct TerminalConfig {
 /// Lifecycle hooks: external commands jcode runs at well-defined points.
 ///
 /// Hook commands are parsed shell-style (quotes work) but executed directly,
-/// with `JCODE_HOOK_*` env vars describing the event (`JCODE_HOOK_EVENT`,
-/// `JCODE_HOOK_SESSION_ID`, `JCODE_HOOK_CWD`, event-specific fields, and a
-/// `JCODE_HOOK_PAYLOAD` JSON mirror). Hook processes get
-/// `JCODE_HOOKS_DISABLED=1` so nested jcode invocations don't recurse.
+/// with `KCODE_HOOK_*` env vars describing the event (`KCODE_HOOK_EVENT`,
+/// `KCODE_HOOK_SESSION_ID`, `KCODE_HOOK_CWD`, event-specific fields, and a
+/// `KCODE_HOOK_PAYLOAD` JSON mirror). Hook processes get
+/// `KCODE_HOOKS_DISABLED=1` so nested jcode invocations don't recurse.
 ///
 /// All hooks except `pre_tool` are observers: detached, fire-and-forget,
 /// failures only logged. `pre_tool` is a gate: jcode waits for it and exit
@@ -986,46 +1042,65 @@ impl<'de> Deserialize<'de> for HookCommands {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct HooksConfig {
+    /// Synchronous input transformers run before each tool call. Each receives
+    /// the tool input JSON on stdin and may print replacement JSON on stdout.
+    /// Empty stdout or any failure leaves the input unchanged.
+    pub pre_tool_transform: Option<HookCommands>,
+    /// Max milliseconds to wait for each input transformer (default: 500).
+    pub pre_tool_transform_timeout_ms: u64,
     /// Runs when an agent turn begins (after the user message is added and
     /// before the model starts generating). Fires before the first `pre_tool`,
     /// so integrations can detect that the agent is actively working even while
     /// it is only thinking/streaming text. Fields: MODEL, SOURCE
-    /// ("chat"/"resume"/"ambient"). Env override: JCODE_HOOK_TURN_START.
+    /// ("chat"/"resume"/"ambient"). Env override: KCODE_HOOK_TURN_START.
     pub turn_start: Option<HookCommands>,
     /// Runs when an agent turn completes.
     /// Fields: STATUS ("ok"/"error"), DURATION_MS, MODEL, LAST_ASSISTANT_TEXT.
-    /// Env override: JCODE_HOOK_TURN_END.
+    /// Env override: KCODE_HOOK_TURN_END.
     pub turn_end: Option<HookCommands>,
     /// Runs when a session becomes active (created or resumed).
     /// Fields: SOURCE ("create"/"resume").
-    /// Env override: JCODE_HOOK_SESSION_START.
+    /// Env override: KCODE_HOOK_SESSION_START.
     pub session_start: Option<HookCommands>,
     /// Runs when a session closes normally.
-    /// Env override: JCODE_HOOK_SESSION_END.
+    /// Env override: KCODE_HOOK_SESSION_END.
     pub session_end: Option<HookCommands>,
     /// Gate hook before each tool call. Receives TOOL_NAME and the tool input
     /// JSON on stdin (also truncated in TOOL_INPUT). Exit 0 allows, exit 2
     /// blocks (stderr is fed back to the model), anything else fails open.
-    /// Env override: JCODE_HOOK_PRE_TOOL.
+    /// Env override: KCODE_HOOK_PRE_TOOL.
     pub pre_tool: Option<HookCommands>,
     /// Runs after each tool call completes.
-    /// Fields: TOOL_NAME, STATUS ("ok"/"error"), DURATION_MS, OUTPUT_BYTES.
-    /// Env override: JCODE_HOOK_POST_TOOL.
+    /// Fields: TOOL_NAME, TOOL_CALL_ID, TOOL_INPUT, TOUCHED_PATHS, STATUS
+    /// ("ok"/"error"), DURATION_MS, OUTPUT_BYTES, ERROR.
+    /// Env override: KCODE_HOOK_POST_TOOL.
     pub post_tool: Option<HookCommands>,
+    /// Synchronous hook after each successful tool call. Same fields as
+    /// post_tool, tool input JSON on stdin. Its stdout is appended to the tool
+    /// result the model sees (e.g. linter output for edited files).
+    /// Env override: KCODE_HOOK_POST_TOOL_FEEDBACK.
+    pub post_tool_feedback: Option<HookCommands>,
+    /// Max milliseconds to wait for each post_tool_feedback hook (default:
+    /// 10000). Env override: KCODE_HOOK_POST_TOOL_FEEDBACK_TIMEOUT_MS.
+    pub post_tool_feedback_timeout_ms: u64,
     /// Max milliseconds to wait for the pre_tool gate before failing open
-    /// (default: 5000). Env override: JCODE_HOOK_PRE_TOOL_TIMEOUT_MS.
+    /// (default: 5000). Env override: KCODE_HOOK_PRE_TOOL_TIMEOUT_MS.
     pub pre_tool_timeout_ms: u64,
 }
 
 impl Default for HooksConfig {
     fn default() -> Self {
         Self {
+            pre_tool_transform: None,
+            pre_tool_transform_timeout_ms: 500,
             turn_start: None,
             turn_end: None,
             session_start: None,
             session_end: None,
             pre_tool: None,
             post_tool: None,
+            post_tool_feedback: None,
+            post_tool_feedback_timeout_ms: 10_000,
             pre_tool_timeout_ms: 5000,
         }
     }
@@ -1102,6 +1177,10 @@ pub struct KeybindingsConfig {
     pub effort_increase: String,
     /// Effort decrease key (default: "cmd+left" on macOS, "alt+left" elsewhere)
     pub effort_decrease: String,
+    /// Speed tier increase key, Standard -> Fast -> Ultrafast (default: "alt+up")
+    pub speed_increase: String,
+    /// Speed tier decrease key, Ultrafast -> Fast -> Standard (default: "alt+down")
+    pub speed_decrease: String,
     /// Centered mode toggle key (default: "alt+c")
     pub centered_toggle: String,
     /// Scroll to previous prompt key (default: "ctrl+[")
@@ -1130,6 +1209,8 @@ pub struct KeybindingsConfig {
     pub copy_selection_toggle: String,
     /// Toggle the diagram pane position (default: "alt+t")
     pub diagram_pane_toggle: String,
+    /// Show/hide the pinned diagram pane (default: "alt+shift+m")
+    pub diagram_pane_visibility_toggle: String,
     /// Toggle typing scroll lock (default: "alt+s")
     pub typing_scroll_lock_toggle: String,
     /// Cycle inline diff display mode (default: "alt+g")
@@ -1150,6 +1231,9 @@ pub struct KeybindingsConfig {
     /// Open the `/resume` session picker (default: "cmd+b" on macOS, "alt+r"
     /// elsewhere). Set "" to disable.
     pub open_resume: String,
+    /// Start/stop built-in voice input (default: "ctrl+space"). Speech streams
+    /// to Nari and the transcript is sent as a prompt. Set "" to disable.
+    pub voice_input: String,
     /// Session picker Enter action: "current-terminal" (default) or "new-terminal".
     /// Ctrl+Enter performs the alternate action.
     pub session_picker_enter: SessionPickerResumeAction,
@@ -1174,6 +1258,8 @@ impl Default for KeybindingsConfig {
             fallback_switch: get("fallback_switch", "ctrl+y"),
             effort_increase: get("effort_increase", "alt+right"),
             effort_decrease: get("effort_decrease", "alt+left"),
+            speed_increase: get("speed_increase", "alt+up"),
+            speed_decrease: get("speed_decrease", "alt+down"),
             centered_toggle: get("centered_toggle", "alt+c"),
             scroll_prompt_up: get("scroll_prompt_up", "ctrl+["),
             scroll_prompt_down: get("scroll_prompt_down", "ctrl+]"),
@@ -1188,6 +1274,7 @@ impl Default for KeybindingsConfig {
             side_panel_toggle: get("side_panel_toggle", "alt+m"),
             copy_selection_toggle: get("copy_selection_toggle", "alt+y"),
             diagram_pane_toggle: get("diagram_pane_toggle", "alt+t"),
+            diagram_pane_visibility_toggle: get("diagram_pane_visibility_toggle", "alt+shift+m"),
             typing_scroll_lock_toggle: get("typing_scroll_lock_toggle", "alt+s"),
             diff_mode_cycle: get("diff_mode_cycle", "alt+g"),
             info_widget_toggle: get("info_widget_toggle", "alt+i"),
@@ -1202,6 +1289,7 @@ impl Default for KeybindingsConfig {
                     "alt+r"
                 },
             ),
+            voice_input: get("voice_input", "ctrl+space"),
             session_picker_enter: SessionPickerResumeAction::CurrentTerminal,
         }
     }
@@ -1286,9 +1374,15 @@ pub enum WebSearchEngine {
     /// Bing search. Uses the Bing API when configured, otherwise Bing HTML search.
     Bing,
     /// SearXNG metasearch instance (JSON API). Requires `searxng_url` (or the
-    /// `JCODE_SEARXNG_URL` env var) to point at a SearXNG instance. Useful on
+    /// `KCODE_SEARXNG_URL` env var) to point at a SearXNG instance. Useful on
     /// hosts where DuckDuckGo/Bing block the request via TLS fingerprinting.
     Searxng,
+    /// Provider-native server-side search (Anthropic `web_search`, OpenAI
+    /// Responses `web_search`). Search runs on the model provider's side, so it
+    /// works on hosts where scraping is blocked and needs no extra API key.
+    /// When the active provider/model does not support it, the local
+    /// `websearch` tool is used with `fallback_engines` instead.
+    Native,
 }
 
 impl WebSearchEngine {
@@ -1297,6 +1391,7 @@ impl WebSearchEngine {
             Self::Duckduckgo => "duckduckgo",
             Self::Bing => "bing",
             Self::Searxng => "searxng",
+            Self::Native => "native",
         }
     }
 
@@ -1305,8 +1400,14 @@ impl WebSearchEngine {
             "duckduckgo" | "ddg" => Some(Self::Duckduckgo),
             "bing" => Some(Self::Bing),
             "searxng" | "searx" => Some(Self::Searxng),
+            "native" | "provider" => Some(Self::Native),
             _ => None,
         }
+    }
+
+    /// True for engines the local `websearch` tool can run itself.
+    pub fn is_local(self) -> bool {
+        !matches!(self, Self::Native)
     }
 }
 
@@ -1330,6 +1431,26 @@ pub struct WebSearchConfig {
     pub searxng_url: Option<String>,
     /// Environment variable containing the SearXNG base URL.
     pub searxng_url_env: String,
+    /// Prefer the model provider's own server-side search whenever the active
+    /// provider/model supports it (Anthropic first-party API, OpenAI
+    /// Responses). The local `websearch` tool is then replaced by the hosted
+    /// one. Providers without native search keep the local tool and `engine`.
+    /// Default true. `engine = "native"` also turns this on.
+    pub prefer_native: bool,
+    /// Maximum provider-native searches per request.
+    /// Anthropic bills roughly $10 per 1,000 searches on API keys, so this caps
+    /// spend. Anthropic only; OpenAI has no per-request cap.
+    pub native_max_uses: Option<u32>,
+    /// Restrict provider-native search to these domains. Mutually exclusive
+    /// with `native_blocked_domains` (Anthropic rejects both).
+    pub native_allowed_domains: Vec<String>,
+    /// Never return results from these domains (Anthropic only).
+    pub native_blocked_domains: Vec<String>,
+    /// Anthropic server tool version, e.g. "web_search_20250305" (default) or
+    /// "web_search_20260209". Newer versions are sent with
+    /// `allowed_callers = ["direct"]` so models without programmatic tool
+    /// calling are not rejected.
+    pub native_anthropic_tool_version: String,
 }
 
 impl Default for WebSearchConfig {
@@ -1338,11 +1459,28 @@ impl Default for WebSearchConfig {
             engine: WebSearchEngine::Duckduckgo,
             fallback_engines: vec![WebSearchEngine::Bing],
             bing_api_key: None,
-            bing_api_key_env: "JCODE_BING_API_KEY".to_string(),
+            bing_api_key_env: "KCODE_BING_API_KEY".to_string(),
             bing_market: "en-US".to_string(),
             searxng_url: None,
-            searxng_url_env: "JCODE_SEARXNG_URL".to_string(),
+            searxng_url_env: "KCODE_SEARXNG_URL".to_string(),
+            prefer_native: true,
+            native_max_uses: Some(DEFAULT_NATIVE_WEB_SEARCH_MAX_USES),
+            native_allowed_domains: Vec::new(),
+            native_blocked_domains: Vec::new(),
+            native_anthropic_tool_version: DEFAULT_ANTHROPIC_WEB_SEARCH_TOOL.to_string(),
         }
+    }
+}
+
+/// Default cap on provider-native searches per request.
+pub const DEFAULT_NATIVE_WEB_SEARCH_MAX_USES: u32 = 5;
+/// Default Anthropic web search server tool version.
+pub const DEFAULT_ANTHROPIC_WEB_SEARCH_TOOL: &str = "web_search_20250305";
+
+impl WebSearchConfig {
+    /// True when provider-native search should be used where available.
+    pub fn native_enabled(&self) -> bool {
+        self.prefer_native || self.engine == WebSearchEngine::Native
     }
 }
 
@@ -1396,13 +1534,13 @@ pub struct ProviderConfig {
     /// Max seconds to wait for streaming data before timing out a request with
     /// no data received. Base budget only: high reasoning efforts scale it up
     /// automatically (see `jcode_base::provider::stream_idle_timeout_for_effort`).
-    /// Default: 180. Overridable via `JCODE_STREAM_IDLE_TIMEOUT_SECS`.
+    /// Default: 180. Overridable via `KCODE_STREAM_IDLE_TIMEOUT_SECS`.
     pub stream_idle_timeout_secs: u64,
     /// Maximum request attempts for transient provider errors, including the
-    /// initial attempt. Default: 8. Overridable via `JCODE_MAX_RETRIES`.
+    /// initial attempt. Default: 8. Overridable via `KCODE_MAX_RETRIES`.
     pub max_retries: u32,
     /// Maximum exponential-backoff delay between transient-error retries.
-    /// Default: 30 seconds. Overridable via `JCODE_RETRY_BACKOFF_CAP_SECS`.
+    /// Default: 30 seconds. Overridable via `KCODE_RETRY_BACKOFF_CAP_SECS`.
     pub retry_backoff_cap_secs: u64,
 }
 
@@ -1537,7 +1675,7 @@ pub struct SafetyConfig {
     pub email_smtp_port: u16,
     /// Email sender address
     pub email_from: Option<String>,
-    /// SMTP password (prefer JCODE_SMTP_PASSWORD env var)
+    /// SMTP password (prefer KCODE_SMTP_PASSWORD env var)
     pub email_password: Option<String>,
     /// IMAP host for receiving email replies (e.g. imap.gmail.com)
     pub email_imap_host: Option<String>,
@@ -1567,7 +1705,7 @@ pub struct SafetyConfig {
     pub jade_relay_enabled: bool,
     /// Jade relay API base URL (e.g. https://...lambda-url.us-east-1.on.aws/)
     pub jade_relay_api_base: Option<String>,
-    /// Jade relay bearer token (prefer JCODE_JADE_RELAY_TOKEN env var)
+    /// Jade relay bearer token (prefer KCODE_JADE_RELAY_TOKEN env var)
     pub jade_relay_token: Option<String>,
     /// Jade relay token id header (x-jade-token-id), used for fast token lookup
     pub jade_relay_token_id: Option<String>,
@@ -1652,15 +1790,25 @@ pub struct PowerConfig {
     /// those remain controlled by the active Windows power plan. The display is
     /// still allowed to sleep. Default: true.
     ///
-    /// Honored by the shared `jcode serve` daemon. The `JCODE_DISABLE_POWER_INHIBIT`
+    /// Honored by the shared `jcode serve` daemon. The `KCODE_DISABLE_POWER_INHIBIT`
     /// environment variable forces this off regardless of the config value.
     pub prevent_sleep_while_streaming: bool,
+
+    /// Also keep working when the lid closes on macOS and Windows while a
+    /// session is streaming. Linux always blocks lid-close suspend as part of
+    /// `prevent_sleep_while_streaming`. On Windows jcode temporarily sets the
+    /// active power plan's lid close action to "Do nothing". On macOS it runs
+    /// `sudo -n pmset -a disablesleep 1`, which requires a passwordless sudoers
+    /// rule and is skipped otherwise. Original settings are journaled and
+    /// restored when work finishes, including after a crash. Default: true.
+    pub block_lid_close: bool,
 }
 
 impl Default for PowerConfig {
     fn default() -> Self {
         Self {
             prevent_sleep_while_streaming: true,
+            block_lid_close: true,
         }
     }
 }

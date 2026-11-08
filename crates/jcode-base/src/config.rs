@@ -1,15 +1,15 @@
 //! Configuration file support for jcode
 //!
-//! Config is loaded from `~/.jcode/config.toml` (or `$JCODE_HOME/config.toml`)
+//! Config is loaded from `~/.kcode/config.toml` (or `$KCODE_HOME/config.toml`)
 //! Environment variables override config file settings.
 
 pub use jcode_config_types::{
-    AgentMode, AgentsConfig, AmbientConfig, AuthConfig, AutoJudgeConfig, AutoReviewConfig, CompactionConfig,
-    CompactionMode, CrossProviderFailoverMode, DiagramDisplayMode, DiagramPanePosition,
-    DiffDisplayMode, DisplayConfig, FeatureConfig, GatewayConfig, HookCommands, HooksConfig,
-    KeybindingsConfig, LatexRenderingMode, LaunchHotkeyEntry, LaunchHotkeysConfig,
-    MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig, NamedProviderModelConfig,
-    NamedProviderType, NativeScrollbarConfig, NotificationsConfig, OverscrollStatusMode,
+    AgentMode, AgentsConfig, AmbientConfig, AuthConfig, AutoJudgeConfig, AutoReviewConfig,
+    CompactionConfig, CompactionMode, CrossProviderFailoverMode, DiagramDisplayMode,
+    DiagramPanePosition, DiffDisplayMode, DisplayConfig, FeatureConfig, GatewayConfig,
+    HookCommands, HooksConfig, KeybindingsConfig, LatexRenderingMode, LaunchHotkeyEntry,
+    LaunchHotkeysConfig, MarkdownSpacingMode, NamedProviderAuth, NamedProviderConfig,
+    NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig, NotificationsConfig,
     PowerConfig, ProviderConfig, ReasoningDisplayMode, SafetyConfig, SessionPickerResumeAction,
     SponsorsConfig, SwarmSpawnMode, SwarmStripLayout, TerminalConfig, UpdateChannel,
     WebSearchConfig, WebSearchEngine,
@@ -230,7 +230,7 @@ struct ConfigCache {
 static CONFIG_CACHE: LazyLock<RwLock<ConfigCache>> = LazyLock::new(|| {
     let config = leak_config(Config::load());
     // Fingerprint after the load: applying env overrides may set env vars
-    // (e.g. copilot_premium -> JCODE_COPILOT_PREMIUM), and fingerprinting
+    // (e.g. copilot_premium -> KCODE_COPILOT_PREMIUM), and fingerprinting
     // first would guarantee a spurious full reload on the next check.
     let fingerprint = ConfigCacheFingerprint::current();
     // Seed the global context-limit cache from named provider configs on first
@@ -299,7 +299,7 @@ pub fn config() -> &'static Config {
             ));
             cache.config = leak_config(Config::load());
             // Loading applies env overrides that can themselves set env vars
-            // (e.g. copilot_premium propagates config -> JCODE_COPILOT_PREMIUM).
+            // (e.g. copilot_premium propagates config -> KCODE_COPILOT_PREMIUM).
             // Re-fingerprint after the load so those self-inflicted env changes
             // don't trigger a guaranteed second reload on the next check.
             cache.fingerprint = ConfigCacheFingerprint::current();
@@ -614,13 +614,16 @@ impl Default for AcpConfig {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum McpToolsMode {
-    /// Expose individual tools until their serialized definitions exceed the
-    /// configured threshold, then use the fixed search/call surface.
+    /// Never change the cached tool list for MCP changes. Providers with
+    /// native deferred loading (Claude, OpenAI gpt-5.4+) get MCP tools as
+    /// deferred definitions; others get the fixed `mcp_search`/`mcp_call`
+    /// surface, with new tools described in the transcript.
     #[default]
     Auto,
     /// Always expose every MCP server tool as a top-level tool definition.
+    /// Adding a server mid-session then invalidates the prompt cache.
     Eager,
-    /// Expose only the fixed `mcp_search` and `mcp_call` tools.
+    /// Same as `Auto` (kept for existing configs).
     Deferred,
 }
 
@@ -658,13 +661,19 @@ pub struct ToolConfig {
     pub disable_base_tools: bool,
     /// MCP tool exposure mode: auto (default), eager, or deferred.
     pub mcp_tools: McpToolsMode,
-    /// In auto mode, defer MCP tools when their definitions exceed this token estimate.
+    /// Ignored. `auto` used to switch MCP exposure at this token estimate,
+    /// which changed the cached tool list mid-session. Kept so existing
+    /// configs and the env override still parse.
     #[serde(
         alias = "mcp_tools_threshold",
         alias = "mcp_tools_auto_threshold",
         alias = "mcp_tools_auto_threshold_tokens"
     )]
     pub mcp_tools_token_threshold: usize,
+    /// Opt-in Codemode: expose a `codemode` tool that runs model-written
+    /// JavaScript in an embedded QuickJS sandbox able to call every other
+    /// tool (including MCP tools). Off by default.
+    pub codemode: bool,
 }
 
 impl Default for ToolConfig {
@@ -676,6 +685,7 @@ impl Default for ToolConfig {
             disable_base_tools: false,
             mcp_tools: McpToolsMode::Auto,
             mcp_tools_token_threshold: 8_000,
+            codemode: false,
         }
     }
 }

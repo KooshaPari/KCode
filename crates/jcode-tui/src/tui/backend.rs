@@ -396,7 +396,7 @@ impl RemoteConnection {
         // draw stalls during scrolling. The TUI hydrates the persisted remote
         // catalog cache for normal `/model` use; explicit refresh paths still
         // request fresh catalog data when needed.
-        if std::env::var_os("JCODE_REMOTE_BOOTSTRAP_MODEL_CATALOG").is_some() {
+        if std::env::var_os("KCODE_REMOTE_BOOTSTRAP_MODEL_CATALOG").is_some() {
             conn.send_request(Request::GetModelCatalog {
                 subscribe_usage_updates: true,
                 id: conn.next_request_id,
@@ -887,7 +887,31 @@ impl RemoteConnection {
     pub async fn rename_session(&mut self, title: Option<String>) -> Result<()> {
         let request = Request::RenameSession {
             id: self.next_request_id,
-            title,
+            saved,
+            label,
+        };
+        self.next_request_id += 1;
+        self.send_request(request).await
+    }
+
+    /// Set or clear the custom session display title on the server.
+    /// When `target_session_id` is set, renames that specific session
+    /// (used by the coordinator to rename swarm members).
+    pub async fn rename_session(
+        &mut self,
+        title: Option<String>,
+        target_session_id: Option<String>,
+    ) -> Result<()> {
+        let request = match target_session_id {
+            Some(target_session_id) => Request::RenameSwarmSession {
+                id: self.next_request_id,
+                title,
+                target_session_id,
+            },
+            None => Request::RenameSession {
+                id: self.next_request_id,
+                title,
+            },
         };
         self.next_request_id += 1;
         self.send_request(request).await

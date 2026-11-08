@@ -18,7 +18,11 @@ const PAD_DEN: usize = 3;
 
 /// Estimate token count for raw text. ~4 chars per token, floor of 1.
 pub fn rough_token_count(text: &str) -> usize {
-    if text.is_empty() { 1 } else { (text.len() / CHARS_PER_TOKEN).max(1) }
+    if text.is_empty() {
+        1
+    } else {
+        (text.len() / CHARS_PER_TOKEN).max(1)
+    }
 }
 
 /// Legacy alias kept for backward compatibility with existing callers.
@@ -42,6 +46,11 @@ fn block_tokens(block: &ContentBlock) -> usize {
         }
         ContentBlock::ToolResult { content, .. } => rough_token_count(content),
         ContentBlock::Image { .. } => IMAGE_TOKEN_COST,
+        ContentBlock::ToolReference {
+            tool_use_id,
+            tool_name,
+        } => rough_token_count(tool_use_id) + rough_token_count(tool_name),
+        ContentBlock::ProviderNative { item, .. } => rough_token_count(&item.to_string()),
         ContentBlock::OpenAICompaction { encrypted_content } => {
             rough_token_count(encrypted_content)
         }
@@ -180,8 +189,14 @@ mod tests {
     #[test]
     fn mixed_blocks_sum_correctly() {
         let msg = assistant_msg(vec![
-            ContentBlock::Text { text: "a".repeat(80), cache_control: None }, // 20 tokens
-            ContentBlock::Image { media_type: "image/png".into(), data: "x".into() }, // 2000
+            ContentBlock::Text {
+                text: "a".repeat(80),
+                cache_control: None,
+            }, // 20 tokens
+            ContentBlock::Image {
+                media_type: "image/png".into(),
+                data: "x".into(),
+            }, // 2000
         ]);
         // raw=2020, padded=ceil(2020*4/3)=2694
         assert_eq!(estimate_message_tokens(&[msg]), 2694);

@@ -390,6 +390,17 @@ impl Provider for NativeAutoCompactionProvider {
     async fn complete_simple(&self, _prompt: &str, _system: &str) -> Result<String> {
         Ok("manual summary from native-auto provider".to_string())
     }
+
+    async fn complete_simple_with_usage(
+        &self,
+        prompt: &str,
+        system: &str,
+    ) -> Result<(String, jcode_provider_core::SimpleCompletionUsage)> {
+        Ok((
+            self.complete_simple(prompt, system).await?,
+            jcode_provider_core::SimpleCompletionUsage::default(),
+        ))
+    }
 }
 
 #[async_trait]
@@ -991,18 +1002,18 @@ async fn new_agent_registers_active_pid_and_clear_swaps_it() {
 #[tokio::test]
 async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_tools = std::env::var_os("JCODE_TOOLS");
-    let prev_disabled_tools = std::env::var_os("JCODE_DISABLED_TOOLS");
-    let prev_tool_profile = std::env::var_os("JCODE_TOOL_PROFILE");
-    let prev_disable_base_tools = std::env::var_os("JCODE_DISABLE_BASE_TOOLS");
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let prev_tools = std::env::var_os("KCODE_TOOLS");
+    let prev_disabled_tools = std::env::var_os("KCODE_DISABLED_TOOLS");
+    let prev_tool_profile = std::env::var_os("KCODE_TOOL_PROFILE");
+    let prev_disable_base_tools = std::env::var_os("KCODE_DISABLE_BASE_TOOLS");
     let temp_home = tempfile::TempDir::new().expect("temp home");
 
-    crate::env::set_var("JCODE_HOME", temp_home.path());
-    crate::env::remove_var("JCODE_TOOLS");
-    crate::env::remove_var("JCODE_DISABLED_TOOLS");
-    crate::env::remove_var("JCODE_TOOL_PROFILE");
-    crate::env::remove_var("JCODE_DISABLE_BASE_TOOLS");
+    crate::env::set_var("KCODE_HOME", temp_home.path());
+    crate::env::remove_var("KCODE_TOOLS");
+    crate::env::remove_var("KCODE_DISABLED_TOOLS");
+    crate::env::remove_var("KCODE_TOOL_PROFILE");
+    crate::env::remove_var("KCODE_DISABLE_BASE_TOOLS");
     crate::config::Config::invalidate_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1089,7 +1100,7 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
         .validate_tool_allowed("jcode_docs")
         .expect("jcode_docs must be executable again outside self-dev mode");
 
-    crate::env::set_var("JCODE_DISABLED_TOOLS", tool_name);
+    crate::env::set_var("KCODE_DISABLED_TOOLS", tool_name);
     crate::config::Config::invalidate_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1114,29 +1125,29 @@ async fn gmail_is_exposed_by_default_and_can_be_explicitly_disabled() {
     assert!(err.to_string().contains("disabled"));
 
     if let Some(previous) = prev_home {
-        crate::env::set_var("JCODE_HOME", previous);
+        crate::env::set_var("KCODE_HOME", previous);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
     if let Some(previous) = prev_tools {
-        crate::env::set_var("JCODE_TOOLS", previous);
+        crate::env::set_var("KCODE_TOOLS", previous);
     } else {
-        crate::env::remove_var("JCODE_TOOLS");
+        crate::env::remove_var("KCODE_TOOLS");
     }
     if let Some(previous) = prev_disabled_tools {
-        crate::env::set_var("JCODE_DISABLED_TOOLS", previous);
+        crate::env::set_var("KCODE_DISABLED_TOOLS", previous);
     } else {
-        crate::env::remove_var("JCODE_DISABLED_TOOLS");
+        crate::env::remove_var("KCODE_DISABLED_TOOLS");
     }
     if let Some(previous) = prev_tool_profile {
-        crate::env::set_var("JCODE_TOOL_PROFILE", previous);
+        crate::env::set_var("KCODE_TOOL_PROFILE", previous);
     } else {
-        crate::env::remove_var("JCODE_TOOL_PROFILE");
+        crate::env::remove_var("KCODE_TOOL_PROFILE");
     }
     if let Some(previous) = prev_disable_base_tools {
-        crate::env::set_var("JCODE_DISABLE_BASE_TOOLS", previous);
+        crate::env::set_var("KCODE_DISABLE_BASE_TOOLS", previous);
     } else {
-        crate::env::remove_var("JCODE_DISABLE_BASE_TOOLS");
+        crate::env::remove_var("KCODE_DISABLE_BASE_TOOLS");
     }
     crate::config::Config::invalidate_cache();
 }
@@ -1167,6 +1178,7 @@ fn seed_transient_session_state(agent: &mut Agent) {
         name: "test_tool".to_string(),
         description: "test tool".to_string(),
         input_schema: serde_json::json!({"type": "object"}),
+        defer_loading: false,
     }]);
 }
 
@@ -1239,6 +1251,76 @@ async fn restore_session_resets_runtime_interrupt_and_queue_state() {
     assert_eq!(agent.last_usage.input_tokens, 0);
     assert_eq!(agent.last_usage.output_tokens, 0);
     assert!(agent.locked_tools.is_none());
+}
+
+/// Regression for: a session saved with a model the active provider
+/// rejects on resume must be migrated to the provider's current
+/// default and re-persisted, not silently left with the rejected
+/// saved value.
+///
+/// Repro shape: operator's m3.1 sessions
+/// (e.g. `~/.jcode/sessions/session_deer_1791971005300_*.json` saved
+/// with `model = "MiniMax-M3.1-Flash-Preview"` on the openai
+/// provider) were silently resuming on the provider's current
+/// default while keeping the saved `MiniMax-M3.1-Flash-Preview` in
+/// `session.model`. The visible symptom was an Active session
+/// running on a model the user did not pick. The bug was in
+/// `restore_session_with_working_dir`
+/// (`crates/jcode-app-core/src/agent/turn_execution.rs:727-747`):
+/// `set_model_with_auth_refresh` errors were logged at `error` and
+/// the session was marked active without correcting
+/// `self.session.model` or re-persisting.
+#[tokio::test]
+async fn restore_session_falls_back_to_provider_default_when_saved_model_is_rejected() {
+    let _guard = crate::storage::lock_test_env();
+    let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
+    let registry = Registry::new(provider.clone()).await;
+    let mut agent = Agent::new(provider, registry);
+
+    // Saved session: a model the active provider does not know
+    // about. The default `Provider::set_model` returns
+    // Err("This provider does not support model switching"), which
+    // is the same error class a real provider would surface if the
+    // saved id is no longer in its live catalog (e.g. an m3.1
+    // session resumed after the operator removed the m3.1 entry
+    // from `~/.jcode/config.toml`).
+    let mut saved_session = crate::session::Session::create_with_id(
+        "session_restore_falls_back_to_provider_default_when_saved_model_is_rejected".to_string(),
+        None,
+        Some("test".to_string()),
+    );
+    saved_session.model = Some("MiniMax-M3.1-Flash-Preview".to_string());
+    saved_session.provider_key = Some("openai".to_string());
+    saved_session.route_api_method = Some("openai".to_string());
+    saved_session
+        .save()
+        .expect("save session with rejected model");
+
+    let status = agent
+        .restore_session(&saved_session.id)
+        .expect("restore session should succeed");
+
+    assert_eq!(status, crate::session::SessionStatus::Active);
+    assert_eq!(agent.session_id(), saved_session.id);
+    // The provider's default `Provider::model` is "unknown"; the
+    // saved "MiniMax-M3.1-Flash-Preview" must be replaced, not
+    // left in place.
+    assert_eq!(
+        agent.session.model.as_deref(),
+        Some("unknown"),
+        "agent.session.model should be the provider's default after set_model failure, not the rejected saved value"
+    );
+    // And the migration must be re-persisted so the next resume
+    // (or a future `Session::load`) sees the corrected model, not
+    // the rejected one. This is the part that prevents the
+    // operator's next resume from re-triggering the same bug.
+    let reloaded =
+        crate::session::Session::load(&saved_session.id).expect("reload session from disk");
+    assert_eq!(
+        reloaded.model.as_deref(),
+        Some("unknown"),
+        "session must be re-persisted with the provider's default after set_model failure"
+    );
 }
 
 #[tokio::test]
@@ -1410,8 +1492,8 @@ async fn build_memory_prompt_nonblocking_defers_pending_memory_during_tool_loop(
 #[tokio::test]
 async fn memory_injection_message_defaults_to_ephemeral_history() {
     let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_PERSIST_MEMORY_INJECTIONS");
-    crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", "false");
+    let previous = std::env::var_os("KCODE_PERSIST_MEMORY_INJECTIONS");
+    crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", "false");
     crate::config::invalidate_config_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1434,8 +1516,8 @@ async fn memory_injection_message_defaults_to_ephemeral_history() {
     assert!(message_text(&message).contains("Use ephemeral mode"));
 
     match previous {
-        Some(value) => crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", value),
-        None => crate::env::remove_var("JCODE_PERSIST_MEMORY_INJECTIONS"),
+        Some(value) => crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", value),
+        None => crate::env::remove_var("KCODE_PERSIST_MEMORY_INJECTIONS"),
     }
     crate::config::invalidate_config_cache();
 }
@@ -1443,8 +1525,8 @@ async fn memory_injection_message_defaults_to_ephemeral_history() {
 #[tokio::test]
 async fn memory_injection_message_can_persist_to_history() {
     let _guard = crate::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_PERSIST_MEMORY_INJECTIONS");
-    crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", "true");
+    let previous = std::env::var_os("KCODE_PERSIST_MEMORY_INJECTIONS");
+    crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", "true");
     crate::config::invalidate_config_cache();
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
@@ -1472,8 +1554,8 @@ async fn memory_injection_message_can_persist_to_history() {
     );
 
     match previous {
-        Some(value) => crate::env::set_var("JCODE_PERSIST_MEMORY_INJECTIONS", value),
-        None => crate::env::remove_var("JCODE_PERSIST_MEMORY_INJECTIONS"),
+        Some(value) => crate::env::set_var("KCODE_PERSIST_MEMORY_INJECTIONS", value),
+        None => crate::env::remove_var("KCODE_PERSIST_MEMORY_INJECTIONS"),
     }
     crate::config::invalidate_config_cache();
 }
@@ -1482,8 +1564,8 @@ async fn memory_injection_message_can_persist_to_history() {
 async fn mark_closed_persists_soft_interrupts_for_restore_after_reload() {
     let _guard = crate::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("temp dir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
     let registry = Registry::new(provider.clone()).await;
@@ -1514,9 +1596,9 @@ async fn mark_closed_persists_soft_interrupts_for_restore_after_reload() {
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -1618,7 +1700,10 @@ async fn register_fake_deferred_mcp_surface(registry: &Registry) {
     }
 }
 
-async fn agent_with_fake_mcp_surface(mode: crate::config::McpToolsMode, threshold: usize) -> Agent {
+async fn agent_with_fake_mcp_surface(
+    mode: crate::config::McpToolsMode,
+    _threshold: usize,
+) -> Agent {
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
     let registry = Registry::new(provider.clone()).await;
     register_fake_deferred_mcp_surface(&registry).await;
@@ -1633,7 +1718,6 @@ async fn agent_with_fake_mcp_surface(mode: crate::config::McpToolsMode, threshol
         .await;
     let mut agent = Agent::new(provider, registry);
     agent.mcp_tools_mode = mode;
-    agent.mcp_tools_token_threshold = threshold;
     agent
 }
 
@@ -1664,19 +1748,24 @@ async fn mcp_exposure_modes_select_eager_or_fixed_definitions() {
     assert!(deferred_names.iter().any(|name| name == "mcp_search"));
     assert!(deferred_names.iter().any(|name| name == "mcp_call"));
 
-    let mut auto_eager =
+    // `auto` never exposes per-server definitions on providers without
+    // native deferred loading, even for a tiny catalog: any later change to
+    // that list would bust the whole prompt cache.
+    let mut auto_small =
         agent_with_fake_mcp_surface(crate::config::McpToolsMode::Auto, usize::MAX).await;
-    let auto_eager_names: Vec<String> = auto_eager
+    let auto_small_names: Vec<String> = auto_small
         .tool_definitions()
         .await
         .into_iter()
         .map(|tool| tool.name)
         .collect();
     assert!(
-        auto_eager_names
+        !auto_small_names
             .iter()
-            .any(|name| name == "mcp__test__verbose")
+            .any(|name| name.starts_with("mcp__"))
     );
+    assert!(auto_small_names.iter().any(|name| name == "mcp_search"));
+    assert!(auto_small_names.iter().any(|name| name == "mcp_call"));
 
     let mut auto_deferred = agent_with_fake_mcp_surface(crate::config::McpToolsMode::Auto, 1).await;
     let auto_deferred_names: Vec<String> = auto_deferred
@@ -1742,17 +1831,17 @@ async fn deferred_mcp_surface_ignores_late_per_tool_registration() {
 }
 
 #[tokio::test]
-async fn auto_mode_rechecks_late_mcp_definitions_before_deferring() {
+async fn auto_mode_never_changes_the_tool_list_for_late_mcp_tools() {
     let _guard = crate::storage::lock_test_env();
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
     let registry = Registry::new(provider.clone()).await;
     register_fake_deferred_mcp_surface(&registry).await;
     let mut agent = Agent::new(provider, registry);
     agent.mcp_tools_mode = crate::config::McpToolsMode::Auto;
-    agent.mcp_tools_token_threshold = 1;
 
     let before = agent.tool_definitions().await;
-    assert!(!before.iter().any(|tool| tool.name == "mcp_search"));
+    assert!(before.iter().any(|tool| tool.name == "mcp_search"));
+    assert!(before.iter().any(|tool| tool.name == "mcp_call"));
     agent
         .registry
         .register(
@@ -1763,11 +1852,14 @@ async fn auto_mode_rechecks_late_mcp_definitions_before_deferring() {
             }) as Arc<dyn crate::tool::Tool>,
         )
         .await;
+    agent.unlock_tools_if_needed("mcp");
 
     let after = agent.tool_definitions().await;
-    assert!(after.iter().any(|tool| tool.name == "mcp_search"));
-    assert!(after.iter().any(|tool| tool.name == "mcp_call"));
-    assert!(!after.iter().any(|tool| tool.name.starts_with("mcp__")));
+    assert_eq!(
+        serde_json::to_string(&before).unwrap(),
+        serde_json::to_string(&after).unwrap(),
+        "late MCP registration and the mcp tool must not change the cached tool list"
+    );
     assert!(agent.mcp_late_register_resolved);
 }
 
@@ -1783,6 +1875,9 @@ async fn mcp_tools_registered_after_lock_are_visible_to_agent() {
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider, registry);
+    // The late-registration rebuild (#206) only exists in explicit eager
+    // mode; every other mode keeps the tool list fixed for cache stability.
+    agent.mcp_tools_mode = crate::config::McpToolsMode::Eager;
 
     // First turn locks the snapshot (this is what happens before the async MCP
     // registration spawn completes).
@@ -1845,6 +1940,9 @@ async fn mcp_late_registration_rebuild_happens_at_most_once() {
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider, registry);
+    // The late-registration rebuild (#206) only exists in explicit eager
+    // mode; every other mode keeps the tool list fixed for cache stability.
+    agent.mcp_tools_mode = crate::config::McpToolsMode::Eager;
 
     // First turn locks the snapshot with no MCP tools yet.
     let _ = agent.tool_definitions().await;
@@ -1917,6 +2015,9 @@ async fn tool_snapshot_is_stable_without_new_mcp_tools() {
     let provider: Arc<dyn Provider> = Arc::new(NativeAutoCompactionProvider);
     let registry = Registry::new(provider.clone()).await;
     let mut agent = Agent::new(provider, registry);
+    // The late-registration rebuild (#206) only exists in explicit eager
+    // mode; every other mode keeps the tool list fixed for cache stability.
+    agent.mcp_tools_mode = crate::config::McpToolsMode::Eager;
 
     let first = agent.tool_definitions().await;
     // Register a NON-mcp tool after locking — this should NOT trigger a rebuild,
@@ -1950,12 +2051,14 @@ fn empty_post_tool_response_gets_more_than_one_retry() {
     // transient hiccup, not a finished task. With only one retry allowed, a
     // single empty response (observed once in 43 turns) ended a 20-hour agent
     // run with the work half-done and the submission unoptimized.
-    assert!(
-        Agent::MAX_EMPTY_POST_TOOL_CONTINUATION_ATTEMPTS > 1,
-        "a single retry lets one transient empty response end a long run"
-    );
-    // Bounded, so a genuinely finished agent still exits instead of looping.
-    assert!(Agent::MAX_EMPTY_POST_TOOL_CONTINUATION_ATTEMPTS <= 10);
+    const {
+        assert!(
+            Agent::MAX_EMPTY_POST_TOOL_CONTINUATION_ATTEMPTS > 1,
+            "a single retry lets one transient empty response end a long run"
+        );
+        // Bounded, so a genuinely finished agent still exits instead of looping.
+        assert!(Agent::MAX_EMPTY_POST_TOOL_CONTINUATION_ATTEMPTS <= 10);
+    }
 }
 
 #[test]
@@ -1981,6 +2084,15 @@ fn output_budget_truncation_requests_a_continuation() {
     // An absent reason is the pre-fix wire behaviour: it cannot be recovered
     // from, which is precisely why MessageEnd must forward the real reason.
     assert!(!Agent::should_continue_after_stop_reason(""));
+}
+
+#[test]
+fn anthropic_pause_turn_is_resumed() {
+    // Long server-tool (web search) turns stop with `pause_turn`; the turn
+    // must be resent to continue rather than treated as finished.
+    assert!(Agent::should_continue_after_stop_reason("pause_turn"));
+    assert!(Agent::is_pause_turn_stop_reason(" PAUSE_TURN "));
+    assert!(!Agent::is_pause_turn_stop_reason("max_tokens"));
 }
 
 #[test]

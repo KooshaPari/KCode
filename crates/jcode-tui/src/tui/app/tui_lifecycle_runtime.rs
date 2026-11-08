@@ -258,7 +258,10 @@ impl App {
             crate::logging::info(&format!("MCP: Found {} server(s) in config", server_count));
 
             let (successes, failures) = {
-                let manager = self.mcp_manager.write().await;
+                // `connect_all` uses the manager's internal locks. Keep only a
+                // read guard here so MCP management reads are not blocked by a
+                // slow initialize handshake.
+                let manager = self.mcp_manager.read().await;
                 let result = manager.connect_all().await.unwrap_or((0, Vec::new()));
                 // Cache server names with tool counts
                 let servers = manager.connected_servers().await;
@@ -369,7 +372,7 @@ impl App {
             if restored_model || self.session.model.is_none() {
                 self.session.model = Some(active_model.clone());
             }
-            self.update_context_limit_for_model(&active_model);
+            self.update_context_limit_for_model(&active_model, None);
             // Mark session as active now that it's being used again
             self.session.mark_active();
             self.set_side_panel_snapshot(
@@ -577,19 +580,16 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
                     "off"
                 };
                 app.push_display_message(DisplayMessage::system(format!(
-                    "Onboarding simulator is {status}. Alt+5 resets and opens it; Cmd+5 toggles it; `/onboarding-sim on` / `off` also work. While active: Tab/→ next screen, Shift+Tab/← previous, h/l preview the highlight, Esc exits."
+                    "Onboarding rehearsal is {status}. Alt+5 starts it over; Cmd+5 toggles it; `/onboarding-sim on` / `off` also work. It runs the real first-run flow as if jcode were new on this machine. Esc skips onboarding, as it does for new users."
                 )));
             }
             "" | "on" => {
                 app.start_onboarding_simulator();
-                app.push_display_message(DisplayMessage::system(
-                    "Onboarding simulator started. Step screens with Tab/→, press Alt+5 to reset to the first screen, or Cmd+5 to toggle. On the import screen Up/Down move the checkbox cursor; h/l preview the highlight; Esc exits. Nothing real is logged in or imported.".to_string(),
-                ));
             }
             "off" => {
                 app.stop_onboarding_simulator();
                 app.push_display_message(DisplayMessage::system(
-                    "Onboarding simulator stopped.".to_string(),
+                    "Onboarding rehearsal stopped.".to_string(),
                 ));
             }
             _ => unreachable!("guarded by command matcher"),
@@ -730,14 +730,14 @@ pub(super) fn handle_dev_command(app: &mut App, trimmed: &str) -> bool {
                 PremiumMode::OnePerSession => "one premium per session",
                 PremiumMode::Zero => "zero premium requests",
             };
-            let env = std::env::var("JCODE_COPILOT_PREMIUM").ok();
+            let env = std::env::var("KCODE_COPILOT_PREMIUM").ok();
             let env_label = match env.as_deref() {
                 Some("0") => "0 (zero)",
                 Some("1") => "1 (one per session)",
                 _ => "unset (normal)",
             };
             app.push_display_message(DisplayMessage::system(format!(
-                "Premium mode: {}\nEnv JCODE_COPILOT_PREMIUM: {}",
+                "Premium mode: {}\nEnv KCODE_COPILOT_PREMIUM: {}",
                 label, env_label,
             )));
             return true;

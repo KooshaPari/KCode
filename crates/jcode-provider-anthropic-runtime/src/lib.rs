@@ -63,7 +63,7 @@ const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const API_URL_OAUTH: &str = "https://api.anthropic.com/v1/messages?beta=true";
 
 fn direct_api_url() -> String {
-    let base = std::env::var("JCODE_ANTHROPIC_API_BASE")
+    let base = std::env::var("KCODE_ANTHROPIC_API_BASE")
         .ok()
         .or_else(|| std::env::var("ANTHROPIC_BASE_URL").ok())
         .map(|value| value.trim().trim_end_matches('/').to_string())
@@ -76,14 +76,14 @@ fn direct_api_url() -> String {
 }
 
 fn configured_direct_headers() -> Result<HeaderMap> {
-    let Some(raw) = std::env::var("JCODE_ANTHROPIC_HEADERS")
+    let Some(raw) = std::env::var("KCODE_ANTHROPIC_HEADERS")
         .ok()
         .filter(|value| !value.trim().is_empty())
     else {
         return Ok(HeaderMap::new());
     };
     let headers: std::collections::BTreeMap<String, String> = serde_json::from_str(&raw)
-        .context("JCODE_ANTHROPIC_HEADERS must be a JSON object of string values")?;
+        .context("KCODE_ANTHROPIC_HEADERS must be a JSON object of string values")?;
     let mut result = HeaderMap::new();
     for (name, value) in headers {
         let name = HeaderName::from_bytes(name.as_bytes())
@@ -96,7 +96,7 @@ fn configured_direct_headers() -> Result<HeaderMap> {
 }
 
 fn direct_auth_mode() -> String {
-    std::env::var("JCODE_ANTHROPIC_AUTH")
+    std::env::var("KCODE_ANTHROPIC_AUTH")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| {
@@ -127,14 +127,14 @@ impl DirectTransportConfig {
             api_url: direct_api_url(),
             headers: configured_direct_headers().map_err(|err| format!("{err:#}")),
             auth_mode: direct_auth_mode(),
-            auth_header: std::env::var("JCODE_ANTHROPIC_AUTH_HEADER")
+            auth_header: std::env::var("KCODE_ANTHROPIC_AUTH_HEADER")
                 .unwrap_or_else(|_| "x-api-key".to_string()),
         }
     }
 }
 
 fn active_anthropic_profile_models() -> Option<Vec<String>> {
-    let Ok(profile_name) = std::env::var("JCODE_NAMED_PROVIDER_PROFILE") else {
+    let Ok(profile_name) = std::env::var("KCODE_NAMED_PROVIDER_PROFILE") else {
         return None;
     };
     let profile = jcode_base::config::config().providers.get(&profile_name)?;
@@ -470,7 +470,7 @@ pub struct AnthropicProvider {
     /// Cached OAuth credentials (None if using API key)
     credentials: Arc<RwLock<Option<CachedCredentials>>>,
     credential_mode: Arc<RwLock<AnthropicCredentialMode>>,
-    /// Explicit `JCODE_ANTHROPIC_MAX_TOKENS` override. When unset, the output
+    /// Explicit `KCODE_ANTHROPIC_MAX_TOKENS` override. When unset, the output
     /// budget is derived per model so newer generations are not clamped to the
     /// legacy 32K default.
     max_tokens_override: Option<u32>,
@@ -553,9 +553,9 @@ impl AnthropicProvider {
     /// The `claude` login provider is specifically the OAuth/subscription path,
     /// while `claude-api` is the API-key path. The doctor must test the path
     /// implied by the provider id under test, regardless of what
-    /// `JCODE_RUNTIME_PROVIDER` happens to be in the current process (e.g. a
+    /// `KCODE_RUNTIME_PROVIDER` happens to be in the current process (e.g. a
     /// self-dev session may have it set to `claude-api`). This also updates
-    /// `JCODE_RUNTIME_PROVIDER` so any provider instances the probes build
+    /// `KCODE_RUNTIME_PROVIDER` so any provider instances the probes build
     /// afterwards inherit the same mode. Errors if the requested credential is
     /// not available, so the doctor can record a clear AUTH failure.
     pub fn pin_credential_mode_for_doctor(&self, oauth: bool) -> Result<()> {
@@ -624,7 +624,7 @@ impl AnthropicProvider {
     }
 
     pub fn new() -> Self {
-        let model = std::env::var("JCODE_ANTHROPIC_MODEL").unwrap_or_else(|_| {
+        let model = std::env::var("KCODE_ANTHROPIC_MODEL").unwrap_or_else(|_| {
             if Self::is_usage_exhausted() {
                 "claude-sonnet-4-6".to_string()
             } else {
@@ -639,7 +639,7 @@ impl AnthropicProvider {
             })
         });
 
-        let max_tokens_override = std::env::var("JCODE_ANTHROPIC_MAX_TOKENS")
+        let max_tokens_override = std::env::var("KCODE_ANTHROPIC_MAX_TOKENS")
             .ok()
             .and_then(|v| v.trim().parse::<u32>().ok());
         let reasoning_effort = jcode_base::config::config()
@@ -650,7 +650,7 @@ impl AnthropicProvider {
             .map(|effort| Self::store_effort_for_model(&model, &effort));
 
         let direct_transport = DirectTransportConfig::from_env();
-        let profile_api_key = std::env::var_os("JCODE_ANTHROPIC_API_BASE")
+        let profile_api_key = std::env::var_os("KCODE_ANTHROPIC_API_BASE")
             .map(|_| load_anthropic_api_key().map_err(|err| format!("{err:#}")));
         let profile_models = active_anthropic_profile_models();
 
@@ -1134,7 +1134,7 @@ impl AnthropicProvider {
         // method that requests will actually use, instead of inferring it from
         // credential presence. `Auto` leaves the existing identity untouched.
         if let Some(route) = mode.auth_route(jcode_provider_core::DualAuthProvider::Anthropic) {
-            jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
+            jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", route.runtime_provider_key());
         }
         // Drop any cached auth snapshot so surfaces that still consult the cheap
         // cached probe (auto-mode resolution, usage availability, account labels)
@@ -1153,8 +1153,37 @@ impl AnthropicProvider {
 
     /// Convert our Message type to Anthropic API format
     /// Also repairs dangling tool_uses by injecting synthetic tool_results
-    fn format_messages(&self, messages: &[Message], is_oauth: bool) -> Vec<ApiMessage> {
-        jcode_provider_anthropic::format_messages(messages, is_oauth)
+    #[cfg(test)]
+    fn format_messages(
+        &self,
+        messages: &[Message],
+        is_oauth: bool,
+        api_tools: &[ApiTool],
+    ) -> Vec<ApiMessage> {
+        jcode_provider_anthropic::format_messages_with_tools(messages, is_oauth, api_tools)
+    }
+
+    /// Format messages, replaying stored server tool blocks verbatim when the
+    /// matching server tool is attached to this request (`native_replay`).
+    fn format_messages_native(
+        &self,
+        messages: &[Message],
+        is_oauth: bool,
+        api_tools: &[ApiTool],
+        native_replay: bool,
+    ) -> Vec<ApiMessage> {
+        jcode_provider_anthropic::format_messages_with_native(
+            messages,
+            is_oauth,
+            api_tools,
+            native_replay,
+        )
+    }
+
+    /// True when requests go to Anthropic's own Messages API rather than a
+    /// custom gateway, which may not implement server tools.
+    fn first_party_api(&self) -> bool {
+        self.direct_transport.api_url == API_URL
     }
 
     /// Convert our ContentBlock to Anthropic API format
@@ -1254,8 +1283,16 @@ impl Provider for AnthropicProvider {
         let api_model = strip_1m_suffix(&model).to_string();
 
         // Format request
-        let api_messages = self.format_messages(messages, is_oauth);
-        let api_tools = self.format_tools(tools, is_oauth);
+        let server_tools = native_web_search::server_tools_for_request(
+            // OAuth always targets api.anthropic.com, regardless of a gateway
+            // base URL configured for API-key use.
+            is_oauth || self.first_party_api(),
+            tools,
+        );
+        let tools = native_web_search::without_local_websearch(tools, &server_tools);
+        let api_tools = self.format_tools(&tools, is_oauth);
+        let api_messages =
+            self.format_messages_native(messages, is_oauth, &api_tools, !server_tools.is_empty());
         let (thinking, output_config, temperature) =
             self.build_reasoning_request_parts(&model, is_oauth);
 
@@ -1264,11 +1301,7 @@ impl Provider for AnthropicProvider {
             max_tokens: self.max_tokens_for(&model),
             system: build_system_param(system, is_oauth),
             messages: format_messages_with_identity(api_messages, is_oauth),
-            tools: if api_tools.is_empty() {
-                None
-            } else {
-                Some(api_tools)
-            },
+            tools: jcode_provider_anthropic::request_tools(api_tools, server_tools),
             metadata: if is_oauth {
                 Some(oauth_request_metadata(&self.oauth_session_id))
             } else {
@@ -1555,6 +1588,13 @@ impl Provider for AnthropicProvider {
         true
     }
 
+    fn supports_deferred_tools(&self) -> bool {
+        // Deferred loading and `tool_reference` are first-party Messages API
+        // features. Custom gateways (KCODE_ANTHROPIC_API_URL) may proxy a
+        // different backend that rejects the fields, so keep them eager there.
+        self.direct_transport.api_url == API_URL
+    }
+
     fn fork(&self) -> Arc<dyn Provider> {
         Arc::new(Self {
             client: self.client.clone(),
@@ -1619,8 +1659,16 @@ impl Provider for AnthropicProvider {
         let api_model = strip_1m_suffix(&model).to_string();
 
         // Format request
-        let api_messages = self.format_messages(messages, is_oauth);
-        let api_tools = self.format_tools(tools, is_oauth);
+        let server_tools = native_web_search::server_tools_for_request(
+            // OAuth always targets api.anthropic.com, regardless of a gateway
+            // base URL configured for API-key use.
+            is_oauth || self.first_party_api(),
+            tools,
+        );
+        let tools = native_web_search::without_local_websearch(tools, &server_tools);
+        let api_tools = self.format_tools(&tools, is_oauth);
+        let api_messages =
+            self.format_messages_native(messages, is_oauth, &api_tools, !server_tools.is_empty());
         let (thinking, output_config, temperature) =
             self.build_reasoning_request_parts(&model, is_oauth);
 
@@ -1629,11 +1677,7 @@ impl Provider for AnthropicProvider {
             max_tokens: self.max_tokens_for(&model),
             system: build_system_param_split(system_static, system_dynamic, is_oauth),
             messages: format_messages_with_identity(api_messages, is_oauth),
-            tools: if api_tools.is_empty() {
-                None
-            } else {
-                Some(api_tools)
-            },
+            tools: jcode_provider_anthropic::request_tools(api_tools, server_tools),
             metadata: if is_oauth {
                 Some(oauth_request_metadata(&self.oauth_session_id))
             } else {
@@ -2029,7 +2073,7 @@ async fn stream_response(
 ) -> Result<()> {
     use jcode_message_types::ConnectionPhase;
     let requested_model_base = strip_1m_suffix(&request.model).to_ascii_lowercase();
-    if std::env::var("JCODE_ANTHROPIC_DEBUG")
+    if std::env::var("KCODE_ANTHROPIC_DEBUG")
         .map(|v| v == "1")
         .unwrap_or(false)
         && let Ok(json) = serde_json::to_string_pretty(&request)
@@ -2106,11 +2150,11 @@ async fn stream_response(
             "bearer" => req.header("Authorization", format!("Bearer {token}")),
             "header" => {
                 let header = HeaderName::from_bytes(direct_transport.auth_header.trim().as_bytes())
-                    .context("invalid JCODE_ANTHROPIC_AUTH_HEADER")?;
+                    .context("invalid KCODE_ANTHROPIC_AUTH_HEADER")?;
                 req.header(header, &token)
             }
             value => anyhow::bail!(
-                "invalid JCODE_ANTHROPIC_AUTH value '{value}' (expected bearer, header, or none)"
+                "invalid KCODE_ANTHROPIC_AUTH value '{value}' (expected bearer, header, or none)"
             ),
         };
         req = req.header("anthropic-beta", beta_header);
@@ -2155,7 +2199,7 @@ async fn stream_response(
     };
 
     // Idle timeout between streamed chunks. Configurable via
-    // `[provider] stream_idle_timeout_secs` / `JCODE_STREAM_IDLE_TIMEOUT_SECS`
+    // `[provider] stream_idle_timeout_secs` / `KCODE_STREAM_IDLE_TIMEOUT_SECS`
     // so slow reasoning models don't trip a premature timeout (issue #434).
     loop {
         let chunk = match tokio::time::timeout(stream_idle_timeout, stream.next()).await {
@@ -2501,6 +2545,10 @@ struct SseEvent {
 #[derive(Default)]
 struct SseStreamState {
     current_tool_use: Option<ToolUseAccumulator>,
+    /// Server tool block (`server_tool_use`) being streamed. Its input arrives
+    /// as `input_json_delta` like a client tool, but the provider runs it, so it
+    /// is emitted as a provider-native item instead of a jcode tool call.
+    current_server_block: Option<native_web_search::ServerBlockAccumulator>,
     current_thinking_block: bool,
     input_tokens: Option<u64>,
     output_tokens: Option<u64>,
@@ -2528,10 +2576,10 @@ fn process_sse_event(
             if let Ok(parsed) = serde_json::from_str::<MessageStartEvent>(&event.data) {
                 // The server echoes the model that actually served the request.
                 // Log it so we can confirm there was no silent server-side
-                // substitution (and surface it under JCODE_LOG_SERVED_MODEL).
+                // substitution (and surface it under KCODE_LOG_SERVED_MODEL).
                 if let Some(served) = parsed.message.model.as_deref() {
                     jcode_base::logging::info(&format!("Anthropic served model={}", served));
-                    if std::env::var("JCODE_LOG_SERVED_MODEL").is_ok() {
+                    if std::env::var("KCODE_LOG_SERVED_MODEL").is_ok() {
                         eprintln!("[anthropic] served model={served}");
                     }
                     // Anthropic can silently alias an unavailable/retired model
@@ -2567,7 +2615,7 @@ fn process_sse_event(
                             "Anthropic granted service_tier={}",
                             tier
                         ));
-                        if std::env::var("JCODE_LOG_SERVICE_TIER").is_ok() {
+                        if std::env::var("KCODE_LOG_SERVICE_TIER").is_ok() {
                             eprintln!("[anthropic] granted service_tier={tier}");
                         }
                     }
@@ -2607,12 +2655,26 @@ fn process_sse_event(
                         });
                     }
                     ApiContentBlockStart::Unknown => {
-                        // Newer/unsupported block type. Parsing succeeded, so
-                        // the rest of the stream stays intact; there is simply
-                        // nothing for this build to surface.
-                        jcode_base::logging::warn(
-                            "Anthropic stream sent an unrecognized content_block_start type; ignoring the block",
-                        );
+                        // Server tool blocks are kept verbatim for replay; any
+                        // other newer block type is ignored. Parsing succeeded
+                        // either way, so the rest of the stream stays intact.
+                        match native_web_search::server_block_start(&event.data) {
+                            native_web_search::ServerBlockStart::Streaming(acc) => {
+                                state.current_server_block = Some(acc);
+                            }
+                            native_web_search::ServerBlockStart::Complete(item) => {
+                                events.push(StreamEvent::ProviderNative {
+                                    provider: jcode_message_types::provider_native::PROVIDER_NATIVE_ANTHROPIC
+                                        .to_string(),
+                                    item,
+                                });
+                            }
+                            native_web_search::ServerBlockStart::Other => {
+                                jcode_base::logging::warn(
+                                    "Anthropic stream sent an unrecognized content_block_start type; ignoring the block",
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -2624,6 +2686,10 @@ fn process_sse_event(
                         events.push(StreamEvent::TextDelta(text));
                     }
                     ApiDelta::InputJson { partial_json } => {
+                        if let Some(block) = state.current_server_block.as_mut() {
+                            block.push_input(&partial_json);
+                            return events;
+                        }
                         if let Some(tool) = state.current_tool_use.as_mut() {
                             tool.input_json.push_str(&partial_json);
                         }
@@ -2639,6 +2705,14 @@ fn process_sse_event(
             }
         }
         "content_block_stop" => {
+            if let Some(block) = state.current_server_block.take() {
+                events.push(StreamEvent::ProviderNative {
+                    provider: jcode_message_types::provider_native::PROVIDER_NATIVE_ANTHROPIC
+                        .to_string(),
+                    item: block.finish(),
+                });
+                return events;
+            }
             // If we were accumulating a tool_use, it's complete now
             if state.current_tool_use.take().is_some() {
                 events.push(StreamEvent::ToolUseEnd);
@@ -2724,8 +2798,15 @@ use sse_types::{
 };
 
 mod context_window;
+mod native_web_search;
+#[cfg(test)]
+mod native_web_search_sse_tests;
 
 #[cfg(test)]
 #[allow(clippy::await_holding_lock)]
 #[path = "anthropic_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "late_tool_result_tests.rs"]
+mod late_tool_result_tests;

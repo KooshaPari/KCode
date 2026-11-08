@@ -20,7 +20,7 @@ const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
 /// Defaults to `https://api.openai.com/v1`, but honors a user override so
 /// the native `openai-api` provider can target a local/proxied Responses
 /// API endpoint (issue #343). Checked in order:
-/// `JCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
+/// `KCODE_OPENAI_API_BASE`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`.
 ///
 /// The override must be an absolute `http(s)://` URL; anything else is
 /// logged and ignored so a malformed value never silently breaks requests.
@@ -28,7 +28,7 @@ const OPENAI_API_BASE: &str = "https://api.openai.com/v1";
 /// so a trailing `/responses` is trimmed to avoid `.../responses/responses`.
 pub fn resolve_api_base() -> String {
     const OVERRIDE_VARS: [&str; 3] = [
-        "JCODE_OPENAI_API_BASE",
+        "KCODE_OPENAI_API_BASE",
         "OPENAI_BASE_URL",
         "OPENAI_API_BASE",
     ];

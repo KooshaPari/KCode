@@ -3,6 +3,18 @@
 //! UUID-named `.jsonl` files with mtime after the last consolidation.
 
 use std::path::Path;
+
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    /// Test-only override for `SessionGate::is_satisfied`. When any test
+    /// calls `force_satisfied_for_tests`, this flag is set on the calling
+    /// thread and `is_satisfied` returns `true` for the rest of the test.
+    /// It is automatically dropped when the test thread exits.
+    static SESSION_GATE_TEST_OVERRIDE: Cell<bool> = const { Cell::new(false) };
+}
 use std::time::SystemTime;
 
 use anyhow::{Context, Result};
@@ -26,13 +38,9 @@ pub fn is_session_gate_open(session_ids: &[String], min_sessions: usize) -> bool
 
 /// List session IDs whose `mtime` is strictly after `since`.
 /// Scans for `*.jsonl` files with UUID-shaped stems, excluding `agent-*.jsonl`.
-pub fn list_sessions_touched_since(
-    dir: &Path,
-    since: SystemTime,
-) -> Result<Vec<String>> {
+pub fn list_sessions_touched_since(dir: &Path, since: SystemTime) -> Result<Vec<String>> {
     let mut sessions = Vec::new();
-    let entries =
-        std::fs::read_dir(dir).with_context(|| format!("read_dir: {}", dir.display()))?;
+    let entries = std::fs::read_dir(dir).with_context(|| format!("read_dir: {}", dir.display()))?;
     for entry in entries.flatten() {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
@@ -45,7 +53,10 @@ pub fn list_sessions_touched_since(
         if stem.starts_with("agent-") || !looks_like_uuid(stem) {
             continue;
         }
-        let mtime = match std::fs::metadata(&path).ok().and_then(|m| m.modified().ok()) {
+        let mtime = match std::fs::metadata(&path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+        {
             Some(t) => t,
             None => continue,
         };
@@ -75,26 +86,61 @@ pub struct SessionGateState {
     pub total_sessions: u64,
 }
 #[derive(Debug)]
-pub struct SessionGate { threshold: u32 }
+pub struct SessionGate {
+    threshold: u32,
+}
 
 impl SessionGate {
-    pub fn new(threshold: u32) -> Self { Self { threshold } }
-    pub fn threshold(&self) -> u32 { self.threshold }
+    pub fn new(threshold: u32) -> Self {
+        Self { threshold }
+    }
+    pub fn threshold(&self) -> u32 {
+        self.threshold
+    }
     pub fn is_satisfied_with_state(&self, state: &SessionGateState) -> bool {
         state.sessions_since >= self.threshold
     }
-    pub fn is_satisfied(&self) -> bool { false }
+    pub fn is_satisfied(&self) -> bool {
+        #[cfg(test)]
+        {
+            if SESSION_GATE_TEST_OVERRIDE.with(Cell::get) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Test-only escape hatch: force `is_satisfied` to return `true`.
+    ///
+    /// In production this method is compiled out and `is_satisfied` is
+    /// always `false` (the session gate logic itself is a stub pending the
+    /// Memory Graph Phase A design). The parking contract test in
+    /// `lib::tests` needs to drive the "all gates open" branch of
+    /// `DreamCoordinator::run`, which would otherwise be unreachable.
+    #[cfg(test)]
+    pub fn force_satisfied_for_tests(&mut self) {
+        // No state to mutate: `is_satisfied` reads the test-only flag
+        // below, which we set here.
+        // (We keep the field layout minimal by using a thread-local
+        // override rather than a struct field; see the test override
+        // at the bottom of this module.)
+        SESSION_GATE_TEST_OVERRIDE.with(|cell| cell.set(true));
+    }
     pub fn record_session(&self, mut state: SessionGateState) -> SessionGateState {
         state.sessions_since = state.sessions_since.saturating_add(1);
         state.total_sessions = state.total_sessions.saturating_add(1);
         state
     }
     pub fn reset(&self) -> SessionGateState {
-        SessionGateState { sessions_since: 0, total_sessions: 0 }
+        SessionGateState {
+            sessions_since: 0,
+            total_sessions: 0,
+        }
     }
 }
 
-#[cfg(test)] mod tests {
+#[cfg(test)]
+mod tests {
     use super::*;
     use std::time::UNIX_EPOCH;
 
@@ -127,14 +173,20 @@ impl SessionGate {
     #[test]
     fn stateful_gate_satisfied_at_threshold() {
         let gate = SessionGate::new(5);
-        let state = SessionGateState { sessions_since: 5, total_sessions: 10 };
+        let state = SessionGateState {
+            sessions_since: 5,
+            total_sessions: 10,
+        };
         assert!(gate.is_satisfied_with_state(&state));
     }
 
     #[test]
     fn stateful_gate_not_satisfied_below() {
         let gate = SessionGate::new(5);
-        let state = SessionGateState { sessions_since: 3, total_sessions: 10 };
+        let state = SessionGateState {
+            sessions_since: 3,
+            total_sessions: 10,
+        };
         assert!(!gate.is_satisfied_with_state(&state));
     }
 

@@ -2,9 +2,9 @@
 //! Unix socket and translates to the internal (legacy) jcode protocol.
 //!
 //! Architecture (milestone 2 of docs/HARNESS_API_AND_DESKTOP_REWRITE.md):
-//! - Listens on `~/.jcode/jcode-api.sock` (or `JCODE_API_SOCKET`).
-//! - For each API client, dials the legacy daemon socket (`JCODE_SOCKET` or
-//!   `~/.jcode/jcode.sock`) and speaks `subscribe`/`message`/... on its
+//! - Listens on `~/.kcode/jcode-api.sock` (or `KCODE_API_SOCKET`).
+//! - For each API client, dials the legacy daemon socket (`KCODE_SOCKET` or
+//!   `~/.kcode/jcode.sock`) and speaks `subscribe`/`message`/... on its
 //!   behalf.
 //! - Translation is JSON-to-JSON so this crate does not depend on the heavy
 //!   internal protocol types and cannot be broken by additive internal
@@ -16,6 +16,7 @@
 // Tests hold the std env/home serialization lock across awaits on purpose.
 #![cfg_attr(test, allow(clippy::await_holding_lock))]
 
+pub mod allocator;
 pub mod background_progress;
 pub mod translate;
 
@@ -221,6 +222,8 @@ pub async fn run_bridge(api_socket: PathBuf, legacy_socket: PathBuf) -> Result<(
             if let Err(error) = handle_api_client(stream, legacy).await {
                 eprintln!("harness API bridge: client ended: {error:#}");
             }
+            // A closed client drops its translation state and buffers.
+            allocator::trim();
         });
     }
 }
@@ -308,7 +311,7 @@ where
         reply_to,
         ApiEvent::HelloOk {
             version: API_VERSION_MAJOR,
-            server: format!("jcode-harness-api-bridge/{}", env!("CARGO_PKG_VERSION")),
+            server: format!("kcode-harness-api-bridge/{}", env!("CARGO_PKG_VERSION")),
             capabilities: [
                 "sessions",
                 "streaming",
@@ -319,6 +322,7 @@ where
                 "runtime_info",
                 "api_key_provisioning",
                 "auth_changed_notification",
+                "usage_invalidation",
                 "session_archive",
                 "session_retention",
                 "session_files",
@@ -371,6 +375,7 @@ where
                 }
                 let parsed = serde_json::from_slice(&api_frame);
                 api_frame.clear();
+                release_large_frame(&mut api_frame);
                 let request: Value = match parsed {
                     Ok(value) => value,
                     Err(error) => {
@@ -390,6 +395,8 @@ where
                 let outbound = tokio::task::block_in_place(|| {
                     state.api_request_to_legacy(&request)
                 });
+                let heavy = allocator::request_is_heavy(&request);
+                drop(request);
                 for out in outbound {
                     match out {
                         translate::Outbound::Legacy(value) => {
@@ -399,6 +406,9 @@ where
                             write_json_line(&mut write_half, &frame).await?;
                         }
                     }
+                }
+                if heavy {
+                    allocator::trim();
                 }
             }
             n = read_frame_bytes(&mut legacy_reader, &mut legacy_frame) => {
@@ -418,13 +428,27 @@ where
                 legacy_frame.clear();
                 let event: Value = match parsed {
                     Ok(value) => value,
-                    Err(_) => continue,
+                    Err(_) => {
+                        release_large_frame(&mut legacy_frame);
+                        continue;
+                    }
                 };
-                let frames = tokio::task::block_in_place(|| {
+                // Only a few replies read persisted session files. Streaming
+                // deltas are pure translation, and routing each one through
+                // block_in_place handed the worker core to a fresh blocking
+                // thread per event: a busy session grew the bridge to 69 idle
+                // threads, each pinning its own allocator arena.
+                let frames = if translate::legacy_event_may_block(&event) {
+                    tokio::task::block_in_place(|| state.legacy_event_to_api(&event))
+                } else {
                     state.legacy_event_to_api(&event)
-                });
+                };
+                drop(event);
                 for frame in frames {
                     write_json_line(&mut write_half, &frame).await?;
+                }
+                if large {
+                    release_large_frame(&mut legacy_frame);
                 }
             }
         }
@@ -454,7 +478,7 @@ mod public_acceptance_tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn stdio_stream_handshake_ping_and_eof() {
         let path = std::env::temp_dir().join(format!(
-            "jcode-stdio-{}-{}.sock",
+            "kcode-stdio-{}-{}.sock",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -518,8 +542,8 @@ mod public_acceptance_tests {
     impl Drop for JcodeHomeGuard {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(value) => unsafe { std::env::set_var("JCODE_HOME", value) },
-                None => unsafe { std::env::remove_var("JCODE_HOME") },
+                Some(value) => unsafe { std::env::set_var("KCODE_HOME", value) },
+                None => unsafe { std::env::remove_var("KCODE_HOME") },
             }
         }
     }
@@ -530,7 +554,7 @@ mod public_acceptance_tests {
         let (root, previous_home) = {
             let _home_lock = translate::jcode_home_test_lock();
             let root = std::env::temp_dir().join(format!(
-                "jcode-api-attachment-{}-{}",
+                "kcode-api-attachment-{}-{}",
                 std::process::id(),
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -538,8 +562,8 @@ mod public_acceptance_tests {
                     .as_nanos()
             ));
             std::fs::create_dir_all(&root).unwrap();
-            let previous_home = std::env::var_os("JCODE_HOME");
-            unsafe { std::env::set_var("JCODE_HOME", &root) };
+            let previous_home = std::env::var_os("KCODE_HOME");
+            unsafe { std::env::set_var("KCODE_HOME", &root) };
             (root, previous_home)
         };
         let _home_guard = JcodeHomeGuard(previous_home);
@@ -640,9 +664,9 @@ mod single_instance_tests {
     /// bridge and its clients reported "harness API stream closed".
     #[test]
     fn a_second_bridge_cannot_take_the_socket() {
-        let dir = std::env::temp_dir().join(format!("jcode-bridge-lock-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("kcode-bridge-lock-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let socket = dir.join("jcode-api.sock");
+        let socket = dir.join("kcode-api.sock");
 
         let first = super::single_instance_lock(&socket).unwrap();
         assert!(first.is_some(), "the first bridge must take the lock");
@@ -673,7 +697,7 @@ mod socket_permission_tests {
     async fn the_api_socket_is_owner_only() {
         use std::os::unix::fs::PermissionsExt;
 
-        let dir = std::env::temp_dir().join(format!("jcode-api-perm-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("kcode-api-perm-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let api_socket = dir.join("api.sock");
         let legacy_socket = dir.join("daemon.sock");

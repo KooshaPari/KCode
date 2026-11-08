@@ -59,8 +59,8 @@ fn jcode_auth_file_roundtrip() {
 #[test]
 fn jcode_path_respects_jcode_home() {
     let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().unwrap();
-    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
+    let temp = crate::test_temp::tempdir().unwrap();
+    let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
 
     assert_eq!(jcode_path().unwrap(), temp.path().join("auth.json"));
     assert_eq!(
@@ -84,8 +84,8 @@ fn jcode_path_respects_jcode_home() {
 #[test]
 fn sandboxed_jcode_home_is_detected_without_hiding_explicit_env_credentials() {
     let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().unwrap();
-    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
+    let temp = crate::test_temp::tempdir().unwrap();
+    let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
 
     assert!(crate::storage::running_with_sandboxed_home());
 
@@ -99,8 +99,8 @@ fn sandboxed_jcode_home_is_detected_without_hiding_explicit_env_credentials() {
 #[test]
 fn real_jcode_home_is_not_treated_as_a_sandbox() {
     let _lock = crate::storage::lock_test_env();
-    let real_home = dirs::home_dir().unwrap().join(".jcode");
-    let _home = EnvVarGuard::set("JCODE_HOME", &real_home);
+    let real_home = dirs::home_dir().unwrap().join(".kcode");
+    let _home = EnvVarGuard::set("KCODE_HOME", &real_home);
 
     assert!(!crate::storage::running_with_sandboxed_home());
 }
@@ -108,8 +108,8 @@ fn real_jcode_home_is_not_treated_as_a_sandbox() {
 #[test]
 fn load_auth_file_renames_existing_labels_to_animal_scheme() {
     let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().unwrap();
-    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
+    let temp = crate::test_temp::tempdir().unwrap();
+    let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
     set_active_account_override(None);
 
     let auth_path = temp.path().join("auth.json");
@@ -372,8 +372,8 @@ fn load_claude_code_credentials_does_not_change_external_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
     let _lock = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set("JCODE_HOME", temp.path());
+    let temp = crate::test_temp::tempdir().expect("tempdir");
+    let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
 
     let path = claude_code_path().expect("claude code path");
     std::fs::create_dir_all(path.parent().unwrap()).expect("create dir");

@@ -86,189 +86,6 @@ fn fact_test_state(input: String, scheduled: bool) -> TestState {
     }
 }
 
-fn row_containing(rows: &[String], needle: &str) -> usize {
-    rows.iter()
-        .rposition(|row| row.contains(needle))
-        .unwrap_or_else(|| panic!("missing {needle:?} in frame:\n{}", rows.join("\n")))
-}
-
-fn fact_stack_rows(rows: &[String]) -> [usize; 4] {
-    [
-        row_containing(rows, "OpenAI · OAuth"),
-        row_containing(rows, "GPT-5.6 Sol high"),
-        row_containing(rows, "~/jcode"),
-        row_containing(rows, "74k/256k"),
-    ]
-}
-
-fn assert_fact_stack_is_contiguous(rows: &[String]) -> [usize; 4] {
-    let positions = fact_stack_rows(rows);
-    assert!(
-        positions.windows(2).all(|pair| pair[1] == pair[0] + 1),
-        "facts must be one uninterrupted OAuth/model/directory/context block:\n{}",
-        rows.join("\n")
-    );
-    positions
-}
-
-#[test]
-fn right_fact_stack_uses_transcript_status_notification_and_input_rows_in_order() {
-    let _lock = viewport_snapshot_test_lock();
-    clear_flicker_frame_history_for_tests();
-    let state = fact_test_state(String::new(), true);
-    let backend = TestBackend::new(120, 18);
-    let mut terminal = Terminal::new(backend).expect("test terminal");
-    terminal
-        .draw(|frame| crate::tui::ui::draw(frame, &state))
-        .expect("fact stack frame");
-
-    let rows = buffer_rows(&terminal);
-    let [oauth_y, model_y, dir_y, context_y] = assert_fact_stack_is_contiguous(&rows);
-    assert!(oauth_y < model_y && model_y < dir_y && dir_y < context_y);
-    assert!(rows[context_y].contains("▰▰▱▱▱▱ 29%"));
-    assert!(rows[dir_y].contains("next scheduled task in 4m"));
-
-    let layout = crate::tui::ui::last_layout_snapshot().expect("layout snapshot");
-    let input = layout.input_area.expect("input area");
-    let status = crate::tui::ui::last_status_area().expect("status area");
-    assert_eq!(context_y as u16, input.bottom() - 1);
-    assert_eq!(model_y as u16, status.y);
-    assert_eq!(dir_y as u16, status.y + 1);
-    assert_eq!(oauth_y as u16, layout.messages_area.bottom() - 1);
-}
-
-#[test]
-fn right_fact_stack_uses_neutral_gray_except_for_context_usage() {
-    use ratatui::style::Color;
-    use unicode_width::UnicodeWidthStr;
-
-    let _lock = viewport_snapshot_test_lock();
-    clear_flicker_frame_history_for_tests();
-    let state = fact_test_state(String::new(), true);
-    let backend = TestBackend::new(120, 18);
-    let mut terminal = Terminal::new(backend).expect("test terminal");
-    terminal
-        .draw(|frame| crate::tui::ui::draw(frame, &state))
-        .expect("neutral fact colors frame");
-
-    let rows = buffer_rows(&terminal);
-    let buffer = terminal.backend().buffer();
-    let neutral = Color::Rgb(140, 140, 150);
-    for needle in ["OpenAI · OAuth", "GPT-5.6 Sol high", "~/jcode"] {
-        let y = row_containing(&rows, needle);
-        let byte_x = rows[y].find(needle).expect("fact text start");
-        let x = UnicodeWidthStr::width(&rows[y][..byte_x]) as u16;
-        let width = UnicodeWidthStr::width(needle) as u16;
-        assert!(
-            (x..x + width)
-                .filter(|&cell_x| buffer[(cell_x, y as u16)].symbol() != " ")
-                .all(|cell_x| buffer[(cell_x, y as u16)].fg == neutral),
-            "{needle:?} should use only neutral gray"
-        );
-    }
-
-    let context_y = row_containing(&rows, "74k/256k");
-    let filled_x = rows[context_y].find('▰').expect("filled context cell");
-    let filled_x = UnicodeWidthStr::width(&rows[context_y][..filled_x]) as u16;
-    assert_ne!(buffer[(filled_x, context_y as u16)].fg, neutral);
-}
-
-#[test]
-fn right_fact_stack_shifts_up_when_scheduled_notification_row_is_absent() {
-    let _lock = viewport_snapshot_test_lock();
-    clear_flicker_frame_history_for_tests();
-    let mut state = fact_test_state(String::new(), false);
-    state.display_messages = vec![DisplayMessage::assistant("first line\nsecond line")];
-    let backend = TestBackend::new(120, 18);
-    let mut terminal = Terminal::new(backend).expect("test terminal");
-    terminal
-        .draw(|frame| crate::tui::ui::draw(frame, &state))
-        .expect("fact stack frame without notification");
-
-    let rows = buffer_rows(&terminal);
-    let [oauth_y, model_y, dir_y, context_y] = assert_fact_stack_is_contiguous(&rows);
-    let layout = crate::tui::ui::last_layout_snapshot().expect("layout snapshot");
-    let input = layout.input_area.expect("input area");
-    let status = crate::tui::ui::last_status_area().expect("status area");
-
-    assert_eq!(context_y as u16, input.bottom() - 1);
-    assert_eq!(dir_y as u16, status.y);
-    assert_eq!(model_y as u16, layout.messages_area.bottom() - 1);
-    assert!(oauth_y < model_y);
-    assert!(!rows.iter().any(|row| row.contains("next scheduled task")));
-}
-
-#[test]
-fn right_fact_stack_leaves_fully_used_input_rows_untouched_and_moves_up() {
-    let _lock = viewport_snapshot_test_lock();
-    clear_flicker_frame_history_for_tests();
-    let input = ["x".repeat(115), "y".repeat(115), "z".repeat(115)].join("\n");
-    let state = fact_test_state(input, true);
-    let backend = TestBackend::new(120, 22);
-    let mut terminal = Terminal::new(backend).expect("test terminal");
-    terminal
-        .draw(|frame| crate::tui::ui::draw(frame, &state))
-        .expect("fact stack frame with full input");
-
-    let rows = buffer_rows(&terminal);
-    let layout = crate::tui::ui::last_layout_snapshot().expect("layout snapshot");
-    let input_area = layout.input_area.expect("input area");
-    let input_rows = &rows[input_area.y as usize..input_area.bottom() as usize];
-    assert!(input_rows.iter().all(|row| !row.contains("74k/256k")));
-    assert!(input_rows.iter().all(|row| !row.contains("~/jcode")));
-    assert!(input_rows.iter().all(|row| !row.contains("OAuth")));
-    assert!(
-        input_rows
-            .iter()
-            .map(|row| row.matches('x').count())
-            .sum::<usize>()
-            >= 110
-    );
-    assert!(row_containing(&rows, "74k/256k") < input_area.y as usize);
-    assert_fact_stack_is_contiguous(&rows);
-}
-
-#[test]
-fn right_fact_stack_survives_narrow_widths_without_overwriting_content() {
-    let _lock = viewport_snapshot_test_lock();
-    for width in (18_u16..=60).chain([80, 120, 160]) {
-        clear_flicker_frame_history_for_tests();
-        let state = fact_test_state("typed text".to_string(), width % 2 == 0);
-        let backend = TestBackend::new(width, 16);
-        let mut terminal = Terminal::new(backend).expect("test terminal");
-        terminal
-            .draw(|frame| crate::tui::ui::draw(frame, &state))
-            .unwrap_or_else(|error| panic!("fact stack failed at width {width}: {error}"));
-        let rows = buffer_rows(&terminal);
-        assert!(rows.iter().any(|row| row.contains("typed text")));
-    }
-}
-
-#[test]
-fn right_fact_stack_hides_as_a_unit_when_streaming_chrome_cannot_fit_it() {
-    let _lock = viewport_snapshot_test_lock();
-    clear_flicker_frame_history_for_tests();
-    let mut state = fact_test_state(String::new(), true);
-    state.status = ProcessingStatus::Streaming;
-    state.streaming_text = "live transcript tail".to_string();
-    let backend = TestBackend::new(120, 18);
-    let mut terminal = Terminal::new(backend).expect("test terminal");
-    terminal
-        .draw(|frame| crate::tui::ui::draw(frame, &state))
-        .expect("streaming fact stack frame");
-
-    let rows = buffer_rows(&terminal);
-    assert!(
-        rows.iter().all(|row| {
-            !row.contains("OpenAI · OAuth")
-                && !row.contains("GPT-5.6 Sol high")
-                && !row.contains("74k/256k")
-        }),
-        "the stack must hide completely rather than render a partial block:\n{}",
-        rows.join("\n")
-    );
-}
-
 #[test]
 fn swarm_strip_full_draw_writes_chips_row_above_status_line() {
     let _lock = viewport_snapshot_test_lock();
@@ -395,8 +212,15 @@ fn swarm_strip_paragraph_never_writes_outside_target_area() {
         strip_member("s2", "reviewer-with-a-long-name", "completed"),
     ];
     let gallery_lines = crate::tui::info_widget::swarm_gallery::render_swarm_strip_lines(
-        &members, 0, true, "ctrl+t", 3, 80, 16,
-        &std::collections::HashSet::new(), false,
+        &members,
+        0,
+        true,
+        "ctrl+t",
+        3,
+        80,
+        16,
+        &std::collections::HashSet::new(),
+        false,
     );
     assert!(!gallery_lines.is_empty(), "expected focused strip lines");
 
@@ -646,16 +470,16 @@ fn swarm_dock_widget_full_render_writes_agent_rows_in_margin() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        dock_text.contains("1/2 agents"),
+        dock_text.contains("1/2 active"),
         "expected agents tally inside dock rect, got:\n{dock_text}"
     );
     assert!(
         dock_text.contains("nodes 3/7"),
-        "expected node progress in dock header, got:\n{dock_text}"
+        "expected node progress on dock border, got:\n{dock_text}"
     );
     assert!(
-        dock_text.contains('▁'),
-        "expected plan progress bar inside dock rect, got:\n{dock_text}"
+        dock_text.contains("researcher") && dock_text.contains("reviewer"),
+        "expected one row per agent inside dock rect, got:\n{dock_text}"
     );
     // Nothing from the dock leaked left of its rect.
     for row in &rows[rect.y as usize..(rect.y + rect.height) as usize] {

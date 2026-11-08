@@ -97,8 +97,8 @@ fn broker_lives_in_a_hidden_directory_outside_applications() {
 fn macos_notification_bundle_is_faceless_and_uses_multicall_binary() {
     let plist = macos_notification_info_plist();
     assert!(plist.contains("<key>LSUIElement</key>\n    <true/>"));
-    assert!(plist.contains("<string>com.jcode.notifications</string>"));
-    assert!(plist.contains("<string>jcode-notification-broker</string>"));
+    assert!(plist.contains("<string>com.kcode.notifications</string>"));
+    assert!(plist.contains("<string>kcode-notification-broker</string>"));
     assert!(plist.contains(jcode_build_meta::version()));
 }
 

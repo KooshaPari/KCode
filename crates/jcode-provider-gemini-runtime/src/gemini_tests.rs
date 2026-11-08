@@ -66,6 +66,7 @@ fn fallback_models_skip_current_model() {
     assert_eq!(
         gemini_fallback_models("gemini-2.5-flash"),
         vec![
+            "gemini-pro-latest",
             "gemini-3.1-pro-preview",
             "gemini-3-pro-preview",
             "gemini-2.5-pro",
@@ -122,7 +123,7 @@ fn available_models_display_prefers_discovered_models_and_current_model() {
 fn available_models_display_without_discovery_uses_current_model_only() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let provider = GeminiProvider::new();
     provider.set_model("gemini-4-pro-preview").unwrap();
@@ -137,7 +138,7 @@ fn available_models_display_without_discovery_uses_current_model_only() {
 fn available_models_display_seeds_from_persisted_catalog() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
 
     let path = GeminiProvider::persisted_catalog_path().expect("catalog path");
     jcode_base::storage::write_json(
@@ -451,6 +452,7 @@ fn build_tools_uses_function_declarations() {
         name: "read".to_string(),
         description: "Read a file".to_string(),
         input_schema: json!({"type":"object","properties":{"path":{"type":"string"}}}),
+        defer_loading: false,
     }];
 
     let built = build_tools(&defs).unwrap();
@@ -493,6 +495,7 @@ fn build_tools_rewrites_const_for_gemini_schema_compatibility() {
                 }
             }
         }),
+        defer_loading: false,
     }];
 
     let built = build_tools(&defs).expect("gemini tools");
@@ -531,6 +534,7 @@ fn build_tools_strips_additional_properties_for_gemini_schema_compatibility() {
             "required": ["file_path"],
             "additionalProperties": false
         }),
+        defer_loading: false,
     }];
 
     let built = build_tools(&defs).expect("gemini tools");
@@ -597,9 +601,9 @@ fn parses_candidate_finish_message() {
 fn auth_mode_prefers_api_key_when_present() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _google = EnvVarGuard::unset("GOOGLE_API_KEY");
-    let _force = EnvVarGuard::unset("JCODE_GEMINI_FORCE_OAUTH");
+    let _force = EnvVarGuard::unset("KCODE_GEMINI_FORCE_OAUTH");
     let _key = EnvVarGuard::set_value("GEMINI_API_KEY", "test-developer-key");
     jcode_base::config::Config::invalidate_cache();
 
@@ -613,7 +617,7 @@ fn auth_mode_prefers_api_key_when_present() {
 fn auth_mode_force_oauth_overrides_api_key() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _google = EnvVarGuard::unset("GOOGLE_API_KEY");
     let _key = EnvVarGuard::set_value("GEMINI_API_KEY", "test-developer-key");
     let _force = EnvVarGuard::set_value("JCODE_GEMINI_FORCE_OAUTH", "1");
@@ -626,7 +630,7 @@ fn auth_mode_force_oauth_overrides_api_key() {
 fn auth_mode_defaults_to_oauth_without_api_key() {
     let _guard = jcode_base::storage::lock_test_env();
     let temp = tempfile::TempDir::new().expect("tempdir");
-    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
     let _key = EnvVarGuard::unset("GEMINI_API_KEY");
     let _google = EnvVarGuard::unset("GOOGLE_API_KEY");
     let _force = EnvVarGuard::unset("JCODE_GEMINI_FORCE_OAUTH");
@@ -858,6 +862,7 @@ fn build_tools_prunes_required_names_not_defined_in_the_same_object() {
                 }
             ]
         }),
+        defer_loading: false,
     }];
 
     let built = build_tools(&defs).expect("gemini tools");
@@ -886,6 +891,7 @@ fn build_tools_drops_a_required_array_left_empty_after_pruning() {
             "properties": { "a": { "type": "string" } },
             "required": ["missing"]
         }),
+        defer_loading: false,
     }];
 
     let built = build_tools(&defs).expect("gemini tools");
@@ -907,6 +913,7 @@ fn build_tools_keeps_required_when_the_object_declares_no_properties() {
             "type": "object",
             "required": ["anything"]
         }),
+        defer_loading: false,
     }];
 
     let built = build_tools(&defs).expect("gemini tools");

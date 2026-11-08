@@ -69,6 +69,7 @@ pub use storage_paths::session_journal_path_from_snapshot;
 pub(crate) use storage_paths::session_path_in_dir;
 use storage_paths::{estimate_json_bytes, persist_vector_mode_label};
 pub use storage_paths::{session_exists, session_journal_path, session_path};
+pub use {jcode_session_types::prompt_title, persistence::drain_saves_for_shutdown};
 
 fn stored_messages_to_messages(messages: &[StoredMessage]) -> Vec<Message> {
     messages.iter().map(StoredMessage::to_message).collect()
@@ -189,6 +190,10 @@ pub struct Session {
     /// Non-conversation UI/state events persisted for higher-fidelity replay.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub replay_events: Vec<StoredReplayEvent>,
+    /// Migration epoch of the machine move that delivered this copy
+    /// (`jcode cloud move` / `return`). Zero for sessions that never moved.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub migration_epoch: u64,
     /// Fork depth guard: current depth in the fork chain (0 = root session).
     #[serde(default)]
     pub fork_depth: u8,
@@ -267,6 +272,8 @@ struct SessionStartupStub {
     saved: bool,
     #[serde(default)]
     save_label: Option<String>,
+    #[serde(default)]
+    migration_epoch: u64,
 }
 
 const MAX_SESSION_JOURNAL_BYTES: u64 = 512 * 1024;
@@ -290,7 +297,11 @@ fn env_flag_enabled(name: &str) -> bool {
 }
 
 fn default_is_test_session() -> bool {
-    env_flag_enabled("JCODE_TEST_SESSION")
+    env_flag_enabled("KCODE_TEST_SESSION")
+}
+
+fn is_zero_u64(value: &u64) -> bool {
+    *value == 0
 }
 
 fn default_fork_max_depth() -> u8 {
@@ -303,21 +314,21 @@ pub fn derive_session_provider_key(provider_name: &str) -> Option<String> {
         return Some("jcode".to_string());
     }
 
-    if let Ok(runtime_provider) = std::env::var("JCODE_RUNTIME_PROVIDER") {
+    if let Ok(runtime_provider) = std::env::var("KCODE_RUNTIME_PROVIDER") {
         let runtime_provider = runtime_provider.trim().to_ascii_lowercase();
         if !runtime_provider.is_empty() && runtime_provider != "openai-compatible" {
             return Some(runtime_provider);
         }
     }
 
-    if let Ok(namespace) = std::env::var("JCODE_OPENROUTER_CACHE_NAMESPACE") {
+    if let Ok(namespace) = std::env::var("KCODE_OPENROUTER_CACHE_NAMESPACE") {
         let namespace = namespace.trim().to_ascii_lowercase();
         if !namespace.is_empty() {
             return Some(namespace);
         }
     }
 
-    if let Ok(active) = std::env::var("JCODE_ACTIVE_PROVIDER") {
+    if let Ok(active) = std::env::var("KCODE_ACTIVE_PROVIDER") {
         let active = active.trim().to_ascii_lowercase();
         if !active.is_empty() {
             return Some(active);
@@ -366,12 +377,14 @@ impl Session {
         session.is_debug = stub.is_debug;
         session.saved = stub.saved;
         session.save_label = stub.save_label;
+        session.migration_epoch = stub.migration_epoch;
         session.messages.clear();
         session.env_snapshots.clear();
         session.memory_injections.clear();
         session.replay_events.clear();
         session.rebuild_memory_profile_cache();
         session.reset_persist_state(true);
+        session.persist_state.transcript_stripped = true;
         session
     }
 
@@ -556,6 +569,7 @@ impl Session {
             memory_injections_mode: PersistVectorMode::Clean,
             replay_events_mode: PersistVectorMode::Clean,
             last_meta: Some(self.journal_meta()),
+            transcript_stripped: self.persist_state.transcript_stripped,
         };
     }
 
@@ -789,6 +803,7 @@ impl Session {
             env_snapshots: Vec::new(),
             memory_injections: Vec::new(),
             replay_events: Vec::new(),
+            migration_epoch: 0,
             fork_depth: 0,
             fork_max_depth: default_fork_max_depth(),
             fork_chain: Vec::new(),
@@ -848,6 +863,7 @@ impl Session {
             env_snapshots: Vec::new(),
             memory_injections: Vec::new(),
             replay_events: Vec::new(),
+            migration_epoch: 0,
             fork_depth: 0,
             fork_max_depth: default_fork_max_depth(),
             fork_chain: Vec::new(),
@@ -873,11 +889,20 @@ impl Session {
         }
     }
 
-    /// Save/bookmark this session with an optional label
+    /// Save/bookmark this session with an optional label.
+    ///
+    /// A label is the name the user chose for the session, so it also becomes
+    /// the session's display title everywhere sessions are listed.
     pub fn mark_saved(&mut self, label: Option<String>) {
         self.saved = true;
-        if label.is_some() {
-            self.save_label = label;
+        let label = label.and_then(|label| {
+            let label = label.trim();
+            (!label.is_empty()).then(|| label.to_string())
+        });
+        if let Some(label) = label {
+            self.custom_title = Some(label.clone());
+            self.save_label = Some(label);
+            self.updated_at = Utc::now();
         }
     }
 
@@ -907,6 +932,12 @@ impl Session {
         }
 
         non_empty_trimmed(self.custom_title.as_deref())
+            .or_else(|| {
+                // Bookmarks labelled before labels doubled as titles.
+                self.saved
+                    .then(|| non_empty_trimmed(self.save_label.as_deref()))
+                    .flatten()
+            })
             .or_else(|| non_empty_trimmed(self.title.as_deref()))
     }
 
@@ -1078,6 +1109,12 @@ request in this new forked session, using the inherited conversation only as con
         self.status = SessionStatus::Error { message };
     }
 
+    /// Why this in-memory copy may not run turns or persist on this machine
+    /// because the session migrated (see `jcode_storage::session_lease`).
+    pub fn migration_lease_block(&self) -> Option<crate::storage::SessionLeaseBlock> {
+        crate::storage::session_lease_block(&self.id, self.migration_epoch)
+    }
+
     /// Mark session as active (e.g., when resuming)
     pub fn mark_active(&mut self) {
         self.status = SessionStatus::Active;
@@ -1182,8 +1219,11 @@ request in this new forked session, using the inherited conversation only as con
                         *content = crate::message::redact_secrets(content);
                     }
                     ContentBlock::ToolUse { input, .. } => redact_json_value(input),
+                    // Export copy only: the stored item stays verbatim for
+                    // replay, but queries can carry pasted credentials.
+                    ContentBlock::ProviderNative { item, .. } => redact_json_value(item),
                     ContentBlock::Image { .. } => {}
-                    ContentBlock::OpenAICompaction { .. } => {}
+                    ContentBlock::OpenAICompaction { .. } | ContentBlock::ToolReference { .. } => {}
                 }
             }
         }
@@ -1307,8 +1347,40 @@ request in this new forked session, using the inherited conversation only as con
         self.memory_profile_cache
             .message_stats
             .merge_from(&summarize_blocks(&message.content));
+        self.adopt_prompt_title(&message);
         self.messages.push(message);
         self.mark_messages_append_dirty();
+    }
+
+    /// Name an untitled session after its first real user prompt so lists show
+    /// something recognizable instead of a generic placeholder. Renames,
+    /// bookmark labels, and todo goals still take precedence at display time.
+    fn adopt_prompt_title(&mut self, message: &StoredMessage) {
+        if self.title.is_some()
+            || message.role != Role::User
+            || !is_visible_conversation_message(message)
+        {
+            return;
+        }
+        self.title = message.content.iter().find_map(|block| match block {
+            ContentBlock::Text { text, .. } => prompt_title(text),
+            _ => None,
+        });
+    }
+
+    /// Give sessions recorded before prompt titles existed the same fallback.
+    pub(crate) fn backfill_prompt_title(&mut self) {
+        if self.title.is_some() {
+            return;
+        }
+        let first_prompt = self
+            .messages
+            .iter()
+            .find(|message| message.role == Role::User && is_visible_conversation_message(message))
+            .cloned();
+        if let Some(message) = first_prompt {
+            self.adopt_prompt_title(&message);
+        }
     }
 
     pub fn insert_message(&mut self, index: usize, message: StoredMessage) {
@@ -1582,6 +1654,7 @@ request in this new forked session, using the inherited conversation only as con
         self.rebuild_memory_profile_cache();
         self.reset_provider_messages_cache();
         self.reset_persist_state(true);
+        self.persist_state.transcript_stripped = true;
     }
 
     /// Remove all ToolUse content blocks from a specific message.

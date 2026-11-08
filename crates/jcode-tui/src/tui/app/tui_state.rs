@@ -69,7 +69,7 @@ impl App {
         if crate::tui::is_ssh_remote() {
             return None;
         }
-        std::env::var("JCODE_PROVIDER")
+        std::env::var("KCODE_PROVIDER")
             .ok()
             .or_else(|| crate::config::config().provider.default_provider.clone())
             .map(|provider| provider.trim().to_string())
@@ -81,7 +81,7 @@ impl App {
             return None;
         }
         Self::sanitize_remote_model_hint(
-            std::env::var("JCODE_MODEL")
+            std::env::var("KCODE_MODEL")
                 .ok()
                 .or_else(|| crate::config::config().provider.default_model.clone()),
         )
@@ -98,7 +98,7 @@ impl App {
 
     /// Provider/model identity used for reasoning-effort UI decisions in remote
     /// mode. Prefers the server-reported values, falling back to the same hints
-    /// the header uses (session stub, `JCODE_MODEL`, config default) so effort
+    /// the header uses (session stub, `KCODE_MODEL`, config default) so effort
     /// cycling works during the pre-History bootstrap window instead of
     /// reporting "not available" until the server payload settles.
     pub(super) fn remote_effort_identity(&self) -> (Option<String>, Option<String>) {
@@ -275,7 +275,7 @@ impl App {
     ///   credential the next request will actually use the instant the user
     ///   switches OAuth<->API (model picker, `/account`, header toggle). That
     ///   read is in-memory and cache-free, so it never lingers on a stale
-    ///   [`AuthStatus`] snapshot (cached up to 60s) or a `JCODE_RUNTIME_PROVIDER`
+    ///   [`AuthStatus`] snapshot (cached up to 60s) or a `KCODE_RUNTIME_PROVIDER`
     ///   pin that drifted out of sync with the provider. When the provider is in
     ///   auto mode (no explicit pin) it falls back to
     ///   [`resolve_dual_credential_auth`] -- shared with the header tag and
@@ -676,24 +676,13 @@ impl crate::tui::TuiState for App {
         self.terminal_clear_collapsed()
     }
 
+    fn pending_resize_anchor(&self) -> Option<jcode_tui_messages::ContentPos> {
+        self.pending_resize_anchor.map(|pending| pending.target)
+    }
+
     fn pending_history_anchor_lines_from_bottom(&self) -> Option<usize> {
         self.pending_history_anchor
             .map(|anchor| anchor.lines_from_bottom)
-    }
-
-    fn chat_overscroll_active(&self) -> bool {
-        self.chat_overscroll_active()
-    }
-
-    fn chat_overscroll_pinned(&self) -> bool {
-        matches!(
-            self.overscroll_status_mode,
-            crate::config::OverscrollStatusMode::On
-        )
-    }
-
-    fn chat_overscroll_remaining(&self) -> Option<f32> {
-        self.chat_overscroll_remaining()
     }
 
     fn copy_selection_edge_autoscroll_active(&self) -> bool {
@@ -978,6 +967,10 @@ impl crate::tui::TuiState for App {
         self.remote_client_count
     }
 
+    fn voice_input_status(&self) -> Option<(bool, String)> {
+        self.voice_input_status_line()
+    }
+
     fn status_notice(&self) -> Option<String> {
         if !self.is_remote
             && self.provider.uses_jcode_compaction()
@@ -989,7 +982,7 @@ impl crate::tui::TuiState for App {
             ));
         }
         self.status_notice.as_ref().and_then(|(text, at)| {
-            if at.elapsed() <= Duration::from_secs(3) {
+            if at.elapsed() <= STATUS_NOTICE_TTL {
                 Some(text.clone())
             } else {
                 None
@@ -1229,6 +1222,13 @@ impl crate::tui::TuiState for App {
                         }
                         ContentBlock::OpenAICompaction { encrypted_content } => {
                             user_chars += encrypted_content.len();
+                        }
+                        ContentBlock::ToolReference { tool_name, .. } => {
+                            user_chars += tool_name.len();
+                        }
+                        ContentBlock::ProviderNative { item, .. } => {
+                            tool_result_count += 1;
+                            tool_result_chars += item.to_string().len();
                         }
                     }
                 }
@@ -1524,13 +1524,15 @@ impl crate::tui::TuiState for App {
             None
         };
 
-        // Gather background task info
+        // Gather background task info. Session-scoped rows come from task
+        // events (works when tasks run in the server process). The global
+        // manager only knows tasks spawned in this process.
         let background_info = {
-            // Get running background tasks count
             let bg_manager = crate::background::global();
             let (running_count, running_tasks, progress) = bg_manager.running_snapshot();
+            let rows = self.background_task_rows_ref().to_vec();
 
-            if running_count > 0 {
+            if running_count > 0 || !rows.is_empty() {
                 Some(crate::tui::info_widget::BackgroundInfo {
                     running_count,
                     running_tasks,
@@ -1540,6 +1542,7 @@ impl crate::tui::TuiState for App {
                         .and_then(|progress| progress.detail.clone()),
                     memory_agent_active: false,
                     memory_agent_turns: 0,
+                    rows,
                 })
             } else {
                 None
@@ -1689,6 +1692,7 @@ impl crate::tui::TuiState for App {
                 false
             },
             git_info: gather_git_info(),
+            agent_edited: self.agent_edited_paths(),
         }
     }
 
@@ -1762,10 +1766,7 @@ impl crate::tui::TuiState for App {
         let m = &self.remote_swarm_members;
         crate::tui::SwarmStats {
             active: m.iter().filter(|x| x.status == "running").count() as u32,
-            completed: m
-                .iter()
-                .filter(|x| x.status == "completed")
-                .count() as u32,
+            completed: m.iter().filter(|x| x.status == "completed").count() as u32,
             failed: m.iter().filter(|x| x.status == "failed").count() as u32,
         }
     }
@@ -1862,6 +1863,9 @@ impl crate::tui::TuiState for App {
     fn swarm_rename_buffer(&self) -> &str {
         &self.swarm_rename_buffer
     }
+    fn drain_pending_swarm_rename(&mut self) -> Option<(String, String)> {
+        self.pending_swarm_rename.take()
+    }
     fn filtered_swarm_members(&self) -> Vec<crate::protocol::SwarmMemberStatus> {
         let members = self.inline_swarm_members();
         if self.swarm_filter_query.is_empty() {
@@ -1879,10 +1883,7 @@ impl crate::tui::TuiState for App {
                     .role
                     .as_deref()
                     .is_some_and(|r| r.to_ascii_lowercase().contains(&query));
-                let status_match = m
-                    .status
-                    .to_ascii_lowercase()
-                    .contains(&query);
+                let status_match = m.status.to_ascii_lowercase().contains(&query);
                 let task_match = m
                     .task_label
                     .as_deref()
@@ -1954,6 +1955,9 @@ impl crate::tui::TuiState for App {
     }
     fn side_panel(&self) -> &crate::side_panel::SidePanelSnapshot {
         &self.side_panel
+    }
+    fn side_panel_fullscreen(&self) -> bool {
+        self.side_panel_fullscreen
     }
     fn pin_images(&self) -> bool {
         self.pin_images && !self.side_panel_user_hidden
@@ -2206,7 +2210,13 @@ impl App {
         if !self.swarm_panel_focused || !self.inline_swarm_gallery_active() {
             return false;
         }
-        match swarm_panel_action_for_key(code, modifiers, self.swarm_filter_active, self.swarm_batch_mode, self.swarm_rename_active) {
+        match swarm_panel_action_for_key(
+            code,
+            modifiers,
+            self.swarm_filter_active,
+            self.swarm_batch_mode,
+            self.swarm_rename_active,
+        ) {
             Some(SwarmPanelAction::SelectNext) => {
                 self.move_swarm_panel_selection(1);
                 true
@@ -2245,8 +2255,7 @@ impl App {
             Some(SwarmPanelAction::BatchMode) => {
                 self.swarm_batch_mode = !self.swarm_batch_mode;
                 if self.swarm_batch_mode {
-                    self.swarm_selected_agents
-                        .insert(self.swarm_panel_selected);
+                    self.swarm_selected_agents.insert(self.swarm_panel_selected);
                     let count = self.swarm_selected_agents.len();
                     self.set_status_notice(format!(
                         "Batch mode on: {count} agent{} selected",
@@ -2330,20 +2339,26 @@ impl App {
                 }
             }
             Some(SwarmPanelAction::StartRename) => {
+                self.swarm_rename_target = None;
                 let members = self.filtered_swarm_members();
                 if !members.is_empty() {
                     self.swarm_rename_active = true;
                     self.swarm_rename_buffer.clear();
                     // Pre-fill with current label
-                    let ordered = crate::tui::info_widget::swarm_gallery::members_display_order(&members);
-                    let idx = self.swarm_panel_selected.min(ordered.len().saturating_sub(1));
+                    let ordered =
+                        crate::tui::info_widget::swarm_gallery::members_display_order(&members);
+                    let idx = self
+                        .swarm_panel_selected
+                        .min(ordered.len().saturating_sub(1));
                     if let Some(session_id) = ordered.get(idx)
-                        && let Some(member) = members.iter().find(|m| &m.session_id == session_id) {
-                            self.swarm_rename_buffer = member
-                                .friendly_name
-                                .clone()
-                                .unwrap_or_else(|| member.session_id.chars().take(8).collect());
-                        }
+                        && let Some(member) = members.iter().find(|m| &m.session_id == session_id)
+                    {
+                        self.swarm_rename_target = Some(session_id.clone());
+                        self.swarm_rename_buffer = member
+                            .friendly_name
+                            .clone()
+                            .unwrap_or_else(|| member.session_id.chars().take(8).collect());
+                    }
                 }
                 true
             }
@@ -2359,13 +2374,14 @@ impl App {
                 let new_label = self.swarm_rename_buffer.clone();
                 self.swarm_rename_active = false;
                 self.swarm_rename_buffer.clear();
-                // TODO: Send rename command to swarm coordinator
-                // SwarmCommand::RenameAgent { session_id, new_label }
-                let _ = new_label;
-                self.set_status_notice("Rename sent (TODO: wire to swarm coordinator)");
+                // Preserve the identity across live gallery reordering.
+                if let Some(session_id) = self.swarm_rename_target.take() {
+                    self.pending_swarm_rename = Some((session_id, new_label));
+                }
                 true
             }
             Some(SwarmPanelAction::RenameEscape) => {
+                self.swarm_rename_target = None;
                 self.swarm_rename_active = false;
                 self.swarm_rename_buffer.clear();
                 true
@@ -2474,8 +2490,9 @@ pub(crate) fn swarm_panel_action_for_key(
             KeyCode::Esc if modifiers.is_empty() => Some(SwarmPanelAction::FilterEscape),
             KeyCode::Enter if modifiers.is_empty() => Some(SwarmPanelAction::FilterConfirm),
             KeyCode::Backspace => Some(SwarmPanelAction::FilterBackspace),
-            KeyCode::Char(c) if !modifiers.contains(KeyModifiers::CONTROL)
-                && !modifiers.contains(KeyModifiers::ALT) =>
+            KeyCode::Char(c)
+                if !modifiers.contains(KeyModifiers::CONTROL)
+                    && !modifiers.contains(KeyModifiers::ALT) =>
             {
                 Some(SwarmPanelAction::FilterChar(c))
             }
@@ -2487,8 +2504,9 @@ pub(crate) fn swarm_panel_action_for_key(
             KeyCode::Esc if modifiers.is_empty() => Some(SwarmPanelAction::RenameEscape),
             KeyCode::Enter if modifiers.is_empty() => Some(SwarmPanelAction::RenameConfirm),
             KeyCode::Backspace => Some(SwarmPanelAction::RenameBackspace),
-            KeyCode::Char(c) if !modifiers.contains(KeyModifiers::CONTROL)
-                && !modifiers.contains(KeyModifiers::ALT) =>
+            KeyCode::Char(c)
+                if !modifiers.contains(KeyModifiers::CONTROL)
+                    && !modifiers.contains(KeyModifiers::ALT) =>
             {
                 Some(SwarmPanelAction::RenameChar(c))
             }
@@ -2652,7 +2670,13 @@ mod swarm_panel_key_tests {
     #[test]
     fn ctrl_a_selects_all() {
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('a'), KeyModifiers::CONTROL, false, false, false),
+            swarm_panel_action_for_key(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+                false,
+                false,
+                false
+            ),
             Some(SwarmPanelAction::SelectAll)
         );
     }
@@ -2722,11 +2746,23 @@ mod swarm_panel_key_tests {
             Some(SwarmPanelAction::PopOut)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('P'), KeyModifiers::ALT | KeyModifiers::SHIFT, false, false, false),
+            swarm_panel_action_for_key(
+                KeyCode::Char('P'),
+                KeyModifiers::ALT | KeyModifiers::SHIFT,
+                false,
+                false,
+                false
+            ),
             Some(SwarmPanelAction::OpenPrompt)
         );
         assert_eq!(
-            swarm_panel_action_for_key(KeyCode::Char('p'), KeyModifiers::ALT | KeyModifiers::SHIFT, false, false, false),
+            swarm_panel_action_for_key(
+                KeyCode::Char('p'),
+                KeyModifiers::ALT | KeyModifiers::SHIFT,
+                false,
+                false,
+                false
+            ),
             Some(SwarmPanelAction::OpenPrompt)
         );
         assert_eq!(

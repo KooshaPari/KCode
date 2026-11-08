@@ -24,15 +24,25 @@ pub struct TemplateSection {
 #[derive(Debug, Clone)]
 pub struct TemplateLoader {
     /// Base directory for template files.
-    /// Defaults to `~/.jcode/session-memory/config/`.
+    /// Defaults to `~/.kcode/session-memory/config/`.
     pub base_dir: String,
 }
 
 impl Default for TemplateLoader {
     fn default() -> Self {
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        let root = std::env::var_os("KCODE_HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                let home = std::env::var_os("HOME")
+                    .or_else(|| std::env::var_os("USERPROFILE"))
+                    .unwrap_or_else(|| ".".into());
+                std::path::PathBuf::from(home).join(".kcode")
+            });
         Self {
-            base_dir: format!("{}/.jcode/session-memory/config", home),
+            base_dir: root
+                .join("session-memory/config")
+                .to_string_lossy()
+                .into_owned(),
         }
     }
 }
@@ -107,7 +117,8 @@ mod tests {
 
     #[test]
     fn parse_template_with_sections() {
-        let raw = "## Summary\nThis is a {{project}} session.\n\n## Details\nWorking on {{feature}}.";
+        let raw =
+            "## Summary\nThis is a {{project}} session.\n\n## Details\nWorking on {{feature}}.";
         let tmpl = Template::parse(raw);
         assert_eq!(tmpl.sections.len(), 2);
         assert_eq!(tmpl.sections[0].name, "Summary");
@@ -118,6 +129,6 @@ mod tests {
     #[test]
     fn template_loader_default_dir() {
         let loader = TemplateLoader::new();
-        assert!(loader.base_dir.contains(".jcode/session-memory/config"));
+        assert!(std::path::Path::new(&loader.base_dir).ends_with("session-memory/config"));
     }
 }

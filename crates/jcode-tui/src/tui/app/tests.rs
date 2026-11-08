@@ -34,7 +34,10 @@ include!("tests/scroll_copy_01/part_02.rs");
 include!("tests/scroll_copy_02/part_01.rs");
 include!("tests/scroll_copy_02/part_02.rs");
 include!("tests/scroll_copy_03.rs");
+include!("tests/resize_viewport.rs");
+include!("tests/resize_anchor.rs");
 include!("tests/input_copy_selection.rs");
+include!("tests/clipboard_notice_231.rs");
 include!("tests/onboarding_flow.rs");
 include!("tests/onboarding_golden.rs");
 include!("tests/onboarding_eval.rs");
@@ -50,11 +53,13 @@ include!("tests/terminal_setup_command.rs");
 include!("tests/issue_497_copy_ctrl_c.rs");
 include!("tests/issue_699_ctrl_d_delete.rs");
 include!("tests/issue_832_remote_ctrl_k.rs");
+include!("tests/voice_input.rs");
 include!("tests/issue_998_model_status_overlay.rs");
 include!("tests/spinner_slash_commands.rs");
 include!("tests/command_suggestions_cache.rs");
 include!("tests/merge_command.rs");
 include!("tests/skill_invocation_multi_word.rs");
+include!("tests/slash_command_boundaries.rs");
 include!("tests/prompt_history_cross_session.rs");
 include!("tests/ssh_remote.rs");
 include!("tests/skill_startup.rs");
@@ -101,10 +106,9 @@ fn kv_cache_signature_prefix_match_detects_prefix_mutation() {
 fn kv_cache_signature_ignores_non_transmitted_message_metadata() {
     use crate::message::{ContentBlock, Message, Role};
 
-    // A boundary assistant message that has already been sent upstream. The
-    // provider only ever receives its `Text` block; the struct-level timestamp
-    // and tool_duration_ms, plus any history-only ReasoningTrace block, are
-    // never part of the prompt token stream.
+    // A boundary assistant message already sent upstream: the provider only ever
+    // receives its `Text` block, never the struct-level timestamp/tool_duration_ms
+    // or any history-only ReasoningTrace block.
     let baseline_messages = vec![
         Message::user("first prompt"),
         Message {
@@ -511,7 +515,7 @@ fn kv_cache_baseline_from_other_session_is_ignored() {
     // captured for a large session must not be diffed against a fresh, smaller
     // session, or the new history looks like a broken prefix and emits a
     // spurious `harness:_prefix_changed` miss. See the false positives in
-    // ~/.jcode/logs KV_CACHE_USAGE telemetry (common_prefix=0, current
+    // ~/.kcode/logs KV_CACHE_USAGE telemetry (common_prefix=0, current
     // message_count << baseline_message_count, yet read_pct=100/miss=none).
     let mut app = create_test_app();
     app.is_remote = true;
@@ -953,7 +957,7 @@ fn skills_command_refreshes_registry_from_disk_before_listing() {
     // Point the session at a fresh project dir and add a project-local skill
     // after the app (and its skill snapshot) was created.
     let temp = tempfile::tempdir().expect("tempdir");
-    let skill_dir = temp.path().join(".jcode").join("skills").join("late-skill");
+    let skill_dir = temp.path().join(".kcode").join("skills").join("late-skill");
     std::fs::create_dir_all(&skill_dir).expect("create skill dir");
     std::fs::write(
         skill_dir.join("SKILL.md"),
@@ -986,7 +990,7 @@ fn skills_command_refreshes_registry_from_disk_before_listing() {
 fn skill_invocation_with_prompt_activates_and_submits_in_one_turn() {
     let mut app = create_test_app();
     let temp = tempfile::tempdir().expect("tempdir");
-    let skill_dir = temp.path().join(".jcode/skills/prompt-skill");
+    let skill_dir = temp.path().join(".kcode/skills/prompt-skill");
     std::fs::create_dir_all(&skill_dir).expect("create skill dir");
     std::fs::write(
         skill_dir.join("SKILL.md"),
@@ -1016,7 +1020,7 @@ fn skill_invocation_with_prompt_activates_and_submits_in_one_turn() {
 fn skill_invocation_with_prompt_attaches_pending_image_to_user_message() {
     let mut app = create_test_app();
     let temp = tempfile::tempdir().expect("tempdir");
-    let skill_dir = temp.path().join(".jcode/skills/image-skill");
+    let skill_dir = temp.path().join(".kcode/skills/image-skill");
     std::fs::create_dir_all(&skill_dir).expect("create skill dir");
     std::fs::write(
         skill_dir.join("SKILL.md"),
@@ -1167,7 +1171,7 @@ fn update_command_reloads_stale_remote_server_before_client_update_check() {
 
 #[test]
 fn stale_server_history_is_deferred_before_remote_state_is_applied() {
-    crate::env::remove_var("JCODE_ALLOW_SERVER_VERSION_MISMATCH");
+    crate::env::remove_var("KCODE_ALLOW_SERVER_VERSION_MISMATCH");
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
@@ -1218,6 +1222,7 @@ fn stale_server_history_is_deferred_before_remote_state_is_applied() {
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -1255,8 +1260,8 @@ fn deferred_stale_server_history_captures_session_id_for_reload_handoff() {
     // ...". We must stash the real session id so the re-exec resumes the actual
     // server session instead.
     let _env_guard = crate::storage::lock_test_env();
-    crate::env::remove_var("JCODE_ALLOW_SERVER_VERSION_MISMATCH");
-    crate::env::set_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.21.0 (deadbeef)");
+    crate::env::remove_var("KCODE_ALLOW_SERVER_VERSION_MISMATCH");
+    crate::env::set_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.21.0 (deadbeef)");
 
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1311,6 +1316,7 @@ fn deferred_stale_server_history_captures_session_id_for_reload_handoff() {
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -1325,7 +1331,7 @@ fn deferred_stale_server_history_captures_session_id_for_reload_handoff() {
         Some("session_real_server_owned")
     );
 
-    crate::env::remove_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE");
+    crate::env::remove_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE");
 }
 
 #[test]
@@ -1336,11 +1342,11 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
     // defer + reload anyway, instead of attaching to the ancient daemon (which
     // would then reject newer protocol requests like `set_route`).
     let _env_guard = crate::storage::lock_test_env();
-    crate::env::remove_var("JCODE_ALLOW_SERVER_VERSION_MISMATCH");
+    crate::env::remove_var("KCODE_ALLOW_SERVER_VERSION_MISMATCH");
     // The test binary's own version is dev/dirty (unorderable), so use the
     // test-only override to give the client a clean release version newer than
     // the simulated ancient server.
-    crate::env::set_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.17.0 (d741696f)");
+    crate::env::set_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.17.0 (d741696f)");
 
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1394,11 +1400,12 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
 
-    crate::env::remove_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE");
+    crate::env::remove_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE");
 
     assert!(!redraw);
     assert!(app.pending_server_reload);
@@ -1413,7 +1420,7 @@ fn ancient_server_history_is_deferred_via_client_side_release_check() {
     );
     let content = app.display_messages().last().unwrap().content.clone();
     assert!(
-        content.contains("older release") && content.contains("jcode server stop"),
+        content.contains("older release") && content.contains("kcode server stop --force"),
         "{content}"
     );
 }
@@ -1428,8 +1435,8 @@ fn older_server_reporting_no_update_is_still_deferred_via_client_check() {
     // client's release-order check wins: defer + reload (after repairing the
     // shared-server channel client-side).
     let _env_guard = crate::storage::lock_test_env();
-    crate::env::remove_var("JCODE_ALLOW_SERVER_VERSION_MISMATCH");
-    crate::env::set_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.22.0 (abcd1234)");
+    crate::env::remove_var("KCODE_ALLOW_SERVER_VERSION_MISMATCH");
+    crate::env::set_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.22.0 (abcd1234)");
 
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1476,11 +1483,12 @@ fn older_server_reporting_no_update_is_still_deferred_via_client_check() {
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
 
-    crate::env::remove_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE");
+    crate::env::remove_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE");
 
     assert!(!redraw);
     assert!(
@@ -1493,14 +1501,14 @@ fn older_server_reporting_no_update_is_still_deferred_via_client_check() {
     assert_eq!(remote.session_id(), None);
     let content = app.display_messages().last().unwrap().content.clone();
     assert!(
-        content.contains("older release") && content.contains("jcode server stop"),
+        content.contains("older release") && content.contains("kcode server stop --force"),
         "{content}"
     );
 }
 
 #[test]
 fn older_server_history_repairs_stale_shared_server_channel_end_to_end() {
-    // Full-path sandbox: a real temp JCODE_HOME set up in the exact field state
+    // Full-path sandbox: a real temp KCODE_HOME set up in the exact field state
     // (shared-server pinned to an OLD build, stable advanced to a NEW release by
     // a previous install). When the current client attaches to a server that
     // self-reports an older release with `server_has_update: Some(false)`, the
@@ -1508,11 +1516,11 @@ fn older_server_history_repairs_stale_shared_server_channel_end_to_end() {
     // forced reload it queues has a strictly-newer binary to exec into.
     use std::time::{Duration, SystemTime};
     let _env_guard = crate::storage::lock_test_env();
-    crate::env::remove_var("JCODE_ALLOW_SERVER_VERSION_MISMATCH");
-    crate::env::set_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.22.0 (abcd1234)");
+    crate::env::remove_var("KCODE_ALLOW_SERVER_VERSION_MISMATCH");
+    crate::env::set_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.22.0 (abcd1234)");
     let temp = tempfile::TempDir::new().expect("temp home");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     // Build the field state: shared-server -> OLD, stable -> NEW (newer mtime).
     let base = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
@@ -1578,6 +1586,7 @@ fn older_server_history_repairs_stale_shared_server_channel_end_to_end() {
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
@@ -1586,11 +1595,11 @@ fn older_server_history_repairs_stale_shared_server_channel_end_to_end() {
     let pending = app.pending_server_reload;
 
     // Restore env before asserting so a panic cannot leak global state.
-    crate::env::remove_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE");
+    crate::env::remove_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE");
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 
     assert!(pending, "older server must queue a reload");
@@ -1608,8 +1617,8 @@ fn current_release_server_history_is_not_deferred_by_client_check() {
     // server_has_update: None, must be trusted and attached normally. This
     // guards against the client-side check over-firing and looping reloads.
     let _env_guard = crate::storage::lock_test_env();
-    crate::env::remove_var("JCODE_ALLOW_SERVER_VERSION_MISMATCH");
-    crate::env::set_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.17.0 (d741696f)");
+    crate::env::remove_var("KCODE_ALLOW_SERVER_VERSION_MISMATCH");
+    crate::env::set_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE", "v0.17.0 (d741696f)");
 
     let mut app = create_test_app();
     let rt = tokio::runtime::Runtime::new().unwrap();
@@ -1654,11 +1663,12 @@ fn current_release_server_history_is_not_deferred_by_client_check() {
             compaction_mode: crate::config::CompactionMode::Reactive,
             activity: None,
             side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
         },
         &mut remote,
     );
 
-    crate::env::remove_var("JCODE_TEST_CLIENT_VERSION_OVERRIDE");
+    crate::env::remove_var("KCODE_TEST_CLIENT_VERSION_OVERRIDE");
 
     // Attached normally: session id applied, no pending reload triggered by the
     // client-side staleness check. (The History arm always returns false for

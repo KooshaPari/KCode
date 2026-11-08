@@ -6,11 +6,12 @@ use std::path::PathBuf;
 /// Get path to builds directory
 pub fn builds_dir() -> Result<PathBuf> {
     let dir = resolve_builds_dir(
-        std::env::var_os("JCODE_HOME").map(PathBuf::from),
+        std::env::var_os("KCODE_HOME").map(PathBuf::from),
         std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
         storage::jcode_dir()?,
         cfg!(windows),
     );
+    storage::product_paths::require_kcode_path(&dir)?;
     storage::ensure_dir(&dir)?;
     Ok(dir)
 }
@@ -28,8 +29,8 @@ fn resolve_builds_dir(
     if is_windows && let Some(local_app_data) = local_app_data {
         // Keep runtime channel discovery aligned with scripts/install.ps1 and
         // the supported Windows layout under %LOCALAPPDATA%\jcode\builds.
-        // Durable user state and logs still live under ~/.jcode.
-        return local_app_data.join("jcode").join("builds");
+        // Durable user state and logs still live under ~/.kcode.
+        return local_app_data.join("kcode").join("builds");
     }
 
     default_jcode_dir.join("builds")

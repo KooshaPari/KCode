@@ -40,7 +40,7 @@ fn composer_mode(input: &str, is_remote_mode: bool) -> ComposerMode {
         } else {
             ComposerMode::ShellLocal
         }
-    } else if input.trim_start().starts_with('/') {
+    } else if app::has_safe_slash_command_token(input) {
         ComposerMode::SlashCommand
     } else {
         ComposerMode::Chat
@@ -1349,6 +1349,7 @@ mod tests {
 
     #[test]
     fn truncate_line_for_narrow_long_text_truncated_with_ellipsis() {
+        use unicode_width::UnicodeWidthStr;
         let text = "[sending] 4.2s · ↑120 ↓340";
         let line = Line::from(vec![Span::styled(text, Style::default())]);
         let truncated = truncate_line_for_narrow(line, 15);
@@ -1412,177 +1413,6 @@ mod tests {
         assert_eq!(visual_line_move(input, input.len(), 10, -1), Some(2));
         // From far along row 0, down clamps to the end of the short row.
         assert_eq!(visual_line_move(input, 8, 10, 1), Some(input.len()));
-    }
-
-    #[test]
-    fn right_fact_stack_shifts_up_as_a_unit_when_bottom_row_is_occupied() {
-        let area = Rect::new(0, 0, 40, 5);
-        let mut buffer = ratatui::buffer::Buffer::empty(area);
-        for x in 12..40 {
-            buffer[(x, 4)].set_symbol("x");
-        }
-        let lines = ["oauth", "model", "dir", "context"]
-            .into_iter()
-            .map(|text| RightFactLine::new(vec![Span::raw(text)]).expect("fact line"))
-            .collect();
-
-        let placements = right_fact_placements(
-            &buffer,
-            lines,
-            0,
-            5,
-            0,
-            40,
-            Rect::new(0, 0, 40, 3),
-            false,
-            None,
-        );
-        let rows = placements
-            .iter()
-            .map(|placement| placement.area.y)
-            .collect::<Vec<_>>();
-        assert_eq!(rows, vec![0, 1, 2, 3]);
-        assert!(placements.iter().all(|placement| placement.area.y != 4));
-    }
-
-    #[test]
-    fn right_fact_stack_never_leaves_an_occupied_row_between_facts() {
-        let area = Rect::new(0, 0, 40, 7);
-        let mut buffer = ratatui::buffer::Buffer::empty(area);
-        buffer[(39, 4)].set_symbol("x");
-        let lines = ["oauth", "model", "dir", "context"]
-            .into_iter()
-            .map(|text| RightFactLine::new(vec![Span::raw(text)]).expect("fact line"))
-            .collect();
-
-        let placements = right_fact_placements(
-            &buffer,
-            lines,
-            0,
-            7,
-            0,
-            40,
-            Rect::new(0, 0, 40, 5),
-            false,
-            None,
-        );
-        let rows = placements
-            .iter()
-            .map(|placement| placement.area.y)
-            .collect::<Vec<_>>();
-        assert_eq!(rows, vec![0, 1, 2, 3]);
-        assert_eq!(
-            placements
-                .iter()
-                .map(|placement| placement.line.spans[0].content.as_ref())
-                .collect::<Vec<_>>(),
-            vec!["oauth", "model", "dir", "context"]
-        );
-    }
-
-    #[test]
-    fn right_fact_stack_collision_state_space_is_contiguous_or_hidden() {
-        const HEIGHT: u16 = 8;
-        const STACK_HEIGHT: u16 = 4;
-
-        for occupied_mask in 0_u16..(1 << HEIGHT) {
-            let area = Rect::new(0, 0, 40, HEIGHT);
-            let mut buffer = ratatui::buffer::Buffer::empty(area);
-            for row in 0..HEIGHT {
-                if occupied_mask & (1 << row) != 0 {
-                    buffer[(39, row)].set_symbol("x");
-                }
-            }
-            let lines = ["oauth", "model", "dir", "context"]
-                .into_iter()
-                .map(|text| RightFactLine::new(vec![Span::raw(text)]).expect("fact line"))
-                .collect();
-
-            let placements = right_fact_placements(
-                &buffer,
-                lines,
-                0,
-                HEIGHT,
-                0,
-                40,
-                Rect::new(0, 0, 40, HEIGHT),
-                false,
-                None,
-            );
-            let expected_top = (0..=HEIGHT - STACK_HEIGHT).rev().find(|&start| {
-                (start..start + STACK_HEIGHT).all(|row| occupied_mask & (1 << row) == 0)
-            });
-
-            match expected_top {
-                Some(start) => {
-                    assert_eq!(
-                        placements.len(),
-                        STACK_HEIGHT as usize,
-                        "mask {occupied_mask:08b}"
-                    );
-                    assert_eq!(
-                        placements
-                            .iter()
-                            .map(|placement| placement.area.y)
-                            .collect::<Vec<_>>(),
-                        (start..start + STACK_HEIGHT).collect::<Vec<_>>(),
-                        "mask {occupied_mask:08b}"
-                    );
-                    assert_eq!(
-                        placements
-                            .iter()
-                            .map(|placement| placement.line.spans[0].content.as_ref())
-                            .collect::<Vec<_>>(),
-                        vec!["oauth", "model", "dir", "context"],
-                        "mask {occupied_mask:08b}"
-                    );
-                }
-                None => assert!(placements.is_empty(), "mask {occupied_mask:08b}"),
-            }
-        }
-    }
-
-    #[test]
-    fn right_fact_stack_treats_styled_blank_cells_as_occupied() {
-        let area = Rect::new(0, 0, 32, 2);
-        let mut buffer = ratatui::buffer::Buffer::empty(area);
-        for x in 12..32 {
-            buffer[(x, 1)].set_bg(Color::Blue);
-        }
-        let line = RightFactLine::new(vec![Span::raw("context")]).expect("fact line");
-        let placements = right_fact_placements(
-            &buffer,
-            vec![line],
-            0,
-            2,
-            0,
-            32,
-            Rect::new(0, 0, 32, 1),
-            false,
-            None,
-        );
-        assert_eq!(placements.len(), 1);
-        assert_eq!(placements[0].area.y, 0);
-    }
-
-    #[test]
-    fn right_fact_stack_never_draws_over_the_input_cursor() {
-        let area = Rect::new(0, 0, 32, 2);
-        let buffer = ratatui::buffer::Buffer::empty(area);
-        let line = RightFactLine::new(vec![Span::raw("context")]).expect("fact line");
-        let placements = right_fact_placements(
-            &buffer,
-            vec![line],
-            0,
-            2,
-            0,
-            32,
-            Rect::new(0, 0, 32, 1),
-            false,
-            Some(Position::new(28, 1)),
-        );
-        assert_eq!(placements.len(), 1);
-        assert_eq!(placements[0].area.y, 0);
     }
 
     #[test]
@@ -1967,6 +1797,15 @@ pub(super) fn build_notification_spans(app: &dyn TuiState) -> Vec<Span<'static>>
         }
     };
 
+    if let Some((recording, text)) = app.voice_input_status() {
+        let color = if recording {
+            rgb(255, 110, 110)
+        } else {
+            rgb(140, 200, 255)
+        };
+        spans.push(Span::styled(text, Style::default().fg(color).bold()));
+    }
+
     if let Some(selection) = app.copy_selection_status() {
         let pane_label = selection.pane.label();
         let label = if selection.has_action {
@@ -2245,11 +2084,48 @@ pub(super) fn draw_notification(frame: &mut Frame, app: &dyn TuiState, area: Rec
     frame.render_widget(Paragraph::new(notification_lines(app, area.width)), area);
 }
 
-/// Draw the elastic overscroll status line, revealed below the input when the
-/// user scrolls past the bottom of the transcript. Shows model, provider,
-/// access method, reasoning level, and context usage percentage, with a live
-/// `(overscroll x.x)` countdown pinned to the right so users can see the line
-/// is temporary and rebounds away on its own.
+fn notification_lines(app: &dyn TuiState, width: u16) -> Vec<Line<'static>> {
+    let spans = build_notification_spans(app);
+    if spans.is_empty() || width == 0 {
+        return Vec::new();
+    }
+    let line = Line::from(spans);
+    // Keep existing one-line notices unchanged, but never clip reset expiries.
+    let lines = if app.openai_reset_hint().is_some() {
+        super::markdown::wrap_line(line, usize::from(width))
+    } else {
+        vec![line]
+    };
+    lines
+        .into_iter()
+        .map(|line| {
+            if app.centered_mode() {
+                line.alignment(Alignment::Center)
+            } else {
+                line
+            }
+        })
+        .collect()
+}
+
+pub(super) fn notification_height(app: &dyn TuiState, width: u16) -> u16 {
+    if app.openai_reset_hint().is_some() {
+        notification_lines(app, width)
+            .len()
+            .try_into()
+            .unwrap_or(u16::MAX)
+    } else {
+        u16::from(app.has_notification())
+    }
+}
+
+pub(super) fn draw_notification(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
+    frame.render_widget(Paragraph::new(notification_lines(app, area.width)), area);
+}
+
+/// Draw the session status line, pinned directly below the input. Shows the
+/// directory, branch, git status, context usage, access method, provider, and
+/// model, compacting facts step by step as the terminal narrows.
 pub(super) fn draw_overscroll_status(frame: &mut Frame, app: &dyn TuiState, area: Rect) {
     if area.height == 0 || area.width == 0 {
         return;

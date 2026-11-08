@@ -32,6 +32,37 @@ fn token_usage_preserves_cache_creation_and_missing_counters() {
     }
 }
 
+#[test]
+fn kv_cache_miss_is_forwarded_with_session() {
+    let mut state = BridgeState {
+        session_id: Some("s1".into()),
+        ..Default::default()
+    };
+    let wire = serde_json::to_value(jcode_protocol_like_kv_miss()).unwrap();
+    let frames = state.legacy_event_to_api(&wire);
+    assert_eq!(
+        frames.iter().map(|f| f.event.clone()).collect::<Vec<_>>(),
+        vec![ApiEvent::KvCacheMiss {
+            session_id: "s1".into(),
+            reason: "prefix_changed".into(),
+            harness_caused: true,
+            missed_tokens: 46_000,
+            expected_tokens: 50_000,
+            read_tokens: 4_000,
+            documented_cause: None,
+            message: "KV cache miss: ~46K tokens resent".into(),
+        }]
+    );
+}
+
+fn jcode_protocol_like_kv_miss() -> Value {
+    json!({
+        "type": "kv_cache_miss", "reason": "prefix_changed", "harness_caused": true,
+        "missed_tokens": 46_000, "expected_tokens": 50_000, "read_tokens": 4_000,
+        "message": "KV cache miss: ~46K tokens resent"
+    })
+}
+
 struct ScopedJcodeHome {
     path: PathBuf,
     previous: Option<OsString>,
@@ -41,19 +72,19 @@ struct ScopedJcodeHome {
 impl ScopedJcodeHome {
     fn new(label: &str) -> Self {
         let guard = jcode_home_test_lock();
-        let previous = std::env::var_os("JCODE_HOME");
+        let previous = std::env::var_os("KCODE_HOME");
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
         let path = std::env::temp_dir().join(format!(
-            "jcode-harness-api-{label}-{}-{unique}",
+            "kcode-harness-api-{label}-{}-{unique}",
             std::process::id()
         ));
-        std::fs::create_dir_all(&path).expect("create isolated JCODE_HOME");
-        // SAFETY: all tests in this module that mutate JCODE_HOME share `LOCK`,
+        std::fs::create_dir_all(&path).expect("create isolated KCODE_HOME");
+        // SAFETY: all tests in this module that mutate KCODE_HOME share `LOCK`,
         // and this guard restores the prior value before it is released.
-        unsafe { std::env::set_var("JCODE_HOME", &path) };
+        unsafe { std::env::set_var("KCODE_HOME", &path) };
         Self {
             path,
             previous,
@@ -65,8 +96,8 @@ impl ScopedJcodeHome {
 impl Drop for ScopedJcodeHome {
     fn drop(&mut self) {
         match self.previous.take() {
-            Some(value) => unsafe { std::env::set_var("JCODE_HOME", value) },
-            None => unsafe { std::env::remove_var("JCODE_HOME") },
+            Some(value) => unsafe { std::env::set_var("KCODE_HOME", value) },
+            None => unsafe { std::env::remove_var("KCODE_HOME") },
         }
         let _ = std::fs::remove_dir_all(&self.path);
     }
@@ -234,6 +265,27 @@ fn create_session_preserves_explicit_working_dir() {
         panic!("expected legacy outbound");
     };
     assert_eq!(value["working_dir"], "/workspace/explicit");
+}
+
+#[test]
+fn created_session_reports_requested_working_dir_before_first_prompt() {
+    let _home = ScopedJcodeHome::new("create-unpersisted-working-dir");
+    let mut state = BridgeState::default();
+    let out = state.api_request_to_legacy(&json!({
+        "req": "create_session", "id": 7, "working_dir": "/workspace/fresh",
+    }));
+    let Outbound::Legacy(probe) = &out[1] else {
+        panic!("expected state")
+    };
+    let reply = state.legacy_event_to_api(&json!({
+        "type": "state", "id": probe["id"], "session_id": "fresh",
+        "message_count": 0, "is_processing": false,
+    }));
+    let ApiEvent::Attached { session } = &reply[0].event else {
+        panic!("expected attached")
+    };
+    assert_eq!(session.working_dir.as_deref(), Some("/workspace/fresh"));
+    assert!(state.pending_create_dir.is_none());
 }
 
 #[test]
@@ -1302,6 +1354,33 @@ fn a_scheduled_compaction_reports_its_status() {
     }
 }
 
+/// Saving forwards the flag and label so the daemon can title the session.
+#[test]
+fn set_session_saved_forwards_flag_and_label() {
+    let mut state = state_with_session();
+    let save = state.api_request_to_legacy(&json!({
+        "id": 7, "req": "set_session_saved", "saved": true, "label": "yc mcp",
+    }));
+    match &save[0] {
+        Outbound::Legacy(value) => {
+            assert_eq!(value["type"], "set_session_saved");
+            assert_eq!(value["saved"], true);
+            assert_eq!(value["label"], "yc mcp");
+        }
+        other => panic!("unexpected: {other:?}"),
+    }
+    let unsave = state.api_request_to_legacy(&json!({
+        "id": 8, "req": "set_session_saved", "saved": false,
+    }));
+    match &unsave[0] {
+        Outbound::Legacy(value) => {
+            assert_eq!(value["saved"], false);
+            assert!(value.get("label").is_none());
+        }
+        other => panic!("unexpected: {other:?}"),
+    }
+}
+
 /// Clearing a title is distinct from setting an empty one, so an absent title
 /// must not be sent as `""`, which the daemon would store as a real title.
 #[test]
@@ -1358,6 +1437,7 @@ fn capability_requests_need_an_attached_session() {
         ("rename_session", json!({})),
         ("rewind_undo", json!({})),
         ("cancel_soft_interrupts", json!({})),
+        ("background_tool", json!({})),
     ] {
         let mut state = BridgeState::default();
         let mut request = json!({"id": 1, "req": req});
@@ -1546,7 +1626,7 @@ fn a_plain_session_id_still_resolves() {
 
 /// Session records must be read from the *instance's* home, not the user's.
 ///
-/// `launch()` gives an embedded instance its own `JCODE_HOME` precisely so it
+/// `launch()` gives an embedded instance its own `KCODE_HOME` precisely so it
 /// cannot see the user's work. Reading the user's home directly made
 /// `peek_session` return the real transcripts of the jcode the user runs
 /// interactively, from a client that was supposed to be sandboxed.
@@ -1557,7 +1637,7 @@ fn session_records_are_read_from_the_instance_home() {
     let path = path.expect("a normal session id must resolve");
     assert!(
         path.starts_with(&home.path),
-        "JCODE_HOME must scope session records, got {}",
+        "KCODE_HOME must scope session records, got {}",
         path.display()
     );
 }
@@ -1675,12 +1755,19 @@ fn limited_session_list_reads_compact_index_without_transcript_records() {
     assert_eq!(newest.save_label.as_deref(), Some("investor catch up"));
     assert_eq!(newest.updated_at_ms, Some(99));
     assert_eq!(newest.last_active_at_ms, Some(99));
-    assert!(sessions.iter().all(|session| {
-        session
-            .title
-            .as_deref()
-            .is_some_and(|title| title.starts_with("Indexed goal "))
-    }));
+    // A save label is the name the user chose, so it outranks derived titles.
+    assert_eq!(newest.title.as_deref(), Some("investor catch up"));
+    assert!(
+        sessions
+            .iter()
+            .filter(|session| session.session_id != "indexed_099")
+            .all(|session| {
+                session
+                    .title
+                    .as_deref()
+                    .is_some_and(|title| title.starts_with("Indexed goal "))
+            })
+    );
 }
 
 #[test]
@@ -1691,6 +1778,7 @@ fn runtime_info_reports_the_active_provider_and_complete_route_catalog() {
         "provider_name": "anthropic",
         "provider_model": "claude-sonnet",
         "reasoning_effort": "high",
+        "resolved_credential": "oauth",
         "available_models": ["claude-sonnet", "gemini-pro"],
         "available_model_routes": [
             {
@@ -1720,6 +1808,7 @@ fn runtime_info_reports_the_active_provider_and_complete_route_catalog() {
         provider,
         model,
         reasoning_effort,
+        auth_method,
         routes,
     } = event
     else {
@@ -1729,6 +1818,9 @@ fn runtime_info_reports_the_active_provider_and_complete_route_catalog() {
     assert_eq!(provider.as_deref(), Some("anthropic"));
     assert_eq!(model.as_deref(), Some("claude-sonnet"));
     assert_eq!(reasoning_effort.as_deref(), Some("high"));
+    // The daemon's resolved credential travels with the identity, so a
+    // client never has to guess it from a model that has both routes.
+    assert_eq!(auth_method.as_deref(), Some("oauth"));
     assert_eq!(routes.len(), 2);
     assert_eq!(routes[1].provider, "gemini");
     assert!(!routes[1].available);
@@ -1845,6 +1937,51 @@ fn notify_auth_changed_is_secret_free_and_acknowledged() {
 }
 
 #[test]
+fn usage_invalidation_maps_each_provider_and_rejects_bad_input() {
+    for (provider, legacy_type) in [
+        ("claude", "invalidate_anthropic_usage"),
+        ("openai", "invalidate_openai_usage"),
+    ] {
+        for label in [None, Some("work")] {
+            let mut state = BridgeState::default();
+            let mut request = json!({"req": "invalidate_usage", "id": 7, "provider": provider});
+            if let Some(label) = label {
+                request["account_label"] = json!(label);
+            }
+            let outbound = state.api_request_to_legacy(&request);
+            let [Outbound::Legacy(legacy)] = outbound.as_slice() else {
+                panic!("expected one control request");
+            };
+            assert_eq!(legacy["type"], legacy_type);
+            assert_eq!(legacy["account_label"].as_str(), label);
+            let frames = state.legacy_event_to_api(&json!({"type": "ack", "id": legacy["id"]}));
+            assert_eq!(frames[0].reply_to, Some(7));
+            assert!(matches!(frames[0].event, ApiEvent::Ok));
+            // The daemon's trailing `done` must not be mistaken for a turn ending.
+            assert!(
+                state
+                    .legacy_event_to_api(&json!({"type": "done", "id": legacy["id"]}))
+                    .is_empty()
+            );
+        }
+    }
+    for request in [
+        json!({"req": "invalidate_usage", "id": 8, "provider": "gemini"}),
+        json!({"req": "invalidate_usage", "id": 9, "provider": "claude", "account_label": ""}),
+        json!({"req": "invalidate_usage", "id": 10, "provider": "openai", "account_label": "a\nb"}),
+    ] {
+        let event = only_reply_event(BridgeState::default().api_request_to_legacy(&request));
+        assert!(matches!(
+            event,
+            ApiEvent::Error {
+                code: ErrorCode::InvalidRequest,
+                ..
+            }
+        ));
+    }
+}
+
+#[test]
 fn credential_provisioning_normalizes_gemini_and_supports_jcode() {
     let home = ScopedJcodeHome::new("credentials");
     let config = home.path.join("config/jcode");
@@ -1882,15 +2019,15 @@ fn credential_provisioning_normalizes_gemini_and_supports_jcode() {
         "req": "set_api_key",
         "id": 8,
         "provider": "subscription",
-        "api_key": "jcode-secret"
+        "api_key": "kcode-secret"
     }));
     let [Outbound::Legacy(notify)] = outbound.as_slice() else {
         panic!("jcode credential should notify the daemon: {outbound:?}");
     };
     assert_eq!(notify["provider"], "jcode");
     assert_eq!(
-        std::fs::read_to_string(config.join("jcode-subscription.env")).unwrap(),
-        "JCODE_API_KEY=jcode-secret\n"
+        std::fs::read_to_string(config.join("kcode-subscription.env")).unwrap(),
+        "KCODE_API_KEY=kcode-secret\n"
     );
 
     let event = only_reply_event(state.api_request_to_legacy(&json!({
@@ -1973,7 +2110,7 @@ fn owner_only_writes_refuse_symlink_targets_and_directories() {
             ..
         }
     ));
-    assert!(!outside_dir.join("jcode-subscription.env").exists());
+    assert!(!outside_dir.join("kcode-subscription.env").exists());
 }
 
 #[cfg(unix)]
@@ -2204,6 +2341,53 @@ fn model_change_without_provider_preserves_known_provider() {
     );
 }
 
+/// A successful change that leaves no effort must clear the cache, or later
+/// identity events would keep advertising the old level.
+#[test]
+fn a_successful_change_to_no_effort_clears_the_cached_effort() {
+    let mut state = state_with_session();
+    state.note_models(&json!({"reasoning_effort": "high"}));
+    let frames = state.legacy_event_to_api(&json!({
+        "type": "reasoning_effort_changed", "id": 999,
+    }));
+    assert!(state.current_effort.is_none());
+    assert!(matches!(
+        &frames[0].event,
+        ApiEvent::ModelInfo {
+            reasoning_effort: None,
+            ..
+        }
+    ));
+}
+
+/// A model switch can clear or change the effort (the new model may not
+/// advertise the old level). The daemon now reports it on `model_changed`,
+/// and the broadcast identity must follow it instead of the stale cache.
+#[test]
+fn model_change_reports_the_effort_the_new_model_runs_with() {
+    let mut state = state_with_session();
+    state.note_models(&json!({"provider_name": "known", "reasoning_effort": "max"}));
+    let frames = state.legacy_event_to_api(&json!({
+        "type": "model_changed", "id": 99, "model": "new", "reasoning_effort": "high",
+    }));
+    assert!(
+        matches!(&frames[0].event, ApiEvent::ModelInfo { reasoning_effort, .. }
+        if reasoning_effort.as_deref() == Some("high"))
+    );
+
+    let frames = state.legacy_event_to_api(&json!({
+        "type": "model_changed", "id": 99, "model": "plain", "reasoning_effort": null,
+    }));
+    assert!(matches!(
+        &frames[0].event,
+        ApiEvent::ModelInfo {
+            reasoning_effort: None,
+            ..
+        }
+    ));
+    assert!(state.current_effort.is_none());
+}
+
 #[test]
 fn observer_and_server_initiated_turns_finish_without_a_local_message_id() {
     for id in [0, 999_999] {
@@ -2321,20 +2505,20 @@ fn delayed_history_activity_cannot_resurrect_or_stop_a_newer_turn() {
 fn list_and_attach_expose_swarm_ownership_without_nesting_forks() {
     let home = ScopedJcodeHome::new("swarm-sidebar");
     // Keep the runtime override isolated as well, including under test runners
-    // that already set JCODE_RUNTIME_DIR.
-    let previous_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
+    // that already set KCODE_RUNTIME_DIR.
+    let previous_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
     struct RuntimeGuard(Option<OsString>);
     impl Drop for RuntimeGuard {
         fn drop(&mut self) {
             match self.0.take() {
-                Some(value) => unsafe { std::env::set_var("JCODE_RUNTIME_DIR", value) },
-                None => unsafe { std::env::remove_var("JCODE_RUNTIME_DIR") },
+                Some(value) => unsafe { std::env::set_var("KCODE_RUNTIME_DIR", value) },
+                None => unsafe { std::env::remove_var("KCODE_RUNTIME_DIR") },
             }
         }
     }
     let _runtime = RuntimeGuard(previous_runtime);
     let runtime = home.path.join("runtime");
-    unsafe { std::env::set_var("JCODE_RUNTIME_DIR", &runtime) };
+    unsafe { std::env::set_var("KCODE_RUNTIME_DIR", &runtime) };
     let swarm_dir = runtime.join("durable-state/swarm");
     std::fs::create_dir_all(&swarm_dir).unwrap();
     let snapshot_path = swarm_dir.join("swarm.json");

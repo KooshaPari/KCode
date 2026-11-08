@@ -20,6 +20,8 @@ impl App {
         self.copy_selection_anchor = None;
         self.copy_selection_cursor = None;
         self.copy_selection_goal_column = None;
+        // A re-entered drag at the same pane and edge must not skip its nudge.
+        self.copy_selection_edge_autoscroll = None;
     }
 
     pub(super) fn toggle_copy_selection_mode(&mut self) {
@@ -339,9 +341,13 @@ impl App {
         self.copy_chat_viewport_context_to_clipboard_with(super::helpers::copy_to_clipboard)
     }
 
-    pub(super) fn copy_chat_viewport_context_to_clipboard_with<F>(&mut self, copy_text: F) -> bool
+    pub(super) fn copy_chat_viewport_context_to_clipboard_with<F, R>(
+        &mut self,
+        copy_text: F,
+    ) -> bool
     where
-        F: FnOnce(&str) -> bool,
+        F: FnOnce(&str) -> R,
+        R: Into<super::helpers::ClipboardCopy>,
     {
         if !self.select_chat_viewport_context() {
             self.set_status_notice("Nothing visible to copy");
@@ -356,37 +362,40 @@ impl App {
             return false;
         }
 
-        let success = copy_text(&text);
-        if success {
-            self.set_status_notice("Copied viewport context");
-        } else {
-            self.set_status_notice("Failed to copy viewport context");
-        }
+        let accepted = self.report_clipboard_copy(
+            copy_text(&text).into(),
+            "Copied viewport context",
+            "Viewport context copy sent (unconfirmed)",
+            "Failed to copy viewport context",
+        );
         self.exit_copy_selection_mode();
-        success
+        accepted
     }
 
     pub(super) fn copy_current_selection_to_clipboard(&mut self) -> bool {
         self.copy_current_selection_to_clipboard_with(super::helpers::copy_to_clipboard)
     }
 
-    pub(super) fn copy_current_selection_to_clipboard_with<F>(&mut self, copy_text: F) -> bool
+    pub(super) fn copy_current_selection_to_clipboard_with<F, R>(&mut self, copy_text: F) -> bool
     where
-        F: FnOnce(&str) -> bool,
+        F: FnOnce(&str) -> R,
+        R: Into<super::helpers::ClipboardCopy>,
     {
         let text = self.current_copy_selection_text().unwrap_or_default();
         if text.is_empty() {
             self.set_status_notice("Selection is empty");
             return false;
         }
-        let success = copy_text(&text);
-        if success {
-            self.set_status_notice("Copied selection");
+        let accepted = self.report_clipboard_copy(
+            copy_text(&text).into(),
+            "Copied selection",
+            "Selection copy sent (unconfirmed)",
+            "Failed to copy selection",
+        );
+        if accepted {
             self.exit_copy_selection_mode();
-        } else {
-            self.set_status_notice("Failed to copy selection");
         }
-        success
+        accepted
     }
 
     /// Copy a mouse-drag selection without clearing its visual highlight.
@@ -395,9 +404,10 @@ impl App {
     /// release, but the selected text remains visibly selected until the next
     /// click. Clearing it immediately made successful selections look
     /// as though they had failed, especially for short or precise drags.
-    fn copy_current_selection_preserving_highlight<F>(&mut self, copy_text: F) -> bool
+    fn copy_current_selection_preserving_highlight<F, R>(&mut self, copy_text: F) -> bool
     where
-        F: FnOnce(&str) -> bool,
+        F: FnOnce(&str) -> R,
+        R: Into<super::helpers::ClipboardCopy>,
     {
         let text = self.current_copy_selection_text().unwrap_or_default();
         if text.is_empty() {
@@ -405,17 +415,17 @@ impl App {
             return false;
         }
 
-        let success = copy_text(&text);
+        let copy = copy_text(&text).into();
         self.copy_selection_mode = false;
         self.copy_selection_dragging = false;
         self.copy_selection_pending_anchor = None;
         self.copy_selection_edge_autoscroll = None;
-        self.set_status_notice(if success {
-            "Copied selection · highlight remains visible"
-        } else {
-            "Failed to copy selection"
-        });
-        success
+        self.report_clipboard_copy(
+            copy,
+            "Copied selection · highlight remains visible",
+            "Selection copy sent (unconfirmed) · highlight remains visible",
+            "Failed to copy selection",
+        )
     }
 
     pub(super) fn handle_copy_selection_key(
@@ -475,8 +485,31 @@ impl App {
         if let Some(point) = crate::tui::ui::copy_pane_autoscroll_edge_point(pane, upward) {
             self.update_selection_with_point(point, true);
         }
-        self.scroll_copy_selection_pane(pane, upward);
-        true
+        self.step_copy_selection_scroll(pane, upward)
+    }
+
+    fn copy_selection_scroll_target(
+        pane: crate::tui::CopySelectionPane,
+    ) -> Option<super::MouseScrollTarget> {
+        match pane {
+            crate::tui::CopySelectionPane::Chat => Some(super::MouseScrollTarget::Chat),
+            crate::tui::CopySelectionPane::SidePane => Some(super::MouseScrollTarget::SidePane),
+            // The composer scrolls with the caret, not the mouse wheel.
+            crate::tui::CopySelectionPane::Input => None,
+        }
+    }
+
+    /// Step the drag edge autoscroll by exactly one line. The drag's rate is the
+    /// `REDRAW_COPY_AUTOSCROLL` tick, so this must not use the wheel's queue.
+    fn step_copy_selection_scroll(
+        &mut self,
+        pane: crate::tui::CopySelectionPane,
+        upward: bool,
+    ) -> bool {
+        let Some(target) = Self::copy_selection_scroll_target(pane) else {
+            return false;
+        };
+        self.apply_mouse_scroll_step(target, if upward { -1 } else { 1 })
     }
 
     fn scroll_copy_selection_pane(
@@ -484,22 +517,10 @@ impl App {
         pane: crate::tui::CopySelectionPane,
         upward: bool,
     ) -> bool {
-        match pane {
-            crate::tui::CopySelectionPane::Chat => {
-                self.enqueue_mouse_scroll(
-                    super::MouseScrollTarget::Chat,
-                    if upward { -1 } else { 1 },
-                );
-            }
-            crate::tui::CopySelectionPane::SidePane => {
-                self.enqueue_mouse_scroll(
-                    super::MouseScrollTarget::SidePane,
-                    if upward { -1 } else { 1 },
-                );
-            }
-            // The composer scrolls with the caret, not the mouse wheel.
-            crate::tui::CopySelectionPane::Input => return false,
-        }
+        let Some(target) = Self::copy_selection_scroll_target(pane) else {
+            return false;
+        };
+        self.enqueue_mouse_scroll(target, if upward { -1 } else { 1 });
         true
     }
 
@@ -507,13 +528,14 @@ impl App {
         self.handle_copy_selection_mouse_with(mouse, super::helpers::copy_to_clipboard)
     }
 
-    pub(super) fn handle_copy_selection_mouse_with<F>(
+    pub(super) fn handle_copy_selection_mouse_with<F, R>(
         &mut self,
         mouse: MouseEvent,
         copy_text: F,
     ) -> Option<bool>
     where
-        F: FnOnce(&str) -> bool,
+        F: FnOnce(&str) -> R,
+        R: Into<super::helpers::ClipboardCopy>,
     {
         let point = crate::tui::ui::copy_point_from_screen(mouse.column, mouse.row);
         match mouse.kind {
@@ -566,8 +588,14 @@ impl App {
                         crate::tui::ui::copy_pane_vertical_edge_point(pane, mouse.column, mouse.row)
                 {
                     self.update_selection_with_point(edge_point, true);
-                    self.scroll_copy_selection_pane(pane, upward);
-                    self.copy_selection_edge_autoscroll = Some((pane, upward));
+                    // Nudge once when the drag first enters the edge band (or
+                    // flips direction). While it stays in the band the tick loop
+                    // owns scrolling, so moving the cursor within the band cannot
+                    // outpace a cursor held still.
+                    if self.copy_selection_edge_autoscroll != Some((pane, upward)) {
+                        self.step_copy_selection_scroll(pane, upward);
+                        self.copy_selection_edge_autoscroll = Some((pane, upward));
+                    }
                     return Some(false);
                 }
                 // Left the edge: stop the continuous autoscroll.

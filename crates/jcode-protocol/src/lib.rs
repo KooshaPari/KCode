@@ -20,6 +20,10 @@ use jcode_batch_types::BatchProgress;
 use jcode_message_types::{InputShellResult, ToolCall};
 use jcode_plan::{PlanItem, VersionedPlan, next_runnable_item_ids, summarize_plan_graph};
 use jcode_side_panel_types::{SidePanelSnapshot, snapshot_is_empty};
+
+fn applets_is_empty(applets: &jcode_applet_types::AgentApplets) -> bool {
+    applets.instances.is_empty()
+}
 use std::collections::BTreeMap;
 
 #[path = "protocol_memory.rs"]
@@ -30,6 +34,18 @@ pub use memory_snapshots::{
     MemoryStepStatusSnapshot,
 };
 
+/// How a transcript message should be merged into the running
+/// conversation history.
+///
+/// Used by the protocol's inter-session handoff path so that a session
+/// resuming from a snapshot can either
+/// [`Insert`](TranscriptMode::Insert) at an arbitrary position,
+/// [`Append`](TranscriptMode::Append) to the tail,
+/// [`Replace`](TranscriptMode::Replace) a previous message (used for
+/// stream rescans and mid-turn correction), or
+/// [`Send`](TranscriptMode::Send) (default — leaves history
+/// untouched and just transmits the new message). The wire form is
+/// snake_case.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum TranscriptMode {
@@ -48,7 +64,20 @@ pub enum CommDeliveryMode {
     Wake,
 }
 
-/// A message in conversation history (for sync)
+/// A single message in a session's conversation history, used by the
+/// cross-session sync surface.
+///
+/// Every front-end ([`jcode-tui`], [`jcode-sdk`], web clients reading
+/// from `jcode-harness-api`) reads and writes sessions as a `Vec<HistoryMessage>`.
+/// The fields are deliberately JSON-friendly and omit empty optionals:
+/// - `role` and `content` are always present (a "role" of `""` is the
+///   sentinel for a system event such as a tool-call result).
+/// - `tool_calls` carries the list of tool-call names the assistant
+///   invoked in this turn; absent when the message has no tool calls.
+/// - `tool_data` holds the actual structured [`ToolCall`] payload when
+///   needed for replay.
+/// - `response_stats` is set when the provider returned token telemetry
+///   for this turn; surfaces use it to render per-turn cost.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryMessage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -194,6 +223,23 @@ pub struct ToolCallSummary {
 pub struct SwarmChannelInfo {
     pub channel: String,
     pub member_count: usize,
+}
+
+/// Directory entry for one live swarm, used for cross-swarm discovery.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SwarmInfo {
+    pub swarm_id: String,
+    /// Human-readable, unique swarm label, when one has been set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinator_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinator_name: Option<String>,
+    pub member_count: usize,
+    /// Whether the requesting session belongs to this swarm.
+    #[serde(default)]
+    pub is_own: bool,
 }
 
 /// A shared context entry
@@ -611,6 +657,10 @@ impl Request {
             Request::ResumeSession { id, .. } => *id,
             Request::ResumeAllSessions { id } => *id,
             Request::NotifySession { id, .. } => *id,
+            Request::NotifySessionReceipt { id, .. } => *id,
+            Request::GetWakeReceipt { id, .. } => *id,
+            Request::AppletAction { id, .. } => *id,
+            Request::CloseApplet { id, .. } => *id,
             Request::Transcript { id, .. } => *id,
             Request::InputShell { id, .. } => *id,
             Request::CycleModel { id, .. } => *id,
@@ -645,6 +695,8 @@ impl Request {
             Request::CommMessage { id, .. } => *id,
             Request::CommList { id, .. } => *id,
             Request::CommListChannels { id, .. } => *id,
+            Request::CommListSwarms { id, .. } => *id,
+            Request::CommSetSwarmLabel { id, .. } => *id,
             Request::CommChannelMembers { id, .. } => *id,
             Request::CommProposePlan { id, .. } => *id,
             Request::CommApprovePlan { id, .. } => *id,
@@ -682,6 +734,8 @@ impl Request {
                 | Request::CommMessage { .. }
                 | Request::CommList { .. }
                 | Request::CommListChannels { .. }
+                | Request::CommListSwarms { .. }
+                | Request::CommSetSwarmLabel { .. }
                 | Request::CommChannelMembers { .. }
                 | Request::CommProposePlan { .. }
                 | Request::CommApprovePlan { .. }

@@ -441,7 +441,7 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
                         .filter(|path| path.is_dir())
                         .or_else(|| std::env::current_dir().ok())
                         .unwrap_or_else(|| std::path::PathBuf::from("."));
-                    let socket = std::env::var("JCODE_SOCKET").ok();
+                    let socket = std::env::var("KCODE_SOCKET").ok();
                     match super::spawn_in_new_terminal(
                         &exe,
                         &prepared.session_id,
@@ -457,14 +457,14 @@ pub(super) fn poll_local_transfer_prepare(app: &mut App) -> bool {
                         }
                         Ok(false) => {
                             app.push_display_message(DisplayMessage::system(format!(
-                                "↗ Transfer session {} created.\n\nNo terminal was opened automatically. Resume manually:\n\n  jcode --resume {}",
+                                "↗ Transfer session {} created.\n\nNo terminal was opened automatically. Resume manually:\n\n  kcode --resume {}",
                                 prepared.session_name, prepared.session_id
                             )));
                             app.set_status_notice("Transfer session created");
                         }
                         Err(error) => {
                             app.push_display_message(DisplayMessage::error(format!(
-                                "Transfer session {} was created but failed to open a window: {}\n\nResume manually: jcode --resume {}",
+                                "Transfer session {} was created but failed to open a window: {}\n\nResume manually: kcode --resume {}",
                                 prepared.session_name, error, prepared.session_id
                             )));
                             app.set_status_notice("Transfer open failed");
@@ -1028,7 +1028,7 @@ pub(super) fn handle_log_command(app: &mut App, trimmed: &str) -> bool {
     let note_for_log = if note.is_empty() { "(none)" } else { note };
 
     crate::logging::info(&format!(
-        "JCODE_LOG_MARK id={} session={} provider={} model={} cwd={} note={}",
+        "KCODE_LOG_MARK id={} session={} provider={} model={} cwd={} note={}",
         marker_id,
         app.session.id,
         app.provider_name(),
@@ -1038,7 +1038,7 @@ pub(super) fn handle_log_command(app: &mut App, trimmed: &str) -> bool {
     ));
 
     let mut message = format!(
-        "Log mark written: {}\n\nAgents can search ~/.jcode/logs/ for JCODE_LOG_MARK or this marker id.",
+        "Log mark written: {}\n\nAgents can search ~/.kcode/logs/ for KCODE_LOG_MARK or this marker id.",
         marker_id
     );
     if !note.is_empty() {
@@ -1280,7 +1280,7 @@ Type your password into that SSH prompt if asked. Jcode will not see or store it
             profile.name,
             crate::ssh_remote::control_socket_path(&profile.name)
                 .map(|p| p.display().to_string())
-                .unwrap_or_else(|_| "~/.jcode/ssh-control/remote.sock".to_string()),
+                .unwrap_or_else(|_| "~/.kcode/ssh-control/remote.sock".to_string()),
             profile.ssh_target
         ))),
         Err(error) => app.push_display_message(DisplayMessage::error(format!(
@@ -1681,6 +1681,12 @@ pub(super) fn handle_session_command(app: &mut App, trimmed: &str) -> bool {
         || handle_judge_command_local(app, trimmed)
         || handle_selfdev_command(app, trimmed)
     {
+        return true;
+    }
+
+    if super::commands_cloud::parse_cloud_command(trimmed).is_some() {
+        let session_id = active_session_id(app);
+        super::commands_cloud::handle_cloud_command(app, trimmed, &session_id);
         return true;
     }
 
@@ -2514,7 +2520,7 @@ fn handle_selfdev_command(app: &mut App, trimmed: &str) -> bool {
                     "Created self-dev session {} but could not auto-open a supported terminal.\n\nRun manually:\n{}",
                     launch.session_id,
                     launch.command_preview().unwrap_or_else(|| format!(
-                        "jcode --resume {} self-dev",
+                        "kcode --resume {} self-dev",
                         launch.session_id
                     ))
                 )
@@ -2840,6 +2846,18 @@ pub(super) fn active_working_dir(app: &App) -> Option<std::path::PathBuf> {
 }
 
 pub(super) fn handle_dictation_command(app: &mut App, trimmed: &str) -> bool {
+    if trimmed == "/voice" {
+        app.toggle_voice_input();
+        return true;
+    }
+    if trimmed.starts_with("/voice ") {
+        let key = app.voice_input_key_label().unwrap_or("unbound").to_string();
+        app.push_display_message(DisplayMessage::error(format!(
+            "Usage: /voice (or {key}) starts recording, run it again to send, Esc cancels.\n\
+             Needs a Nari API key (NARI_API_KEY or ~/.config/kcode/nari.env)."
+        )));
+        return true;
+    }
     if trimmed == "/dictate" || trimmed == "/dictation" {
         app.handle_dictation_trigger();
         return true;
@@ -2847,7 +2865,7 @@ pub(super) fn handle_dictation_command(app: &mut App, trimmed: &str) -> bool {
 
     if trimmed.starts_with("/dictate ") || trimmed.starts_with("/dictation ") {
         app.push_display_message(DisplayMessage::error(
-            "Usage: /dictate\nConfigure [dictation] in ~/.jcode/config.toml to customize command, mode, hotkey, and timeout."
+            "Usage: /dictate\nConfigure [dictation] in ~/.kcode/config.toml to customize command, mode, hotkey, and timeout."
                 .to_string(),
         ));
         return true;
@@ -3051,7 +3069,7 @@ fn ensure_swarm_prompt_edit_path(
         Some(path) => PathBuf::from(path),
         None => std::env::current_dir()?,
     };
-    let project_path = project_dir.join(".jcode").join("swarm-prompt.md");
+    let project_path = project_dir.join(".kcode").join("swarm-prompt.md");
     if file_has_nonblank_content(&project_path) {
         return Ok(project_path);
     }

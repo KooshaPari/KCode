@@ -176,6 +176,7 @@ export type ApiRequest =
   | { req: "get_runtime_info"; session_id: string }
   | { req: "set_api_key"; provider: string; api_key: string }
   | { req: "notify_auth_changed"; provider: string }
+  | { req: "invalidate_usage"; provider: string; account_label?: string }
   | { req: "clear_api_key"; provider: string }
   | { req: "read_file"; session_id: string; path: string; max_bytes?: number }
   | { req: "find_files"; session_id: string; query: string; limit?: number }
@@ -185,8 +186,19 @@ export type ApiRequest =
   | { req: "set_reasoning_effort"; session_id: string; effort: string }
   | { req: "compact"; session_id: string }
   | { req: "rename_session"; session_id: string; title?: string }
+  | { req: "set_session_saved"; session_id: string; saved: boolean; label?: string }
+  | {
+      req: "applet_action";
+      session_id: string;
+      instance: string;
+      action: AppletAction;
+      state?: Record<string, unknown>;
+      source_key?: string;
+    }
+  | { req: "close_applet"; session_id: string; instance: string }
   | { req: "rewind_undo"; session_id: string }
   | { req: "cancel_soft_interrupts"; session_id: string }
+  | { req: "background_tool"; session_id: string }
   | { req: "ping" };
 
 /** Markdown/PDF panel state, shared with the native runtime. */
@@ -283,6 +295,7 @@ export type ApiEvent =
       provider?: string;
       model?: string;
       reasoning_effort?: string;
+      auth_method?: string;
     }
   | { ev: "models"; session_id: string; models: string[]; current?: string }
   | {
@@ -291,6 +304,7 @@ export type ApiEvent =
       provider?: string;
       model?: string;
       reasoning_effort?: string;
+      auth_method?: string;
       routes: ModelRouteInfo[];
     }
   | { ev: "credential_updated"; provider: string; configured: boolean }
@@ -375,6 +389,7 @@ export const KNOWN_EVENT_KINDS = [
   "tool_exec",
   "tool_done",
   "token_usage",
+  "kv_cache_miss",
   "turn_done",
   "turn_stopped",
   "wake_requested",
@@ -423,6 +438,7 @@ export const KNOWN_REQUEST_KINDS = [
   "set_api_key",
   "clear_api_key",
   "notify_auth_changed",
+  "invalidate_usage",
   "read_file",
   "find_files",
   "search_text",
@@ -431,8 +447,12 @@ export const KNOWN_REQUEST_KINDS = [
   "set_reasoning_effort",
   "compact",
   "rename_session",
+  "set_session_saved",
+  "applet_action",
+  "close_applet",
   "rewind_undo",
   "cancel_soft_interrupts",
+  "background_tool",
   "ping",
 ] as const;
 

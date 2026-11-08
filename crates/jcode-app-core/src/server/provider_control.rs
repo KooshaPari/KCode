@@ -373,14 +373,6 @@ async fn apply_auth_route_to_agent(
     }
 }
 
-fn model_switching_unavailable_current(agent: &Agent) -> Option<String> {
-    if agent.available_models_for_switching().is_empty() {
-        Some(agent.provider_model())
-    } else {
-        None
-    }
-}
-
 fn send_model_changed_result(
     id: u64,
     result: anyhow::Result<(
@@ -389,6 +381,7 @@ fn send_model_changed_result(
         Option<jcode_provider_core::ResolvedCredential>,
     )>,
     fallback_model: String,
+    agent: &Agent,
     client_event_tx: &mpsc::UnboundedSender<ServerEvent>,
 ) {
     match result {
@@ -406,6 +399,7 @@ fn send_model_changed_result(
                 id,
                 model: updated,
                 provider_name: Some(provider_name),
+                context_window: Some(agent.provider_context_window() as u64),
                 error: None,
                 resolved_credential,
             });
@@ -423,6 +417,7 @@ fn send_model_changed_result(
                 id,
                 model: fallback_model,
                 provider_name: None,
+                context_window: Some(agent.provider_context_window() as u64),
                 error: Some(error.to_string()),
                 resolved_credential: None,
             });
@@ -442,6 +437,7 @@ fn apply_cycle_model(
             id,
             model: agent.provider_model(),
             provider_name: None,
+            context_window: Some(agent.provider_context_window() as u64),
             error: Some("Model switching is not available for this provider.".to_string()),
             resolved_credential: None,
         });
@@ -480,7 +476,7 @@ fn apply_cycle_model(
             )
         })
     };
-    send_model_changed_result(id, result, current, client_event_tx);
+    send_model_changed_result(id, result, current, agent, client_event_tx);
 }
 
 pub(super) async fn handle_cycle_model(
@@ -606,7 +602,7 @@ fn apply_set_model(
             )
         })
     };
-    send_model_changed_result(id, result, current, client_event_tx);
+    send_model_changed_result(id, result, current, agent, client_event_tx);
 }
 
 fn apply_set_route(
@@ -661,7 +657,7 @@ fn apply_set_route(
             )
         })
     };
-    send_model_changed_result(id, result, current, client_event_tx);
+    send_model_changed_result(id, result, current, agent, client_event_tx);
 }
 
 pub(super) async fn handle_set_model(
@@ -1416,8 +1412,8 @@ mod tests {
     impl IsolatedRuntimeDir {
         fn new() -> Self {
             let temp = tempfile::TempDir::new().expect("runtime dir");
-            let prev_runtime = std::env::var_os("JCODE_RUNTIME_DIR");
-            crate::env::set_var("JCODE_RUNTIME_DIR", temp.path());
+            let prev_runtime = std::env::var_os("KCODE_RUNTIME_DIR");
+            crate::env::set_var("KCODE_RUNTIME_DIR", temp.path());
             Self {
                 _prev_runtime: prev_runtime,
                 _temp: temp,
@@ -1428,9 +1424,9 @@ mod tests {
     impl Drop for IsolatedRuntimeDir {
         fn drop(&mut self) {
             if let Some(prev_runtime) = self._prev_runtime.take() {
-                crate::env::set_var("JCODE_RUNTIME_DIR", prev_runtime);
+                crate::env::set_var("KCODE_RUNTIME_DIR", prev_runtime);
             } else {
-                crate::env::remove_var("JCODE_RUNTIME_DIR");
+                crate::env::remove_var("KCODE_RUNTIME_DIR");
             }
         }
     }

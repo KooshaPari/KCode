@@ -7,7 +7,7 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $installScript = Join-Path $repoRoot 'scripts\install.ps1'
 
 $originalLocalAppData = $env:LOCALAPPDATA
-$originalImportOnly = $env:JCODE_INSTALL_PS1_IMPORT_ONLY
+$originalImportOnly = $env:KCODE_INSTALL_PS1_IMPORT_ONLY
 $testRoot = Join-Path $env:TEMP ("jcode-windows-launcher-tests-{0}" -f ([guid]::NewGuid().ToString('N')))
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 
@@ -32,7 +32,7 @@ function Assert-PathCount([string]$PathValue, [string]$Entry, [int]$ExpectedCoun
 
 try {
     $env:LOCALAPPDATA = Join-Path $testRoot 'LocalAppData'
-    $env:JCODE_INSTALL_PS1_IMPORT_ONLY = '1'
+    $env:KCODE_INSTALL_PS1_IMPORT_ONLY = '1'
     . $installScript
 
     $installDir = Join-Path $env:LOCALAPPDATA 'jcode\bin'
@@ -78,33 +78,33 @@ try {
     Assert-Equal 'v0.47.0' (Get-JcodeVersionFromBinary $freshProfileBinary) 'binary version probe should tolerate a successful fresh-profile telemetry notice on stderr'
 
     Write-Host 'test_windows_architecture_detection_prefers_native_arm64'
-    Assert-Equal 'jcode-windows-x86_64' (Resolve-JcodeWindowsArtifact @('X64', 'AMD64')) 'x64 Windows should select the x64 release asset'
-    Assert-Equal 'jcode-windows-aarch64' (Resolve-JcodeWindowsArtifact @('Arm64')) 'native ARM64 Windows should select the ARM64 release asset'
-    Assert-Equal 'jcode-windows-aarch64' (Resolve-JcodeWindowsArtifact @('X64', 'AMD64', 'ARM64')) 'emulated x64 PowerShell on Windows ARM64 should prefer the native ARM64 release asset'
+    Assert-Equal 'kcode-windows-x86_64' (Resolve-JcodeWindowsArtifact @('X64', 'AMD64')) 'x64 Windows should select the x64 release asset'
+    Assert-Equal 'kcode-windows-aarch64' (Resolve-JcodeWindowsArtifact @('Arm64')) 'native ARM64 Windows should select the ARM64 release asset'
+    Assert-Equal 'kcode-windows-aarch64' (Resolve-JcodeWindowsArtifact @('X64', 'AMD64', 'ARM64')) 'emulated x64 PowerShell on Windows ARM64 should prefer the native ARM64 release asset'
     Assert-Equal $null (Resolve-JcodeWindowsArtifact @('x86', 'unknown')) 'unsupported architectures should not silently select an asset'
 
     Write-Host 'test_release_checksum_validation'
     $checksumFile = Join-Path $testRoot 'checksum.bin'
     Set-Content -LiteralPath $checksumFile -Value 'known-content' -NoNewline
     $digest = (Get-FileHash -LiteralPath $checksumFile -Algorithm SHA256).Hash.ToLowerInvariant()
-    $manifest = "$digest  nested/path/jcode-windows-x86_64.exe"
+    $manifest = "$digest  nested/path/kcode-windows-x86_64.exe"
     $manifestBytes = [System.Text.Encoding]::UTF8.GetBytes($manifest)
     Assert-Equal $manifest (ConvertFrom-JcodeWebContent -Content $manifest) 'web response decoder should preserve string content'
     Assert-Equal $manifest (ConvertFrom-JcodeWebContent -Content $manifestBytes) 'web response decoder should decode Windows PowerShell 5.1 byte-array content as UTF-8'
-    Assert-Equal $digest (Get-JcodeSha256FromManifest -ManifestText (ConvertFrom-JcodeWebContent -Content $manifestBytes) -AssetName 'jcode-windows-x86_64.exe') 'checksum parser should accept a manifest decoded from a byte-array web response'
-    Assert-Equal $digest (Get-JcodeSha256FromManifest -ManifestText $manifest -AssetName 'jcode-windows-x86_64.exe') 'checksum parser should match release assets by file name'
+    Assert-Equal $digest (Get-JcodeSha256FromManifest -ManifestText (ConvertFrom-JcodeWebContent -Content $manifestBytes) -AssetName 'kcode-windows-x86_64.exe') 'checksum parser should accept a manifest decoded from a byte-array web response'
+    Assert-Equal $digest (Get-JcodeSha256FromManifest -ManifestText $manifest -AssetName 'kcode-windows-x86_64.exe') 'checksum parser should match release assets by file name'
     Assert-Equal $null (Get-JcodeSha256FromManifest -ManifestText $manifest -AssetName 'missing.exe') 'checksum parser should fail closed when the requested asset is absent'
-    Assert-Equal $digest (Assert-JcodeFileChecksum -FilePath $checksumFile -ExpectedSha256 $digest -AssetName 'jcode-windows-x86_64.exe') 'checksum validation should accept the matching digest'
+    Assert-Equal $digest (Assert-JcodeFileChecksum -FilePath $checksumFile -ExpectedSha256 $digest -AssetName 'kcode-windows-x86_64.exe') 'checksum validation should accept the matching digest'
     $checksumThrew = $false
     try {
-        Assert-JcodeFileChecksum -FilePath $checksumFile -ExpectedSha256 ('0' * 64) -AssetName 'jcode-windows-x86_64.exe' | Out-Null
+        Assert-JcodeFileChecksum -FilePath $checksumFile -ExpectedSha256 ('0' * 64) -AssetName 'kcode-windows-x86_64.exe' | Out-Null
     } catch {
         $checksumThrew = $true
     }
     Assert-Equal $true $checksumThrew 'checksum validation should reject a mismatched digest'
     Assert-Equal $false (Test-Path -LiteralPath $checksumFile) 'checksum validation should delete a mismatched download'
-    $armManifest = "$digest  nested/path/jcode-windows-aarch64.exe"
-    Assert-Equal $digest (Get-JcodeSha256FromManifest -ManifestText $armManifest -AssetName 'jcode-windows-aarch64.exe') 'checksum parser should match the Windows ARM64 release asset'
+    $armManifest = "$digest  nested/path/kcode-windows-aarch64.exe"
+    Assert-Equal $digest (Get-JcodeSha256FromManifest -ManifestText $armManifest -AssetName 'kcode-windows-aarch64.exe') 'checksum parser should match the Windows ARM64 release asset'
 
     Write-Host 'test_temp_cleanup_tolerates_windows_short_paths'
     $installText = Get-Content -LiteralPath $installScript -Raw
@@ -126,7 +126,7 @@ try {
     Assert-True ($shortcutScript -match '(?m)^\$shortcut\.Save\(\)\r?$') 'shortcut script should call Save without escaping the variable name'
     Assert-True (-not $shortcutScript.Contains('`$shortcut')) 'shortcut script should not contain literal backticks before shortcut variables'
     [void][scriptblock]::Create($shortcutScript)
-    Assert-True ($installText.Contains('JCODE_WINDOWS_SETUP_SKIP_PROCESS_LIFECYCLE')) 'isolated verification should be able to create shortcut files without stopping or spawning real user listeners'
+    Assert-True ($installText.Contains('KCODE_WINDOWS_SETUP_SKIP_PROCESS_LIFECYCLE')) 'isolated verification should be able to create shortcut files without stopping or spawning real user listeners'
 
     Write-Host 'test_upgrade_replaces_launcher_no_extra_path'
     $sourceDir = Join-Path $testRoot 'sources'
@@ -138,7 +138,7 @@ try {
     Install-JcodeLauncher -SourcePath $sourceV1 -LauncherPath $launcherPath | Out-Null
     Install-JcodeLauncher -SourcePath $sourceV2 -LauncherPath $launcherPath | Out-Null
     Assert-Equal 'version-two' (Get-Content -Path $launcherPath -Raw) 'upgrade should replace launcher contents with the new build'
-    $tempLaunchers = @(Get-ChildItem -LiteralPath $installDir -Filter '.jcode-launcher-*.tmp.exe' -Force -ErrorAction SilentlyContinue)
+    $tempLaunchers = @(Get-ChildItem -LiteralPath $installDir -Filter '.kcode-launcher-*.tmp.exe' -Force -ErrorAction SilentlyContinue)
     Assert-Equal 0 $tempLaunchers.Count 'launcher upgrade should clean temporary files'
     $upgradePath = Resolve-JcodePathUpdate -InstallDir $installDir -CurrentPath $pathUpdate.Path
     Assert-Equal $false $upgradePath.Changed 'upgrade should not add another PATH entry when launcher dir is already present'
@@ -160,14 +160,14 @@ try {
 
         Assert-Equal (Get-FileHash -LiteralPath $replacementLauncher -Algorithm SHA256).Hash (Get-FileHash -LiteralPath $runningLauncher -Algorithm SHA256).Hash 'live upgrade should place the replacement at the stable launcher path'
         Assert-Equal $false $runningProcess.HasExited 'live upgrade should not terminate the process using the previous launcher'
-        $runningBackups = @(Get-ChildItem -LiteralPath $runningDir -Filter '.jcode-launcher-old-*.exe' -Force -ErrorAction SilentlyContinue)
+        $runningBackups = @(Get-ChildItem -LiteralPath $runningDir -Filter '.kcode-launcher-old-*.exe' -Force -ErrorAction SilentlyContinue)
         Assert-Equal 1 $runningBackups.Count 'live upgrade should retain exactly one locked old launcher until the process exits'
     } finally {
         Stop-ProcessTree -ProcessId $runningProcess.Id
         try { Wait-Process -Id $runningProcess.Id -Timeout 10 -ErrorAction SilentlyContinue } catch {}
     }
     Remove-JcodeStaleLauncherBackups -LauncherDir $runningDir
-    $runningBackups = @(Get-ChildItem -LiteralPath $runningDir -Filter '.jcode-launcher-old-*.exe' -Force -ErrorAction SilentlyContinue)
+    $runningBackups = @(Get-ChildItem -LiteralPath $runningDir -Filter '.kcode-launcher-old-*.exe' -Force -ErrorAction SilentlyContinue)
     Assert-Equal 0 $runningBackups.Count 'stale live-upgrade launchers should be removable after the old process exits'
 
     Write-Host 'test_launcher_replacement_failure_rolls_back'
@@ -206,8 +206,8 @@ try {
     }
     Assert-Equal $true $rollbackThrew 'launcher replacement should surface a final move failure'
     Assert-Equal 'known-good' (Get-Content -LiteralPath $rollbackLauncher -Raw) 'launcher replacement should restore the previous stable launcher after a final move failure'
-    Assert-Equal 0 @(Get-ChildItem -LiteralPath $rollbackDir -Filter '.jcode-launcher-*.tmp.exe' -Force -ErrorAction SilentlyContinue).Count 'rollback should remove temporary launcher files'
-    Assert-Equal 0 @(Get-ChildItem -LiteralPath $rollbackDir -Filter '.jcode-launcher-old-*.exe' -Force -ErrorAction SilentlyContinue).Count 'rollback should restore rather than retain the previous launcher backup'
+    Assert-Equal 0 @(Get-ChildItem -LiteralPath $rollbackDir -Filter '.kcode-launcher-*.tmp.exe' -Force -ErrorAction SilentlyContinue).Count 'rollback should remove temporary launcher files'
+    Assert-Equal 0 @(Get-ChildItem -LiteralPath $rollbackDir -Filter '.kcode-launcher-old-*.exe' -Force -ErrorAction SilentlyContinue).Count 'rollback should restore rather than retain the previous launcher backup'
 
     Write-Host 'test_uninstall_removes_launcher_and_only_jcode_path'
     $removeCurrentPath = "$installDir;C:\Keep;$installVariant;C:\Keep"
@@ -219,6 +219,6 @@ try {
     Write-Host 'All Windows launcher install tests passed.' -ForegroundColor Green
 } finally {
     if ($null -eq $originalLocalAppData) { Remove-Item Env:LOCALAPPDATA -ErrorAction SilentlyContinue } else { $env:LOCALAPPDATA = $originalLocalAppData }
-    if ($null -eq $originalImportOnly) { Remove-Item Env:JCODE_INSTALL_PS1_IMPORT_ONLY -ErrorAction SilentlyContinue } else { $env:JCODE_INSTALL_PS1_IMPORT_ONLY = $originalImportOnly }
+    if ($null -eq $originalImportOnly) { Remove-Item Env:KCODE_INSTALL_PS1_IMPORT_ONLY -ErrorAction SilentlyContinue } else { $env:KCODE_INSTALL_PS1_IMPORT_ONLY = $originalImportOnly }
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

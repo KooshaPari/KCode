@@ -971,12 +971,12 @@ fn test_top_level_command_suggestions_include_project_local_skills() {
     let mut app = create_test_app();
 
     // Hermetic project-local skill: the suggestion list must surface skills
-    // found under <working_dir>/.jcode/skills, independent of the skills
+    // found under <working_dir>/.kcode/skills, independent of the skills
     // installed on the machine running the tests.
     let temp = tempfile::tempdir().expect("tempdir");
     let skill_dir = temp
         .path()
-        .join(".jcode")
+        .join(".kcode")
         .join("skills")
         .join("optimization");
     std::fs::create_dir_all(&skill_dir).expect("create skill dir");
@@ -1031,17 +1031,24 @@ fn test_top_level_command_suggestions_include_all_non_hidden_commands() {
 #[test]
 fn test_logout_clear_anthropic_accounts_removes_all_accounts_once() {
     with_temp_jcode_home(|| {
+        // `account_store::upsert_account` assigns its own canonical label
+        // (`claude-<animal>`) and ignores the requested one for a new account,
+        // so capture what it actually returns instead of assuming the request
+        // was honoured.
+        let mut assigned = Vec::new();
         for index in 1..=3 {
-            crate::auth::claude::upsert_account(crate::auth::claude::AnthropicAccount {
-                label: format!("requested-{index}"),
-                access: format!("access-{index}"),
-                refresh: format!("refresh-{index}"),
-                expires: 100 + index,
-                email: None,
-                subscription_type: None,
-                scopes: Vec::new(),
-            })
-            .unwrap();
+            assigned.push(
+                crate::auth::claude::upsert_account(crate::auth::claude::AnthropicAccount {
+                    label: format!("requested-{index}"),
+                    access: format!("access-{index}"),
+                    refresh: format!("refresh-{index}"),
+                    expires: 100 + index,
+                    email: None,
+                    subscription_type: None,
+                    scopes: Vec::new(),
+                })
+                .unwrap(),
+            );
         }
         crate::auth::claude::set_active_account("claude-panda").unwrap();
 
@@ -1208,8 +1215,8 @@ fn test_goals_show_suggestions_include_goal_ids() {
     let temp = tempfile::tempdir().expect("tempdir");
     let project = temp.path().join("repo");
     std::fs::create_dir_all(&project).expect("project dir");
-    let prev_home = std::env::var_os("JCODE_HOME");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let goal = crate::goal::create_goal(
         crate::goal::GoalCreateInput {
@@ -1232,9 +1239,9 @@ fn test_goals_show_suggestions_include_goal_ids() {
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -1255,11 +1262,16 @@ fn configure_test_remote_models_with_openai_recommendations(app: &mut App) {
         "gpt-5.3-codex-spark".to_string(),
         "gpt-5.3-codex".to_string(),
         "claude-opus-4-8".to_string(),
+        jcode_provider_core::DEFAULT_OPENAI_MODEL.to_string(),
+        jcode_provider_core::DEFAULT_CLAUDE_MODEL.to_string(),
     ];
     app.remote_model_options = app
         .remote_available_entries
         .iter()
-        .filter(|model| model.as_str() != "claude-opus-4-8")
+        .filter(|model| {
+            model.as_str() != "claude-opus-4-8"
+                && model.as_str() != jcode_provider_core::DEFAULT_CLAUDE_MODEL
+        })
         .cloned()
         .map(|model| crate::provider::ModelRoute {
             model,
@@ -1289,6 +1301,17 @@ fn configure_test_remote_models_with_openai_recommendations(app: &mut App) {
         usage: None,
         cheapness: None,
     });
+    for api_method in ["claude-oauth", "claude-api"] {
+        app.remote_model_options.push(crate::provider::ModelRoute {
+            model: jcode_provider_core::DEFAULT_CLAUDE_MODEL.to_string(),
+            provider: "Anthropic".to_string(),
+            api_method: api_method.to_string(),
+            available: true,
+            detail: String::new(),
+            usage: None,
+            cheapness: None,
+        });
+    }
 }
 
 fn configure_test_remote_openrouter_provider_routes(app: &mut App) {
@@ -1414,7 +1437,7 @@ fn test_swarm_prompt_command_is_discoverable_in_suggestions_and_help() {
         .command_help("swarm-prompt")
         .expect("/swarm-prompt should have detailed help");
     assert!(help.contains("/swarm-prompt"));
-    assert!(help.contains(".jcode/swarm-prompt.md"));
+    assert!(help.contains(".kcode/swarm-prompt.md"));
     assert!(help.contains("Restart or reload Jcode"));
 }
 

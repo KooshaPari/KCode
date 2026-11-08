@@ -10,8 +10,8 @@ pub struct TuiRuntimeState {
     focus_change: bool,
 }
 
-const INHERITED_MODES_ENV: &str = "JCODE_TUI_INHERITED_MODES";
-const INHERITED_THEME_ENV: &str = "JCODE_TUI_INHERITED_THEME";
+const INHERITED_MODES_ENV: &str = "KCODE_TUI_INHERITED_MODES";
+const INHERITED_THEME_ENV: &str = "KCODE_TUI_INHERITED_THEME";
 
 // Crossterm's Windows implementation enables Win32 console mouse input but does
 // not emit the VT mouse-tracking modes. Windows Terminal and other ConPTY hosts
@@ -232,7 +232,11 @@ pub fn install_panic_hook() {
         //    shell or by the backgrounded jcode server.
         if let Some(session_id) = get_current_session() {
             let panic_path = std::path::PathBuf::from(format!("{session_id}.panic.log"));
-            if let Ok(mut f) = std::fs::OpenOptions::new().append(true).create(true).open(&panic_path) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&panic_path)
+            {
                 use std::io::Write as _;
                 let timestamp = chrono::Utc::now().to_rfc3339();
                 let payload = info.payload_as_str().unwrap_or("<no message>");
@@ -255,7 +259,7 @@ pub fn install_panic_hook() {
                 telemetry::record_crash(&provider, &model, telemetry::SessionEndReason::Panic);
             }
 
-            if std::env::var_os("JCODE_SSH_REMOTE").is_none()
+            if std::env::var_os("KCODE_SSH_REMOTE").is_none()
                 && let Ok(mut session) = session::Session::load(&session_id)
                 && should_record_panic_as_crash(&session.status)
             {
@@ -267,7 +271,7 @@ pub fn install_panic_hook() {
 }
 
 pub fn mark_current_session_crashed(message: String) {
-    if std::env::var_os("JCODE_SSH_REMOTE").is_some() {
+    if std::env::var_os("KCODE_SSH_REMOTE").is_some() {
         return;
     }
     if let Some(session_id) = get_current_session() {
@@ -375,7 +379,7 @@ mod crash_resume_hint_tests {
         let joined = lines.join("\n");
 
         assert!(
-            joined.contains("jcode --resume ses_koala_123"),
+            joined.contains("kcode --resume ses_koala_123"),
             "the direct resume command must still be offered: {joined}"
         );
         assert!(
@@ -400,7 +404,7 @@ mod crash_resume_hint_tests {
         let joined = lines.join("\n");
 
         assert!(joined.contains("2 sessions crashed"), "{joined}");
-        assert!(joined.contains("jcode --resume ses_koala_123"), "{joined}");
+        assert!(joined.contains("kcode --resume ses_koala_123"), "{joined}");
         assert!(joined.contains("List all:"), "{joined}");
     }
 }
@@ -422,13 +426,13 @@ fn init_tui_terminal(inherited_terminal: bool) -> Result<ratatui::DefaultTermina
 }
 
 pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)> {
-    let is_resuming = std::env::var_os("JCODE_RESUMING").is_some();
+    let is_resuming = std::env::var_os("KCODE_RESUMING").is_some();
     let inherited_theme = std::env::var(INHERITED_THEME_ENV).ok();
     let inherited_modes_raw = std::env::var(INHERITED_MODES_ENV).ok();
     let inherited_modes = inherited_modes_raw
         .as_deref()
         .and_then(InheritedTerminalModes::decode);
-    // JCODE_RESUMING describes the session lifecycle, but only a valid modes
+    // KCODE_RESUMING describes the session lifecycle, but only a valid modes
     // handoff proves the previous process deliberately left the terminal live
     // across exec. A restart used to restore the terminal before exec while the
     // new process still took the resume path, leaving it on the primary screen
@@ -960,7 +964,7 @@ mod tests {
             let mut output = Vec::new();
             write_session_resume_hint(&mut output, &session_id).unwrap();
             let output = String::from_utf8(output).unwrap();
-            let expected_cmd = format!("jcode --resume {}", session_id);
+            let expected_cmd = format!("kcode --resume {}", session_id);
             assert!(output.contains(&expected_cmd));
             assert!(output.contains("to resume"));
             assert!(!session_id.is_empty());

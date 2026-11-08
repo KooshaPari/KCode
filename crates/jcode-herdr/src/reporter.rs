@@ -1,3 +1,4 @@
+#![allow(clippy::await_holding_lock)]
 //! HERDR lifecycle reporter for jcode and ForgeCode.
 //!
 //! [`HerdrReporter`] manages state transitions, debouncing, monotonic
@@ -195,7 +196,7 @@ impl HerdrReporter {
             "params": params,
         });
 
-        socket::send_fire_and_forget(self.env.socket_path(), &request).await;
+        socket::send_fire_and_forget(self.env.socket_path_or_default(), &request).await;
     }
 
     /// Report session file path for restore.
@@ -210,7 +211,7 @@ impl HerdrReporter {
         }
 
         let params = serde_json::json!({
-            "pane_id": self.env.pane_id(),
+            "pane_id": self.env.pane_id_or_empty(),
             "source": self.source,
             "agent": self.agent_label,
             "agent_session_path": session_path,
@@ -223,7 +224,7 @@ impl HerdrReporter {
             "params": params,
         });
 
-        socket::send_fire_and_forget(self.env.socket_path(), &request).await;
+        socket::send_fire_and_forget(self.env.socket_path_or_default(), &request).await;
     }
 
     /// Resume command Herdr should run to relaunch this session in a
@@ -268,14 +269,14 @@ impl HerdrReporter {
             "id": format!("{}:release:{}", self.source, next_seq()),
             "method": "pane.release_agent",
             "params": {
-                "pane_id": self.env.pane_id(),
+                "pane_id": self.env.pane_id_or_empty(),
                 "source": self.source,
                 "agent": self.agent_label,
                 "seq": next_seq(),
             }
         });
 
-        socket::send_fire_and_forget(self.env.socket_path(), &request).await;
+        socket::send_fire_and_forget(self.env.socket_path_or_default(), &request).await;
     }
 
     /// Send the initial idle report on session start.
@@ -321,7 +322,7 @@ impl HerdrReporter {
 
                 // Send the blocked state over socket.
                 let params = serde_json::json!({
-                    "pane_id": env.pane_id(),
+                    "pane_id": env.pane_id_or_empty(),
                     "source": source,
                     "agent": agent_label,
                     "state": "blocked",
@@ -333,14 +334,14 @@ impl HerdrReporter {
                     "method": "pane.report_agent",
                     "params": params,
                 });
-                socket::send_fire_and_forget(env.socket_path(), &request).await;
+                socket::send_fire_and_forget(env.socket_path_or_default(), &request).await;
             }
         });
     }
 
     async fn send_state_report(&self, state: AgentState, message: Option<String>) {
         let mut params = serde_json::json!({
-            "pane_id": self.env.pane_id(),
+            "pane_id": self.env.pane_id_or_empty(),
             "source": self.source,
             "agent": self.agent_label,
             "state": state.as_str(),
@@ -374,7 +375,7 @@ impl HerdrReporter {
             "params": params,
         });
 
-        socket::send_fire_and_forget(self.env.socket_path(), &request).await;
+        socket::send_fire_and_forget(self.env.socket_path_or_default(), &request).await;
     }
 }
 
@@ -393,7 +394,7 @@ impl Drop for HerdrReporter {
             "id": format!("{source}:release-drop:{}", next_seq()),
             "method": "pane.release_agent",
             "params": {
-                "pane_id": env.pane_id(),
+                "pane_id": env.pane_id_or_empty(),
                 "source": source,
                 "agent": agent_label,
                 "seq": next_seq(),
@@ -403,7 +404,7 @@ impl Drop for HerdrReporter {
         // Best-effort: spawn a short-lived task for the socket write.
         // Guard with try_current to avoid panicking when dropped outside
         // a tokio runtime (e.g. synchronous test cleanup).
-        let socket_path = env.socket_path().clone();
+        let socket_path = env.socket_path_or_default().clone();
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
                 socket::send_fire_and_forget(&socket_path, &request).await;

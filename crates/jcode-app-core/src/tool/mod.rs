@@ -4,7 +4,11 @@ pub mod apply_patch;
 pub mod bash;
 mod batch;
 pub mod bg;
+#[cfg(unix)]
+pub(crate) mod bridge_reload;
 pub mod browser;
+mod calendar;
+mod codemode;
 pub mod communicate;
 mod compile_remote;
 #[cfg(target_os = "macos")]
@@ -22,6 +26,9 @@ pub mod feedback;
 mod file_diff;
 pub(crate) mod file_lock;
 mod gmail;
+// The initiative tool is intentionally unregistered (4928a1c92) but kept for re-enable.
+pub mod applet;
+#[allow(dead_code)]
 mod goal;
 pub mod inflight;
 pub mod invalid;
@@ -465,6 +472,12 @@ impl Registry {
             // Initiative is temporarily unavailable. Keep its implementation and
             // saved data intact so it can be restored without a migration.
             Self::insert_tool_timed(&mut m, &mut timings, "gmail", gmail::GmailTool::new);
+            Self::insert_tool_timed(
+                &mut m,
+                &mut timings,
+                "calendar",
+                calendar::CalendarTool::new,
+            );
             Self::insert_tool_timed(&mut m, &mut timings, "schedule", ambient::ScheduleTool::new);
             Self::insert_tool_timed(&mut m, &mut timings, "selfdev", selfdev::SelfDevTool::new);
             Self::insert_tool_timed(
@@ -537,6 +550,15 @@ impl Registry {
             "conversation_search",
             conversation_search::ConversationSearchTool::new(compaction),
         );
+        // Codemode is opt-in (`[tools] codemode = true`). When off, the tool
+        // is never registered, so it costs nothing and never reaches a model.
+        if codemode::enabled() {
+            Self::insert_tool(
+                &mut tools_map,
+                "codemode",
+                codemode::CodemodeTool::new(registry.downgrade()),
+            );
+        }
         // Integration discovery is on by default (opt-out); when disabled the
         // tool is never registered and no discovery endpoint is ever
         // contacted.
@@ -618,6 +640,21 @@ impl Registry {
         tools.keys().cloned().collect()
     }
 
+    /// Tool definitions a session may call, honoring its registered allow and
+    /// deny policy. Per-server MCP tools are always listed individually and
+    /// the fixed `mcp_search`/`mcp_call` surface is omitted, because scripts
+    /// address MCP tools directly. Used by `codemode`.
+    pub(crate) async fn definitions_for_session(&self, session_id: &str) -> Vec<ToolDefinition> {
+        let policy = session_tool_policy(session_id);
+        let allowed = policy.as_ref().and_then(|p| p.allowed_tools.clone());
+        let mut defs = self.definitions(allowed.as_ref()).await;
+        if let Some(policy) = policy.as_ref() {
+            defs.retain(|def| !self.tool_is_disabled(&policy.disabled_tools, &def.name));
+        }
+        defs.retain(|def| !is_fixed_mcp_tool(&def.name));
+        defs
+    }
+
     /// Enable test mode for memory tools (isolated storage)
     /// Called when session is marked as debug
     pub async fn enable_memory_test_mode(&self) {
@@ -692,6 +729,83 @@ impl Registry {
         crate::util::estimate_tokens(s)
     }
 
+    /// Paths a tool call names in its input, labelled by the input key they
+    /// came from, resolved against the session working directory. Covers the
+    /// common path keys, `paths` arrays (first 8), and `apply_patch` file
+    /// headers (Codex envelope and unified diff).
+    fn touched_paths(input: &Value, ctx: &ToolContext) -> Vec<(&'static str, std::path::PathBuf)> {
+        let mut touched = Vec::new();
+        let Some(object) = input.as_object() else {
+            return touched;
+        };
+        let resolve = |path: &str| ctx.resolve_path(std::path::Path::new(path));
+        for key in [
+            "file_path",
+            "path",
+            "target",
+            "target_path",
+            "old_path",
+            "new_path",
+        ] {
+            if let Some(path) = object.get(key).and_then(Value::as_str) {
+                touched.push((key, resolve(path)));
+            }
+        }
+        if let Some(paths) = object.get("paths").and_then(Value::as_array) {
+            for path in paths.iter().filter_map(Value::as_str).take(8) {
+                touched.push(("paths", resolve(path)));
+            }
+        }
+        if let Some(patch) = object.get("patch_text").and_then(Value::as_str) {
+            for path in Self::patch_paths(patch) {
+                if !touched
+                    .iter()
+                    .any(|(_, existing)| *existing == resolve(path))
+                {
+                    touched.push(("patch", resolve(path)));
+                }
+            }
+        }
+        touched
+    }
+
+    /// File paths named in patch headers. Deletions are included because the
+    /// path was still touched; `/dev/null` sides of unified diffs are not.
+    fn patch_paths(patch: &str) -> Vec<&str> {
+        let mut paths = Vec::new();
+        for line in patch.lines() {
+            let path = [
+                "*** Add File: ",
+                "*** Update File: ",
+                "*** Delete File: ",
+                "*** Move to: ",
+            ]
+            .iter()
+            .find_map(|prefix| line.strip_prefix(prefix))
+            .or_else(|| {
+                let header = line
+                    .strip_prefix("+++ ")
+                    .or_else(|| line.strip_prefix("--- "))?;
+                let header = header.split('\t').next().unwrap_or(header).trim();
+                if header == "/dev/null" {
+                    return None;
+                }
+                Some(
+                    header
+                        .strip_prefix("a/")
+                        .or_else(|| header.strip_prefix("b/"))
+                        .unwrap_or(header),
+                )
+            });
+            if let Some(path) = path.map(str::trim).filter(|path| !path.is_empty())
+                && !paths.contains(&path)
+            {
+                paths.push(path);
+            }
+        }
+        paths
+    }
+
     fn tool_lifecycle_fields(
         phase: &str,
         requested_name: &str,
@@ -725,31 +839,10 @@ impl Registry {
             keys.sort();
             fields.push(("input_keys".to_string(), keys.join(",")));
 
-            let path_fields = [
-                "file_path",
-                "path",
-                "target",
-                "target_path",
-                "old_path",
-                "new_path",
-            ];
-            let mut touched_paths = Vec::new();
-            for key in path_fields {
-                if let Some(path) = object.get(key).and_then(Value::as_str) {
-                    touched_paths.push(format!(
-                        "{key}:{}",
-                        ctx.resolve_path(std::path::Path::new(path)).display()
-                    ));
-                }
-            }
-            if let Some(paths) = object.get("paths").and_then(Value::as_array) {
-                for path in paths.iter().filter_map(Value::as_str).take(8) {
-                    touched_paths.push(format!(
-                        "paths:{}",
-                        ctx.resolve_path(std::path::Path::new(path)).display()
-                    ));
-                }
-            }
+            let touched_paths = Self::touched_paths(input, ctx)
+                .into_iter()
+                .map(|(key, path)| format!("{key}:{}", path.display()))
+                .collect::<Vec<_>>();
             if !touched_paths.is_empty() {
                 fields.push(("touched_paths".to_string(), touched_paths.join(",")));
                 fields.push((
@@ -776,20 +869,32 @@ impl Registry {
     /// Outputs that would push total context beyond this are truncated.
     const CONTEXT_GUARD_THRESHOLD: f32 = 0.90;
 
-    /// Fire the `post_tool` observer hook with tool outcome metadata.
-    /// No-op (without building the payload) when the hook is not configured.
-    fn fire_post_tool_hook(
+    /// Event payload shared by the `post_tool` observer and the
+    /// `post_tool_feedback` hook.
+    fn post_tool_event(
+        event_name: &'static str,
         resolved_name: &str,
+        input: &Value,
         ctx: &ToolContext,
-        result: &Result<ToolOutput>,
+        result: std::result::Result<&ToolOutput, &anyhow::Error>,
         latency_ms: u64,
-    ) {
-        if !crate::hooks::hook_configured("post_tool") {
-            return;
+    ) -> crate::hooks::HookEvent {
+        let mut unique_paths: Vec<String> = Vec::new();
+        for (_, path) in Self::touched_paths(input, ctx) {
+            let path = path.display().to_string();
+            if !unique_paths.contains(&path) {
+                unique_paths.push(path);
+            }
         }
-        let mut event = crate::hooks::HookEvent::new("post_tool")
+        let mut event = crate::hooks::HookEvent::new(event_name)
             .session_id(ctx.session_id.clone())
             .field("TOOL_NAME", resolved_name)
+            .field("TOOL_CALL_ID", ctx.tool_call_id.clone())
+            .field(
+                "TOOL_INPUT",
+                crate::hooks::truncate_tool_input(&input.to_string()),
+            )
+            .field("TOUCHED_PATHS", unique_paths.join("\n"))
             .field("STATUS", if result.is_ok() { "ok" } else { "error" })
             .field("DURATION_MS", latency_ms.to_string());
         if let Some(dir) = &ctx.working_dir {
@@ -805,7 +910,61 @@ impl Registry {
                 event = event.field("ERROR", message);
             }
         }
-        crate::hooks::dispatch_observer(event);
+        event
+    }
+
+    /// Fire the `post_tool` observer hook with tool outcome metadata.
+    /// No-op (without building the payload) when the hook is not configured.
+    fn fire_post_tool_hook(
+        resolved_name: &str,
+        input: &Value,
+        ctx: &ToolContext,
+        result: &Result<ToolOutput>,
+        latency_ms: u64,
+    ) {
+        if !crate::hooks::hook_configured("post_tool") {
+            return;
+        }
+        crate::hooks::dispatch_observer(Self::post_tool_event(
+            "post_tool",
+            resolved_name,
+            input,
+            ctx,
+            result.as_ref(),
+            latency_ms,
+        ));
+    }
+
+    /// Run the synchronous `post_tool_feedback` hooks after a successful tool
+    /// call and append whatever they print to the tool result, so linters and
+    /// checkers can feed findings straight back to the model.
+    async fn apply_post_tool_feedback(
+        resolved_name: &str,
+        input: &Value,
+        ctx: &ToolContext,
+        latency_ms: u64,
+        output: &mut ToolOutput,
+    ) {
+        if !crate::hooks::hook_configured("post_tool_feedback") {
+            return;
+        }
+        let event = Self::post_tool_event(
+            "post_tool_feedback",
+            resolved_name,
+            input,
+            ctx,
+            Ok(output),
+            latency_ms,
+        );
+        if let Some(feedback) =
+            crate::hooks::run_post_tool_feedback(&event, &input.to_string()).await
+        {
+            if !output.output.is_empty() && !output.output.ends_with('\n') {
+                output.output.push('\n');
+            }
+            output.output.push_str("\n[post_tool_feedback]\n");
+            output.output.push_str(&feedback);
+        }
     }
 
     /// Maximum fraction of context budget a single tool output may occupy.
@@ -952,14 +1111,22 @@ impl Registry {
         // Drop the lock before executing
         drop(tools);
 
+        let working_dir = ctx
+            .working_dir
+            .as_ref()
+            .map(|dir| dir.display().to_string());
+        let input = crate::hooks::transform_tool_input(
+            &ctx.session_id,
+            working_dir.as_deref(),
+            resolved_name,
+            input,
+        )
+        .await;
+
         // User-configured pre_tool gate: external policy hook that can block
         // this call (exit 2). Skipped entirely when not configured.
         if crate::hooks::hook_configured("pre_tool") {
             let input_json = input.to_string();
-            let working_dir = ctx
-                .working_dir
-                .as_ref()
-                .map(|dir| dir.display().to_string());
             let decision = crate::hooks::run_pre_tool_gate(
                 &ctx.session_id,
                 working_dir.as_deref(),
@@ -988,7 +1155,7 @@ impl Registry {
         let latency_ms = started_at.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
 
         crate::telemetry::record_tool_execution(resolved_name, &input, result.is_ok(), latency_ms);
-        Self::fire_post_tool_hook(resolved_name, &ctx, &result, latency_ms);
+        Self::fire_post_tool_hook(resolved_name, &input, &ctx, &result, latency_ms);
 
         let mut output = match result {
             Ok(output) => output,
@@ -1001,6 +1168,8 @@ impl Registry {
                 return Err(error);
             }
         };
+
+        Self::apply_post_tool_feedback(resolved_name, &input, &ctx, latency_ms, &mut output).await;
 
         // Context overflow guard: check if this output would push us over the limit
         output = self
@@ -1339,7 +1508,7 @@ impl Registry {
     }
 
     /// Like [`Self::register_mcp_tools`], but resolves project-local MCP config
-    /// (`.mcp.json`, `.jcode/mcp.json`, `.claude/mcp.json`) against
+    /// (`.mcp.json`, `.kcode/mcp.json`, `.claude/mcp.json`) against
     /// `working_dir` instead of the server process cwd. Remote/client sessions
     /// must pass their session working directory here (issue #420).
     pub async fn register_mcp_tools_for_dir(
@@ -1490,7 +1659,12 @@ impl Registry {
             let registry = self.clone();
             tokio::spawn(async move {
                 let (successes, failures) = {
-                    let manager = mcp_manager.write().await;
+                    // `connect_all` mutates the manager's internal connection
+                    // maps but does not mutate the manager object itself. A
+                    // read guard lets MCP list and other management actions
+                    // inspect those maps while a slow initialize handshake is
+                    // in flight.
+                    let manager = mcp_manager.read().await;
                     manager.connect_all().await.unwrap_or((0, Vec::new()))
                 };
 

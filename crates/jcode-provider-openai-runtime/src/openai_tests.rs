@@ -166,7 +166,7 @@ impl LiveOpenAITestEnv {
         };
 
         let temp = tempfile::Builder::new()
-            .prefix("jcode-openai-live-")
+            .prefix("kcode-openai-live-")
             .tempdir()?;
         let target_auth = temp
             .path()
@@ -180,8 +180,8 @@ impl LiveOpenAITestEnv {
         )?;
         std::fs::copy(source_auth, &target_auth)?;
 
-        let jcode_home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
-        let transport = EnvVarGuard::set("JCODE_OPENAI_TRANSPORT", "https");
+        let jcode_home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
+        let transport = EnvVarGuard::set("KCODE_OPENAI_TRANSPORT", "https");
 
         Ok(Some(Self {
             _lock: lock,
@@ -244,16 +244,16 @@ include!("openai_tests/parsing_tools.rs");
 #[test]
 fn openai_credential_mode_runtime_provider_identity_round_trips() {
     let _guard = jcode_base::storage::lock_test_env();
-    let previous = std::env::var_os("JCODE_RUNTIME_PROVIDER");
+    let previous = std::env::var_os("KCODE_RUNTIME_PROVIDER");
 
-    jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", "openai");
+    jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", "openai");
     assert_eq!(
         OpenAICredentialMode::from_runtime_env(jcode_provider_core::DualAuthProvider::OpenAI),
         OpenAICredentialMode::OAuth,
         "OAuth selection must surface as the OAuth runtime identity"
     );
 
-    jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", "openai-api");
+    jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", "openai-api");
     assert_eq!(
         OpenAICredentialMode::from_runtime_env(jcode_provider_core::DualAuthProvider::OpenAI),
         OpenAICredentialMode::ApiKey,
@@ -261,8 +261,8 @@ fn openai_credential_mode_runtime_provider_identity_round_trips() {
     );
 
     match previous {
-        Some(value) => jcode_base::env::set_var("JCODE_RUNTIME_PROVIDER", value),
-        None => jcode_base::env::remove_var("JCODE_RUNTIME_PROVIDER"),
+        Some(value) => jcode_base::env::set_var("KCODE_RUNTIME_PROVIDER", value),
+        None => jcode_base::env::remove_var("KCODE_RUNTIME_PROVIDER"),
     }
 }
 

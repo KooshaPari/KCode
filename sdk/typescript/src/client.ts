@@ -21,6 +21,7 @@ import {
 } from "./structured.js";
 import {
   API_VERSION_MAJOR,
+  type AppletAction,
   type AnyApiEvent,
   type ApiEvent,
   type ApiRequest,
@@ -74,12 +75,13 @@ export interface Transport {
 }
 
 export function unixSocketTransport(socketPath: string): Promise<Transport> {
+  assertKcodePath(socketPath);
   return new Promise((resolve, reject) => {
     // On Windows the bridge listens on a named pipe derived from this path,
     // not on the path itself.
     const socket = net.createConnection(transportEndpoint(socketPath));
     socket.setNoDelay(true);
-    // A bare `connect ENOENT /run/user/1000/jcode-api.sock` names the syscall
+    // A bare `connect ENOENT /run/user/1000/kcode-api.sock` names the syscall
     // and hides the actual cause: the bridge is not running. The first thing
     // anyone does with this SDK is connect, so this is the error most likely
     // to be someone's first impression of it. Say what to do about it.
@@ -125,7 +127,7 @@ function connectError(socketPath: string, cause: NodeJS.ErrnoException): Harness
   const hint =
     code === "ENOENT"
       ? `no harness API socket at ${socketPath}. Start the bridge with ` +
-        "`jcode api-bridge`, or set JCODE_API_SOCKET to its path."
+        "`kcode api-bridge`, or set KCODE_API_SOCKET to its path."
       : code === "ECONNREFUSED"
         ? `nothing is listening on ${socketPath}; a stale socket file is left over ` +
           "from a bridge that exited. Restart the bridge."
@@ -311,7 +313,7 @@ export class JcodeClient extends EventEmitter {
   static async connect(options: ConnectOptions = {}): Promise<JcodeClient> {
     const socketPath = options.transport ? undefined : (options.socketPath ?? apiSocketPath());
     const transport = options.transport ?? (await unixSocketTransport(socketPath!));
-    const clientName = options.clientName ?? "jcode-sdk-ts";
+    const clientName = options.clientName ?? "kcode-sdk-ts";
     const client = new JcodeClient(
       transport,
       options.requestTimeoutMs ?? 30_000,
@@ -769,6 +771,19 @@ export class JcodeClient extends EventEmitter {
     await this.expectReply({ req: "notify_auth_changed", provider }, "ok");
   }
 
+  /**
+   * Tell the daemon a banked usage reset was redeemed for one subscription
+   * login (`claude` or `openai`) so it refetches quota. Carries no credentials.
+   */
+  async invalidateUsage(provider: string, accountLabel?: string): Promise<void> {
+    await this.expectReply(
+      accountLabel === undefined
+        ? { req: "invalidate_usage", provider }
+        : { req: "invalidate_usage", provider, account_label: accountLabel },
+      "ok",
+    );
+  }
+
   async readFile(sessionId: string, path: string, maxBytes?: number): Promise<FileContent> {
     const frame = await this.expectReply(
       { req: "read_file", session_id: sessionId, path, max_bytes: maxBytes },
@@ -851,6 +866,34 @@ export class JcodeClient extends EventEmitter {
     await this.requestOk({ req: "rename_session", session_id: sessionId, title });
   }
 
+  /** Bookmark or unbookmark a session. A label also becomes its title. */
+  async setSessionSaved(sessionId: string, saved: boolean, label?: string): Promise<void> {
+    await this.requestOk({ req: "set_session_saved", session_id: sessionId, saved, label });
+  }
+
+  /** Report a user action in an agent applet instance. */
+  async appletAction(
+    sessionId: string,
+    instance: string,
+    action: AppletAction,
+    state: Record<string, unknown> = {},
+    sourceKey?: string,
+  ): Promise<void> {
+    await this.requestOk({
+      req: "applet_action",
+      session_id: sessionId,
+      instance,
+      action,
+      state,
+      source_key: sourceKey,
+    });
+  }
+
+  /** Close an agent applet instance. The agent is not woken. */
+  async closeApplet(sessionId: string, instance: string): Promise<void> {
+    await this.requestOk({ req: "close_applet", session_id: sessionId, instance });
+  }
+
   /** Restore the history the last `rewind` removed. */
   async rewindUndo(sessionId: string): Promise<void> {
     await this.requestOk({ req: "rewind_undo", session_id: sessionId });
@@ -859,6 +902,11 @@ export class JcodeClient extends EventEmitter {
   /** Drop soft interrupts that are queued but not yet delivered. */
   async cancelSoftInterrupts(sessionId: string): Promise<void> {
     await this.requestOk({ req: "cancel_soft_interrupts", session_id: sessionId });
+  }
+
+  /** Move the running tool call to the background (the TUI's Alt+B). */
+  async backgroundTool(sessionId: string): Promise<void> {
+    await this.requestOk({ req: "background_tool", session_id: sessionId });
   }
 
   async ping(): Promise<void> {

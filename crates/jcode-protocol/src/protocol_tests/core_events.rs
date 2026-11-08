@@ -1,3 +1,64 @@
+/// The server resolves the real window and reports it here. A remote client
+/// cannot derive it itself: its provider is an inert placeholder with no model
+/// catalog, and the static resolver has no entry for a model it does not
+/// recognise, so without this field the panel shows the generic default.
+#[test]
+fn test_model_changed_roundtrip_carries_context_window() -> Result<()> {
+    let event = ServerEvent::ModelChanged {
+        id: 7,
+        model: "auto/included".to_string(),
+        provider_name: Some("OmniRouteV2".to_string()),
+        context_window: Some(1_310_720),
+        error: None,
+        resolved_credential: None,
+        reasoning_effort: None,
+    };
+    let json = encode_event(&event);
+    assert!(
+        json.contains("\"context_window\":1310720"),
+        "window must reach the wire: {json}"
+    );
+    let decoded = parse_event_json(json.trim())?;
+    let ServerEvent::ModelChanged {
+        context_window, ..
+    } = decoded
+    else {
+        return Err(anyhow!("wrong event type"));
+    };
+    assert_eq!(context_window, Some(1_310_720));
+    Ok(())
+}
+
+/// An older server omits the field. It must not appear on the wire, and the
+/// client must read it as unknown rather than as a number, so a missing value can
+/// never be mistaken for a real one.
+#[test]
+fn test_model_changed_without_context_window_stays_absent() -> Result<()> {
+    let event = ServerEvent::ModelChanged {
+        id: 3,
+        model: "m".to_string(),
+        provider_name: None,
+        context_window: None,
+        error: None,
+        resolved_credential: None,
+        reasoning_effort: None,
+    };
+    let json = encode_event(&event);
+    assert!(
+        !json.contains("context_window"),
+        "unknown window must be omitted, not sent as null: {json}"
+    );
+    let decoded = parse_event_json(json.trim())?;
+    let ServerEvent::ModelChanged {
+        context_window, ..
+    } = decoded
+    else {
+        return Err(anyhow!("wrong event type"));
+    };
+    assert_eq!(context_window, None);
+    Ok(())
+}
+
 #[test]
 fn test_request_roundtrip() -> Result<()> {
     let req = Request::Message {
@@ -258,6 +319,41 @@ fn test_rename_session_clear_request_roundtrip_omits_title() -> Result<()> {
 }
 
 #[test]
+fn test_rename_session_target_session_id_roundtrip() -> Result<()> {
+    let req = Request::RenameSwarmSession {
+        id: 42,
+        title: Some("worker label".to_string()),
+        target_session_id: "session_worker_abc".to_string(),
+    };
+    let json = serde_json::to_string(&req)?;
+    assert!(json.contains("\"target_session_id\":\"session_worker_abc\""));
+    assert!(json.contains("rename_swarm_session"));
+    let decoded = parse_request_json(&json)?;
+    let Request::RenameSwarmSession {
+        title,
+        target_session_id,
+        ..
+    } = decoded
+    else {
+        return Err(anyhow!("wrong request type"));
+    };
+    assert_eq!(title.as_deref(), Some("worker label"));
+    assert_eq!(target_session_id.as_str(), "session_worker_abc");
+    Ok(())
+}
+
+#[test]
+fn test_rename_session_without_target_session_id_omits_field() -> Result<()> {
+    let req = Request::RenameSession {
+        id: 43,
+        title: Some("self rename".to_string()),
+    };
+    let json = serde_json::to_string(&req)?;
+    assert!(!json.contains("target_session_id"));
+    Ok(())
+}
+
+#[test]
 fn test_event_roundtrip() -> Result<()> {
     let event = ServerEvent::TextDelta {
         text: "hello".to_string(),
@@ -508,6 +604,7 @@ fn test_history_event_roundtrip_preserves_side_panel_snapshot() -> Result<()> {
         autojudge_enabled: None,
         compaction_mode: jcode_config_types::CompactionMode::Reactive,
         activity: None,
+        applets: Default::default(),
         side_panel: jcode_side_panel_types::SidePanelSnapshot {
             focus_revision: 0,
             focused_page_id: Some("page-1".to_string()),
@@ -667,4 +764,25 @@ fn test_error_event_retry_after_back_compat_default() -> Result<()> {
     assert_eq!(message, "oops");
     assert_eq!(retry_after_secs, None);
     Ok(())
+}
+
+#[test]
+fn swarm_rename_is_rejected_by_legacy_server_and_requires_target() {
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(tag = "type")]
+    enum LegacyRequest {
+        #[serde(rename = "rename_session")]
+        RenameSession {
+            #[serde(rename = "id")]
+            _id: u64,
+        },
+    }
+    let request = Request::RenameSwarmSession {
+        id: 44,
+        title: Some("worker".into()),
+        target_session_id: "worker-session".into(),
+    };
+    let json = serde_json::to_string(&request).unwrap();
+    assert!(serde_json::from_str::<LegacyRequest>(&json).is_err());
+    assert!(parse_request_json(r#"{"type":"rename_swarm_session","id":44}"#).is_err());
 }

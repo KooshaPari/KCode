@@ -26,12 +26,18 @@ on:
     # Weekly drift check so FreeBSD breakage is caught even without a push.
     - cron: '0 7 * * 1'
 
+permissions:
+  contents: read
+
 concurrency:
   group: freebsd-smoke-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   smoke:
+    # Disabled: hosted ubuntu-latest minutes are capped at $0 (never pay for
+    # GH CI). Re-enable if hosted spend is ever restored.
+    if: false
     name: FreeBSD Smoke (x86_64)
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -74,12 +80,12 @@ jobs:
               TARGET_DIR="debug"
             fi
 
-            echo "::group::cargo build (jcode binary)"
-            cargo build --locked $PROFILE_FLAG -p jcode --bin jcode
+            echo "::group::cargo build (kcode binary)"
+            cargo build --locked $PROFILE_FLAG --bin kcode
             echo "::endgroup::"
 
             echo "::group::Verify binary launches"
-            ./target/$TARGET_DIR/jcode --version
+            ./target/$TARGET_DIR/kcode --version
             echo "::endgroup::"
 
             echo "::group::Compile platform unit tests"

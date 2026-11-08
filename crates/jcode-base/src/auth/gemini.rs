@@ -86,10 +86,10 @@ pub fn save_api_key(key: &str) -> Result<()> {
     if key.is_empty() {
         anyhow::bail!("Gemini API key cannot be empty");
     }
-    crate::provider_catalog::save_env_value_to_env_file(
-        GEMINI_API_KEY_ENV_VARS[0],
+    crate::provider_catalog::save_named_api_key(
         GEMINI_API_KEY_ENV_FILE,
-        Some(key),
+        GEMINI_API_KEY_ENV_VARS[0],
+        key,
     )?;
     super::AuthStatus::invalidate_cache();
     Ok(())
@@ -162,12 +162,12 @@ struct GeminiCliOAuthCredentials {
 /// Resolve the Gemini CLI command from the environment or a sensible default.
 ///
 /// Preference order:
-/// 1. `JCODE_GEMINI_CLI_PATH` (supports a full command like `npx @google/gemini-cli`)
+/// 1. `KCODE_GEMINI_CLI_PATH` (supports a full command like `npx @google/gemini-cli`)
 /// 2. `gemini` on PATH
 /// 3. `npx @google/gemini-cli`
 pub fn gemini_cli_command() -> GeminiCliCommand {
     resolve_gemini_cli_command_with(
-        std::env::var("JCODE_GEMINI_CLI_PATH").ok().as_deref(),
+        std::env::var("KCODE_GEMINI_CLI_PATH").ok().as_deref(),
         super::command_exists,
     )
 }

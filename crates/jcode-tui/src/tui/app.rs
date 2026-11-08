@@ -54,8 +54,12 @@ mod auth;
 mod auth_account_picker_saved_accounts;
 mod auth_remote;
 mod catchup;
+mod clipboard_copy;
+mod clipboard_notice;
 mod commands;
+mod commands_cloud;
 mod commands_colors;
+mod commands_desktop;
 mod commands_dispatch;
 mod commands_goal;
 mod commands_improve;
@@ -90,14 +94,17 @@ mod onboarding_sim;
 mod productivity;
 mod prompt_history;
 mod remote;
+mod remote_header_hint;
 mod remote_notifications;
 mod replay;
 pub(crate) mod run_shell;
 mod runtime_memory;
 mod shortcut_hints;
+mod slash_command_parser;
 mod split_view;
 mod state_ui;
 mod state_ui_input_helpers;
+mod update_rehearsal;
 mod update_sim;
 mod usage_reset;
 pub(crate) use state_ui_input_helpers::registered_command_entries;
@@ -112,14 +119,14 @@ mod terminal_liveness;
 mod terminal_setup_command;
 mod terminal_title;
 mod todos_view;
+pub(crate) mod tui_event;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
-pub(crate) mod tui_event;
 mod tui_state;
-mod ui_elicit;
 mod turn;
 mod turn_memory;
 mod turn_notify;
+mod ui_elicit;
 mod ui_prefs;
 
 pub(crate) use self::state_ui_storage::compact_display_messages_for_storage;
@@ -128,10 +135,14 @@ pub(crate) fn extract_input_shell_command(input: &str) -> Option<&str> {
     self::input::extract_input_shell_command(input)
 }
 
+pub(crate) fn has_safe_slash_command_token(input: &str) -> bool {
+    self::slash_command_parser::active_token_before_cursor(input, input.len()).is_some()
+}
+
 pub(crate) const COMMAND_SUGGESTION_VISIBLE_LIMIT: usize = 8;
 
 fn active_runtime_provider_key() -> Option<String> {
-    std::env::var("JCODE_RUNTIME_PROVIDER")
+    std::env::var("KCODE_RUNTIME_PROVIDER")
         .ok()
         .map(|value| value.trim().to_ascii_lowercase())
         .filter(|value| !value.is_empty())
@@ -159,10 +170,9 @@ struct PendingLocalTransfer {
 }
 
 /// A reasoning trace anchored in the transcript during the current turn
-/// (`current` display mode). `wrapped_lines_at_anchor` snapshots the
-/// transcript's total wrapped-line count when the trace anchored; once the
-/// transcript grows a viewport past that point the trace is provably above
-/// the tail-following viewport and can be removed with zero visible motion.
+/// (`current` display mode). `wrapped_lines_at_anchor` snapshots the total
+/// wrapped-line count at anchor; once the transcript grows a viewport past it,
+/// the trace is provably above the tail-following viewport and can be removed.
 #[derive(Debug, Clone, Copy)]
 struct TurnReasoningTrace {
     display_index: usize,
@@ -202,10 +212,9 @@ pub(in crate::tui::app) struct KvCacheRequestSignature {
 
 #[derive(Debug, Clone)]
 struct KvCacheBaseline {
-    /// Session this baseline was captured for. Baselines must only be diffed
-    /// against requests from the same session; otherwise a session switch makes
-    /// the new (often smaller) history look like a broken prefix and produces a
-    /// spurious `harness:_prefix_changed` miss.
+    /// Session this baseline was captured for. Diff only against requests from
+    /// the same session: a switch makes the new (often smaller) history look
+    /// like a broken prefix and produces a spurious `harness:_prefix_changed` miss.
     session_id: Option<String>,
     /// Cache-history generation this baseline belongs to. Compaction replaces
     /// the provider-facing transcript, so a baseline captured before it must
@@ -361,8 +370,7 @@ struct PendingFallbackOffer {
     remote_resend: Option<FallbackResendPayload>,
 }
 
-/// The failed remote turn's payload, held by a [`PendingFallbackOffer`] so a
-/// one-keypress accept can resend it after the route switch completes.
+/// Payload of the failed remote turn, resent by a one-keypress fallback accept.
 #[derive(Debug, Clone)]
 struct FallbackResendPayload {
     /// Expanded message content that was sent to the server.
@@ -428,6 +436,8 @@ pub(super) enum PendingReloadReconnectStatus {
 }
 
 const MEMORY_INJECTION_SUPPRESSION_SECS: u64 = 90;
+/// How long a transient status notice stays on screen.
+const STATUS_NOTICE_TTL: Duration = Duration::from_secs(3);
 
 /// Current processing status
 #[derive(Clone, Default, Debug)]
@@ -559,10 +569,25 @@ pub struct RunResult {
     pub update_session: Option<String>,
     /// Session ID to restart (exec into current binary, no build)
     pub restart_session: Option<String>,
+    /// After `/cloud` or `/local`: exec into the session at its new location.
+    pub cloud_handoff: Option<CloudHandoff>,
     /// Exit code to use (for canary wrapper communication)
     pub exit_code: Option<i32>,
     /// The session ID that was active (for resume hints on exit)
     pub session_id: Option<String>,
+}
+
+/// Where to reattach after a machine move.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CloudHandoff {
+    /// Attach to the session on a cloud host over SSH.
+    Remote {
+        session_id: String,
+        host: String,
+        working_dir: Option<String>,
+    },
+    /// Resume the (returned) session locally.
+    Local { session_id: String },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -636,6 +661,28 @@ pub(super) struct HistoryScrollAnchor {
     /// to detect when a frame with the newly-loaded content has rendered (its
     /// total differs), so the anchor can be reconciled into `scroll_offset`.
     pub base_total: usize,
+}
+
+/// Resize anchor captured against the pre-resize geometry.
+///
+/// The stored `scroll_offset` is a wrapped line index, which only means
+/// something for the width that produced it. When a resize rewraps the
+/// transcript while the reader is paused in history, the reading position is
+/// captured in content coordinates instead, and the next frame resolves it
+/// against the new geometry so the same message stays under the reader
+/// (issue #1412, persistent half).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PendingResizeAnchor {
+    /// Where the reader was, in content coordinates. A message, or a row in a
+    /// section with no message boundaries (live streaming output, retained
+    /// reasoning, the header).
+    pub target: jcode_tui_messages::ContentPos,
+    /// Viewport width the anchor was captured at; the frame that resolves it
+    /// is laid out at a different one.
+    pub captured_width: u16,
+    /// Resolved row the screen was showing when the anchor was captured, used
+    /// to tell the stale published value from the post-resize one.
+    pub captured_scroll: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -859,6 +906,12 @@ pub struct App {
     /// viewport to the content the reader was looking at so the prepend does not
     /// visibly jump. Resolved into `scroll_offset` by the next render frame.
     pending_history_anchor: Option<HistoryScrollAnchor>,
+    /// Set when a resize rewraps the transcript while the reader is paused in
+    /// history. Holds the reading position in content coordinates (which
+    /// message, which row inside it) captured against the pre-resize geometry,
+    /// and is resolved against each new frame until the renderer reports that
+    /// it applied it. See `jcode_tui_messages::anchor`.
+    pending_resize_anchor: Option<PendingResizeAnchor>,
     input: String,
     command_candidates_cache: RefCell<Option<CommandCandidatesCache>>,
     /// Per-input memo for `command_suggestions()`; see
@@ -924,6 +977,10 @@ pub struct App {
     // while the client was idle. Drives the starvation watchdog that recovers a
     // stranded auto-poke continuation instead of spinning forever.
     queued_followup_starved_since: Option<Instant>,
+    // Esc redirected the turn to a pending follow-up prompt. Remote servers
+    // send Done before Interrupted, so the follow-up waits for Interrupted
+    // (or this deadline) or the late Interrupted would clobber the new turn.
+    remote_interrupt_ack_deadline: Option<Instant>,
     // Reload reconnect is waiting for server history before deciding whether to continue.
     pending_reload_reconnect_status: Option<PendingReloadReconnectStatus>,
     // Current status
@@ -1077,6 +1134,8 @@ pub struct App {
     pending_background_client_reload: Option<(String, crate::bus::ClientMaintenanceAction)>,
     // Restart: if set, exec into current binary with this session ID (no build)
     restart_requested: Option<String>,
+    // `/cloud` or `/local` finished: reattach at the new location on quit.
+    cloud_handoff_requested: Option<CloudHandoff>,
     // Pasted content storage (displayed as placeholders, expanded on submit)
     pasted_contents: Vec<String>,
     // Pending pasted images (media_type, base64_data) attached to next message
@@ -1092,11 +1151,9 @@ pub struct App {
     startup_submit_deferred_reason: Option<&'static str>,
     /// One-shot/session-local preview of the first-run onboarding empty state.
     onboarding_preview_mode: bool,
-    /// Active onboarding simulator: `Some(index)` is the current simulated
-    /// screen (driven by `onboarding_sim.rs`); `None` when not simulating. The
-    /// simulator seeds synthetic phases so a developer can step through every
-    /// first-run screen via Alt+5 reset or Cmd+5 toggle without touching real auth state.
-    onboarding_sim: Option<usize>,
+    /// Whether an onboarding rehearsal is running (see `onboarding_sim.rs`):
+    /// the real first-run flow, started as if this install were new.
+    onboarding_sim: bool,
     /// Active time-based, non-destructive update experience preview.
     update_sim: Option<update_sim::UpdateSimulator>,
     /// Active guided first-run onboarding flow (model select -> continue ->
@@ -1315,6 +1372,10 @@ pub struct App {
     swarm_rename_active: bool,
     // Text typed into the swarm panel rename input.
     swarm_rename_buffer: String,
+    swarm_rename_target: Option<String>,
+    // Pending rename to dispatch: (target_session_id, new_label).
+    // Drained by the input handler after handle_swarm_panel_key returns.
+    pending_swarm_rename: Option<(String, String)>,
     // Diff display mode (toggle with Alt+G)
     diff_mode: crate::config::DiffDisplayMode,
     // Center all content (from config)
@@ -1395,6 +1456,8 @@ pub struct App {
     last_client_focus_session_id: Option<String>,
     // Most recently focused side panel page, used to restore visibility when toggled off.
     last_side_panel_focus_id: Option<String>,
+    // Side panel takes over the whole transcript column (Alt+M cycle: split -> fullscreen -> hidden).
+    side_panel_fullscreen: bool,
     // User explicitly hid the side panel with the side-panel toggle key. While set, incoming snapshots may update
     // pages but must not reopen the panel by restoring focused_page_id.
     side_panel_user_hidden: bool,
@@ -1469,6 +1532,7 @@ pub struct App {
     model_switch_keys: ModelSwitchKeys,
     // Keybindings for effort switching
     effort_switch_keys: super::keybind::EffortSwitchKeys,
+    speed_switch_keys: super::keybind::SpeedSwitchKeys,
     // Keybindings for scrolling
     scroll_keys: ScrollKeys,
     // Keybinding for centered-mode toggle
@@ -1483,6 +1547,12 @@ pub struct App {
     new_terminal_key: OptionalBinding,
     // Optional configured keybinding for opening the /resume session picker
     open_resume_key: OptionalBinding,
+    // Keybinding that starts/stops built-in voice input (Ctrl+Space default)
+    voice_input_key: OptionalBinding,
+    // Active built-in voice input (Nari streaming), if recording or finishing
+    voice_input: Option<voice_input::VoiceInput>,
+    // Last voice key press, to tell a held key's auto-repeat from a new press
+    voice_input_last_press: Option<Instant>,
     // Optional configured keybinding for accepting the post-error fallback offer
     fallback_switch_key: OptionalBinding,
     // Config reload generation the keybinding snapshot above was parsed at.
@@ -1505,8 +1575,13 @@ pub struct App {
     stashed_input: Option<(String, usize)>,
     // Undo history for in-progress input editing (Ctrl+Z)
     input_undo_stack: Vec<(String, usize)>,
+    input_typing_undo: Option<(Instant, usize)>,
+    // Draft replaced by an explicit jump into prompt history (Ctrl+Up),
+    // restored when Down walks back past the newest entry
+    history_draft: Option<(String, usize)>,
     // Short-lived notice for status feedback (model switch, cycle diff mode, etc.)
     status_notice: Option<(String, Instant)>,
+    clipboard: ClipboardState,
     // Distinct learned-keybinding nudge ("you keep doing X the slow way, press
     // <key>"). Rendered in its own pop-out color, separate from status_notice,
     // and shown at most once per session.
@@ -1640,23 +1715,14 @@ pub struct App {
     mouse_scroll_target: Option<MouseScrollTarget>,
     /// Remaining queued mouse-wheel lines. Positive = down, negative = up.
     mouse_scroll_queue: i16,
-    /// When the user overscrolls past the bottom of the transcript, an extra
-    /// status line is revealed below the input. This records the last time an
-    /// overscroll tick was received; the line dwells for a fixed window after
-    /// the last tick, then rebounds away. `None` means the line is hidden.
-    chat_overscroll_last: Option<Instant>,
-    /// Timestamp of the most recent downward chat scroll intent. Segments
-    /// wheel/key motion into "gestures": a pause longer than
-    /// `OVERSCROLL_GESTURE_GAP` starts a new gesture.
-    chat_scroll_down_last: Option<Instant>,
-    /// Whether the current downward scroll gesture began while the transcript
-    /// was already pinned to the bottom. Only such gestures reveal the elastic
-    /// overscroll line, so momentum from a scroll that merely carries the view
-    /// into the bottom does not trigger it.
-    chat_scroll_gesture_from_bottom: bool,
-    /// When to show the overscroll status line: off, always on, or the elastic
-    /// overscroll reveal (default). From `display.overscroll_status` config.
-    overscroll_status_mode: crate::config::OverscrollStatusMode,
+    /// Absolute paths edited by the agent's edit-style tool calls, derived
+    /// from `display_messages` and cached by `display_messages_version`.
+    agent_edited_cache: std::cell::RefCell<
+        Option<(
+            u64,
+            std::sync::Arc<std::collections::HashSet<std::path::PathBuf>>,
+        )>,
+    >,
     /// Scroll offset for changelog overlay (None = not visible)
     changelog_scroll: Option<usize>,
     help_scroll: Option<usize>,

@@ -110,7 +110,7 @@ impl GeminiProvider {
     }
 
     pub fn new() -> Self {
-        let model = std::env::var("JCODE_GEMINI_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
+        let model = std::env::var("KCODE_GEMINI_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into());
         let provider = Self {
             client: gemini_http_client(),
             model: Arc::new(RwLock::new(model)),
@@ -147,7 +147,7 @@ impl GeminiProvider {
     /// An official Gemini Developer API key takes precedence over OAuth Code
     /// Assist credentials: it points at `generativelanguage.googleapis.com` with
     /// the key's own (often higher) quota, while OAuth uses the free
-    /// cloudcode-pa tier. Set `JCODE_GEMINI_FORCE_OAUTH=1` to pin OAuth even when
+    /// cloudcode-pa tier. Set `KCODE_GEMINI_FORCE_OAUTH=1` to pin OAuth even when
     /// a key is present.
     fn auth_mode() -> GeminiAuthMode {
         if !gemini_auth::force_oauth()

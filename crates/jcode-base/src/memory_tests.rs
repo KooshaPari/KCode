@@ -73,20 +73,20 @@ where
     F: FnOnce(&Path) -> T,
 {
     let _guard = crate::storage::lock_test_env();
-    let old = std::env::var("JCODE_HOME").ok();
+    let old = std::env::var("KCODE_HOME").ok();
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("time went backwards")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!("jcode-test-{}", unique));
+    let dir = crate::test_temp::root().join(format!("kcode-test-{}", unique));
     fs::create_dir_all(&dir).expect("create temp dir");
-    crate::env::set_var("JCODE_HOME", &dir);
+    crate::env::set_var("KCODE_HOME", &dir);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&dir)));
 
     match old {
-        Some(value) => crate::env::set_var("JCODE_HOME", value),
-        None => crate::env::remove_var("JCODE_HOME"),
+        Some(value) => crate::env::set_var("KCODE_HOME", value),
+        None => crate::env::remove_var("KCODE_HOME"),
     }
     let _ = fs::remove_dir_all(&dir);
 
@@ -742,10 +742,10 @@ fn retrieval_candidates_include_local_skills() {
                 .collect()
         });
         let project_dir = home.join("project-with-skill");
-        fs::create_dir_all(project_dir.join(".jcode/skills/firefox-browser"))
+        fs::create_dir_all(project_dir.join(".kcode/skills/firefox-browser"))
             .expect("create skills dir");
         fs::write(
-                project_dir.join(".jcode/skills/firefox-browser/SKILL.md"),
+                project_dir.join(".kcode/skills/firefox-browser/SKILL.md"),
                 "---\nname: firefox-browser\ndescription: Control Firefox browser sessions\nallowed-tools: bash, read, write\n---\n\nUse this skill to open sites and click buttons.",
             )
             .expect("write skill");
@@ -1007,4 +1007,36 @@ fn focus_query_text_falls_back_when_all_stripped() {
     let focused = super::focus_query_text(raw);
     // Nothing substantive survives -> fall back to raw rather than empty.
     assert_eq!(focused, raw);
+}
+
+#[test]
+fn jev_recall_prefilter_bounds_candidates_and_keeps_relevant_memories() {
+    let mut entries: Vec<MemoryEntry> = (0..2000)
+        .map(|i| {
+            MemoryEntry::new(
+                MemoryCategory::Fact,
+                format!("unrelated note number {i} about gardening"),
+            )
+        })
+        .collect();
+    entries.push(MemoryEntry::new(
+        MemoryCategory::Fact,
+        "The fundraising CRM lives on Bookface and uses a 40M post-money SAFE cap",
+    ));
+    let kept = prefilter_for_jev(entries, "update the fundraising CRM notes for the SAFE");
+    assert!(kept.len() <= MAX_JEV_RECALL_CANDIDATES);
+    assert!(kept.iter().any(|e| e.content.contains("fundraising CRM")));
+    // At most three Jev batches of 24 per recall instead of ~84 for this store.
+    assert!(kept.len().div_ceil(crate::memory_jev::MAX_BATCH_ENTRIES) <= 3);
+}
+
+#[test]
+fn jev_recall_prefilter_leaves_small_stores_untouched() {
+    let entries: Vec<MemoryEntry> = (0..10)
+        .map(|i| MemoryEntry::new(MemoryCategory::Fact, format!("note {i}")))
+        .collect();
+    assert_eq!(
+        prefilter_for_jev(entries, "completely different words").len(),
+        10
+    );
 }

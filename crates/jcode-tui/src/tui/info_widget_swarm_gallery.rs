@@ -12,8 +12,8 @@ use crate::protocol::SwarmMemberStatus;
 use jcode_tui_core::keybind::alt_chord_lower;
 use jcode_tui_render::swarm_gallery::{
     GalleryMember, SwarmStripHint, display_order, humanize_age, is_active_status, render_gallery,
-    render_swarm_compact, render_swarm_dock, render_swarm_live_card, render_swarm_panel,
-    render_swarm_strip, render_swarm_strip_vertical, status_accent, status_glyph,
+    render_swarm_dock, render_swarm_live_card, render_swarm_panel, render_swarm_strip,
+    render_swarm_strip_vertical, status_accent, status_glyph,
 };
 use ratatui::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -307,17 +307,14 @@ pub(crate) fn render_swarm_plan_dag(
     }
 
     // Separate roots (items not owned as children by any other item).
-    let all_children: HashSet<&str> = children_map
-        .values()
-        .flatten()
-        .copied()
-        .collect();
+    let all_children: HashSet<&str> = children_map.values().flatten().copied().collect();
     let mut roots: Vec<DagNode> = Vec::new();
     for id in &topo_order {
         if !all_children.contains(id)
-            && let Some(node) = node_map.remove(id) {
-                roots.push(node);
-            }
+            && let Some(node) = node_map.remove(id)
+        {
+            roots.push(node);
+        }
     }
 
     // Render the tree.
@@ -961,21 +958,6 @@ pub(crate) fn render_swarm_strip_lines(
 /// `+N more` line (the cap includes that overflow row).
 const SWARM_STRIP_VERTICAL_MAX_ROWS: usize = 4;
 
-/// Render the compact swarm widget body: at most two lines, an agents/nodes
-/// summary plus a green/yellow/empty plan progress bar. `plan` is the
-/// coordinator's task-graph progress as (done, running, total).
-pub(crate) fn render_swarm_compact_lines(
-    members: &[SwarmMemberStatus],
-    plan: Option<(u32, u32, u32)>,
-    width: usize,
-    max_height: usize,
-) -> Vec<Line<'static>> {
-    if members.is_empty() {
-        return Vec::new();
-    }
-    render_swarm_compact(&members_to_gallery(members), plan, width, max_height)
-}
-
 /// Render the swarm dock widget body: a narrow vertical agent list for the
 /// info-widget margins. `plan` is the coordinator's swarm plan progress
 /// (completed, total), shown in the header when present.
@@ -1192,24 +1174,38 @@ mod tests {
     #[test]
     fn gallery_lines_selected_first_second_and_none() {
         let members = vec![
-            member("alpha", "running", Some("coordinating"), Some("coordinator")),
+            member(
+                "alpha",
+                "running",
+                Some("coordinating"),
+                Some("coordinator"),
+            ),
             member("beta", "done", Some("reviewed"), None),
             member("gamma", "thinking", Some("editing"), None),
         ];
 
         // selected=Some(0)
         let lines_0 = render_swarm_gallery_lines(&members, Some(0), 80, 12);
-        assert!(!lines_0.is_empty(), "gallery with selected=0 must produce lines");
+        assert!(
+            !lines_0.is_empty(),
+            "gallery with selected=0 must produce lines"
+        );
         let header_0: String = lines_0[0]
             .spans
             .iter()
             .map(|s| s.content.as_ref())
             .collect();
-        assert!(header_0.contains("🐝 3 agents · 2 active"), "got: {header_0}");
+        assert!(
+            header_0.contains("🐝 3 agents · 2 active"),
+            "got: {header_0}"
+        );
 
         // selected=Some(2)
         let lines_2 = render_swarm_gallery_lines(&members, Some(2), 80, 12);
-        assert!(!lines_2.is_empty(), "gallery with selected=2 must produce lines");
+        assert!(
+            !lines_2.is_empty(),
+            "gallery with selected=2 must produce lines"
+        );
 
         // selected=None
         let lines_none = render_swarm_gallery_lines(&members, None, 80, 12);
@@ -1221,7 +1217,11 @@ mod tests {
         // Width bounds for all variants
         for lines in [&lines_0, &lines_2, &lines_none] {
             for line in lines {
-                assert!(line.width() <= 80, "gallery line exceeded width: {:?}", line);
+                assert!(
+                    line.width() <= 80,
+                    "gallery line exceeded width: {:?}",
+                    line
+                );
             }
         }
 
@@ -1243,22 +1243,14 @@ mod tests {
         let lines = render_swarm_page_lines(&members, 0, 0, 80, 16, &[]);
         assert!(!lines.is_empty(), "page with selected=0 must produce lines");
         for line in &lines {
-            assert!(
-                line.width() <= 80,
-                "page line exceeded width: {:?}",
-                line
-            );
+            assert!(line.width() <= 80, "page line exceeded width: {:?}", line);
         }
 
         // selected=2 (mid)
         let lines = render_swarm_page_lines(&members, 2, 0, 80, 16, &[]);
         assert!(!lines.is_empty(), "page with selected=2 must produce lines");
         for line in &lines {
-            assert!(
-                line.width() <= 80,
-                "page line exceeded width: {:?}",
-                line
-            );
+            assert!(line.width() <= 80, "page line exceeded width: {:?}", line);
         }
 
         // selected=3 (last)

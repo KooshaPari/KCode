@@ -6,7 +6,7 @@
 //!      mirroring the dollar figures the TUI cost paths compute, since most
 //!      providers do not expose per-key spend through their public APIs.
 //!
-//! Data persists to `~/.jcode/provider_activity.json` and is shared across
+//! Data persists to `~/.kcode/provider_activity.json` and is shared across
 //! processes (server records last-used, TUI records spend, `/usage` reads
 //! both), so queries re-read the file with a short TTL instead of trusting a
 //! process-local cache.
@@ -79,7 +79,7 @@ static LEDGER: Mutex<Option<CachedStore>> = Mutex::new(None);
 
 fn ledger_path() -> PathBuf {
     crate::storage::jcode_dir()
-        .unwrap_or_else(|_| PathBuf::from(".").join(".jcode"))
+        .unwrap_or_else(|_| PathBuf::from(".").join(".kcode"))
         .join("provider_activity.json")
 }
 
@@ -305,7 +305,7 @@ pub fn format_relative_age(unix_secs: u64) -> String {
 }
 
 /// Map a human-facing provider label (e.g. `"DeepSeek"`, `"OpenRouter"`,
-/// `"NVIDIA NIM"`) plus the optional `JCODE_RUNTIME_PROVIDER` key onto a
+/// `"NVIDIA NIM"`) plus the optional `KCODE_RUNTIME_PROVIDER` key onto a
 /// ledger source key. Used by spend recorders that only know display names.
 pub fn source_key_for_provider_label(label: &str, runtime_provider: Option<&str>) -> String {
     let normalized = label.trim().to_ascii_lowercase();
@@ -430,7 +430,7 @@ mod tests {
         let _env_lock = lock_env();
         clear_ledger_cache();
         let temp = tempfile::tempdir().expect("tempdir");
-        let _home = EnvVarGuard::set("JCODE_HOME", temp.path().as_os_str());
+        let _home = EnvVarGuard::set("KCODE_HOME", temp.path().as_os_str());
 
         record_use("claude:oauth:claude-1");
         record_spend("claude:api-key", 0.25);
@@ -456,7 +456,7 @@ mod tests {
         let _env_lock = lock_env();
         clear_ledger_cache();
         let temp = tempfile::tempdir().expect("tempdir");
-        let _home = EnvVarGuard::set("JCODE_HOME", temp.path().as_os_str());
+        let _home = EnvVarGuard::set("KCODE_HOME", temp.path().as_os_str());
 
         record_spend("openai:api-key", 0.0);
         record_spend("openai:api-key", -1.0);

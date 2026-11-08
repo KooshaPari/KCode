@@ -38,6 +38,16 @@ pub struct SshConnectOptions {
     pub connect_timeout: Duration,
     pub client_name: String,
     pub request_timeout: Option<Duration>,
+    /// Private key used exclusively for this connection (`IdentitiesOnly`).
+    /// Managed hosts authorize a fresh key per connection, so agent and
+    /// configured identities are never offered.
+    pub identity_file: Option<std::path::PathBuf>,
+    /// Pinned host keys. When set, the user's and system known_hosts files are
+    /// not consulted, and an unknown or changed host key fails the connection.
+    pub known_hosts_file: Option<std::path::PathBuf>,
+    /// Ignore `~/.ssh/config` and the system SSH config (`-F /dev/null`). The
+    /// destination must then be a literal hostname or address.
+    pub isolated_config: bool,
 }
 
 impl Default for SshConnectOptions {
@@ -47,10 +57,13 @@ impl Default for SshConnectOptions {
             host: String::new(),
             port: None,
             user: None,
-            remote_binary: "jcode".into(),
+            remote_binary: "kcode".into(),
             connect_timeout: Duration::from_secs(30),
             client_name: defaults.client_name,
             request_timeout: defaults.request_timeout,
+            identity_file: None,
+            known_hosts_file: None,
+            isolated_config: false,
         }
     }
 }
@@ -107,6 +120,25 @@ impl SshConnectOptions {
                 "remote_binary must be an executable name or literal path without control characters",
             ));
         }
+        for (name, path) in [
+            ("identity_file", &self.identity_file),
+            ("known_hosts_file", &self.known_hosts_file),
+        ] {
+            if let Some(path) = path {
+                let text = path.to_string_lossy();
+                // OpenSSH expands % and ~ tokens in these options.
+                if !path.is_absolute() || text.contains('%') || text.chars().any(char::is_control) {
+                    return Err(invalid(match name {
+                        "identity_file" => {
+                            "identity_file must be an absolute path without % or control characters"
+                        }
+                        _ => {
+                            "known_hosts_file must be an absolute path without % or control characters"
+                        }
+                    }));
+                }
+            }
+        }
         if self.connect_timeout.is_zero() || self.connect_timeout > Duration::from_secs(3600) {
             return Err(invalid(
                 "SSH connect_timeout must be greater than zero and at most one hour",
@@ -129,6 +161,26 @@ impl SshConnectOptions {
     fn command_with_control(&self, control: Option<(&std::path::Path, bool)>) -> Result<Command> {
         self.validate()?;
         let mut command = Command::new("ssh");
+        if self.isolated_config {
+            command.args(["-F", "/dev/null"]);
+        }
+        if let Some(identity) = &self.identity_file {
+            command
+                .arg("-o")
+                .arg(format!("IdentityFile={}", identity.display()))
+                .args(["-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none"]);
+        }
+        if let Some(known) = &self.known_hosts_file {
+            command
+                .arg("-o")
+                .arg(format!("UserKnownHostsFile={}", known.display()))
+                .args([
+                    "-o",
+                    "GlobalKnownHostsFile=/dev/null",
+                    "-o",
+                    "UpdateHostKeys=no",
+                ]);
+        }
         command.args([
             "-T",
             "-o",
@@ -532,7 +584,10 @@ impl SshTransport {
             })?;
         let reader = child.stdout.take();
         let writer = child.stdin.take();
-        let mut stderr_pipe = child.stderr.take().expect("piped stderr");
+        let mut stderr_pipe = child
+            .stderr
+            .take()
+            .ok_or_else(|| Error::new(ErrorKind::ConnectFailed, "piped stderr"))?;
         let stderr = Arc::new(Mutex::new(Vec::new()));
         let buffer = Arc::clone(&stderr);
         let (done_tx, done_rx) = std::sync::mpsc::channel();
@@ -582,10 +637,15 @@ impl Transport for SshTransport {
     }
 
     fn split(mut self: Box<Self>) -> Result<(Box<dyn BufRead + Send>, Box<dyn Write + Send>)> {
-        Ok((
-            Box::new(BufReader::new(self.reader.take().expect("SSH stdout"))),
-            Box::new(self.writer.take().expect("SSH stdin")),
-        ))
+        let reader = self
+            .reader
+            .take()
+            .ok_or_else(|| Error::new(ErrorKind::ConnectFailed, "SSH stdout"))?;
+        let writer = self
+            .writer
+            .take()
+            .ok_or_else(|| Error::new(ErrorKind::ConnectFailed, "SSH stdin"))?;
+        Ok((Box::new(BufReader::new(reader)), Box::new(writer)))
     }
 }
 
@@ -685,6 +745,39 @@ mod tests {
         opts.connect_timeout = Duration::from_secs(2);
         opts.client_name = "\0".repeat(1024);
         assert!(opts.command().is_err());
+    }
+
+    #[test]
+    fn managed_hosts_use_only_the_supplied_identity_and_pinned_host_keys() {
+        let mut opts = options();
+        opts.host = "203.0.113.7".into();
+        opts.user = Some("ec2-user".into());
+        opts.identity_file = Some("/run/jcode/key".into());
+        opts.known_hosts_file = Some("/run/jcode/known_hosts".into());
+        opts.isolated_config = true;
+        let command = opts.command().unwrap();
+        let args: Vec<_> = command.get_args().map(|s| s.to_str().unwrap()).collect();
+        assert!(args.windows(2).any(|a| a == ["-F", "/dev/null"]));
+        for expected in [
+            "IdentityFile=/run/jcode/key",
+            "IdentitiesOnly=yes",
+            "IdentityAgent=none",
+            "UserKnownHostsFile=/run/jcode/known_hosts",
+            "GlobalKnownHostsFile=/dev/null",
+            "StrictHostKeyChecking=yes",
+            "BatchMode=yes",
+        ] {
+            assert!(args.contains(&expected), "missing {expected}: {args:?}");
+        }
+        for bad in ["relative/key", "/tmp/%h", "/tmp/a\nb"] {
+            let mut opts = opts.clone();
+            opts.identity_file = Some(bad.into());
+            assert!(opts.command().is_err(), "accepted identity {bad:?}");
+            let mut opts = opts.clone();
+            opts.identity_file = None;
+            opts.known_hosts_file = Some(bad.into());
+            assert!(opts.command().is_err(), "accepted known_hosts {bad:?}");
+        }
     }
 
     #[test]

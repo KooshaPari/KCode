@@ -143,7 +143,7 @@ async fn resolve_spawn_working_dir(
 }
 
 /// Launch a headed window for `session_id`, exporting the given spawn context
-/// (`JCODE_SPAWN_KIND`, swarm/coordinator ids, ...) to spawn hooks and
+/// (`KCODE_SPAWN_KIND`, swarm/coordinator ids, ...) to spawn hooks and
 /// spawned terminals so external programs can reroute the window.
 fn spawn_visible_session_window_with_context(
     session_id: &str,
@@ -413,17 +413,17 @@ fn persist_headed_startup_message(session_id: &str, message: &str) {
 fn clear_headed_startup_message(session_id: &str) {
     if let Ok(jcode_dir) = crate::storage::jcode_dir() {
         let path = jcode_dir.join(format!("client-input-{}", session_id));
-        let _ = std::fs::remove_file(path);
+        let _ = crate::storage::remove_state_file(&path);
     }
 }
 
 fn cleanup_prepared_visible_spawn_session(session_id: &str) {
     clear_headed_startup_message(session_id);
     if let Ok(path) = crate::session::session_path(session_id) {
-        let _ = std::fs::remove_file(path);
+        let _ = crate::storage::remove_state_file(&path);
     }
     if let Ok(path) = crate::session::session_journal_path(session_id) {
-        let _ = std::fs::remove_file(path);
+        let _ = crate::storage::remove_state_file(&path);
     }
 }
 
@@ -570,6 +570,22 @@ pub(super) fn resolve_swarm_spawn_effort(
     clean(requested_effort).or_else(|| clean(configured_swarm_effort))
 }
 
+/// Spawn mode for one swarm spawn. An explicit per-call mode wins, except
+/// `auto`: a model passing `auto` expresses no preference, so the user's
+/// configured `agents.swarm_spawn_mode` (inline by default) decides. Without
+/// this, `auto` tried a visible window first and, from terminals jcode cannot
+/// target (VS Code, Cursor), opened a separate terminal app instead of the
+/// inline gallery the user configured. Configuring `auto` still works.
+pub(super) fn resolve_swarm_spawn_mode(
+    requested: Option<SwarmSpawnMode>,
+    configured: SwarmSpawnMode,
+) -> SwarmSpawnMode {
+    match requested {
+        Some(SwarmSpawnMode::Auto) | None => configured,
+        Some(mode) => mode,
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "server-side swarm spawning needs session, swarm state, provider, and event sinks together"
@@ -608,7 +624,7 @@ pub(super) async fn spawn_swarm_agent(
         client_terminal_env_for_session(req_session_id, client_connections).await;
     let agents_config = &crate::config::config().agents;
     let configured_swarm_model = agents_config.swarm_model.clone();
-    let resolved_spawn_mode = spawn_mode.unwrap_or(agents_config.swarm_spawn_mode);
+    let resolved_spawn_mode = resolve_swarm_spawn_mode(spawn_mode, agents_config.swarm_spawn_mode);
     let selection = resolve_swarm_spawn_selection(
         requested_model.clone(),
         configured_swarm_model.clone(),
@@ -655,10 +671,10 @@ pub(super) async fn spawn_swarm_agent(
             startup_message.as_deref(),
             |session_id, cwd, selfdev_requested, provider_key| {
                 // Tag the headed window as a swarm-agent spawn so spawn hooks
-                // and terminals can identify and reroute it (JCODE_SPAWN_*).
+                // and terminals can identify and reroute it (KCODE_SPAWN_*).
                 let context = crate::session_launch::SessionSpawnContext::kind("swarm-agent")
-                    .env("JCODE_SPAWN_SWARM_ID", swarm_id)
-                    .env("JCODE_SPAWN_COORDINATOR_SESSION_ID", req_session_id)
+                    .env("KCODE_SPAWN_SWARM_ID", swarm_id)
+                    .env("KCODE_SPAWN_COORDINATOR_SESSION_ID", req_session_id)
                     .with_client_terminal_env(client_terminal_env.clone());
                 spawn_visible_session_window_with_context(
                     session_id,

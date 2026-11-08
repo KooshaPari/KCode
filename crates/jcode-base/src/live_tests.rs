@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 const SCHEMA_VERSION: u32 = 2;
 const DEFAULT_RETEST_DAYS: i64 = 14;
-const LEDGER_ENV: &str = "JCODE_LIVE_TEST_LEDGER";
-const COVERAGE_ENV: &str = "JCODE_LIVE_TEST_COVERAGE";
+const LEDGER_ENV: &str = "KCODE_LIVE_TEST_LEDGER";
+const COVERAGE_ENV: &str = "KCODE_LIVE_TEST_COVERAGE";
 
 pub const CHECKPOINT_TAXONOMY_VERSION: u32 = 3;
 
@@ -29,7 +29,7 @@ pub mod checkpoints {
     pub const TOOL_CALL_PARSE: &str = "tool_call_parse";
     pub const TOOL_EXECUTION_LOOP: &str = "tool_execution_loop";
     pub const TOOL_RESULT_FOLLOWUP: &str = "tool_result_followup";
-    pub const REAL_JCODE_TOOL_SMOKE: &str = "real_jcode_tool_smoke";
+    pub const REAL_KCODE_TOOL_SMOKE: &str = "real_jcode_tool_smoke";
     /// Observe-only: did the model expose its reasoning (`streamed`), hide it
     /// behind an opaque signal (`opaque`, e.g. Gemini-3 / OpenAI), or emit none
     /// (`none`)? Never required for user-readiness; hiding reasoning is a pass.
@@ -156,7 +156,7 @@ const END_TO_END_CHECKPOINTS: &[LiveVerificationCheckpointDefinition] = &[
         description: "The provider accepts tool results and the model completes the final assistant response.",
     },
     LiveVerificationCheckpointDefinition {
-        id: checkpoints::REAL_JCODE_TOOL_SMOKE,
+        id: checkpoints::REAL_KCODE_TOOL_SMOKE,
         label: "Real Jcode tool smoke",
         category: "tools",
         required_for_user_ready: true,
@@ -228,7 +228,7 @@ pub const STRICT_PROVIDER_MODEL_COVERAGE_CHECKPOINTS: &[&str] = &[
     checkpoints::TOOL_CALL_PARSE,
     checkpoints::TOOL_EXECUTION_LOOP,
     checkpoints::TOOL_RESULT_FOLLOWUP,
-    checkpoints::REAL_JCODE_TOOL_SMOKE,
+    checkpoints::REAL_KCODE_TOOL_SMOKE,
 ];
 
 pub fn strict_provider_model_coverage_checkpoint_ids() -> impl Iterator<Item = &'static str> {
@@ -1203,7 +1203,7 @@ fn provider_test_coverage_checkpoint_label(checkpoint: &str) -> String {
         checkpoints::TOOL_CALL_PARSE => "Tool call parsed".to_string(),
         checkpoints::TOOL_EXECUTION_LOOP => "Tool execution loop".to_string(),
         checkpoints::TOOL_RESULT_FOLLOWUP => "Tool result follow-up".to_string(),
-        checkpoints::REAL_JCODE_TOOL_SMOKE => "Real jcode tool smoke".to_string(),
+        checkpoints::REAL_KCODE_TOOL_SMOKE => "Real jcode tool smoke".to_string(),
         other => other.replace('_', " "),
     }
 }
@@ -1360,7 +1360,7 @@ pub fn strict_live_provider_model_coverage_summary(
         ) {
             totals.3 += 1;
         }
-        match pair.checkpoint_status(checkpoints::REAL_JCODE_TOOL_SMOKE) {
+        match pair.checkpoint_status(checkpoints::REAL_KCODE_TOOL_SMOKE) {
             Some(LiveVerificationStageStatus::Passed) => totals.4 += 1,
             Some(LiveVerificationStageStatus::Skipped) => totals.5 += 1,
             _ => {}
@@ -1671,7 +1671,7 @@ const STRICT_PIPELINE_STAGES: &[(&str, &str)] = &[
     (checkpoints::TOOL_CALL_PARSE, "tool-call parse"),
     (checkpoints::TOOL_EXECUTION_LOOP, "tool execution"),
     (checkpoints::TOOL_RESULT_FOLLOWUP, "tool-result followup"),
-    (checkpoints::REAL_JCODE_TOOL_SMOKE, "real tool smoke"),
+    (checkpoints::REAL_KCODE_TOOL_SMOKE, "real tool smoke"),
 ];
 
 /// Plain-English description of the first thing standing between a pair and
@@ -1701,7 +1701,7 @@ fn doctor_tier_for_stage(stage_id: &str) -> &'static str {
         | checkpoints::TOOL_CALL_PARSE
         | checkpoints::TOOL_EXECUTION_LOOP
         | checkpoints::TOOL_RESULT_FOLLOWUP
-        | checkpoints::REAL_JCODE_TOOL_SMOKE => "full",
+        | checkpoints::REAL_KCODE_TOOL_SMOKE => "full",
         checkpoints::MODEL_CATALOG_LIVE_ENDPOINT => "catalog",
         _ => "offline",
     }
@@ -2456,7 +2456,6 @@ pub fn concise_model_sample(models: &[String], limit: usize) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     struct EnvGuard {
         key: &'static str,
@@ -2518,9 +2517,13 @@ mod tests {
 
     #[test]
     fn live_verification_ledger_writes_events_and_coverage_without_secret() {
-        let temp = TempDir::new().expect("temp dir");
+        let temp = crate::test_temp::tempdir().expect("temp dir");
         let events_path = temp.path().join("events.jsonl");
         let coverage_path = temp.path().join("coverage.json");
+        // `LiveVerificationPaths::resolve` builds its fallback via `unwrap_or`,
+        // so `app_config_dir()` runs even when both env vars are set. Isolate
+        // KCODE_HOME so that fallback cannot resolve into a real jcode dir.
+        let _home = EnvGuard::set("KCODE_HOME", temp.path());
         let _events = EnvGuard::set(LEDGER_ENV, &events_path);
         let _coverage = EnvGuard::set(COVERAGE_ENV, &coverage_path);
         let secret = "sk-live-secret-that-must-not-appear";
@@ -2589,7 +2592,7 @@ mod tests {
             checkpoints::TOOL_CALL_PARSE,
             checkpoints::TOOL_EXECUTION_LOOP,
             checkpoints::TOOL_RESULT_FOLLOWUP,
-            checkpoints::REAL_JCODE_TOOL_SMOKE,
+            checkpoints::REAL_KCODE_TOOL_SMOKE,
             checkpoints::REASONING_CAPABILITY,
             checkpoints::RESTART_PERSISTENCE,
             checkpoints::NEGATIVE_ERROR_UX,
@@ -2824,7 +2827,7 @@ mod tests {
                     LiveVerificationStageStatus::Skipped,
                 ),
                 (
-                    checkpoints::REAL_JCODE_TOOL_SMOKE,
+                    checkpoints::REAL_KCODE_TOOL_SMOKE,
                     LiveVerificationStageStatus::Skipped,
                 ),
             ]),

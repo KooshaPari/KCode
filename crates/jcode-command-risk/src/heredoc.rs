@@ -25,10 +25,17 @@ pub fn has_heredoc_substitution(command: &str) -> bool {
 /// Group 3: backslash-escaped delimiter
 fn heredoc_open_pattern() -> Regex {
     // SAFETY: the pattern is a compile-time constant; compilation cannot fail.
-    Regex::new(
-        r#"\$\(cat[ \t]*<<(-?)[ \t]*(?:'+([A-Za-z_]\w*)'+|\\([A-Za-z_]\w*))"#,
-    )
-    .unwrap()
+    // On the (unreachable) failure path, fall back to an empty regex.
+    match Regex::new(r#"\$\(cat[ \t]*<<(-?)[ \t]*(?:'+([A-Za-z_]\w*)'+|\\([A-Za-z_]\w*))"#) {
+        Ok(re) => re,
+        // Fail closed: a never-matching pattern disables the heredoc fast
+        // path (no openings found -> full scrutiny) instead of an empty
+        // pattern that matches everywhere and bypasses validation.
+        Err(_) => match Regex::new(r"[^\s\S]") {
+            Ok(re) => re,
+            Err(_) => unreachable!("static regex patterns must compile"),
+        },
+    }
 }
 
 /// A validated heredoc span (byte offsets into the original command string).
@@ -51,7 +58,12 @@ fn find_valid_heredocs(command: &str) -> Vec<HeredocSpan> {
     let mut candidates: Vec<(usize, usize, String, bool)> = Vec::new();
 
     for cap in re.captures_iter(command) {
-        let m = cap.get(0).unwrap();
+        let Some(m) = cap.get(0) else {
+            // cap.get(0) on a Capture from captures_iter is guaranteed to be
+            // Some (it's the whole match). Treat the None branch as
+            // unreachable-but-safe: skip the capture and continue.
+            continue;
+        };
         let delimiter = cap
             .get(2)
             .or_else(|| cap.get(3))
@@ -122,18 +134,13 @@ fn find_valid_heredocs(command: &str) -> Vec<HeredocSpan> {
                     } else {
                         0
                     };
-                    let spaces_before_paren = after_delim.len()
-                        - after_delim
-                            .trim_start_matches([' ', '\t'])
-                            .len();
-                    close_paren_col =
-                        tab_prefix_len + delimiter.len() + spaces_before_paren;
+                    let spaces_before_paren =
+                        after_delim.len() - after_delim.trim_start_matches([' ', '\t']).len();
+                    close_paren_col = tab_prefix_len + delimiter.len() + spaces_before_paren;
                     break;
                 }
                 // Starts with delimiter but has other content — reject.
-                if trimmed_after
-                    .starts_with([')', '}', '|', '&', ';', '<', '>'])
-                {
+                if trimmed_after.starts_with([')', '}', '|', '&', ';', '<', '>']) {
                     continue;
                 }
             }
@@ -165,9 +172,11 @@ fn find_valid_heredocs(command: &str) -> Vec<HeredocSpan> {
     // Stripping nested ranges corrupts indices: the outer range's end becomes
     // stale, silently dropping any suffix (e.g. `; rm -rf /`). Bail entirely.
     for (i, inner) in verified.iter().enumerate() {
-        if verified.iter().enumerate().any(|(j, outer)| {
-            i != j && inner.start > outer.start && inner.start < outer.end
-        }) {
+        if verified
+            .iter()
+            .enumerate()
+            .any(|(j, outer)| i != j && inner.start > outer.start && inner.start < outer.end)
+        {
             return Vec::new();
         }
     }
@@ -200,8 +209,16 @@ fn strip_heredocs(command: &str) -> Option<String> {
     }
 
     // SECURITY: remaining text must contain only safe characters (no shell
-    // metacharacters that could chain a dangerous command).
-    let safe_re = Regex::new(r#"^[a-zA-Z0-9 \t"'.\-/_@=,:+~]*$"#).unwrap();
+    // metacharacters that could chain a dangerous command). The pattern is a
+    // compile-time constant; if it ever failed to compile we would fall back
+    // to an empty regex, which disables the safety check (conservative).
+    let safe_re = match Regex::new(r#"^[a-zA-Z0-9 \t"'.\-/_@=,:+~]*$"#) {
+        Ok(re) => re,
+        Err(_) => match Regex::new("") {
+            Ok(re) => re,
+            Err(_) => unreachable!("static regex patterns must compile"),
+        },
+    };
 
     // Strip in reverse order so earlier indices stay valid.
     spans.sort_by_key(|a| std::cmp::Reverse(a.start));

@@ -4,7 +4,7 @@
 //! One guard represents one runtime incarnation, including idle/background
 //! Agents, until explicit finish or drop. Parent presence distinguishes children
 //! (manual splits and automated agents).
-//! Counts cover v2 participants sharing a local JCODE_HOME, not other machines,
+//! Counts cover v2 participants sharing a local KCODE_HOME, not other machines,
 //! old clients, connected viewers, or persisted sessions. No session ID is used
 //! as a filesystem path. OS leases have no clock/mtime/PID-reuse dependency.
 //!
@@ -207,7 +207,9 @@ fn live_records(dir: &Path, exclude: Option<&Path>) -> io::Result<Vec<(String, R
     };
     if !live.is_empty()
         && stale.iter().any(|path| {
-            !snapshot.contains_key(path.file_name().unwrap().to_string_lossy().as_ref())
+            path.file_name()
+                .map(|name| !snapshot.contains_key(name.to_string_lossy().as_ref()))
+                .unwrap_or(false)
         })
     {
         return Err(io::Error::other(
@@ -296,7 +298,10 @@ impl Lease {
         let peak = (|| {
             live_records(&self.dir, None)?;
             let mut snapshot = read_snapshot(&self.dir)?;
-            let key = self.path.file_name().unwrap().to_string_lossy();
+            let key = match self.path.file_name() {
+                Some(name) => name.to_string_lossy(),
+                None => return Err(io::Error::other("lease path has no file name")),
+            };
             let value = snapshot
                 .remove(key.as_ref())
                 .ok_or_else(|| io::Error::other("concurrency record missing at finish"))?;

@@ -6,7 +6,6 @@ pub mod antigravity;
 pub mod bedrock;
 mod catalog_routes;
 pub mod catalog_scheduler;
-pub mod claude;
 pub mod copilot;
 pub mod cursor;
 mod dispatch;
@@ -22,6 +21,8 @@ pub mod openai;
 pub mod openai_request;
 pub mod openrouter;
 pub mod pricing;
+mod profile_catalog_cache;
+use profile_catalog_cache::cached_live_models_for_namespace;
 mod registry;
 mod route_builders;
 mod routing;
@@ -56,7 +57,7 @@ pub use jcode_provider_core::cli_provider_arg_for_session_key;
 pub use jcode_provider_core::{
     ALL_CLAUDE_MODELS, ALL_OPENAI_MODELS, CHATGPT_WEB_MODEL, CHEAPNESS_REFERENCE_INPUT_TOKENS,
     CHEAPNESS_REFERENCE_OUTPUT_TOKENS, CredentialMode, DEFAULT_CONTEXT_LIMIT, EventStream,
-    JCODE_USER_AGENT, ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute,
+    KCODE_USER_AGENT, ModelCapabilities, ModelCatalogRefreshSummary, ModelRoute,
     ModelRouteApiMethod, NativeCompactionResult, NativeToolResult, NativeToolResultSender,
     PremiumMode, Provider, RouteBillingKind, RouteCheapnessEstimate, RouteCostConfidence,
     RouteCostSource, RouteSelection, RuntimeKey, dedupe_model_routes,
@@ -91,6 +92,40 @@ pub(crate) use routing::{
 /// [`Provider::complete_simple`] path. `Server::new` registers the active
 /// provider here at startup.
 static ACTIVE_PROVIDER: RwLock<Option<Arc<dyn Provider>>> = RwLock::new(None);
+
+/// Pick the newest usable Bedrock flagship from `routes`, if it should replace
+/// the placeholder default. Pure so it can be tested without AWS.
+fn bedrock_promoted_default(current: &str, routes: &[ModelRoute]) -> Option<String> {
+    if current != bedrock::BedrockProvider::PLACEHOLDER_DEFAULT_MODEL {
+        return None;
+    }
+    let usable: Vec<&str> = routes
+        .iter()
+        .filter(|route| route.available)
+        .map(|route| route.model.as_str())
+        .collect();
+    crate::auth::lifecycle::preferred_model_for_provider("bedrock", &usable)
+        .filter(|best| best != current)
+}
+
+fn promote_bedrock_placeholder_default(bedrock: &bedrock::BedrockProvider) {
+    // The hardcoded known list has unverified availability (newer Claude ids
+    // often need an inference profile), so only promote from a real catalog.
+    if !bedrock.has_catalog() {
+        return;
+    }
+    if let Some(best) = bedrock_promoted_default(&bedrock.model(), &bedrock.model_routes()) {
+        bedrock.replace_placeholder_default_model(&best);
+    }
+}
+
+/// Build a Bedrock provider whose default is already the newest flagship in its
+/// cached catalog, instead of the stale placeholder.
+pub(crate) fn new_bedrock_provider() -> bedrock::BedrockProvider {
+    let provider = bedrock::BedrockProvider::new();
+    promote_bedrock_placeholder_default(&provider);
+    provider
+}
 
 /// Register the live agent provider so background helpers (memory sidecar) can
 /// reach whatever provider the user is actually running on. Safe to call more
@@ -142,6 +177,10 @@ pub fn stores_reasoning_content_for_context(provider_name: &str) -> bool {
 // cached routes immediately while a background refresh updates the catalog.
 pub(crate) const OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS: u64 = 15 * 60;
 
+/// Public OpenRouter API base. The `openrouter` cache namespace must have been
+/// fetched from this endpoint for its catalog to be trusted as OpenRouter's.
+pub(crate) const STANDARD_OPENROUTER_API_BASE: &str = "https://openrouter.ai/api/v1";
+
 fn openai_compatible_profile_catalog_cache_is_stale(cached_at: u64, now: u64) -> bool {
     now.saturating_sub(cached_at) >= OPENAI_COMPATIBLE_PROFILE_CATALOG_SOFT_REFRESH_SECS
 }
@@ -149,30 +188,7 @@ fn openai_compatible_profile_catalog_cache_is_stale(cached_at: u64, now: u64) ->
 pub(crate) fn cached_live_models_for_openai_compatible_profile(
     resolved: &crate::provider_catalog::ResolvedOpenAiCompatibleProfile,
 ) -> Option<(Vec<String>, bool)> {
-    let cache = jcode_provider_openrouter::load_disk_cache_entry_for_namespace(&resolved.id)?;
-    let cache_is_stale = jcode_provider_openrouter::current_unix_secs()
-        .map(|now| openai_compatible_profile_catalog_cache_is_stale(cache.cached_at, now))
-        .unwrap_or(false);
-    let source_api_base = cache
-        .source_api_base
-        .as_deref()
-        .and_then(crate::provider_catalog::normalize_api_base)?;
-    let expected_api_base = crate::provider_catalog::normalize_api_base(&resolved.api_base)?;
-    if source_api_base != expected_api_base {
-        return None;
-    }
-
-    let models = cache
-        .models
-        .into_iter()
-        .map(|model| model.id.trim().to_string())
-        .filter(|model| !model.is_empty())
-        .collect::<Vec<_>>();
-    if models.is_empty() {
-        None
-    } else {
-        Some((models, cache_is_stale))
-    }
+    cached_live_models_for_namespace(&resolved.id, &resolved.api_base)
 }
 
 fn direct_openai_compatible_profile_routes(
@@ -196,6 +212,23 @@ fn direct_openai_compatible_profile_routes(
         }
         (models, false)
     };
+
+    // Models the user declared in config.toml under
+    // `[[providers.<name>.models]]` are an explicit statement about what this
+    // endpoint serves, so they are unioned into the fetched/static list instead
+    // of being replaced by it. Many gateways serve a model on chat completions
+    // while omitting it from `GET /models` (issue #1824, MiniMax
+    // `MiniMax-M3.1-Flash-Preview`), which otherwise makes the model unusable
+    // from the picker. Declared ids are appended after the fetched list, so
+    // existing entries and their ordering are untouched.
+    for model in crate::provider_declared_models::config_declared_model_ids_for_profile(
+        &resolved.id,
+        &resolved.api_base,
+    ) {
+        if !models.iter().any(|existing| existing == &model) {
+            models.push(model);
+        }
+    }
 
     let provider = resolved.display_name.clone();
     let api_method = format!("openai-compatible:{}", resolved.id);
@@ -245,29 +278,34 @@ fn standard_openrouter_profile_configured() -> bool {
 }
 
 fn configured_standard_openrouter_profile_routes() -> Vec<ModelRoute> {
-    let Some(cache) = jcode_provider_openrouter::load_disk_cache_entry_for_namespace("openrouter")
+    // Same validated read as every other consumer: a cache in the `openrouter`
+    // namespace that was fetched from a different endpoint is not evidence about
+    // the public OpenRouter catalog (issue #1824).
+    let Some((models, _cache_is_stale)) =
+        cached_live_models_for_namespace("openrouter", STANDARD_OPENROUTER_API_BASE)
     else {
         return Vec::new();
     };
 
-    let source_matches_openrouter = cache
-        .source_api_base
-        .as_deref()
-        .and_then(crate::provider_catalog::normalize_api_base)
-        .map(|base| base.contains("openrouter.ai"))
-        .unwrap_or(false);
-    if !source_matches_openrouter {
-        return Vec::new();
-    }
-
     let available = standard_openrouter_profile_configured();
-    cache
-        .models
+    models
         .into_iter()
-        .map(|model| model.id.trim().to_string())
         .filter(|model| is_listable_model_name(model))
         .map(|model| build_openrouter_auto_route(&model, available, String::new()))
         .collect()
+}
+
+/// Strip an explicit Jcode subscription prefix (`jcode:` or
+/// `jcode-subscription:`) from a model spec.
+pub(crate) fn jcode_subscription_model_prefix(model: &str) -> Option<&str> {
+    let (prefix, rest) = model.split_once(':')?;
+    let prefix = prefix.trim();
+    if !(prefix.eq_ignore_ascii_case("jcode") || prefix.eq_ignore_ascii_case("jcode-subscription"))
+    {
+        return None;
+    }
+    let rest = rest.trim();
+    (!rest.is_empty()).then_some(rest)
 }
 
 pub fn set_model_with_auth_refresh(provider: &dyn Provider, model: &str) -> Result<()> {
@@ -334,8 +372,6 @@ pub(crate) const GROK_BUILD_PROFILE_ID: &str = "grok-build";
 
 /// MultiProvider wraps multiple providers and allows seamless model switching
 pub struct MultiProvider {
-    /// Claude Code CLI provider
-    claude: RwLock<Option<Arc<dyn Provider>>>,
     /// Direct Anthropic API provider (no Python dependency)
     anthropic: RwLock<Option<Arc<dyn Provider>>>,
     openai: RwLock<Option<Arc<dyn Provider>>>,
@@ -371,8 +407,6 @@ pub struct MultiProvider {
     openai_compatible_profiles: RwLock<HashMap<String, Arc<dyn Provider>>>,
     active_openai_compatible_profile: RwLock<Option<String>>,
     active: RwLock<ActiveProvider>,
-    /// Use Claude CLI instead of direct API (legacy mode)
-    use_claude_cli: bool,
     /// Notifications generated during provider/account auto-selection.
     /// The TUI should drain and display these on session start.
     startup_notices: RwLock<Vec<String>>,
@@ -495,7 +529,6 @@ impl MultiProvider {
             .collect();
         compat_profiles.sort();
         let configured = [
-            ("cl", self.claude_provider().is_some()),
             ("an", self.anthropic_provider().is_some()),
             ("oa", self.openai_provider().is_some()),
             ("co", self.copilot_provider().is_some()),
@@ -511,15 +544,14 @@ impl MultiProvider {
         .collect::<Vec<_>>()
         .join(",");
         format!(
-            "{}|{}|{}|{:?}|{}|{}|{}|{}",
-            // Scope by home so sandboxes (tests, JCODE_HOME switches) never
+            "{}|{}|{}|{:?}|{}|{}|{}",
+            // Scope by home so sandboxes (tests, KCODE_HOME switches) never
             // share catalogs that were built from different credential files.
-            std::env::var("JCODE_HOME").unwrap_or_default(),
+            std::env::var("KCODE_HOME").unwrap_or_default(),
             Self::provider_key(active),
             self.model(),
             credential_mode,
             profile,
-            self.use_claude_cli,
             configured,
             compat_profiles.join(","),
         )
@@ -634,6 +666,18 @@ impl MultiProvider {
         // whole turn is rejected (#381). Only clones when a clamp is required.
         let clamped_messages = image_clamp::clamp_outbound_images(messages);
         let messages: &[Message] = clamped_messages.as_deref().unwrap_or(messages);
+
+        // Deferred definitions are only meaningful to providers with native
+        // deferred loading. Never let them reach a provider that would send
+        // them as ordinary eager tools (which would also defeat the point).
+        let eager_tools;
+        let tools: &[ToolDefinition] =
+            if !self.supports_deferred_tools() && tools.iter().any(|tool| tool.defer_loading) {
+                eager_tools = ToolDefinition::eager(tools);
+                &eager_tools
+            } else {
+                tools
+            };
 
         let active = self.active_provider();
         let sequence = Self::fallback_sequence(active);
@@ -850,7 +894,7 @@ impl MultiProvider {
                     .active_openrouter_execution_provider()
                     .map(|execution| execution.runtime_display_name())
                     .unwrap_or_else(|| "OpenRouter".to_string());
-                let runtime = std::env::var("JCODE_RUNTIME_PROVIDER").ok();
+                let runtime = std::env::var("KCODE_RUNTIME_PROVIDER").ok();
                 crate::provider_activity::source_key_for_provider_label(&label, runtime.as_deref())
             }
             other => Self::provider_key(other).to_string(),
@@ -1080,7 +1124,7 @@ impl MultiProvider {
 
         match provider {
             ActiveProvider::Claude => {
-                let switching_from_named_anthropic = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
+                let switching_from_named_anthropic = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")
                     .ok()
                     .and_then(|name| crate::config::config().providers.get(&name))
                     .is_some_and(|profile| {
@@ -1090,12 +1134,12 @@ impl MultiProvider {
                         )
                     });
                 if switching_from_named_anthropic {
-                    crate::env::remove_var("JCODE_NAMED_PROVIDER_PROFILE");
-                    crate::env::remove_var("JCODE_PROVIDER_PROFILE_ACTIVE");
-                    crate::env::remove_var("JCODE_PROVIDER_PROFILE_NAME");
+                    crate::env::remove_var("KCODE_NAMED_PROVIDER_PROFILE");
+                    crate::env::remove_var("KCODE_PROVIDER_PROFILE_ACTIVE");
+                    crate::env::remove_var("KCODE_PROVIDER_PROFILE_NAME");
                     crate::provider_catalog::clear_anthropic_profile_env();
                     crate::env::set_var(
-                        "JCODE_RUNTIME_PROVIDER",
+                        "KCODE_RUNTIME_PROVIDER",
                         match anthropic_credential_mode {
                             Some(mode) => match mode {
                                 anthropic::AnthropicCredentialMode::ApiKey => "anthropic-api",
@@ -1121,8 +1165,6 @@ impl MultiProvider {
                         anthropic.set_credential_mode(mode)?;
                     }
                     anthropic.set_model(&model)?;
-                } else if let Some(claude) = self.claude_provider() {
-                    claude.set_model(&model)?;
                 } else {
                     anyhow::bail!(
                         "Claude credentials not available. Run `jcode login --provider claude` first."
@@ -1355,19 +1397,7 @@ impl MultiProvider {
         // using cheap local probes to hot-initialize newly configured providers.
         crate::auth::AuthStatus::invalidate_cache();
 
-        if self.use_claude_cli {
-            if self.claude_provider().is_none()
-                && crate::auth::claude::load_credentials().is_ok()
-                && let Some(claude) =
-                    external::instantiate_expected_external_provider(external::CLAUDE_CLI_RUNTIME)
-            {
-                crate::logging::info("Hot-initialized Claude CLI provider after auth change");
-                *self
-                    .claude
-                    .write()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(claude);
-            }
-        } else if self.anthropic_provider().is_none()
+        if self.anthropic_provider().is_none()
             && (crate::auth::claude::load_credentials().is_ok()
                 || crate::provider_catalog::load_api_key_from_env_or_config(
                     "ANTHROPIC_API_KEY",
@@ -1514,7 +1544,7 @@ impl MultiProvider {
                 .bedrock
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner()) =
-                Some(Arc::new(bedrock::BedrockProvider::new()));
+                Some(Arc::new(new_bedrock_provider()));
         }
 
         let registry = ProviderRegistry::new(self);
@@ -1529,9 +1559,6 @@ impl MultiProvider {
 
         if let Some(anthropic) = self.anthropic_provider() {
             self.spawn_post_auth_model_refresh(anthropic, "Anthropic");
-        }
-        if let Some(claude) = self.claude_provider() {
-            self.spawn_post_auth_model_refresh(claude, "Claude");
         }
         if let Some(openai) = self.openai_provider() {
             self.spawn_post_auth_model_refresh(openai, "OpenAI");
@@ -1725,7 +1752,7 @@ impl Default for MultiProvider {
 impl Provider for MultiProvider {
     async fn prewarm(&self, tools: &[ToolDefinition], system_static: &str) {
         let provider = match self.active_provider() {
-            ActiveProvider::Claude => self.anthropic_provider().or_else(|| self.claude_provider()),
+            ActiveProvider::Claude => self.anthropic_provider(),
             ActiveProvider::OpenAI => self.openai_provider(),
             ActiveProvider::Copilot => self.copilot_provider(),
             ActiveProvider::Antigravity => self.antigravity_provider(),
@@ -1810,8 +1837,6 @@ impl Provider for MultiProvider {
                 // Prefer anthropic if available
                 if let Some(anthropic) = self.anthropic_provider() {
                     anthropic.model()
-                } else if let Some(claude) = self.claude_provider() {
-                    claude.model()
                 } else {
                     jcode_provider_core::DEFAULT_CLAUDE_MODEL.to_string()
                 }
@@ -1954,10 +1979,6 @@ impl Provider for MultiProvider {
             ActiveProvider::Claude => self
                 .anthropic_provider()
                 .map(|provider| provider.supports_image_input())
-                .or_else(|| {
-                    self.claude_provider()
-                        .map(|provider| provider.supports_image_input())
-                })
                 .unwrap_or(false),
             ActiveProvider::OpenAI => self
                 .openai_provider()
@@ -1990,6 +2011,21 @@ impl Provider for MultiProvider {
         }
     }
 
+    fn supports_deferred_tools(&self) -> bool {
+        // Only first-party Anthropic and OpenAI Responses paths implement
+        // provider-native deferred loading. Every other route receives an
+        // eager-only tool list (see `complete_with_failover`).
+        match self.active_provider() {
+            ActiveProvider::Claude => self
+                .anthropic_provider()
+                .is_some_and(|provider| provider.supports_deferred_tools()),
+            ActiveProvider::OpenAI => self
+                .openai_provider()
+                .is_some_and(|provider| provider.supports_deferred_tools()),
+            _ => false,
+        }
+    }
+
     fn set_model(&self, model: &str) -> Result<()> {
         self.spawn_anthropic_catalog_refresh_if_needed();
         self.spawn_openai_catalog_refresh_if_needed();
@@ -2019,6 +2055,13 @@ impl Provider for MultiProvider {
             registry.set_active_compatible_profile(GROK_BUILD_PROFILE_ID);
             self.set_active_provider(ActiveProvider::OpenRouter);
             return Ok(());
+        }
+
+        // `jcode:<model>` is the explicit spec for the Jcode subscription
+        // runtime. Without this it fell through to the active provider and
+        // `--model jcode:gpt-5.5` silently stayed on the previous model.
+        if let Some(target_model) = jcode_subscription_model_prefix(requested_model) {
+            return self.set_model_on_jcode_subscription(target_model);
         }
 
         if let Some((profile, target_model)) = Self::openai_compatible_model_prefix(requested_model)
@@ -2161,8 +2204,6 @@ impl Provider for MultiProvider {
             ActiveProvider::Claude => {
                 if let Some(anthropic) = self.anthropic_provider() {
                     anthropic.available_models_for_switching()
-                } else if let Some(claude) = self.claude_provider() {
-                    claude.available_models_for_switching()
                 } else {
                     Vec::new()
                 }
@@ -2241,7 +2282,6 @@ impl Provider for MultiProvider {
 
     async fn prefetch_models(&self) -> Result<()> {
         let anthropic = self.anthropic_provider();
-        let claude = self.claude_provider();
         let openai = self.openai_provider();
         let openrouter = self.openrouter_provider();
         let copilot = self
@@ -2256,7 +2296,6 @@ impl Provider for MultiProvider {
 
         let (
             anthropic_result,
-            claude_result,
             openai_result,
             openrouter_result,
             copilot_result,
@@ -2267,12 +2306,6 @@ impl Provider for MultiProvider {
         ) = tokio::join!(
             async {
                 match anthropic {
-                    Some(provider) => provider.prefetch_models().await,
-                    None => Ok(()),
-                }
-            },
-            async {
-                match claude {
                     Some(provider) => provider.prefetch_models().await,
                     None => Ok(()),
                 }
@@ -2326,7 +2359,6 @@ impl Provider for MultiProvider {
         let mut optional_errors = Vec::new();
         for (provider_name, result) in [
             ("anthropic", anthropic_result),
-            ("claude", claude_result),
             ("openai", openai_result),
             ("openrouter", openrouter_result),
             ("copilot", copilot_result),
@@ -2360,6 +2392,12 @@ impl Provider for MultiProvider {
                 "Optional model catalog refresh failed: {}",
                 optional_errors.join("; ")
             ));
+        }
+
+        // Bedrock's built-in default is a 2024 model; once its catalog (live
+        // or cached) is known, land on the newest usable Claude flagship.
+        if let Some(bedrock) = self.bedrock_provider() {
+            promote_bedrock_placeholder_default(&bedrock);
         }
 
         if !errors.is_empty() {
@@ -2398,13 +2436,7 @@ impl Provider for MultiProvider {
         match self.active_provider() {
             ActiveProvider::Claude => {
                 // Direct API does NOT handle tools internally - jcode executes them
-                if self.anthropic_provider().is_some() {
-                    false
-                } else {
-                    self.claude_provider()
-                        .map(|c| c.handles_tools_internally())
-                        .unwrap_or(false)
-                }
+                false
             }
             ActiveProvider::OpenAI => self
                 .openai_provider()
@@ -2427,7 +2459,7 @@ impl Provider for MultiProvider {
 
     fn reasoning_effort(&self) -> Option<String> {
         match self.active_provider() {
-            ActiveProvider::Claude if !self.use_claude_cli => self
+            ActiveProvider::Claude => self
                 .anthropic_provider()
                 .and_then(|provider| provider.reasoning_effort()),
             ActiveProvider::OpenAI => self.openai_provider().and_then(|o| o.reasoning_effort()),
@@ -2441,7 +2473,7 @@ impl Provider for MultiProvider {
 
     fn set_reasoning_effort(&self, effort: &str) -> Result<()> {
         match self.active_provider() {
-            ActiveProvider::Claude if !self.use_claude_cli => self
+            ActiveProvider::Claude => self
                 .anthropic_provider()
                 .ok_or_else(|| anyhow::anyhow!("Anthropic provider not available"))?
                 .set_reasoning_effort(effort),
@@ -2465,7 +2497,7 @@ impl Provider for MultiProvider {
 
     fn available_efforts(&self) -> Vec<&'static str> {
         match self.active_provider() {
-            ActiveProvider::Claude if !self.use_claude_cli => self
+            ActiveProvider::Claude => self
                 .anthropic_provider()
                 .map(|provider| provider.available_efforts())
                 .unwrap_or_default(),
@@ -2487,17 +2519,16 @@ impl Provider for MultiProvider {
 
     fn service_tier(&self) -> Option<String> {
         match self.active_provider() {
-            ActiveProvider::Claude if !self.use_claude_cli => {
-                self.anthropic_provider().and_then(|a| a.service_tier())
-            }
+            ActiveProvider::Claude => self.anthropic_provider().and_then(|a| a.service_tier()),
             ActiveProvider::OpenAI => self.openai_provider().and_then(|o| o.service_tier()),
+            ActiveProvider::Cursor => self.cursor_provider().and_then(|c| c.service_tier()),
             _ => None,
         }
     }
 
     fn set_service_tier(&self, service_tier: &str) -> Result<()> {
         match self.active_provider() {
-            ActiveProvider::Claude if !self.use_claude_cli => self
+            ActiveProvider::Claude => self
                 .anthropic_provider()
                 .ok_or_else(|| anyhow::anyhow!("Anthropic provider not available"))?
                 .set_service_tier(service_tier),
@@ -2505,21 +2536,29 @@ impl Provider for MultiProvider {
                 .openai_provider()
                 .ok_or_else(|| anyhow::anyhow!("OpenAI provider not available"))?
                 .set_service_tier(service_tier),
+            ActiveProvider::Cursor => self
+                .cursor_provider()
+                .ok_or_else(|| anyhow::anyhow!("Cursor provider not available"))?
+                .set_service_tier(service_tier),
             _ => Err(anyhow::anyhow!(
-                "Service tier switching is only supported for OpenAI models and Claude Opus 4.8"
+                "Service tier switching is only supported for OpenAI models, Cursor models, and Claude Opus 4.8"
             )),
         }
     }
 
     fn available_service_tiers(&self) -> Vec<&'static str> {
         match self.active_provider() {
-            ActiveProvider::Claude if !self.use_claude_cli => self
+            ActiveProvider::Claude => self
                 .anthropic_provider()
                 .map(|a| a.available_service_tiers())
                 .unwrap_or_default(),
             ActiveProvider::OpenAI => self
                 .openai_provider()
                 .map(|o| o.available_service_tiers())
+                .unwrap_or_default(),
+            ActiveProvider::Cursor => self
+                .cursor_provider()
+                .map(|c| c.available_service_tiers())
                 .unwrap_or_default(),
             _ => vec![],
         }
@@ -2576,15 +2615,7 @@ impl Provider for MultiProvider {
 
     fn supports_compaction(&self) -> bool {
         match self.active_provider() {
-            ActiveProvider::Claude => {
-                if self.anthropic_provider().is_some() {
-                    true
-                } else {
-                    self.claude_provider()
-                        .map(|c| c.supports_compaction())
-                        .unwrap_or(false)
-                }
-            }
+            ActiveProvider::Claude => self.anthropic_provider().is_some(),
             ActiveProvider::OpenAI => self
                 .openai_provider()
                 .map(|o| o.supports_compaction())
@@ -2618,15 +2649,7 @@ impl Provider for MultiProvider {
 
     fn uses_jcode_compaction(&self) -> bool {
         match self.active_provider() {
-            ActiveProvider::Claude => {
-                if self.anthropic_provider().is_some() {
-                    true
-                } else {
-                    self.claude_provider()
-                        .map(|c| c.uses_jcode_compaction())
-                        .unwrap_or(false)
-                }
-            }
+            ActiveProvider::Claude => self.anthropic_provider().is_some(),
             ActiveProvider::OpenAI => self
                 .openai_provider()
                 .map(|o| o.uses_jcode_compaction())
@@ -2665,14 +2688,6 @@ impl Provider for MultiProvider {
             ActiveProvider::Claude => {
                 if let Some(anthropic) = self.anthropic_provider() {
                     anthropic
-                        .native_compact(
-                            messages,
-                            existing_summary_text,
-                            existing_openai_encrypted_content,
-                        )
-                        .await
-                } else if let Some(claude) = self.claude_provider() {
-                    claude
                         .native_compact(
                             messages,
                             existing_summary_text,
@@ -2789,8 +2804,6 @@ impl Provider for MultiProvider {
             ActiveProvider::Claude => {
                 if let Some(anthropic) = self.anthropic_provider() {
                     anthropic.context_window()
-                } else if let Some(claude) = self.claude_provider() {
-                    claude.context_window()
                 } else {
                     DEFAULT_CONTEXT_LIMIT
                 }
@@ -2830,12 +2843,6 @@ impl Provider for MultiProvider {
         let current_model = self.model();
         let active = self.active_provider();
 
-        let claude = if matches!(active, ActiveProvider::Claude) && self.claude_provider().is_some()
-        {
-            external::instantiate_expected_external_provider(external::CLAUDE_CLI_RUNTIME)
-        } else {
-            None
-        };
         let anthropic = if self.anthropic_provider().is_some() {
             external::instantiate_expected_external_provider(external::ANTHROPIC_RUNTIME)
         } else {
@@ -2872,7 +2879,7 @@ impl Provider for MultiProvider {
             None
         };
         let bedrock_provider = if self.bedrock_provider().is_some() {
-            Some(Arc::new(bedrock::BedrockProvider::new()))
+            Some(Arc::new(new_bedrock_provider()))
         } else {
             None
         };
@@ -2888,7 +2895,6 @@ impl Provider for MultiProvider {
         };
 
         let provider = Self {
-            claude: RwLock::new(claude),
             anthropic: RwLock::new(anthropic),
             openai: RwLock::new(openai),
             copilot_api: RwLock::new(copilot_api),
@@ -2900,7 +2906,6 @@ impl Provider for MultiProvider {
             openai_compatible_profiles: RwLock::new(HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(active),
-            use_claude_cli: self.use_claude_cli,
             startup_notices: RwLock::new(Vec::new()),
             initial_provider: self.initial_provider,
             routes_memo: Mutex::new(None),
@@ -2943,19 +2948,18 @@ impl Provider for MultiProvider {
     fn native_result_sender(&self) -> Option<NativeToolResultSender> {
         match self.active_provider() {
             // Direct API doesn't use native result sender
-            ActiveProvider::Claude => {
-                if self.anthropic_provider().is_some() {
-                    None
-                } else {
-                    self.claude_provider()
-                        .and_then(|c| c.native_result_sender())
-                }
-            }
+            ActiveProvider::Claude => None,
             ActiveProvider::OpenAI => None,
             ActiveProvider::Copilot => None,
             ActiveProvider::Antigravity => None,
             ActiveProvider::Gemini => None,
-            ActiveProvider::Cursor => None,
+            // Cursor's AgentService keeps its bidirectional stream open until
+            // the MCP tool result is sent back over the same stream. Dropping
+            // the sender here made every Cursor tool call hang after the tool
+            // ran locally.
+            ActiveProvider::Cursor => self
+                .cursor_provider()
+                .and_then(|provider| provider.native_result_sender()),
             ActiveProvider::Bedrock => None,
             ActiveProvider::OpenRouter => None,
         }
@@ -3029,3 +3033,123 @@ pub fn cache_ttl_for_provider_model(provider: &str, model: Option<&str>) -> Opti
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod bedrock_placeholder_default_tests {
+    use super::*;
+
+    fn route(model: &str, available: bool) -> ModelRoute {
+        ModelRoute {
+            model: model.to_string(),
+            provider: "AWS Bedrock".to_string(),
+            api_method: "bedrock".to_string(),
+            available,
+            detail: String::new(),
+            usage: None,
+            cheapness: None,
+        }
+    }
+
+    #[test]
+    fn bedrock_placeholder_promotes_to_newest_usable_claude() {
+        let routes = vec![
+            route(bedrock::BedrockProvider::PLACEHOLDER_DEFAULT_MODEL, true),
+            route("anthropic.claude-sonnet-4-20250514-v1:0", true),
+            route("us.anthropic.claude-opus-4-6-v1", true),
+            route("amazon.nova-pro-v1:0", true),
+        ];
+        assert_eq!(
+            bedrock_promoted_default(bedrock::BedrockProvider::PLACEHOLDER_DEFAULT_MODEL, &routes)
+                .as_deref(),
+            Some("us.anthropic.claude-opus-4-6-v1")
+        );
+    }
+
+    #[test]
+    fn bedrock_placeholder_skips_unusable_routes() {
+        // A newer Opus that needs a missing inference profile is unavailable
+        // and must not become the default.
+        let routes = vec![
+            route("anthropic.claude-opus-5-20260101-v1:0", false),
+            route("anthropic.claude-sonnet-4-20250514-v1:0", true),
+        ];
+        assert_eq!(
+            bedrock_promoted_default(bedrock::BedrockProvider::PLACEHOLDER_DEFAULT_MODEL, &routes)
+                .as_deref(),
+            Some("anthropic.claude-sonnet-4-20250514-v1:0")
+        );
+    }
+
+    /// End to end through the real construction path: a cached Bedrock catalog
+    /// on disk must make a freshly built provider start on the newest Claude
+    /// flagship instead of the 2024 placeholder; with no catalog it stays put.
+    #[test]
+    fn new_bedrock_provider_starts_on_newest_cached_flagship() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = crate::test_temp::tempdir().expect("tempdir");
+        let keys = [
+            "KCODE_HOME",
+            "KCODE_BEDROCK_MODEL",
+            "KCODE_BEDROCK_REGION",
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION",
+        ];
+        let saved: Vec<_> = keys.iter().map(|k| (*k, std::env::var_os(k))).collect();
+        for key in &keys[1..] {
+            crate::env::remove_var(key);
+        }
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        let fresh = new_bedrock_provider();
+        assert_eq!(
+            fresh.model(),
+            bedrock::BedrockProvider::PLACEHOLDER_DEFAULT_MODEL,
+            "no catalog: keep placeholder rather than guess from the known list"
+        );
+
+        let cache = crate::storage::app_config_dir()
+            .expect("config dir")
+            .join("bedrock_models_cache.json");
+        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        std::fs::write(
+            &cache,
+            serde_json::json!({
+                "models": [
+                    "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "anthropic.claude-sonnet-4-20250514-v1:0",
+                    "anthropic.claude-opus-4-20250514-v1:0",
+                ],
+                "inference_profiles": [],
+                "region": null,
+                "fetched_at_rfc3339": "2026-10-01T00:00:00Z",
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let promoted = new_bedrock_provider().model();
+
+        crate::env::set_var(
+            "KCODE_BEDROCK_MODEL",
+            "anthropic.claude-3-5-haiku-20241022-v1:0",
+        );
+        let pinned = new_bedrock_provider().model();
+
+        for (key, value) in saved {
+            match value {
+                Some(value) => crate::env::set_var(key, value),
+                None => crate::env::remove_var(key),
+            }
+        }
+        assert_eq!(promoted, "anthropic.claude-opus-4-20250514-v1:0");
+        assert_eq!(pinned, "anthropic.claude-3-5-haiku-20241022-v1:0");
+    }
+
+    #[test]
+    fn bedrock_explicit_model_is_never_replaced() {
+        let routes = vec![route("us.anthropic.claude-opus-4-6-v1", true)];
+        assert_eq!(
+            bedrock_promoted_default("anthropic.claude-sonnet-4-20250514-v1:0", &routes),
+            None
+        );
+    }
+}

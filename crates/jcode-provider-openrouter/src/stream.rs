@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bytes::Bytes;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use jcode_message_types::StreamEvent;
 use serde_json::Value;
 use std::collections::VecDeque;
@@ -82,7 +82,8 @@ impl OpenRouterStream {
         provider_pin: Arc<Mutex<Option<ProviderPin>>>,
     ) -> Self {
         Self {
-            inner: Box::pin(stream),
+            // Final events can require more polls after transport EOF.
+            inner: Box::pin(stream.fuse()),
             buffer: String::new(),
             utf8: jcode_core::util::Utf8StreamDecoder::new(),
             partial_json: None,
@@ -426,15 +427,24 @@ impl OpenRouterStream {
                             for tc in tool_calls {
                                 let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0);
                                 let function = tc.get("function");
+                                // Compatible APIs may send a complete JSON value
+                                // instead of the usual string fragment. Preserve
+                                // it, including invalid null/array arguments, so
+                                // validation sees what the provider actually sent.
+                                let arguments =
+                                    function.and_then(|f| f.get("arguments")).map(|value| {
+                                        match value.as_str() {
+                                            Some(fragment) => std::borrow::Cow::Borrowed(fragment),
+                                            None => std::borrow::Cow::Owned(value.to_string()),
+                                        }
+                                    });
                                 self.apply_tool_call_delta(
                                     index,
                                     tc.get("id").and_then(|i| i.as_str()),
                                     function
                                         .and_then(|f| f.get("name"))
                                         .and_then(|n| n.as_str()),
-                                    function
-                                        .and_then(|f| f.get("arguments"))
-                                        .and_then(|a| a.as_str()),
+                                    arguments.as_deref(),
                                     tc.get("extra_content")
                                         .and_then(|value| value.get("google"))
                                         .and_then(|value| value.get("thought_signature"))
@@ -598,9 +608,8 @@ impl Stream for OpenRouterStream {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use futures::StreamExt;
+#[path = "stream_tests.rs"]
+mod tests;
 
     fn drain_text(stream: &mut OpenRouterStream) -> String {
         let mut text = String::new();

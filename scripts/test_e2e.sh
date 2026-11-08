@@ -53,16 +53,16 @@ echo "Test 6: E2E integration tests..."
 run_cargo test --test e2e --quiet
 echo "✓ E2E tests passed"
 
-if [[ "${JCODE_REAL_PROVIDER:-0}" == "1" ]]; then
+if [[ "${KCODE_REAL_PROVIDER:-0}" == "1" ]]; then
     echo ""
-    echo "Test 7: Real provider smoke (JCODE_REAL_PROVIDER=1)..."
+    echo "Test 7: Real provider smoke (KCODE_REAL_PROVIDER=1)..."
     scripts/real_provider_smoke.sh
     echo "✓ Real provider smoke passed"
 fi
 
-if [[ "${JCODE_REAL_AUTH_TEST:-0}" == "1" ]]; then
+if [[ "${KCODE_REAL_AUTH_TEST:-0}" == "1" ]]; then
     echo ""
-    echo "Test 8: Auth E2E validation (JCODE_REAL_AUTH_TEST=1)..."
+    echo "Test 8: Auth E2E validation (KCODE_REAL_AUTH_TEST=1)..."
     scripts/test_auth_e2e.sh
     echo "✓ Auth E2E validation passed"
 fi
@@ -71,6 +71,6 @@ echo ""
 echo "=== All tests passed! ==="
 echo ""
 echo "To test interactively:"
-echo "  jcode        # Start TUI mode"
-echo "  jcode server # Start server mode"
-echo "  jcode client # Connect to server"
+echo "  kcode        # Start TUI mode"
+echo "  kcode server # Start server mode"
+echo "  kcode client # Connect to server"

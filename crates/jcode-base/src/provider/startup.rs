@@ -69,9 +69,6 @@ impl MultiProvider {
                 if let Some(anthropic) = self.anthropic_provider() {
                     anthropic.invalidate_credentials().await;
                 }
-                if let Some(claude) = self.claude_provider() {
-                    claude.invalidate_credentials().await;
-                }
             }
             ActiveProvider::OpenAI => {
                 if let Some(openai) = self.openai_provider() {
@@ -89,28 +86,47 @@ impl MultiProvider {
         let initial_provider = Self::initial_provider_from_env();
         let mut default_named_provider_profile: Option<String> = None;
         if initial_provider.is_none()
-            && std::env::var_os("JCODE_PROVIDER_PROFILE_ACTIVE").is_none()
-            && std::env::var_os("JCODE_NAMED_PROVIDER_PROFILE").is_none()
+            && std::env::var_os("KCODE_PROVIDER_PROFILE_ACTIVE").is_none()
+            && std::env::var_os("KCODE_NAMED_PROVIDER_PROFILE").is_none()
             && let Some(pref) = provider_state.default_provider_key()
         {
-            if let Some(profile) =
-                crate::provider_catalog::resolve_openai_compatible_profile_selection(pref)
-            {
-                crate::provider_catalog::apply_openai_compatible_profile_env(Some(profile));
-            } else if cfg.providers.contains_key(pref) {
+            // A user-declared `[providers.<pref>]` block wins over a built-in
+            // login-provider profile with the same id. Without this ordering,
+            // a config block named after a built-in id (for example
+            // "openai-compatible") is unreachable: the built-in resolver
+            // always returns Some, so the config branch below was dead code
+            // and the user's declared models were silently discarded.
+            if cfg.providers.contains_key(pref) {
                 match crate::provider_catalog::apply_named_provider_profile_env_from_config(
                     pref, cfg,
                 ) {
                     Ok(profile_name) => {
-                        crate::env::set_var("JCODE_PROVIDER_PROFILE_NAME", &profile_name);
-                        crate::env::set_var("JCODE_PROVIDER_PROFILE_ACTIVE", "1");
+                        crate::env::set_var("KCODE_PROVIDER_PROFILE_NAME", &profile_name);
+                        crate::env::set_var("KCODE_PROVIDER_PROFILE_ACTIVE", "1");
                         default_named_provider_profile = Some(profile_name);
                     }
-                    Err(err) => crate::logging::warn(&format!(
-                        "Failed to apply default provider profile '{}': {}",
-                        pref, err
-                    )),
+                    Err(err) => {
+                        crate::logging::warn(&format!(
+                            "Failed to apply default provider profile '{}': {}",
+                            pref, err
+                        ));
+                        // Fall through to the built-in resolver so a malformed
+                        // user block still yields a usable provider.
+                        if let Some(profile) =
+                            crate::provider_catalog::resolve_openai_compatible_profile_selection(
+                                pref,
+                            )
+                        {
+                            crate::provider_catalog::apply_openai_compatible_profile_env(Some(
+                                profile,
+                            ));
+                        }
+                    }
                 }
+            } else if let Some(profile) =
+                crate::provider_catalog::resolve_openai_compatible_profile_selection(pref)
+            {
+                crate::provider_catalog::apply_openai_compatible_profile_env(Some(profile));
             }
         }
 
@@ -127,28 +143,16 @@ impl MultiProvider {
         let has_bedrock_creds = bedrock::BedrockProvider::has_credentials();
         let has_openrouter_creds = openrouter::has_credentials();
 
-        let use_claude_cli = std::env::var("JCODE_USE_CLAUDE_CLI")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-        if use_claude_cli {
+        if std::env::var_os("KCODE_USE_CLAUDE_CLI").is_some() {
             crate::logging::warn(
-                "JCODE_USE_CLAUDE_CLI is deprecated and will be removed. Direct Anthropic API transport is the default.",
+                "KCODE_USE_CLAUDE_CLI has been removed and is ignored. Claude uses the direct Anthropic transport.",
             );
         }
 
-        let claude = if has_claude_creds && use_claude_cli {
-            crate::logging::info(
-                "Using deprecated Claude CLI provider (forced by JCODE_USE_CLAUDE_CLI=1)",
-            );
-            external::instantiate_expected_external_provider(external::CLAUDE_CLI_RUNTIME)
-        } else {
-            None
-        };
-
-        let anthropic = if has_claude_creds && !use_claude_cli {
+        let anthropic = if has_claude_creds {
             let provider =
                 external::instantiate_expected_external_provider(external::ANTHROPIC_RUNTIME);
-            let active_profile_is_anthropic = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
+            let active_profile_is_anthropic = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")
                 .ok()
                 .and_then(|name| cfg.providers.get(&name))
                 .is_some_and(|profile| {
@@ -209,12 +213,12 @@ impl MultiProvider {
         };
 
         let bedrock_provider = if has_bedrock_creds {
-            Some(Arc::new(bedrock::BedrockProvider::new()))
+            Some(Arc::new(new_bedrock_provider()))
         } else {
             None
         };
 
-        let active_named_profile_is_anthropic = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
+        let active_named_profile_is_anthropic = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")
             .ok()
             .or_else(|| default_named_provider_profile.clone())
             .and_then(|name| cfg.providers.get(&name))
@@ -225,7 +229,7 @@ impl MultiProvider {
                 )
             });
         let openrouter = if has_openrouter_creds && !active_named_profile_is_anthropic {
-            let named_profile = std::env::var("JCODE_NAMED_PROVIDER_PROFILE")
+            let named_profile = std::env::var("KCODE_NAMED_PROVIDER_PROFILE")
                 .ok()
                 .or_else(|| default_named_provider_profile.clone());
             let spec = named_profile
@@ -251,12 +255,12 @@ impl MultiProvider {
         };
 
         let copilot_premium_zero = matches!(
-            std::env::var("JCODE_COPILOT_PREMIUM").ok().as_deref(),
+            std::env::var("KCODE_COPILOT_PREMIUM").ok().as_deref(),
             Some("0")
         );
         let availability = ProviderAvailability {
             openai: openai.is_some(),
-            claude: claude.is_some() || anthropic.is_some(),
+            claude: anthropic.is_some(),
             copilot: copilot_api.is_some(),
             antigravity: antigravity_provider.is_some(),
             gemini: gemini_provider.is_some(),
@@ -323,7 +327,6 @@ impl MultiProvider {
         }
 
         let result = Self {
-            claude: RwLock::new(claude),
             anthropic: RwLock::new(anthropic),
             openai: RwLock::new(openai),
             copilot_api: RwLock::new(copilot_api),
@@ -335,7 +338,6 @@ impl MultiProvider {
             openai_compatible_profiles: RwLock::new(HashMap::new()),
             active_openai_compatible_profile: RwLock::new(None),
             active: RwLock::new(active),
-            use_claude_cli,
             startup_notices: RwLock::new(Vec::new()),
             initial_provider,
             routes_memo: Mutex::new(None),
@@ -368,12 +370,7 @@ impl MultiProvider {
         crate::provider::catalog_scheduler::ensure_started();
         result.auto_select_active_multi_account();
         crate::logging::info(&format!(
-            "[TIMING] provider_init: claude={}, anthropic={}, openai={}, copilot={}, antigravity={}, gemini={}, cursor={}, bedrock={}, openrouter={}, total={}ms",
-            result
-                .claude
-                .read()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .is_some(),
+            "[TIMING] provider_init: anthropic={}, openai={}, copilot={}, antigravity={}, gemini={}, cursor={}, bedrock={}, openrouter={}, total={}ms",
             result
                 .anthropic
                 .read()

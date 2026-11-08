@@ -47,7 +47,7 @@ fn jcode_dir() -> PathBuf {
     storage::jcode_dir().unwrap_or_else(|_| {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join(".jcode")
+            .join(".kcode")
     })
 }
 
@@ -174,124 +174,127 @@ fn runtime_dir() -> PathBuf {
     storage::runtime_dir()
 }
 
-fn session_socket_path(name: &str) -> PathBuf {
-    runtime_dir().join(format!("browser-session-{}.sock", name))
+fn extensions_dir() -> PathBuf {
+    browser_dir().join("extensions")
 }
 
-fn session_pid_path(name: &str) -> PathBuf {
-    runtime_dir().join(format!("browser-session-{}.pid", name))
+/// Unpacked Chromium extension, loaded via "Load unpacked" in the browser.
+pub fn chromium_extension_dir() -> PathBuf {
+    extensions_dir().join("chromium")
 }
 
-fn is_session_alive(name: &str) -> bool {
-    let pid_path = session_pid_path(name);
-    if let Ok(pid_str) = std::fs::read_to_string(&pid_path)
-        && let Ok(pid) = pid_str.trim().parse::<u32>()
-        && platform::is_process_running(pid)
-    {
-        return session_socket_path(name).exists();
-    }
-    false
+fn safari_extension_dir() -> PathBuf {
+    extensions_dir().join("safari")
 }
 
-pub fn ensure_browser_session(session_id: &str) -> Option<String> {
-    let session_name = sanitize_session_name(session_id);
-
-    if is_session_alive(&session_name) {
-        return Some(session_name);
-    }
-
-    let bin = browser_binary_path();
-    if !bin.exists() {
-        return None;
-    }
-
-    // Bind each agent session to a dedicated browser window when the installed
-    // bridge supports it. Older bridge CLIs reject --bind-window, so probe the
-    // command surface instead of paying for a known-failing process launch on
-    // every browser action.
-    if browser_supports_bind_window(&bin)
-        && let Some(name) = spawn_browser_session(&bin, &session_name, true)
-    {
-        return Some(name);
-    }
-    spawn_browser_session(&bin, &session_name, false)
+#[cfg(target_os = "macos")]
+fn safari_app_project_dir() -> PathBuf {
+    browser_dir().join("safari-app")
 }
 
-fn browser_supports_bind_window(bin: &std::path::Path) -> bool {
-    std::process::Command::new(bin)
-        .args(["session", "start", "--help"])
-        .stdin(std::process::Stdio::null())
-        .output()
+pub fn saved_browser_preference() -> Option<BrowserKind> {
+    std::fs::read_to_string(browser_preference_path())
         .ok()
-        .is_some_and(|output| {
-            String::from_utf8_lossy(&output.stdout).contains("--bind-window")
-                || String::from_utf8_lossy(&output.stderr).contains("--bind-window")
-        })
+        .and_then(|s| BrowserKind::parse(&s))
 }
 
-fn spawn_browser_session(
-    bin: &std::path::Path,
-    session_name: &str,
-    bind_window: bool,
-) -> Option<String> {
-    let mut args = vec!["session", "start", session_name];
-    if bind_window {
-        args.push("--bind-window");
-    }
-    let result = std::process::Command::new(bin)
-        .args(&args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn();
+fn save_browser_preference(kind: BrowserKind) {
+    let _ = std::fs::create_dir_all(browser_dir());
+    let _ = std::fs::write(browser_preference_path(), kind.id());
+}
 
-    match result {
-        Ok(mut child) => {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-            while std::time::Instant::now() < deadline {
-                if session_socket_path(session_name).exists() && is_session_alive(session_name) {
-                    let _ = child.stdout.take();
-                    return Some(session_name.to_string());
-                }
-                if let Ok(Some(status)) = child.try_wait() {
-                    eprintln!(
-                        "[browser] session '{}' exited before startup with status {}{}",
-                        session_name,
-                        status,
-                        if bind_window {
-                            " (retrying without --bind-window)"
-                        } else {
-                            ""
-                        }
-                    );
-                    return None;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(100));
+/// Which browser jcode should set up and launch.
+pub fn detect_target_browser() -> BrowserDetection {
+    let env = std::env::var("KCODE_BROWSER").ok();
+    let env = env
+        .as_deref()
+        .filter(|v| !v.trim().is_empty() && *v != "auto");
+    let installed: Vec<BrowserKind> = browser_detect::ALL_BROWSERS
+        .iter()
+        .copied()
+        .filter(|k| k.is_installed())
+        .collect();
+    browser_detect::resolve_detection(
+        env,
+        saved_browser_preference(),
+        browser_detect::system_default_browser_id(),
+        &installed,
+    )
+}
+
+/// Resolve an explicit browser request ("auto" or None means detect).
+pub fn resolve_target_browser(requested: Option<&str>) -> Result<BrowserDetection> {
+    match requested
+        .map(str::trim)
+        .filter(|r| !r.is_empty() && *r != "auto")
+    {
+        None => Ok(detect_target_browser()),
+        Some(name) => {
+            let kind = BrowserKind::parse(name).with_context(|| {
+                format!(
+                    "Unknown browser '{}'. Supported: auto, firefox, chrome, chromium, edge, brave, safari.",
+                    name
+                )
+            })?;
+            if !kind.supported_on_this_os() {
+                anyhow::bail!(
+                    "{} is not available on this operating system.",
+                    kind.display_name()
+                );
             }
-            eprintln!(
-                "[browser] session '{}' did not start within 10s",
-                session_name
-            );
-            let _ = child.kill();
-            let _ = child.wait();
-            None
-        }
-        Err(e) => {
-            eprintln!(
-                "[browser] Failed to start browser session '{}': {}",
-                session_name, e
-            );
-            None
+            Ok(BrowserDetection {
+                kind,
+                source: browser_detect::DetectionSource::Requested,
+                system_default: None,
+            })
         }
     }
 }
 
-fn sanitize_session_name(session_id: &str) -> String {
-    session_id
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-        .take(64)
-        .collect()
+#[path = "browser_session.rs"]
+mod browser_session;
+pub use browser_session::{ensure_browser_session, ensure_browser_session_for};
+#[path = "browser_update.rs"]
+mod browser_update;
+pub use browser_update::{
+    BridgeUpdate, auto_update_before_action, installed_bridge_version, update_bridge_if_newer,
+};
+
+/// Point a bridge CLI invocation at the native host of `browser`.
+///
+/// Every browser running the extension spawns its own host, and since bridge
+/// v0.10.1 each host takes its own port (#1720). The CLI picks the host by
+/// `FAB_BROWSER`. A user-set `FAB_BROWSER` (e.g. `helium` for a fork jcode does
+/// not know) is left alone.
+pub fn apply_bridge_browser_env<C: BridgeEnv>(command: &mut C, browser: Option<&str>) {
+    if std::env::var_os("FAB_BROWSER").is_some() {
+        return;
+    }
+    if let Some(browser) = browser.filter(|b| !b.is_empty() && *b != "auto") {
+        command.set_env("FAB_BROWSER", browser);
+    }
+}
+
+/// Both process builders jcode spawns the bridge CLI with.
+pub trait BridgeEnv {
+    fn set_env(&mut self, key: &str, value: &str);
+}
+
+impl BridgeEnv for std::process::Command {
+    fn set_env(&mut self, key: &str, value: &str) {
+        self.env(key, value);
+    }
+}
+
+impl BridgeEnv for tokio::process::Command {
+    fn set_env(&mut self, key: &str, value: &str) {
+        self.env(key, value);
+    }
+}
+
+/// Bridge browser name for `kind`, as the extension reports it.
+pub fn bridge_browser_name(kind: BrowserKind) -> &'static str {
+    kind.id()
 }
 
 pub fn is_browser_command(command: &str) -> bool {
@@ -592,21 +595,6 @@ async fn download_browser_binary_for(kind: BrowserKind) -> Result<()> {
     let asset_name = get_platform_asset_name();
     let client = jcode_provider_core::shared_http_client();
 
-    let mut request = client
-        .get(GITHUB_API_LATEST)
-        .header(reqwest::header::ACCEPT, "application/vnd.github+json");
-    // Avoid the shared unauthenticated 60 req/h per-IP GitHub bucket when a
-    // token is available (see crate::github).
-    if let Some(token) = crate::github::github_public_api_token() {
-        request = request.bearer_auth(token);
-    }
-    let release_info: serde_json::Value = request
-        .send()
-        .await?
-        .json()
-        .await
-        .context("Failed to fetch latest release info")?;
-
     let assets = release_info["assets"]
         .as_array()
         .context("No assets in release")?;
@@ -738,6 +726,9 @@ async fn download_browser_binary_for(kind: BrowserKind) -> Result<()> {
     let host_path = host_binary_path();
     write_file_atomically(&host_path, &host_bytes, true)?;
 
+    if let Some(tag) = release_info["tag_name"].as_str() {
+        browser_update::record_installed_version(tag);
+    }
     Ok(())
 }
 
@@ -1071,9 +1062,11 @@ async fn run_browser_cli_capped(
     bin: &std::path::Path,
     args: &[&str],
     timeout: std::time::Duration,
+    kind: Option<BrowserKind>,
 ) -> Result<Option<std::process::Output>> {
     let mut cmd = tokio::process::Command::new(bin);
     cmd.args(args).kill_on_drop(true);
+    apply_bridge_browser_env(&mut cmd, kind.map(bridge_browser_name));
 
     match tokio::time::timeout(timeout, cmd.output()).await {
         Ok(output) => Ok(Some(output?)),
@@ -1100,7 +1093,7 @@ async fn bridge_ping_info() -> Result<Option<serde_json::Value>> {
         return Ok(None);
     }
 
-    match run_browser_cli_capped(&bin, &["ping"], BRIDGE_PING_TIMEOUT).await? {
+    match run_browser_cli_capped(&bin, &["ping"], BRIDGE_PING_TIMEOUT, Some(kind)).await? {
         Some(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
             if !stdout.contains("pong") {
@@ -1115,14 +1108,23 @@ async fn bridge_ping_info() -> Result<Option<serde_json::Value>> {
     }
 }
 
-async fn probe_bridge_action_support(action: &str, params_json: &str) -> Result<bool> {
+async fn probe_bridge_action_support(
+    action: &str,
+    params_json: &str,
+    kind: BrowserKind,
+) -> Result<bool> {
     let bin = browser_binary_path();
     if !bin.exists() {
         return Ok(false);
     }
 
-    let Some(output) =
-        run_browser_cli_capped(&bin, &[action, params_json], BRIDGE_PING_TIMEOUT).await?
+    let Some(output) = run_browser_cli_capped(
+        &bin,
+        &[action, params_json],
+        BRIDGE_PING_TIMEOUT,
+        Some(kind),
+    )
+    .await?
     else {
         // A dead bridge cannot tell us whether the action exists; report it as
         // unsupported rather than hanging the caller (#602).
@@ -1142,10 +1144,10 @@ async fn probe_bridge_action_support(action: &str, params_json: &str) -> Result<
     Ok(!combined.contains(&format!("Unknown action: {}", action)))
 }
 
-async fn probe_bridge_missing_actions() -> Result<Vec<String>> {
+async fn probe_bridge_missing_actions(kind: BrowserKind) -> Result<Vec<String>> {
     let mut missing = Vec::new();
     for (action, params_json) in REQUIRED_BRIDGE_ACTION_PROBES {
-        if !probe_bridge_action_support(action, params_json).await? {
+        if !probe_bridge_action_support(action, params_json, kind).await? {
             missing.push((*action).to_string());
         }
     }
@@ -1172,7 +1174,9 @@ pub async fn inspect_browser_status_for(target: &BrowserDetection) -> Result<Bro
             .to_string()
     });
     let missing_actions = if responding {
-        probe_bridge_missing_actions().await.unwrap_or_default()
+        probe_bridge_missing_actions(target.kind)
+            .await
+            .unwrap_or_default()
     } else {
         Vec::new()
     };
@@ -1208,12 +1212,17 @@ pub async fn ensure_browser_ready_noninteractive_for(
     Ok(status)
 }
 
-async fn wait_for_ping(timeout_secs: u64) -> Result<bool> {
+/// Wait up to `timeout_secs` for `kind`'s bridge to answer a ping.
+pub async fn wait_for_bridge(kind: BrowserKind, timeout_secs: u64) -> bool {
+    matches!(wait_for_ping(kind, timeout_secs).await, Ok(true))
+}
+
+async fn wait_for_ping(kind: BrowserKind, timeout_secs: u64) -> Result<bool> {
     let start = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(timeout_secs);
 
     while start.elapsed() < timeout {
-        if let Ok(true) = check_browser_ping().await {
+        if let Ok(true) = check_browser_ping(kind).await {
             return Ok(true);
         }
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -1411,7 +1420,7 @@ pub fn should_attempt_firefox_launch(status: &BrowserStatus, firefox_running: bo
 /// its own. Tests also use this to stay hermetic.
 pub fn firefox_autolaunch_disabled() -> bool {
     matches!(
-        std::env::var("JCODE_BROWSER_AUTOLAUNCH").as_deref(),
+        std::env::var("KCODE_BROWSER_AUTOLAUNCH").as_deref(),
         Ok("0") | Ok("false") | Ok("off") | Ok("no")
     )
 }

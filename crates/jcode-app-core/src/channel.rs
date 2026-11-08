@@ -4,6 +4,8 @@ use crate::logging;
 use async_trait::async_trait;
 use std::sync::Arc;
 
+// async_trait generates redundant must_use attributes on boxed Future methods.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait MessageChannel: Send + Sync {
     fn name(&self) -> &str;
@@ -668,7 +670,7 @@ impl MessageChannel for JadeRelayChannel {
         let host = std::env::var("HOSTNAME")
             .or_else(|_| std::env::var("COMPUTERNAME"))
             .unwrap_or_else(|_| "laptop".to_string());
-        let device_id = format!("jcode-{}", host);
+        let device_id = format!("kcode-{}", host);
         logging::info(&format!(
             "jade relay reply loop started channel={}/{}",
             self.user_id, self.session_id
@@ -877,7 +879,7 @@ mod tests {
         );
 
         // 1) heartbeat (device register)
-        ch.heartbeat("jcode-test-device").await;
+        ch.heartbeat("kcode-test-device").await;
 
         // 2) baseline cursor: no prompts yet
         let (events, after) = ch.poll_prompts(0, 0).await.expect("baseline poll");

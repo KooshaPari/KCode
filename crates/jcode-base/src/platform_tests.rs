@@ -18,8 +18,8 @@ fn spawn_detached_creates_new_session() {
 
     let mut cmd = std::process::Command::new("sh");
     cmd.arg("-c")
-        .arg("ps -o sid= -p $$ > \"$JCODE_TEST_OUTPUT\"")
-        .env("JCODE_TEST_OUTPUT", &output_path)
+        .arg("ps -o sid= -p $$ > \"$KCODE_TEST_OUTPUT\"")
+        .env("KCODE_TEST_OUTPUT", &output_path)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
 
@@ -164,11 +164,7 @@ fn ps_process_state(pid: u32) -> Option<String> {
         .output()
         .expect("run ps to inspect process state");
     let state = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if state.is_empty() {
-        None
-    } else {
-        Some(state)
-    }
+    if state.is_empty() { None } else { Some(state) }
 }
 
 /// Regression test for the zombie-child leak: detached children that were

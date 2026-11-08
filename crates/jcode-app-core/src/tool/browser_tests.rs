@@ -1,3 +1,4 @@
+#![cfg_attr(test, allow(clippy::await_holding_lock))]
 use super::*;
 
 #[test]
@@ -254,12 +255,14 @@ async fn readiness_does_not_trust_a_stale_setup_marker() {
     use std::os::unix::fs::PermissionsExt;
 
     let _guard = jcode_base::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let prev_autolaunch = std::env::var_os("JCODE_BROWSER_AUTOLAUNCH");
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let prev_autolaunch = std::env::var_os("KCODE_BROWSER_AUTOLAUNCH");
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    jcode_base::env::set_var("JCODE_HOME", temp.path());
-    // Keep the test hermetic: never launch a real Firefox from here.
-    jcode_base::env::set_var("JCODE_BROWSER_AUTOLAUNCH", "0");
+    jcode_base::env::set_var("KCODE_HOME", temp.path());
+    let prev_auto_update = std::env::var_os("KCODE_BROWSER_AUTO_UPDATE");
+    // Keep the test hermetic: never launch a real Firefox or query GitHub.
+    jcode_base::env::set_var("KCODE_BROWSER_AUTOLAUNCH", "0");
+    jcode_base::env::set_var("KCODE_BROWSER_AUTO_UPDATE", "0");
 
     let browser_dir = temp.path().join("browser");
     std::fs::create_dir_all(&browser_dir).expect("create browser dir");
@@ -287,14 +290,18 @@ async fn readiness_does_not_trust_a_stale_setup_marker() {
     assert!(message.contains("capability discovery"), "{message}");
 
     if let Some(prev_home) = prev_home {
-        jcode_base::env::set_var("JCODE_HOME", prev_home);
+        jcode_base::env::set_var("KCODE_HOME", prev_home);
     } else {
-        jcode_base::env::remove_var("JCODE_HOME");
+        jcode_base::env::remove_var("KCODE_HOME");
     }
     if let Some(prev_autolaunch) = prev_autolaunch {
-        jcode_base::env::set_var("JCODE_BROWSER_AUTOLAUNCH", prev_autolaunch);
+        jcode_base::env::set_var("KCODE_BROWSER_AUTOLAUNCH", prev_autolaunch);
     } else {
-        jcode_base::env::remove_var("JCODE_BROWSER_AUTOLAUNCH");
+        jcode_base::env::remove_var("KCODE_BROWSER_AUTOLAUNCH");
+    }
+    match prev_auto_update {
+        Some(v) => jcode_base::env::set_var("KCODE_BROWSER_AUTO_UPDATE", v),
+        None => jcode_base::env::remove_var("KCODE_BROWSER_AUTO_UPDATE"),
     }
 }
 

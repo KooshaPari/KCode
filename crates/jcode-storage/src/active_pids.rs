@@ -47,7 +47,7 @@ pub fn set_session_internal(session_id: &str, internal: bool) {
         let _ = std::fs::create_dir_all(&dir);
         let _ = std::fs::write(dir.join(session_id), "");
     } else {
-        let _ = std::fs::remove_file(dir.join(session_id));
+        let _ = remove_marker(&dir, session_id);
     }
 }
 
@@ -67,11 +67,58 @@ pub fn register_active_pid(session_id: &str, pid: u32) {
 /// Remove the active-PID record for `session_id`, if present.
 pub fn unregister_active_pid(session_id: &str) {
     if let Some(dir) = active_pids_dir() {
-        let _ = std::fs::remove_file(dir.join(session_id));
+        let _ = remove_marker(&dir, session_id);
     }
     // A closed session is never streaming, and its internal flag is moot.
     unmark_streaming(session_id);
     set_session_internal(session_id, false);
+}
+
+/// Remove every active-PID marker owned by `pid`, returning
+/// `(removed, failed)`.
+///
+/// Used at server startup after an exec-based reload. `exec` preserves the
+/// daemon PID, so markers written by the previous process image still look live
+/// to [`session_presence`]'s liveness check, yet the fresh image owns no
+/// sessions until clients reconnect and re-register via `mark_active`. Reaping
+/// them here keeps presence counts honest. Crash-restart is unaffected: a
+/// genuinely new process has a different PID, so its markers are left for crash
+/// recovery.
+///
+/// `failed` is non-zero when a marker could not be unlinked.
+pub fn prune_active_pids_owned_by(pid: u32) -> (usize, usize) {
+    let Some(dir) = active_pids_dir() else {
+        return (0, 0);
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return (0, 0);
+    };
+
+    let owned: Vec<String> = entries
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            std::fs::read_to_string(entry.path())
+                .ok()
+                .and_then(|raw| raw.trim().parse::<u32>().ok())
+                == Some(pid)
+        })
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+
+    let mut removed = 0;
+    let mut failed = 0;
+    for session_id in &owned {
+        unregister_active_pid(session_id);
+        // `unregister_active_pid` discards filesystem errors, so confirm the
+        // marker is actually gone. A failed unlink leaves it live; count it as
+        // failed rather than reporting a prune that did not happen.
+        if dir.join(session_id).exists() {
+            failed += 1;
+        } else {
+            removed += 1;
+        }
+    }
+    (removed, failed)
 }
 
 /// Mark a session as actively streaming a model response.
@@ -85,7 +132,7 @@ pub fn mark_streaming(session_id: &str) {
 /// Clear the streaming marker for a session (turn finished or interrupted).
 pub fn unmark_streaming(session_id: &str) {
     if let Some(dir) = streaming_pids_dir() {
-        let _ = std::fs::remove_file(dir.join(session_id));
+        let _ = remove_marker(&dir, session_id);
     }
 }
 
@@ -307,17 +354,16 @@ pub fn user_session_counts() -> SessionCounts {
 mod tests {
     use super::*;
 
-    /// Serialize tests that mutate `JCODE_HOME`.
+    /// Serialize tests that mutate `KCODE_HOME`.
     fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        crate::test_jcode_home_lock()
     }
 
     #[test]
     fn session_counts_counts_live_and_streaming_only() {
         let _guard = lock_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        jcode_core::env::set_var("JCODE_HOME", temp.path());
+        jcode_core::env::set_var("KCODE_HOME", temp.path());
 
         let live = std::process::id();
         // Pick a PID that is almost certainly dead.
@@ -373,14 +419,14 @@ mod tests {
         unregister_active_pid("session_epsilon");
         assert_eq!(session_counts().streaming, 0);
 
-        jcode_core::env::remove_var("JCODE_HOME");
+        jcode_core::env::remove_var("KCODE_HOME");
     }
 
     #[test]
     fn streaming_guard_marks_and_clears_on_drop() {
         let _guard = lock_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        jcode_core::env::set_var("JCODE_HOME", temp.path());
+        jcode_core::env::set_var("KCODE_HOME", temp.path());
 
         register_active_pid("session_guard", std::process::id());
         assert_eq!(session_counts().streaming, 0);
@@ -390,7 +436,7 @@ mod tests {
         }
         assert_eq!(session_counts().streaming, 0);
 
-        jcode_core::env::remove_var("JCODE_HOME");
+        jcode_core::env::remove_var("KCODE_HOME");
     }
 
     /// Issue #508: internal (debug/child) sessions stay in the raw registry
@@ -399,7 +445,7 @@ mod tests {
     fn user_session_counts_exclude_internal_sessions() {
         let _guard = lock_env();
         let temp = tempfile::tempdir().expect("tempdir");
-        jcode_core::env::set_var("JCODE_HOME", temp.path());
+        jcode_core::env::set_var("KCODE_HOME", temp.path());
 
         let live = std::process::id();
         register_active_pid("session_user", live);
@@ -429,6 +475,140 @@ mod tests {
         unregister_active_pid("session_worker");
         assert!(!session_is_internal("session_worker"));
 
-        jcode_core::env::remove_var("JCODE_HOME");
+        jcode_core::env::remove_var("KCODE_HOME");
+    }
+
+    /// Regression for stale markers left by an exec-based reload: markers that
+    /// claim our own PID are reaped, others are left for crash recovery, and
+    /// companion streaming/internal markers go with the pruned session.
+    #[test]
+    fn prune_active_pids_owned_by_removes_only_that_pid_and_companions() {
+        let _guard = lock_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        jcode_core::env::set_var("KCODE_HOME", temp.path());
+
+        let me = std::process::id();
+        let other = 999_999u32;
+        register_active_pid("session_mine", me);
+        register_active_pid("session_theirs", other);
+        mark_streaming("session_mine");
+        set_session_internal("session_mine", true);
+
+        assert_eq!(
+            prune_active_pids_owned_by(me),
+            (1, 0),
+            "only our own marker"
+        );
+        let ids = active_session_ids();
+        assert!(!ids.contains(&"session_mine".to_string()));
+        assert!(ids.contains(&"session_theirs".to_string()));
+
+        // Pruning a session clears its companion markers too.
+        assert!(!session_is_internal("session_mine"));
+        if let Some(dir) = streaming_pids_dir() {
+            assert!(!dir.join("session_mine").exists());
+        }
+
+        // Idempotent: nothing left to prune on a second pass.
+        assert_eq!(prune_active_pids_owned_by(me), (0, 0));
+
+        jcode_core::env::remove_var("KCODE_HOME");
+    }
+
+    /// A marker that cannot be unlinked must not be reported as pruned, since
+    /// `unregister_active_pid` swallows filesystem errors.
+    #[cfg(unix)]
+    #[test]
+    fn prune_counts_only_successful_deletions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _guard = lock_env();
+        // Root ignores the directory write bit, so unlink would succeed anyway.
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let temp = tempfile::tempdir().expect("tempdir");
+        jcode_core::env::set_var("KCODE_HOME", temp.path());
+
+        let me = std::process::id();
+        register_active_pid("session_mine", me);
+
+        let dir = active_pids_dir().expect("active_pids dir");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555))
+            .expect("make markers undeletable");
+
+        // A failed unlink is reported as failed, not as a prune.
+        assert_eq!(prune_active_pids_owned_by(me), (0, 1));
+        assert!(active_session_ids().contains(&"session_mine".to_string()));
+
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755))
+            .expect("restore write access");
+        assert_eq!(prune_active_pids_owned_by(me), (1, 0));
+
+        jcode_core::env::remove_var("KCODE_HOME");
+    }
+
+    /// `remove_marker` must refuse session IDs that would let a caller escape
+    /// the active-pid or streaming-marker directory, and must successfully
+    /// remove a well-formed marker. Regression test for the
+    /// `unlinkat`-through-directory-handle fix that landed in
+    /// `rescue/e45ddd4-fixstorage-unlink-session-markers-through-director`.
+    #[test]
+    fn remove_marker_validates_and_removes() {
+        let _guard = lock_env();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let dir = temp.path().to_path_buf();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("good"), b"1234").unwrap();
+
+        // Valid session ID is removed.
+        remove_marker(&dir, "good").expect("remove_marker valid");
+        assert!(!dir.join("good").exists());
+
+        // Refuse empty / dot / dotdot / path-traversal / null-byte names.
+        for bad in ["", ".", "..", "../escape", "a/b", "a\\b", "a\0b"] {
+            let result = remove_marker(&dir, bad);
+            assert!(
+                result.is_err(),
+                "remove_marker should reject {bad:?} but got Ok"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn remove_marker_in_directory_uses_captured_handle_after_swap() {
+        use std::ffi::CString;
+        use std::os::unix::fs::{OpenOptionsExt, symlink};
+
+        let outer = tempfile::tempdir().expect("tempdir");
+        let active = outer.path().join("active_pids");
+        let moved = outer.path().join("original-active-pids");
+        let stable = outer.path().join("stable-active-pids");
+        std::fs::create_dir_all(&active).unwrap();
+        std::fs::create_dir_all(&stable).unwrap();
+        std::fs::write(active.join("session"), b"1234").unwrap();
+        let sentinel = stable.join("session");
+        std::fs::write(&sentinel, b"STABLE").unwrap();
+
+        // Capture the directory inode before any swap could happen.
+        let directory = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(&active)
+            .unwrap();
+
+        // Swap the on-disk `active` path to a symlink that points at a wholly
+        // different tree (`stable`). A re-resolution-based remove would now
+        // see `stable/session` instead of the original `moved/session`.
+        std::fs::rename(&active, &moved).unwrap();
+        symlink(&stable, &active).unwrap();
+
+        // unlinkat against the captured handle must remove the original file
+        // (now under `moved`), not the unrelated sentinel under `stable`.
+        remove_marker_in_directory(&directory, CString::new("session").unwrap().as_c_str())
+            .expect("unlinkat");
+        assert!(!moved.join("session").exists());
+        assert_eq!(std::fs::read(&sentinel).unwrap(), b"STABLE");
     }
 }

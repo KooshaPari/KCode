@@ -2,7 +2,7 @@
 
 use crate::{
     DiagramDisplayMode, DiffDisplayMode, LatexRenderingMode, MarkdownSpacingMode,
-    NativeScrollbarConfig, OverscrollStatusMode, ReasoningDisplayMode, default_true,
+    NativeScrollbarConfig, ReasoningDisplayMode, default_true,
 };
 use serde::{Deserialize, Serialize};
 
@@ -162,7 +162,6 @@ impl Default for DisplayConfig {
             active_sessions_manager: false,
             external_sessions: true,
             usage_display: "left".to_string(),
-            overscroll_status: OverscrollStatusMode::default(),
         }
     }
 }

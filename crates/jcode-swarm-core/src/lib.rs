@@ -7,9 +7,8 @@ use std::path::PathBuf;
 pub const MAX_SWARM_COMPLETION_REPORT_CHARS: usize = 4000;
 pub const SWARM_COMPLETION_REPORT_MARKER: &str = "SWARM COMPLETION REPORT REQUIRED";
 
-/// Message/report bodies longer than this require a sender-provided `tldr`
-/// so receiving UIs can render them collapsed to one line with an expand
-/// control instead of dumping the full body into the transcript.
+/// Message/report bodies longer than this get a derived preview when the sender
+/// omits `tldr`, so receiving UIs can still collapse them with an expand control.
 pub const SWARM_TLDR_REQUIRED_OVER_CHARS: usize = 240;
 
 /// Recommended upper bound for a sender-provided `tldr`, not a hard limit.
@@ -25,7 +24,7 @@ pub const MAX_SWARM_TLDR_CHARS: usize = 200;
 pub fn validate_swarm_tldr(
     tldr: Option<&str>,
     body: &str,
-    context: &str,
+    _context: &str,
 ) -> Result<Option<String>, String> {
     let normalized = tldr
         .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
@@ -37,12 +36,8 @@ pub fn validate_swarm_tldr(
 
     let body_chars = body.chars().count();
     if body_chars > SWARM_TLDR_REQUIRED_OVER_CHARS {
-        return Err(format!(
-            "'tldr' is required for {context} because the body is {body_chars} chars \
-             (over {SWARM_TLDR_REQUIRED_OVER_CHARS}). Add a one-line 'tldr' (under \
-             {MAX_SWARM_TLDR_CHARS} chars) summarizing it; recipients see the tldr \
-             collapsed with an expand control."
-        ));
+        let preview = truncate_detail(body, MAX_SWARM_TLDR_CHARS);
+        return Ok((!preview.is_empty()).then_some(preview));
     }
 
     Ok(None)
@@ -80,6 +75,20 @@ pub fn derive_swarm_task_label(text: &str) -> Option<String> {
     Some(format!("{}…", truncated.trim_end()))
 }
 
+/// Role a member of a swarm plays within the work graph.
+///
+/// The swarm coordination model distinguishes two first-class roles
+/// (an ordinary [`Agent`](SwarmRole::Agent) and the
+/// [`Coordinator`](SwarmRole::Coordinator) that owns the plan and
+/// dispatches work) plus an open-ended
+/// [`Other`](SwarmRole::Other) bucket for any custom role strings a
+/// downstream harness wants to surface (for example a future
+/// `Reviewer` or `ToolRunner` that the coordinator knows how to
+/// schedule but the core scheduler does not enumerate). The
+/// serialized form is the lowercase role name; deserialization is
+/// total — unknown roles collapse into
+/// [`Other`](SwarmRole::Other) so older tool-definitions do not
+/// break newer agents.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SwarmRole {
     Agent,
@@ -125,6 +134,24 @@ impl<'de> Deserialize<'de> for SwarmRole {
     }
 }
 
+/// Lifecycle state of a swarm member.
+///
+/// Every agent in a swarm moves through these states as its
+/// coordinator tracks it. The set is intentionally broader than a
+/// typical three-state (`Running`/`Done`/`Failed`) FSM: intermediate
+/// states like [`Spawned`](SwarmLifecycleStatus::Spawned),
+/// [`Ready`](SwarmLifecycleStatus::Ready),
+/// [`Queued`](SwarmLifecycleStatus::Queued),
+/// [`Blocked`](SwarmLifecycleStatus::Blocked),
+/// [`Pending`](SwarmLifecycleStatus::Pending),
+/// [`Todo`](SwarmLifecycleStatus::Todo), and
+/// [`RunningStale`](SwarmLifecycleStatus::RunningStale) carry
+/// information the TUI needs to render honest progress, and
+/// [`Crashed`](SwarmLifecycleStatus::Crashed) is distinct from
+/// [`Failed`](SwarmLifecycleStatus::Failed) so a transport-level
+/// panic is not confused with a normal completion failure.
+/// [`Other`](SwarmLifecycleStatus::Other) catches custom states
+/// from external orchestrators.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum SwarmLifecycleStatus {
     Spawned,
@@ -635,11 +662,41 @@ mod tests {
     }
 
     #[test]
-    fn validate_swarm_tldr_requires_tldr_for_long_body() {
-        let body = "x".repeat(SWARM_TLDR_REQUIRED_OVER_CHARS + 1);
-        let err = validate_swarm_tldr(None, &body, "this DM").unwrap_err();
-        assert!(err.contains("'tldr' is required"), "{err}");
-        assert!(err.contains("this DM"), "{err}");
+    fn validate_swarm_tldr_derives_preview_for_long_body() {
+        for length in [241, 244, 4000] {
+            let body = "界".repeat(length);
+            for context in [
+                "this DM",
+                "this message",
+                "this broadcast",
+                "this channel message",
+                "this report",
+            ] {
+                let preview = validate_swarm_tldr(None, &body, context).unwrap().unwrap();
+                assert_eq!(
+                    preview,
+                    format!("{}...", "界".repeat(MAX_SWARM_TLDR_CHARS - 3))
+                );
+                assert_eq!(body.chars().count(), length);
+            }
+        }
+    }
+
+    #[test]
+    fn validate_swarm_tldr_fallback_collapses_whitespace() {
+        let body = format!("  hello\n\tworld{}", " ".repeat(240));
+        assert_eq!(
+            validate_swarm_tldr(None, &body, "this DM"),
+            Ok(Some("hello world".into()))
+        );
+        assert_eq!(
+            validate_swarm_tldr(None, &" ".repeat(241), "this DM"),
+            Ok(None)
+        );
+        assert_eq!(
+            validate_swarm_tldr(None, &"界".repeat(240), "this DM"),
+            Ok(None)
+        );
     }
 
     #[test]
@@ -677,7 +734,10 @@ mod tests {
     #[test]
     fn validate_swarm_tldr_blank_tldr_counts_as_missing() {
         let body = "x".repeat(SWARM_TLDR_REQUIRED_OVER_CHARS + 1);
-        assert!(validate_swarm_tldr(Some("   "), &body, "this DM").is_err());
+        assert_eq!(
+            validate_swarm_tldr(Some(" \n\t "), &body, "this DM"),
+            validate_swarm_tldr(None, &body, "this DM")
+        );
         assert_eq!(
             validate_swarm_tldr(Some("   "), "short", "this DM"),
             Ok(None)

@@ -1,5 +1,4 @@
 use super::*;
-use tempfile::TempDir;
 
 #[test]
 fn config_file_path_under_jcode() {
@@ -11,8 +10,8 @@ fn config_file_path_under_jcode() {
 
 #[test]
 fn save_and_load_api_key() {
-    let dir = TempDir::new().unwrap();
-    let file = dir.path().join("jcode").join("cursor.env");
+    let dir = crate::test_temp::tempdir().unwrap();
+    let file = dir.path().join("kcode").join("cursor.env");
 
     std::fs::create_dir_all(file.parent().unwrap()).unwrap();
     let content = "CURSOR_API_KEY=test_key_123\n";
@@ -24,7 +23,7 @@ fn save_and_load_api_key() {
 
 #[test]
 fn load_key_quoted() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let file = dir.path().join("cursor.env");
 
     std::fs::write(&file, "CURSOR_API_KEY=\"my_quoted_key\"\n").unwrap();
@@ -34,7 +33,7 @@ fn load_key_quoted() {
 
 #[test]
 fn load_key_single_quoted() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let file = dir.path().join("cursor.env");
 
     std::fs::write(&file, "CURSOR_API_KEY='single_quoted'\n").unwrap();
@@ -44,7 +43,7 @@ fn load_key_single_quoted() {
 
 #[test]
 fn load_key_empty_value() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let file = dir.path().join("cursor.env");
 
     std::fs::write(&file, "CURSOR_API_KEY=\n").unwrap();
@@ -61,7 +60,7 @@ fn load_key_missing_file() {
 
 #[test]
 fn load_key_no_cursor_line() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let file = dir.path().join("cursor.env");
 
     std::fs::write(&file, "OTHER_KEY=value\n").unwrap();
@@ -71,7 +70,7 @@ fn load_key_no_cursor_line() {
 
 #[test]
 fn load_key_with_whitespace() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let file = dir.path().join("cursor.env");
 
     std::fs::write(&file, "  CURSOR_API_KEY=  spaced_key  \n").unwrap();
@@ -81,7 +80,7 @@ fn load_key_with_whitespace() {
 
 #[test]
 fn load_key_multiple_lines() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let file = dir.path().join("cursor.env");
 
     std::fs::write(
@@ -109,26 +108,26 @@ fn has_cursor_api_key_from_env() {
 #[test]
 fn cursor_auth_file_path_respects_jcode_home() {
     // Regression: on Linux the auth.json path previously used
-    // `dirs::config_dir()` directly, ignoring JCODE_HOME. That leaked the real
+    // `dirs::config_dir()` directly, ignoring KCODE_HOME. That leaked the real
     // `~/.config/cursor/auth.json` into the onboarding sandbox, so a
     // fresh-install sandbox showed only Cursor as importable while every other
-    // provider correctly looked under `$JCODE_HOME/external/...`.
+    // provider correctly looked under `$KCODE_HOME/external/...`.
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let temp = TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let temp = crate::test_temp::tempdir().unwrap();
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let path = cursor_auth_file_path().expect("cursor auth path");
     assert!(
         path.starts_with(temp.path().join("external")),
-        "cursor auth path should be under JCODE_HOME/external, got {}",
+        "cursor auth path should be under KCODE_HOME/external, got {}",
         path.display()
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -136,17 +135,17 @@ fn cursor_auth_file_path_respects_jcode_home() {
 #[test]
 fn cursor_auth_file_path_does_not_escape_jcode_home_on_windows() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::tempdir().unwrap();
-    let old_home = std::env::var_os("JCODE_HOME");
+    let temp = crate::test_temp::tempdir().unwrap();
+    let old_home = std::env::var_os("KCODE_HOME");
     let old_appdata = std::env::var_os("APPDATA");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
     crate::env::set_var("APPDATA", r"C:\real-user-profile");
 
     let path = cursor_auth_file_path().unwrap();
 
     match old_home {
-        Some(value) => crate::env::set_var("JCODE_HOME", value),
-        None => crate::env::remove_var("JCODE_HOME"),
+        Some(value) => crate::env::set_var("KCODE_HOME", value),
+        None => crate::env::remove_var("KCODE_HOME"),
     }
     match old_appdata {
         Some(value) => crate::env::set_var("APPDATA", value),
@@ -162,9 +161,9 @@ fn cursor_auth_file_path_does_not_escape_jcode_home_on_windows() {
 #[test]
 fn cursor_vscdb_paths_respect_jcode_home() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let temp = TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let temp = crate::test_temp::tempdir().unwrap();
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let paths = cursor_vscdb_paths();
     assert!(!paths.is_empty());
@@ -173,9 +172,9 @@ fn cursor_vscdb_paths_respect_jcode_home() {
     }
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -191,9 +190,9 @@ fn load_access_token_from_auth_file_does_not_change_external_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
-    let temp = TempDir::new().unwrap();
-    crate::env::set_var("JCODE_HOME", temp.path());
+    let prev_home = std::env::var_os("KCODE_HOME");
+    let temp = crate::test_temp::tempdir().unwrap();
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let path = cursor_auth_file_path().expect("cursor auth path");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -226,15 +225,15 @@ fn load_access_token_from_auth_file_does_not_change_external_permissions() {
     assert_eq!(file_mode, 0o644);
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
 #[test]
 fn reads_cursor_state_with_embedded_sqlite() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let path = dir.path().join("state.vscdb");
     let connection = rusqlite::Connection::open(&path).unwrap();
     connection
@@ -301,7 +300,7 @@ fn create_mock_vscdb(dir: &std::path::Path, entries: &[(&str, &str)]) -> PathBuf
 
 #[test]
 fn vscdb_read_access_token() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let db = create_mock_vscdb(dir.path(), &[("cursorAuth/accessToken", "tok_abc123xyz")]);
     let result = read_vscdb_key(&db, "cursorAuth/accessToken").unwrap();
     assert_eq!(result, "tok_abc123xyz");
@@ -309,7 +308,7 @@ fn vscdb_read_access_token() {
 
 #[test]
 fn vscdb_read_machine_id() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let db = create_mock_vscdb(
         dir.path(),
         &[(
@@ -323,7 +322,7 @@ fn vscdb_read_machine_id() {
 
 #[test]
 fn vscdb_missing_key_returns_error() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let db = create_mock_vscdb(dir.path(), &[("other/key", "value")]);
     let result = read_vscdb_key(&db, "cursorAuth/accessToken");
     assert!(result.is_err());
@@ -337,7 +336,7 @@ fn vscdb_missing_key_returns_error() {
 
 #[test]
 fn vscdb_empty_value_returns_error() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let db = create_mock_vscdb(dir.path(), &[("cursorAuth/accessToken", "")]);
     let result = read_vscdb_key(&db, "cursorAuth/accessToken");
     assert!(result.is_err());
@@ -352,7 +351,7 @@ fn vscdb_missing_file_returns_error() {
 
 #[test]
 fn vscdb_multiple_keys() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let db = create_mock_vscdb(
         dir.path(),
         &[
@@ -382,7 +381,7 @@ fn vscdb_multiple_keys() {
 
 #[test]
 fn vscdb_wrong_table_name() {
-    let dir = TempDir::new().unwrap();
+    let dir = crate::test_temp::tempdir().unwrap();
     let db_path = dir.path().join("state.vscdb");
     let status = std::process::Command::new("sqlite3")
         .arg(&db_path)

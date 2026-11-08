@@ -768,7 +768,12 @@ fn test_handle_server_event_notification_background_task_scope_uses_failed_row()
         app.background_task_rows_ref()[0].status,
         crate::tui::BackgroundTaskRowStatus::Failed
     );
-    assert!(text.contains("× bg bash"), "missing compact failed row:\n{text}");
+    let widget_rows = crate::tui::TuiState::info_widget_data(&app)
+        .background_info
+        .expect("failed task should feed the background widget")
+        .rows;
+    assert_eq!(widget_rows.len(), 1);
+    assert_eq!(widget_rows[0].label, "bash");
     assert!(
         !text.contains("Background task failed") && !text.contains("[stderr] line one"),
         "unexpected expanded background task card:\n{text}"
@@ -899,7 +904,17 @@ fn test_background_task_markdown_is_suppressed_even_if_role_was_lost() {
     let mut terminal = ratatui::Terminal::new(backend).expect("failed to create test terminal");
     let text = render_and_snap(&app, &mut terminal);
 
-    assert!(!text.contains("╭") && !text.contains("594967sj63"));
+    // The card itself must not render: no task id, no bordered tool card, and
+    // no fragment of the background-task markdown.
+    //
+    // Deliberately not asserting the frame has no box-drawing characters at
+    // all. Info-widget overlays (overview/context) legitimately draw their own
+    // bordered box in the right margin, and whether they are docked yet
+    // depends on how many frames the process has already rendered, which makes
+    // that assertion order-dependent rather than a statement about this test.
+    assert!(!text.contains("594967sj63"), "task id leaked:\n{text}");
+    assert!(!text.contains("Background task"), "card leaked:\n{text}");
+    assert!(!text.contains("Full output"), "card body leaked:\n{text}");
     assert!(app.display_messages().is_empty());
     assert_eq!(app.display_user_message_count(), 0);
 }
@@ -948,7 +963,7 @@ fn test_handle_remote_disconnect_flushes_streaming_text_and_sets_reconnect_state
         .expect("missing reconnect status message");
     assert_eq!(last.role, "system");
     assert_eq!(last.title.as_deref(), Some("Connection"));
-    assert!(last.content.contains("◈ Connection lost - retrying"));
+    assert!(last.content.contains("⚡ Connection lost - retrying"));
     assert!(last.content.contains("connection to server dropped"));
     assert!(
         !last.content.contains('\n'),

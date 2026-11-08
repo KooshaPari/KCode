@@ -183,7 +183,7 @@ pub(super) fn prune_active_session_files(dir: &PathBuf) -> u32 {
         if fresh {
             count = count.saturating_add(1);
         } else {
-            let _ = std::fs::remove_file(path);
+            let _ = storage::remove_state_file(&path);
         }
     }
     count
@@ -208,7 +208,7 @@ pub(super) fn observe_active_sessions() -> u32 {
 
 pub(super) fn unregister_active_session(session_id: &str) {
     if let Some(path) = active_session_file(session_id) {
-        let _ = std::fs::remove_file(path);
+        let _ = storage::remove_state_file(&path);
     }
 }
 
@@ -279,7 +279,7 @@ pub(super) fn build_channel() -> String {
     if crate::build::get_repo_dir().is_some() {
         return "git_checkout".to_string();
     }
-    if option_env!("JCODE_CI_BUILD").is_some() {
+    if option_env!("KCODE_CI_BUILD").is_some() {
         return "ci_release".to_string();
     }
     "release".to_string()
@@ -290,7 +290,7 @@ pub(super) fn is_git_checkout() -> bool {
 }
 
 pub(super) fn is_ci() -> bool {
-    if let Ok(value) = std::env::var("JCODE_CI") {
+    if let Ok(value) = std::env::var("KCODE_CI") {
         match value.trim().to_ascii_lowercase().as_str() {
             "1" | "true" | "yes" | "on" => return true,
             "0" | "false" | "no" | "off" => return false,

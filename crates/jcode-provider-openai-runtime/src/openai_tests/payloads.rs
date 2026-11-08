@@ -104,7 +104,7 @@ fn test_websocket_continuation_request_excludes_transport_fields() {
         Some(DEFAULT_MAX_OUTPUT_TOKENS),
         None,
         Some("flex"),
-        Some("jcode-test-cache"),
+        Some("kcode-test-cache"),
         Some("24h"),
         Some(160_000),
     );
@@ -151,7 +151,7 @@ fn test_websocket_continuation_request_excludes_transport_fields() {
     assert_eq!(continuation["previous_response_id"], "resp_abc123");
     assert_eq!(continuation["model"], "gpt-5.4");
     assert_eq!(continuation["service_tier"], "flex");
-    assert_eq!(continuation["prompt_cache_key"], "jcode-test-cache");
+    assert_eq!(continuation["prompt_cache_key"], "kcode-test-cache");
     assert_eq!(continuation["prompt_cache_retention"], "24h");
     assert_eq!(
         continuation["context_management"],
@@ -327,7 +327,7 @@ fn gpt_5_6_sol_defaults_to_low_reasoning_effort() {
 }
 
 /// Regression guard for issue #203: prompt overlays (`AGENTS.md`,
-/// `.jcode/prompt-overlay.md`) were silently dropped in ChatGPT/Codex OAuth
+/// `.kcode/prompt-overlay.md`) were silently dropped in ChatGPT/Codex OAuth
 /// mode because the provider replaced the caller's fully-built system prompt
 /// with a hardcoded ChatGPT instruction block. The composed system prompt must
 /// reach the Responses API verbatim in *both* ChatGPT-OAuth and API-key modes,

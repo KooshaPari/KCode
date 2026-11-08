@@ -98,24 +98,17 @@ pub(super) fn reconnect_status_message(app: &App, state: &RemoteRunState, detail
         format!("{}m {}s", elapsed.as_secs() / 60, elapsed.as_secs() % 60)
     };
 
-    let session_name = app
+    let session_id = app
         .remote_session_id
-        .as_ref()
-        .and_then(|id| crate::id::extract_session_name(id))
-        .or_else(|| {
-            app.resume_session_id
-                .as_ref()
-                .and_then(|id| crate::id::extract_session_name(id))
-        });
+        .as_deref()
+        .or(app.resume_session_id.as_deref());
     let resume_hint = if let Some(host) = crate::tui::ssh_remote_host() {
-        let id = app
-            .remote_session_id
-            .as_deref()
-            .or(app.resume_session_id.as_deref())
-            .unwrap_or("pending");
+        let id = session_id.unwrap_or("pending");
         format!(" · SSH {host} · remote session {id}")
-    } else if let Some(name) = &session_name {
-        format!(" · resume: jcode --resume {}", name)
+    } else if let Some(id) = session_id {
+        // Resume by full session id: a reusable short name can collide with
+        // another session and reopen the wrong one.
+        format!(" · resume: kcode --resume {}", id)
     } else {
         String::new()
     };
@@ -144,24 +137,17 @@ pub(super) fn reload_wait_status_message(
         format!("{}m {}s", elapsed.as_secs() / 60, elapsed.as_secs() % 60)
     };
 
-    let session_name = app
+    let session_id = app
         .remote_session_id
-        .as_ref()
-        .and_then(|id| crate::id::extract_session_name(id))
-        .or_else(|| {
-            app.resume_session_id
-                .as_ref()
-                .and_then(|id| crate::id::extract_session_name(id))
-        });
+        .as_deref()
+        .or(app.resume_session_id.as_deref());
     let resume_hint = if let Some(host) = crate::tui::ssh_remote_host() {
-        let id = app
-            .remote_session_id
-            .as_deref()
-            .or(app.resume_session_id.as_deref())
-            .unwrap_or("pending");
+        let id = session_id.unwrap_or("pending");
         format!(" · SSH {host} · remote session {id}")
-    } else if let Some(name) = &session_name {
-        format!(" · resume: jcode --resume {}", name)
+    } else if let Some(id) = session_id {
+        // Resume by full session id: a reusable short name can collide with
+        // another session and reopen the wrong one.
+        format!(" · resume: kcode --resume {}", id)
     } else {
         String::new()
     };
@@ -227,6 +213,17 @@ async fn wait_for_reload_handoff_before_reconnect(
     state: &mut RemoteRunState,
 ) -> Result<Option<ConnectOutcome>> {
     if !reload_handoff_active(state) {
+        return Ok(None);
+    }
+
+    // The marker stays `SocketReady` for up to RELOAD_MARKER_MAX_AGE after a
+    // reload completes. Any client launched in that window would otherwise
+    // flash "Waiting for reload handoff..." (an extra notice row that shoved
+    // the layout) even though the replacement server is already serving.
+    if !state.server_reload_in_progress
+        && crate::server::recent_reload_state(RELOAD_MARKER_MAX_AGE)
+            .is_some_and(|marker| marker.phase == crate::server::ReloadPhase::SocketReady)
+    {
         return Ok(None);
     }
 

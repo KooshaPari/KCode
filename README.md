@@ -1,3 +1,21 @@
+> **KCode fork installation:** This repository builds `kcode`, independently
+> of stock jcode. Use [KCode installation and isolation](docs/KCODE_ISOLATION.md)
+> and [Windows instructions](docs/WINDOWS.md). Download/self-update channels are
+> disabled pending fork release verification. The inherited `jcode.sh`,
+> Homebrew, Bun, and stock `jcode` instructions below are upstream reference,
+> not KCode installation commands.
+
+# KCode fork
+
+KCode uses the `kcode` executable, `KCODE_*` overrides and `.kcode` storage.
+Self-update and bundled npm runtime downloads are disabled for this branch.
+Build and install KCode using [the isolation/install guide](docs/KCODE_ISOLATION.md).
+Import selected jcode sessions with `kcode session import-jcode <id>`; the source
+is never written back. The upstream documentation retained below describes
+jcode; its release installers and npm runtime packages do not install KCode.
+
+---
+
 <div align="center">
 
 # jcode
@@ -12,7 +30,7 @@
 The most RAM efficient harness <br>
 The most intelligent harness
 
-> **Fork note:** This is a [KooshaPari](https://github.com/KooshaPari) fork of [1jehuang/jcode](https://github.com/1jehuang/jcode). Latest fork release: **v0.85.0-k1.0.0**.
+> **Fork note:** This is a [KooshaPari](https://github.com/KooshaPari) fork of [1jehuang/jcode](https://github.com/1jehuang/jcode). Latest fork release: **v0.85.1-k1.1.1**.
 
 <a href="https://trendshift.io/repositories/25042?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-25042" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/25042" alt="1jehuang/jcode | Trendshift" width="250" height="55"></a>
 
@@ -52,8 +70,8 @@ bun run --bun https://jcode.sh/install_bun.sh
 ```
 
 ```bash
-# GitHub Packages (replace <version> with desired release, e.g. 0.85.0-k1.0.0)
-docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+# GitHub Packages (replace <version> with desired release, e.g. 0.85.1-k1.1.1)
+docker pull ghcr.io/KooshaPari/jcode/kcode-linux-x86_64:<version>
 ```
 
 **Manual download:** Grab a prebuilt binary from [GitHub Releases](https://github.com/KooshaPari/jcode/releases) and add it to your `PATH`.
@@ -219,6 +237,31 @@ jcode is built to be as performant and resource efficient as possible. Every met
 
 </div>
 
+### Headless sessions (swarm workers)
+
+Swarm workers run headless, so this is the number that matters when you fan out
+agents. Each session completed 5 real model turns (file listing, file read, repo
+search, summary, reply) with tool calls, then total PSS of every process was
+measured. jcode sessions share one daemon; Claude Code runs one
+`claude -p --input-format stream-json` process per session. Both used
+`claude-sonnet-4-6`.
+
+<div align="center">
+
+| Concurrent headless sessions | jcode | Claude Code | Comparison |
+|---:|---:|---:|---:|
+| 1 | **32.6 MB** | 261.0 MB | **8.0× less RAM** |
+| 5 | **51.0 MB** | 908.6 MB | **17.8× less RAM** |
+| 10 | **66.7 MB** | 1749.7 MB | **26.2× less RAM** |
+| 20 | **90.6 MB** | 3376.8 MB | **37.3× less RAM** |
+| Each additional session | **~3.1 MB** | ~164 MB | **~54× less RAM** |
+
+</div>
+
+Measured 2026-09-29 on Linux with `jcode v0.89.19-dev` (default build, local
+embeddings not compiled in) and `Claude Code 2.1.267`. Reproduce with
+`python3 scripts/bench_headless_memory.py`.
+
 ### Time to first frame
 
 <div align="center">
@@ -300,7 +343,7 @@ versions tested for this corrected memory rerun:
 
 ## Memory (Agent memory)
 
-Jcode embeds each turn/response as a semantic vector. Every turn does queries a graph of memories to efficiently find related memory entries via a cosine similarity check. The embedding hits are fed into the conversation, or optionally uses a memory sideagent which verifies the memories are relevant, and potentially does more work for information retreival before injecting into the conversation. This results in a human like memory system which allows the agent to automatically recall relevant information to the conversation without actively calling memory tools or being a token burner. 
+Jcode embeds each turn/response as a semantic vector. Every turn does queries a graph of memories to efficiently find related memory entries via a cosine similarity check. The embedding hits are fed into the conversation, or optionally uses a memory sideagent which verifies the memories are relevant, and potentially does more work for information retrieval before injecting into the conversation. This results in a human like memory system which allows the agent to automatically recall relevant information to the conversation without actively calling memory tools or being a token burner.
 ot 
 To have memories which are retrieved, they must also be extracted and stored. Every so often (semantic drift, K turns since last extraction, session end, etc), memories are extracted via a memory sideagent, and put into the memory graph. 
 
@@ -423,9 +466,10 @@ There are two ways to set one up:
   jcode login --provider opencode      # OpenCode Zen
   jcode login --provider moonshotai
   jcode login --provider meta-muse     # Meta Model API / Muse Spark
+  jcode login --provider yolo-auto     # Yolo-Auto
   ```
 
-  Built-in OpenAI-compatible profile ids include: `openrouter`, `orcarouter`, `deepseek`, `zai`, `kimi`, `moonshotai`, `meta-muse` (Meta Model API / Muse Spark), `opencode` (OpenCode Zen), `opencode-go`, `302ai`, `baseten`, `cortecs`, `huggingface`, `nebius`, `scaleway`, `stackit`, and `firmware`. Each profile only sets the endpoint and key variable; you still pick the model with `/model` (or `--model`). Run `jcode login` with no provider to see the interactive list.
+  Built-in OpenAI-compatible profile ids include: `openrouter`, `orcarouter`, `deepseek`, `zai`, `kimi`, `moonshotai`, `meta-muse` (Meta Model API / Muse Spark), `yolo-auto` (Yolo-Auto), `opencode` (OpenCode Zen), `opencode-go`, `302ai`, `baseten`, `cortecs`, `huggingface`, `nebius`, `scaleway`, `stackit`, and `firmware`. Each profile only sets the endpoint and key variable; you still pick the model with `/model` (or `--model`). Run `jcode login` with no provider to see the interactive list.
 
 - **Any other endpoint** — point jcode at an arbitrary OpenAI-compatible API (hosted or local) with `jcode login --provider openai-compatible` or the scriptable `jcode provider add` command described below.
 
@@ -672,13 +716,33 @@ For the built-in OpenAI login flow, jcode opens a local callback on
 <img width="2877" height="1762" alt="Screenshot from 2026-04-02 14-28-51" src="https://github.com/user-attachments/assets/530684c0-9d12-4363-aa0e-1b39a0d4e1be" />
 The above image is the first page of provider logins
 
-### Supported provider
+### Provider surface
 
-- **Native / first-party style providers:** `claude`, `openai`, `copilot`, `gemini`, `azure`, `alibaba-coding-plan`
-- **Aggregator / compatibility providers:** `openrouter`, `orcarouter`, `openai-compatible`
-- **Additional provider integrations:** `opencode`, `opencode-go`, `zai` / `kimi`, `302ai`, `baseten`, `cortecs`, `deepseek`, `firmware`, `huggingface`, `moonshotai`, `nebius`, `scaleway`, `stackit`, `groq`, `mistral`, `perplexity`, `togetherai`, `deepinfra`, `fireworks`, `novita`, `minimax`, `xai`, `lmstudio`, `ollama`, `chutes`, `cerebras`, `cursor`, `antigravity`, `google`
+jcode's provider surface is **two-tier**:
 
-Jcode also supports easy multi-account switching. Ran out of tokens on your first ChatGPT Pro subscription? /account and quickly switch to your second. 
+**11 first-class provider adapter crates** under `crates/jcode-provider-*/` — each implements provider-specific streaming, OAuth refresh, and tool/usage handling:
+
+- `claude` (subscription OAuth) and `anthropic-api` (API key) — `jcode-provider-anthropic` + `jcode-provider-anthropic-runtime`
+- `openai` (OAuth, ChatGPT/Codex) and `openai-api` (API key) — `jcode-provider-openai` + `jcode-provider-openai-runtime`
+- `gemini` (OAuth + API key) — `jcode-provider-gemini` + `jcode-provider-gemini-runtime`
+- `copilot` (GitHub device flow + standard OAuth) — `jcode-provider-copilot` + `jcode-provider-copilot-runtime`
+- `openrouter` (live catalog merge) — `jcode-provider-openrouter` + `jcode-provider-openrouter-runtime`
+- `bedrock` (AWS sigv4) — `jcode-provider-bedrock`
+- `antigravity` (drives the Antigravity CLI binary) — `jcode-provider-antigravity` + `jcode-provider-antigravity-runtime`
+- `claude-cli` (reuses Claude Code's CLI as a backend) — `jcode-provider-claude-cli-runtime`
+- `cursor` (drives Cursor's local daemon) — `jcode-provider-cursor-runtime`
+- `grok-build` (drives the Grok CLI binary) — `jcode-provider-grok-build-runtime`
+- `forgecode` (drives the Forge CLI binary) — `jcode-provider-forgecode-runtime`
+
+**An `openai-compatible` profile harness** — any service that speaks OpenAI's `/v1/chat/completions` API works through one shared runtime. Built-in named profiles fill in the base URL and key environment variable for you:
+
+- Aggregators and hosted providers: `orcarouter`, `opencode` (OpenCode Zen), `opencode-go`, `zai` / `kimi`, `302ai`, `baseten`, `cortecs`, `deepseek`, `firmware`, `huggingface`, `moonshotai`, `nebius`, `scaleway`, `stackit`, `groq`, `mistral`, `perplexity`, `togetherai`, `deepinfra`, `fireworks`, `novita`, `minimax`, `xai`, `alibaba-coding-plan`
+- Local and self-hosted runtimes: `lmstudio`, `ollama`, `chutes`, `cerebras`, plus a generic `openai-compatible` profile for any custom endpoint
+- `azure` — handled by the separate `jcode-azure-auth` credential crate (auth only), pairing with the openai-compatible runtime for the API calls
+
+`jcode login --provider <profile-id>` wires the named profiles; you still pick the model with `/model` (or `--model`). Run `jcode login` with no provider to see the interactive list. **Note:** `openrouter` is listed above in both tiers on purpose — it has a dedicated adapter for live catalog merge and falls back to the openai-compatible path when the merged catalog is empty.
+
+Jcode also supports easy multi-account switching. Ran out of tokens on your first ChatGPT Pro subscription? /account and quickly switch to your second.
 
 ---
 
@@ -925,7 +989,7 @@ bun run --bun https://jcode.sh/install_bun.sh
 
 ```bash
 # GitHub Packages (replace <version> with desired release)
-docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+docker pull ghcr.io/KooshaPari/jcode/kcode-linux-x86_64:<version>
 ```
 
 **Manual download:** Prebuilt binaries are available on the

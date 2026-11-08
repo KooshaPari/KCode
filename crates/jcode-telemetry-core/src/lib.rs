@@ -1,8 +1,19 @@
 use jcode_logging as logging;
 use jcode_storage as storage;
 mod concurrency;
+mod delivery;
 mod lifecycle;
 pub use concurrency::{ConcurrencySession, begin_concurrency_session};
+// The live HTTP delivery path is inert under `cfg(test)`: payloads go to
+// `TEST_EMITTED_PAYLOADS` instead of being queued or posted.
+#[cfg(not(test))]
+pub(crate) use delivery::{background_sender, post_payload, transcript_background_sender};
+// Only the test module reaches for these two; re-exporting them unconditionally
+// leaves production builds with unused-import warnings.
+#[cfg(test)]
+pub(crate) use delivery::{
+    payload_is_breaker_exempt, spawn_background_worker, telemetry_status_is_permanent,
+};
 pub mod onboarding_trace;
 mod state_support;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -10,7 +21,7 @@ use jcode_usage_types::{
     AuthEvent, DiscoveryEvent, ErrorCounts, FeedbackEvent, InstallEvent, OnboardingStepEvent,
     SessionLifecycleEvent, SessionStartEvent, TelemetryProjectProfile as ProjectProfile,
     TelemetryToolCategory as ToolCategory, TelemetryWorkflowCounts, TodoSessionEvent, TurnEndEvent,
-    UpgradeEvent, classify_telemetry_tool_category as classify_tool_category,
+    UpgradeEvent, UsageReportEvent, classify_telemetry_tool_category as classify_tool_category,
     looks_like_telemetry_test_run as looks_like_test_run,
     mcp_telemetry_server_name as mcp_server_name, sanitize_feedback_text, sanitize_telemetry_label,
     telemetry_workflow_flags_from_counts,
@@ -165,11 +176,9 @@ impl TodoSessionTelemetry {
     }
 }
 
-// Error/switch counters live inside `SessionTelemetry` (guarded by
-// `SESSION_STATE`) so increments, snapshots, and resets all happen under a
-// single critical section and are naturally scoped to the owning session.
-// Keeping them in a separate lock-free atomic domain previously let trailing
-// `record_*` calls drift across session boundaries (see issue #394).
+// Error/switch counters live in `SessionTelemetry` under `SESSION_STATE`, so
+// a separate lock-free domain cannot let trailing `record_*` calls drift
+// across session boundaries (issue #394).
 static SESSION_STATE: Mutex<Option<SessionTelemetry>> = Mutex::new(None);
 
 #[derive(Debug, Clone)]
@@ -483,7 +492,7 @@ pub fn is_enabled() -> bool {
 }
 
 /// Marker file recording that the user opted out of anonymous usage telemetry.
-/// Its presence is equivalent to setting `JCODE_NO_TELEMETRY=1`, but persists
+/// Its presence is equivalent to setting `KCODE_NO_TELEMETRY=1`, but persists
 /// across shells so the onboarding "Telemetry settings" screen can honor the
 /// choice without asking the user to edit their environment.
 fn opt_out_marker_path() -> Option<std::path::PathBuf> {
@@ -502,7 +511,7 @@ pub fn opt_out_forced_by_env() -> bool {
             )
         })
     }
-    is_truthy("JCODE_NO_TELEMETRY") || is_truthy("DO_NOT_TRACK")
+    is_truthy("KCODE_NO_TELEMETRY") || is_truthy("DO_NOT_TRACK")
 }
 
 /// Persist the user's anonymous-usage telemetry choice. `enabled == false`
@@ -523,8 +532,7 @@ pub fn set_usage_telemetry_enabled(enabled: bool) -> bool {
         }
     } else {
         // Record the explicit in-app choice once, while telemetry is still
-        // enabled. Failure never prevents or delays the opt-out itself, and
-        // environment-forced opt-outs remain completely silent.
+        // unmutated by the background worker.
         if !path.exists() && !opt_out_forced_by_env() {
             emit_telemetry_opt_out();
         }
@@ -588,7 +596,7 @@ pub fn content_sharing_enabled() -> bool {
     if !is_enabled() {
         return false;
     }
-    if std::env::var("JCODE_NO_TELEMETRY").is_ok() || std::env::var("DO_NOT_TRACK").is_ok() {
+    if std::env::var("KCODE_NO_TELEMETRY").is_ok() || std::env::var("DO_NOT_TRACK").is_ok() {
         return false;
     }
     share_content_marker_path()
@@ -1467,7 +1475,11 @@ fn send_payload(mut payload: serde_json::Value, mode: DeliveryMode) -> bool {
                 return false;
             }
             logging::debug("queueing telemetry payload for background delivery");
-            match background_sender().try_send(payload) {
+            let Some(sender) = background_sender() else {
+                logging::warn("telemetry background worker unavailable; dropping payload");
+                return false;
+            };
+            match sender.try_send(payload) {
                 Ok(()) => {
                     TELEMETRY_QUEUE_OVERFLOW_WARNED.store(false, Ordering::Relaxed);
                     true
@@ -1793,12 +1805,8 @@ pub fn record_install_if_first_run() {
         clear_install_conversion_id();
         return;
     }
-    // Skip install/onboarding emission under CI. Ephemeral runners start with a
-    // fresh ~/.jcode (so a new telemetry_id) on every job, which would otherwise
-    // look like a brand-new install and user, inflating install/active counts,
-    // the onboarding funnel, and depressing retention. Session/turn/lifecycle
-    // events are still emitted (tagged is_ci) so CI crash/error signal stays
-    // queryable; product dashboards filter is_ci out of the headline metrics.
+    // Skip install/onboarding emission under CI: ephemeral runners start with
+    // a fresh ~/.kcode each job, which would inflate install/active counts.
     if is_ci() {
         logging::debug("skipping telemetry install/onboarding under CI");
         clear_install_conversion_id();
@@ -1812,9 +1820,7 @@ pub fn record_install_if_first_run() {
     };
     let install_conversion_id = read_install_conversion_id();
     // A website-attributed install is a fresh post-install launch even when
-    // this telemetry identity previously recorded an install. This also lets
-    // the first conversion-aware release consume tokens written by the
-    // installer before that release existed.
+    // this identity previously recorded an install.
     if !should_record_install_for_id(&id, install_conversion_id.as_deref()) {
         return;
     }
@@ -2118,11 +2124,7 @@ fn begin_session_with_mode(
         todo: TodoSessionTelemetry::default(),
     };
     // A live session in the slot means the process is switching sessions
-    // without anyone calling end_session (agent create/attach both call
-    // begin_session unconditionally). Overwriting it silently orphaned the
-    // previous session_start, which is why only ~25% of release
-    // session_starts ever saw a matching session_end. Close it out first so
-    // every start has a terminal event.
+    // without end_session, orphaning the previous session_start.
     let superseded = match SESSION_STATE.lock() {
         Ok(guard) => guard.as_ref().map(|prior| {
             (
@@ -2202,9 +2204,8 @@ pub fn record_turn() {
     }
     if let Some(payload) = prompt_event {
         let mode = if first_prompt {
-            // Short `jcode run` invocations can exit before the background
-            // worker starts. Bound the first prompt's delivery so every active
-            // installation has an immediate durable activity anchor.
+            // Short `jcode run` invocations can exit before the background worker
+            // has flushed, so the shutdown path drains it explicitly.
             DeliveryMode::Blocking(BLOCKING_FIRST_PROMPT_TIMEOUT)
         } else {
             DeliveryMode::Background
@@ -2308,6 +2309,137 @@ pub fn record_connection_type(connection: &str) {
         }
     }
     maybe_emit_session_start();
+}
+
+/// Where a provider call originated, for usage accounting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsageSource {
+    /// A normal agent turn (foreground, swarm worker, background, subagent).
+    Agent,
+    /// A compaction summary request.
+    Compaction,
+    /// A memory/sidecar helper request.
+    Sidecar,
+}
+
+impl UsageSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            UsageSource::Agent => "agent",
+            UsageSource::Compaction => "compaction",
+            UsageSource::Sidecar => "sidecar",
+        }
+    }
+}
+
+/// Provider-reported token usage for one completed provider response.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ProviderUsage {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_input_tokens: Option<u64>,
+    pub cache_creation_input_tokens: Option<u64>,
+}
+
+impl ProviderUsage {
+    fn is_zero(&self) -> bool {
+        self.input_tokens == 0
+            && self.output_tokens == 0
+            && self.cache_read_input_tokens.unwrap_or(0) == 0
+            && self.cache_creation_input_tokens.unwrap_or(0) == 0
+    }
+}
+
+/// Emit a `usage_report` for one provider response, attributed to the calling
+/// session and the model that actually served it.
+///
+/// This is the authoritative spend signal. Unlike `session_end`, it does not
+/// depend on the session ending cleanly and does not read the process-global
+/// telemetry session, so concurrent agents in one server process (swarm
+/// workers, background tasks, desktop panels) are each attributed correctly.
+/// Delivery is background and best-effort; token counts only, no content.
+pub fn record_provider_usage(
+    session_id: Option<&str>,
+    provider: &str,
+    model: &str,
+    source: UsageSource,
+    usage: ProviderUsage,
+) {
+    if !is_enabled() || usage.is_zero() {
+        return;
+    }
+    let Some(id) = get_or_create_id() else {
+        return;
+    };
+    let session_id = session_id
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            SESSION_STATE
+                .lock()
+                .ok()
+                .and_then(|guard| guard.as_ref().map(|state| state.session_id.clone()))
+        })
+        .unwrap_or_default();
+    let cache_read = usage.cache_read_input_tokens.unwrap_or(0);
+    let cache_creation = usage.cache_creation_input_tokens.unwrap_or(0);
+    let (schema_version, build_channel, git_checkout, ci, from_cargo) = telemetry_envelope();
+    let event = UsageReportEvent {
+        event_id: new_event_id(),
+        id,
+        session_id,
+        event: "usage_report",
+        version: version(),
+        os: std::env::consts::OS,
+        arch: std::env::consts::ARCH,
+        source: source.as_str(),
+        provider: sanitize_telemetry_label(provider),
+        model: sanitize_telemetry_label(model),
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_read_input_tokens: cache_read,
+        cache_creation_input_tokens: cache_creation,
+        total_tokens: usage
+            .input_tokens
+            .saturating_add(usage.output_tokens)
+            .saturating_add(cache_read)
+            .saturating_add(cache_creation),
+        responses: 1,
+        schema_version,
+        build_channel,
+        is_git_checkout: git_checkout,
+        is_ci: ci,
+        ran_from_cargo: from_cargo,
+    };
+    if let Ok(payload) = serde_json::to_value(&event) {
+        let _ = send_payload(payload, DeliveryMode::Background);
+    }
+}
+
+/// Convenience wrapper for side calls made through
+/// `Provider::complete_simple_with_usage`.
+pub fn record_simple_completion_usage(
+    session_id: Option<&str>,
+    provider: &str,
+    model: &str,
+    source: UsageSource,
+    usage: jcode_provider_core::SimpleCompletionUsage,
+) {
+    if usage.is_empty() {
+        return;
+    }
+    record_provider_usage(
+        session_id,
+        provider,
+        model,
+        source,
+        ProviderUsage {
+            input_tokens: usage.input_tokens.unwrap_or(0),
+            output_tokens: usage.output_tokens.unwrap_or(0),
+            cache_read_input_tokens: usage.cache_read_input_tokens,
+            cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        },
+    );
 }
 
 pub fn record_token_usage(
@@ -2575,10 +2707,8 @@ pub fn current_provider_model() -> Option<(String, String)> {
 
 fn show_first_run_notice() {
     // This can print before any terminal setup enables VT processing. Legacy
-    // Windows consoles (conhost without ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-    // exactly the double-click-the-exe path) render raw escapes as `←[90m`
-    // garbage (issue #498), so only colorize when the console accepts ANSI
-    // (the helper also opportunistically enables VT mode on Windows).
+    // consoles render raw escapes as garbage (issue #498), so only colorize
+    // when the console accepts ANSI.
     let (dim, reset) = if jcode_core::console::stderr_supports_ansi() {
         ("\x1b[90m", "\x1b[0m")
     } else {
@@ -2588,8 +2718,8 @@ fn show_first_run_notice() {
     eprintln!("  jcode collects anonymous usage statistics (install count, version, OS,");
     eprintln!("  session activity, tool counts, and crash/exit reasons). No code, filenames,");
     eprintln!("  prompts, or personal data is sent.");
-    eprintln!("  To opt out: export JCODE_NO_TELEMETRY=1");
-    eprintln!("  Details: https://github.com/1jehuang/jcode/blob/master/TELEMETRY.md");
+    eprintln!("  To opt out: export KCODE_NO_TELEMETRY=1");
+    eprintln!("  Details: https://github.com/KooshaPari/KCode/blob/master/TELEMETRY.md");
     eprintln!("{reset}");
 }
 

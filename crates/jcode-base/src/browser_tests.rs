@@ -27,7 +27,7 @@ fn test_rewrite_command_with_full_path() {
     // If binary exists, it rewrites; if not, returns unchanged
     if browser_binary_path().exists() {
         assert!(result.contains("ping"));
-        assert!(result.contains(".jcode/browser"));
+        assert!(result.contains(".kcode/browser"));
     } else {
         assert_eq!(result, cmd);
     }
@@ -38,7 +38,7 @@ fn test_paths() {
     let _guard = crate::storage::lock_test_env();
 
     let bdir = browser_dir();
-    assert!(bdir.to_string_lossy().contains(".jcode"));
+    assert!(bdir.to_string_lossy().contains(".kcode"));
     assert!(bdir.to_string_lossy().ends_with("browser"));
 
     let bin = browser_binary_path();
@@ -140,9 +140,9 @@ fn test_should_attempt_firefox_launch_only_when_firefox_closed_and_bridge_silent
 #[test]
 fn setup_complete_requires_native_host_binary() {
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     std::fs::create_dir_all(browser_dir()).expect("create browser dir");
     std::fs::write(setup_marker_path(), "test").expect("write setup marker");
@@ -156,18 +156,18 @@ fn setup_complete_requires_native_host_binary() {
     assert!(is_setup_complete());
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
 #[tokio::test]
 async fn test_inspect_browser_status_without_binary() {
-    // Hold the test-env lock: this reads JCODE_HOME-derived paths, and other
-    // tests mutate JCODE_HOME (and write browser fixture files) under the
+    // Hold the test-env lock: this reads KCODE_HOME-derived paths, and other
+    // tests mutate KCODE_HOME (and write browser fixture files) under the
     // lock. Without it, the status snapshot and the exists() check below can
-    // observe different JCODE_HOME values mid-test.
+    // observe different KCODE_HOME values mid-test.
     let _guard = crate::storage::lock_test_env();
     let status = inspect_browser_status().await.unwrap();
     assert_eq!(status.backend, "firefox_agent_bridge");
@@ -181,7 +181,7 @@ async fn test_inspect_browser_status_without_binary() {
 #[tokio::test]
 async fn test_ensure_browser_ready_noninteractive_without_binary() {
     // See test_inspect_browser_status_without_binary: serialize against tests
-    // that mutate JCODE_HOME under the test-env lock.
+    // that mutate KCODE_HOME under the test-env lock.
     let _guard = crate::storage::lock_test_env();
     let status = ensure_browser_ready_noninteractive().await.unwrap();
     assert_eq!(status.backend, "firefox_agent_bridge");
@@ -200,9 +200,9 @@ fn ensure_browser_session_fails_fast_when_session_process_exits_immediately() {
     use std::time::{Duration, Instant};
 
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let browser_dir = temp.path().join("browser");
     std::fs::create_dir_all(&browser_dir).expect("create browser dir");
@@ -226,9 +226,9 @@ fn ensure_browser_session_fails_fast_when_session_process_exits_immediately() {
     );
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -238,9 +238,9 @@ fn ensure_browser_session_does_not_pass_unsupported_bind_window_flag() {
     use std::os::unix::fs::PermissionsExt;
 
     let _guard = crate::storage::lock_test_env();
-    let prev_home = std::env::var_os("JCODE_HOME");
+    let prev_home = std::env::var_os("KCODE_HOME");
     let temp = tempfile::TempDir::new().expect("create temp dir");
-    crate::env::set_var("JCODE_HOME", temp.path());
+    crate::env::set_var("KCODE_HOME", temp.path());
 
     let browser_dir = temp.path().join("browser");
     std::fs::create_dir_all(&browser_dir).expect("create browser dir");
@@ -267,9 +267,9 @@ fn ensure_browser_session_does_not_pass_unsupported_bind_window_flag() {
     assert!(!calls.contains("--bind-window"), "{calls}");
 
     if let Some(prev_home) = prev_home {
-        crate::env::set_var("JCODE_HOME", prev_home);
+        crate::env::set_var("KCODE_HOME", prev_home);
     } else {
-        crate::env::remove_var("JCODE_HOME");
+        crate::env::remove_var("KCODE_HOME");
     }
 }
 
@@ -280,7 +280,7 @@ fn ensure_browser_session_does_not_pass_unsupported_bind_window_flag() {
 // the CLI never returns and `browser status` / `browser setup` hang for
 // minutes (measured: 2m14s and a full 3-minute cap).
 //
-// Bug B: once ~/.jcode/browser/.setup-complete existed, setup could never
+// Bug B: once ~/.kcode/browser/.setup-complete existed, setup could never
 // reinstall a vanished extension.
 
 #[cfg(unix)]
@@ -297,13 +297,15 @@ fn write_executable(path: &std::path::Path, script: &str) {
 async fn hanging_browser_cli_times_out_instead_of_blocking_forever() {
     let temp = tempfile::tempdir().expect("temp dir");
     let bin = temp.path().join("browser");
-    // Stands in for a CLI waiting on a bridge that will never answer.
-    write_executable(&bin, "#!/bin/sh\nsleep 600\n");
+    // Stands in for a CLI waiting on a bridge that will never answer. `exec` keeps it one
+    // process: kill_on_drop kills only the direct child, so a forked sleep outlived the test.
+    write_executable(&bin, "#!/bin/sh\nexec sleep 600\n");
 
     let started = std::time::Instant::now();
-    let result = run_browser_cli_capped(&bin, &["ping"], std::time::Duration::from_millis(300))
-        .await
-        .expect("capped call should not error");
+    let result =
+        run_browser_cli_capped(&bin, &["ping"], std::time::Duration::from_millis(300), None)
+            .await
+            .expect("capped call should not error");
     let elapsed = started.elapsed();
 
     assert!(result.is_none(), "a hanging CLI must report a timeout");
@@ -320,7 +322,7 @@ async fn responsive_browser_cli_still_returns_its_output() {
     let bin = temp.path().join("browser");
     write_executable(&bin, "#!/bin/sh\necho pong\n");
 
-    let output = run_browser_cli_capped(&bin, &["ping"], std::time::Duration::from_secs(5))
+    let output = run_browser_cli_capped(&bin, &["ping"], std::time::Duration::from_secs(5), None)
         .await
         .expect("capped call should not error")
         .expect("a responsive CLI must not report a timeout");

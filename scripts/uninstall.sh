@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Uninstall jcode binaries and (optionally) all user data.
+# Uninstall kcode binaries and (optionally) all user data.
 #
 # Default: removes installed binaries, build channels, and the launcher
 # symlink, but keeps user data (config, auth, sessions, logs) so a clean
 # reinstall picks up where you left off.
 #
 # Flags:
-#   --purge     Also delete ~/.jcode (config, auth, sessions, logs, memory).
+#   --purge     Also delete ~/.kcode (config, auth, sessions, logs, memory).
 #   --dry-run   Print what would be removed without deleting anything.
 #   --yes       Skip the confirmation prompt.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/1jehuang/jcode/master/scripts/uninstall.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/KooshaPari/KCode/master/scripts/uninstall.sh | bash
 #   bash scripts/uninstall.sh --purge
 set -euo pipefail
 
@@ -39,18 +39,18 @@ done
 OS="$(uname -s)"
 case "$OS" in
   MINGW*|MSYS*|CYGWIN*)
-    JCODE_HOME="${LOCALAPPDATA:?LOCALAPPDATA not set}/jcode"
-    LAUNCHER_DIR="${JCODE_INSTALL_DIR:-$LOCALAPPDATA/jcode/bin}"
-    LAUNCHER="$LAUNCHER_DIR/jcode.exe"
-    BUILDS_DIR="$JCODE_HOME/builds"
-    USER_DATA_DIR="$JCODE_HOME"
+    KCODE_HOME="${LOCALAPPDATA:?LOCALAPPDATA not set}/kcode"
+    LAUNCHER_DIR="${KCODE_INSTALL_DIR:-$LOCALAPPDATA/kcode/bin}"
+    LAUNCHER="$LAUNCHER_DIR/kcode.exe"
+    BUILDS_DIR="$KCODE_HOME/builds"
+    USER_DATA_DIR="$KCODE_HOME"
     ;;
   *)
-    JCODE_HOME="$HOME/.jcode"
-    LAUNCHER_DIR="${JCODE_INSTALL_DIR:-$HOME/.local/bin}"
-    LAUNCHER="$LAUNCHER_DIR/jcode"
-    BUILDS_DIR="$JCODE_HOME/builds"
-    USER_DATA_DIR="$JCODE_HOME"
+    KCODE_HOME="$HOME/.kcode"
+    LAUNCHER_DIR="${KCODE_INSTALL_DIR:-$HOME/.local/bin}"
+    LAUNCHER="$LAUNCHER_DIR/kcode"
+    BUILDS_DIR="$KCODE_HOME/builds"
+    USER_DATA_DIR="$KCODE_HOME"
     ;;
 esac
 
@@ -80,12 +80,12 @@ fi
 
 # Compatibility wrapper installed by some setups.
 SELFDEV_WRAPPER="$HOME/.local/bin/selfdev"
-if [ -f "$SELFDEV_WRAPPER" ] && grep -q "jcode" "$SELFDEV_WRAPPER" 2>/dev/null; then
+if [ -f "$SELFDEV_WRAPPER" ] && grep -q "kcode" "$SELFDEV_WRAPPER" 2>/dev/null; then
   TARGETS+=("$SELFDEV_WRAPPER (selfdev wrapper)")
 fi
 
 if [ ${#TARGETS[@]} -eq 0 ]; then
-  info "Nothing to uninstall: no jcode installation found."
+  info "Nothing to uninstall: no kcode installation found."
   exit 0
 fi
 
@@ -117,9 +117,9 @@ if [ "$ASSUME_YES" = false ]; then
   fi
 fi
 
-# Stop any running jcode server so files are not recreated mid-wipe.
+# Stop any running kcode server so files are not recreated mid-wipe.
 if command -v pkill >/dev/null 2>&1; then
-  pkill -f 'jcode( .*)? serve' 2>/dev/null || true
+  pkill -f 'kcode( .*)? serve' 2>/dev/null || true
 fi
 
 remove() {
@@ -144,7 +144,7 @@ if [ "$PURGE" = true ]; then
 else
   remove "$BUILDS_DIR"
 fi
-if [ -f "$SELFDEV_WRAPPER" ] && grep -q "jcode" "$SELFDEV_WRAPPER" 2>/dev/null; then
+if [ -f "$SELFDEV_WRAPPER" ] && grep -q "kcode" "$SELFDEV_WRAPPER" 2>/dev/null; then
   remove "$SELFDEV_WRAPPER"
 fi
 
@@ -170,8 +170,8 @@ case "$OS" in
       unset IFS
       set +f
       if [ "$new_user_path" != "$current_user_path" ]; then
-        if JCODE_NEW_USER_PATH="$new_user_path" powershell.exe -NoProfile -NonInteractive -Command \
-          '[Environment]::SetEnvironmentVariable("Path", $env:JCODE_NEW_USER_PATH, "User")' >/dev/null 2>&1; then
+        if KCODE_NEW_USER_PATH="$new_user_path" powershell.exe -NoProfile -NonInteractive -Command \
+          '[Environment]::SetEnvironmentVariable("Path", $env:KCODE_NEW_USER_PATH, "User")' >/dev/null 2>&1; then
           info "Removed $win_launcher_dir from your user PATH."
         fi
       fi
@@ -179,9 +179,9 @@ case "$OS" in
     ;;
 esac
 
-info "jcode uninstalled."
+info "kcode uninstalled."
 if [ "$PURGE" = false ]; then
-  info "Reinstall with: curl -fsSL https://jcode.sh/install | bash"
+  info "Reinstall with: curl -fsSL https://kcode.sh/install | bash"
 else
-  info "All jcode data wiped. Reinstall with: curl -fsSL https://jcode.sh/install | bash"
+  info "All kcode data wiped. Reinstall with: curl -fsSL https://kcode.sh/install | bash"
 fi
