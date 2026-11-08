@@ -278,6 +278,7 @@ mod tests {
             session,
             "timeout-owner",
             SessionToolConfig {
+                                allowed_mcp_tools: Vec::new(),
                 custom: vec![SessionToolDefinition {
                     name: "callback".into(),
                     description: "test callback".into(),

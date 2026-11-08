@@ -2521,6 +2521,7 @@ async fn sdk_custom_compile_remote_schema_survives_locked_refresh() {
         agent.session_id(),
         "cache-owner",
         crate::protocol::SessionToolConfig {
+                        allowed_mcp_tools: Vec::new(),
             enabled: Some(vec![]),
             disabled: vec![],
             custom: vec![crate::protocol::SessionToolDefinition {

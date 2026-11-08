@@ -333,6 +333,7 @@ async fn sdk_custom_collision_alias_cannot_bypass_legacy_deny() {
         agent.session_id(),
         "collision-owner",
         crate::protocol::SessionToolConfig {
+                        allowed_mcp_tools: Vec::new(),
             enabled: Some(vec!["batch".into()]),
             disabled: vec![legacy],
             custom: vec![crate::protocol::SessionToolDefinition {
