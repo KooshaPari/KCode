@@ -2032,6 +2032,47 @@ mod mcp_allow_list_tests {
             &grants
         ));
     }
+
+    /// The allow side is asymmetric on purpose, and that asymmetry is a trap.
+    ///
+    /// `tool_name_is_allowed` pulls the generic surfaces in as soon as *any*
+    /// `mcp__*` name is allowed, so an allow-list that mentions a single server
+    /// tool silently re-admits `mcp_call` and `mcp_search`. This test records
+    /// the behaviour rather than blessing it: a grant must never be expressed by
+    /// widening `allowed`, because that would re-enable the escape hatches the
+    /// deny-side grant exists to keep shut.
+    #[test]
+    fn allowing_any_server_tool_also_readmits_the_generic_surfaces() {
+        let allowed = HashSet::from(["mcp__filesystem__read_file".to_string()]);
+
+        assert!(tool_name_is_allowed(
+            &allowed,
+            "mcp__filesystem__read_file",
+            &[]
+        ));
+        assert!(
+            tool_name_is_allowed(&allowed, "mcp_call", &[]),
+            "known asymmetry: allowing one server tool re-admits mcp_call"
+        );
+        assert!(
+            tool_name_is_allowed(&allowed, "mcp_search", &[]),
+            "known asymmetry: allowing one server tool re-admits mcp_search"
+        );
+    }
+
+    /// A grant is deny-side only. It must not change the allow verdict at all.
+    #[test]
+    fn a_grant_never_widens_the_allow_list() {
+        let allowed = HashSet::from(["bash".to_string()]);
+        let grants = vec![("filesystem".to_string(), "read_file".to_string())];
+
+        assert!(!tool_name_is_allowed(
+            &allowed,
+            "mcp__filesystem__read_file",
+            &grants
+        ));
+        assert!(!tool_name_is_allowed(&allowed, "mcp_call", &grants));
+    }
 }
 
 #[cfg(test)]
