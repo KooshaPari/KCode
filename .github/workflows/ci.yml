@@ -314,6 +314,7 @@ jobs:
     # pinning it here makes every step use this job's installed stable toolchain.
     env:
       RUSTUP_TOOLCHAIN: stable
+      CARGO_BUILD_JOBS: "4"
     strategy:
       fail-fast: false
       matrix:
