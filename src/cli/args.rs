@@ -3,9 +3,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 use super::provider_init::ProviderChoice;
 
 mod google;
+mod provider_auth;
 mod session;
 #[allow(unused_imports)]
 pub(crate) use google::{GoogleAccessTierArg, GoogleLoginArgs};
+pub(crate) use provider_auth::ProviderAuthArg;
 pub(crate) use session::SessionCommand;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -14,16 +16,6 @@ pub(crate) enum TranscriptModeArg {
     Append,
     Replace,
     Send,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
-pub(crate) enum ProviderAuthArg {
-    /// Send the API key as Authorization: Bearer <key> (OpenAI-compatible default)
-    Bearer,
-    /// Send the API key in an API-key header (defaults to api-key)
-    ApiKey,
-    /// Do not send authentication, useful for localhost model servers
-    None,
 }
 
 #[derive(Parser, Debug)]
