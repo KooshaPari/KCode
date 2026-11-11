@@ -153,7 +153,9 @@ fn run_main() -> Result<()> {
     // work so a freshly-installed binary that taskgated already accepted still
     // repairs itself for the next launch — taskgated's re-validation can flip
     // on a subsequent reboot even when the binary passed on the first try.
-    self_heal_macos_code_signature();
+    if !jcode::cli::startup::is_coexistence_invocation() {
+        self_heal_macos_code_signature();
+    }
 
     configure_system_allocator();
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
