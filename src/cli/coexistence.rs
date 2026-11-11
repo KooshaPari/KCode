@@ -67,11 +67,18 @@ fn report(path: Option<&OsStr>, now: Option<u64>) -> Report {
     }
 }
 
+fn observation_timestamp(now: SystemTime) -> Option<u64> {
+    match now.duration_since(UNIX_EPOCH) {
+        Ok(duration) => Some(duration.as_secs()),
+        Err(error) => {
+            eprintln!("Unable to timestamp local coexistence discovery: {error}");
+            None
+        }
+    }
+}
+
 pub(super) fn run(json: bool) -> Result<()> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .map(|d| d.as_secs());
+    let now = observation_timestamp(SystemTime::now());
     let report = report(std::env::var_os("PATH").as_deref(), now);
     if json {
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -96,6 +103,18 @@ pub(super) fn run(json: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timestamp_before_epoch_is_unknown() {
+        assert_eq!(
+            observation_timestamp(UNIX_EPOCH - std::time::Duration::from_secs(1)),
+            None
+        );
+        assert_eq!(
+            observation_timestamp(UNIX_EPOCH + std::time::Duration::from_secs(7)),
+            Some(7)
+        );
+    }
 
     #[test]
     fn reports_each_continuity_domain_unknown() {
