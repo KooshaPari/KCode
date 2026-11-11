@@ -29,7 +29,10 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, and each restart cancels the job in
+    # flight. This repo is public, so hosted runners cost nothing.
+    runs-on: ubuntu-latest
     # Measured on the shared desk-linux runner (run 41163955888, job
     # 125095678225, 2026-11-02): the 20 substantive steps took 43m29s
     # (04:30:49 -> 05:14:18), so the old 45m cap killed the job during the
@@ -203,7 +206,15 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux, not the shared desk-linux runner: the desk runner
+    # stack is being restarted every few minutes by the scale-set work, and
+    # each restart cancels whatever job is in flight. The symptom is a job
+    # that reports `failure` with a null step conclusion and no log blob at
+    # all, which reads like a product failure but is pure infrastructure.
+    # This repo is public, so hosted Linux runners cost nothing, and the
+    # fork-PR guard above is unchanged. Build & Test stays on desk-linux
+    # because it exercises the desk's persistent cargo target setup.
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -242,7 +253,15 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux, not the shared desk-linux runner: the desk runner
+    # stack is being restarted every few minutes by the scale-set work, and
+    # each restart cancels whatever job is in flight. The symptom is a job
+    # that reports `failure` with a null step conclusion and no log blob at
+    # all, which reads like a product failure but is pure infrastructure.
+    # This repo is public, so hosted Linux runners cost nothing, and the
+    # fork-PR guard above is unchanged. Build & Test stays on desk-linux
+    # because it exercises the desk's persistent cargo target setup.
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -895,7 +914,9 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
+    runs-on: ubuntu-latest
     # `cargo fmt --all -- --check` needs no compilation, so 10 minutes looked
     # generous. It is not enough on this runner when the host is oversubscribed:
     # observed 2026-11-02 in run 41425751987, job 125211820283, Format exceeded
@@ -926,7 +947,9 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
+    runs-on: ubuntu-latest
     # 10 min is not enough when the desk runner shares CPU with cargo builds;
     # npm run check alone has crossed the limit three runs in a row.
     timeout-minutes: 30
