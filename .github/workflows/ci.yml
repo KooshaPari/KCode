@@ -994,7 +994,10 @@ jobs:
       # only guard that runs on a change is the Rust-side variant check, and a
       # typo in the TypeScript itself (or a broken client) reaches consumers.
       - name: Install
-        run: npm ci --no-audit --no-fund
+        # `--ignore-scripts`: the SDK's dependency tree (ajv, fast-uri,
+        # typescript) has no lifecycle scripts, and SonarCloud rule
+        # githubactions:S6505 requires install scripts to be off.
+        run: npm ci --no-audit --no-fund --ignore-scripts
         working-directory: sdk/typescript
 
       - name: Typecheck, build, and test
