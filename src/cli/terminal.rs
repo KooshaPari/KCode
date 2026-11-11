@@ -110,13 +110,15 @@ fn has_terminal_exec_handoff(
 /// typed input is invisible because echo and cooked mode were never restored
 /// (see issue #214).
 ///
-/// The normal teardown path should call [`TuiRuntimeGuard::finish`] (or
-/// [`TuiRuntimeGuard::finish_for_run_result`]) which performs the restore and
-/// disarms the guard. If neither is called (error/panic path), `Drop` performs
-/// a best-effort full restore.
+/// Normal teardown restores and disarms the guard. During an exec handoff the
+/// guard stays armed, so an unsuccessful replacement still restores on drop.
 pub struct TuiRuntimeGuard {
     state: TuiRuntimeState,
     armed: bool,
+    #[cfg(test)]
+    cleanup_override: Option<fn(bool)>,
+    #[cfg(test)]
+    handoff_override: Option<fn()>,
 }
 
 #[cfg(test)]
@@ -124,28 +126,56 @@ thread_local! {
     /// Counts how many times the guard's `Drop` performed an emergency restore.
     /// Used by tests to verify the error/panic safety net fires exactly once.
     static GUARD_DROP_RESTORES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    static TEST_CLEANUP_CALLS: std::cell::RefCell<Vec<bool>> = const { std::cell::RefCell::new(Vec::new()) };
+    static TEST_HANDOFF_CALLS: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 impl TuiRuntimeGuard {
     fn new(state: TuiRuntimeState) -> Self {
-        Self { state, armed: true }
+        Self {
+            state,
+            armed: true,
+            #[cfg(test)]
+            cleanup_override: None,
+            #[cfg(test)]
+            handoff_override: None,
+        }
+    }
+
+    fn cleanup(&self, restore_terminal: bool) {
+        #[cfg(test)]
+        if let Some(cleanup) = self.cleanup_override {
+            cleanup(restore_terminal);
+            return;
+        }
+        cleanup_tui_runtime(&self.state, restore_terminal);
+    }
+
+    fn export_handoff(&self) {
+        #[cfg(test)]
+        if let Some(export) = self.handoff_override {
+            export();
+            return;
+        }
+        export_tui_exec_handoff(&self.state);
     }
 
     /// Normal teardown for the simple case: restore the terminal and disarm.
     pub fn finish(mut self, restore_terminal: bool) {
-        cleanup_tui_runtime(&self.state, restore_terminal);
+        self.cleanup(restore_terminal);
         self.armed = false;
     }
 
     /// Normal teardown for the interactive client: restore unless we are about
     /// to exec a follow-up process (reload/rebuild/update), in which case the
-    /// next process inherits the terminal modes.
-    pub fn finish_for_run_result(mut self, run_result: &crate::tui::RunResult, extra_exec: bool) {
-        if run_result_will_exec(run_result, extra_exec) {
-            export_tui_exec_handoff(&self.state);
+    /// next process inherits the terminal modes. Remain armed in case it fails.
+    pub fn finish_for_run_result(&mut self, run_result: &crate::tui::RunResult, extra_exec: bool) {
+        let will_exec = run_result_will_exec(run_result, extra_exec);
+        if will_exec {
+            self.export_handoff();
         }
-        cleanup_tui_runtime_for_run_result(&self.state, run_result, extra_exec);
-        self.armed = false;
+        self.cleanup(!will_exec);
+        self.armed = will_exec;
     }
 }
 
@@ -155,7 +185,7 @@ impl Drop for TuiRuntimeGuard {
             // Reached only on an error/panic path that skipped explicit
             // teardown. Always perform a full restore so the user's terminal is
             // not left corrupted.
-            cleanup_tui_runtime(&self.state, true);
+            self.cleanup(true);
             self.armed = false;
             #[cfg(test)]
             GUARD_DROP_RESTORES.with(|c| c.set(c.get() + 1));
@@ -198,8 +228,13 @@ pub fn install_panic_hook() {
 
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
-        // 0. Rate guard — runs first so we still call the cleanup branch
-        //    below even when we force-exit.
+        // Restore before the rate guard, which can terminate without unwinding.
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableFocusChange);
+        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableBracketedPaste);
+        let _ = crossterm::execute!(std::io::stderr(), crossterm::terminal::LeaveAlternateScreen);
+        let _ = crossterm::execute!(std::io::stderr(), crossterm::cursor::Show);
+
         let now_ms = chrono::Utc::now().timestamp_millis();
         let prev_ms = PANIC_TS.swap(now_ms, Ordering::SeqCst);
         let mut burst = PANIC_BURST.load(Ordering::SeqCst);
@@ -214,17 +249,6 @@ pub fn install_panic_hook() {
             burst = 0;
         }
         PANIC_BURST.store(burst, Ordering::SeqCst);
-
-        // 1. Best-effort synchronous terminal cleanup so the user is not left
-        //    with raw mode / focus events / bracketed paste still enabled when
-        //    the panic propagates to std::process::exit (issue #214 / report
-        //    §4.4). Errors here are silently swallowed because the panic
-        //    handler must not panic itself.
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableFocusChange);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableBracketedPaste);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::terminal::LeaveAlternateScreen);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::cursor::Show);
 
         // 2. Persist the panic details to a sibling log file so the next
         //    process can diagnose even when stderr was swallowed by a parent
@@ -569,20 +593,13 @@ fn cleanup_tui_runtime(state: &TuiRuntimeState, restore_terminal: bool) {
     }
 }
 
-fn cleanup_tui_runtime_for_run_result(
-    state: &TuiRuntimeState,
-    run_result: &crate::tui::RunResult,
-    extra_exec: bool,
-) {
-    cleanup_tui_runtime(state, !run_result_will_exec(run_result, extra_exec));
-}
-
 fn run_result_will_exec(run_result: &crate::tui::RunResult, extra_exec: bool) -> bool {
-    extra_exec
-        || run_result.reload_session.is_some()
-        || run_result.rebuild_session.is_some()
-        || run_result.update_session.is_some()
-        || run_result.restart_session.is_some()
+    run_result.exit_code.is_none()
+        && (extra_exec
+            || run_result.reload_session.is_some()
+            || run_result.rebuild_session.is_some()
+            || run_result.update_session.is_some()
+            || run_result.restart_session.is_some())
 }
 
 fn export_tui_exec_handoff(state: &TuiRuntimeState) {
@@ -733,13 +750,44 @@ mod tests {
     static TEST_SESSION_LOCK: Mutex<()> = Mutex::new(());
 
     fn test_guard() -> TuiRuntimeGuard {
-        // All terminal-mode flags disabled so teardown only performs the minimal
-        // (and TTY-safe) restore path during tests.
-        TuiRuntimeGuard::new(TuiRuntimeState {
+        let mut guard = TuiRuntimeGuard::new(TuiRuntimeState {
             mouse_capture: false,
             keyboard_enhanced: false,
             focus_change: false,
-        })
+        });
+        TEST_CLEANUP_CALLS.with(|calls| calls.borrow_mut().clear());
+        TEST_HANDOFF_CALLS.with(|calls| calls.set(0));
+        guard.cleanup_override =
+            Some(|restore| TEST_CLEANUP_CALLS.with(|calls| calls.borrow_mut().push(restore)));
+        guard.handoff_override =
+            Some(|| TEST_HANDOFF_CALLS.with(|calls| calls.set(calls.get() + 1)));
+        guard
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn panic_burst_cleans_terminal_before_forced_exit() {
+        const CHILD: &str = "KCODE_TEST_PANIC_BURST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            install_panic_hook();
+            for _ in 0..6 {
+                let _ = std::panic::catch_unwind(|| panic!("panic burst witness"));
+            }
+            panic!("panic burst did not terminate");
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .arg("panic_burst_cleans_terminal_before_forced_exit")
+            .arg("--nocapture")
+            .env(CHILD, "1")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(101));
+        let resets = output
+            .stderr
+            .windows(b"\x1b[?2004l".len())
+            .filter(|bytes| *bytes == b"\x1b[?2004l")
+            .count();
+        assert_eq!(resets, 6);
     }
 
     #[test]
@@ -817,6 +865,9 @@ mod tests {
             &crate::tui::RunResult::default(),
             false
         ));
+        let mut exiting = with("reload");
+        exiting.exit_code = Some(1);
+        assert!(!run_result_will_exec(&exiting, true));
     }
 
     #[test]
@@ -832,6 +883,7 @@ mod tests {
             restores, 1,
             "dropping an un-finished guard must restore the terminal once"
         );
+        TEST_CLEANUP_CALLS.with(|calls| assert_eq!(&*calls.borrow(), &[true]));
     }
 
     #[test]
@@ -845,6 +897,21 @@ mod tests {
             restores, 0,
             "finish() should disarm the guard so drop does not double-restore"
         );
+        TEST_CLEANUP_CALLS.with(|calls| assert_eq!(&*calls.borrow(), &[true]));
+    }
+
+    #[test]
+    fn failed_handoff_restores_terminal_on_drop() {
+        GUARD_DROP_RESTORES.with(|c| c.set(0));
+        {
+            let mut guard = test_guard();
+            let mut result = crate::tui::RunResult::default();
+            result.reload_session = Some("session_test".into());
+            guard.finish_for_run_result(&result, false);
+        }
+        assert_eq!(GUARD_DROP_RESTORES.with(|c| c.get()), 1);
+        TEST_CLEANUP_CALLS.with(|calls| assert_eq!(&*calls.borrow(), &[false, true]));
+        assert_eq!(TEST_HANDOFF_CALLS.with(|calls| calls.get()), 1);
     }
 
     #[test]
