@@ -1,10 +1,24 @@
 # Dependency Security Triage
 
-Last reviewed: 2026-10-30 (CI security-preflight remediation)
-Prior review: 2026-10-14 (P30 master remediation complete), 2026-10-13 (P30 audit refresh), 2026-05-14
+Last reviewed: 2026-11-10 (RUSTSEC-2026-0459 rusqlite bump)
+Prior review: 2026-10-30 (CI security-preflight remediation), 2026-10-14 (P30 master remediation complete), 2026-10-13 (P30 audit refresh), 2026-05-14
 
 This file tracks the current `cargo audit` findings for jcode and the intended remediation path.
 It is not an allowlist. It is a triage record so advisories are visible and actionable.
+
+## 2026-11-10 remediation
+
+| Advisory | Crate | Before | After | Outcome |
+|---|---|---|---|---|
+| `RUSTSEC-2026-0459` | `libsqlite3-sys` | 0.30.1 (via `rusqlite 0.32.1`) | 0.39.1 (via `rusqlite 0.41.1`) | **CLEARED** (dependency bump) |
+
+`rusqlite` is the only dependant of `libsqlite3-sys` in the graph, so clearing the advisory
+required moving `rusqlite` from the `0.32` line to the `0.41` line (the first line whose
+`libsqlite3-sys` requirement is `^0.39.0`). `rusqlite 0.41` dropped the `ToSql`/`FromSql`
+impls for `u64`, so `crates/jcode-base/src/model_usage.rs` now binds and reads timestamps and
+counts through explicit `i64` boundary helpers (`sql_u64`, `read_u64`, `read_opt_u64`). SQLite
+integers are signed 64-bit, so this is a type-boundary adaptation, not a behavior change.
+No `--ignore` is needed for this advisory.
 
 ## 2026-10-30 remediation
 
