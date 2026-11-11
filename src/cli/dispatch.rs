@@ -72,6 +72,12 @@ fn arm_debug_client_parent_death_signal() {
 fn arm_debug_client_parent_death_signal() {}
 
 pub(crate) async fn run_main(mut args: Args) -> Result<()> {
+    if let Some(Command::Coexistence { json }) = &args.command {
+        if args.ssh.is_some() {
+            anyhow::bail!("Coexistence discovery is local to the current host");
+        }
+        return super::coexistence::run(*json);
+    }
     if let Some(Command::Session(SessionCommand::ImportJcode { session })) = &args.command {
         if args.ssh.is_some() {
             anyhow::bail!(
@@ -143,6 +149,7 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
     }
 
     match args.command {
+        Some(Command::Coexistence { .. }) => unreachable!("handled before startup"),
         Some(Command::Serve {
             temporary_server,
             owner_pid,
