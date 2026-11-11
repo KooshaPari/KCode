@@ -1090,14 +1090,25 @@ jobs:
 
       - name: Install LLVM toolchain for cargo-xwin
         run: |
-          if ! command -v clang >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -qq
-              sudo apt-get install -y -qq clang lld llvm ninja-build
-            else
-              sudo dnf install -y clang lld llvm ninja-build
-            fi
+          # A hosted runner already has clang, so gating the whole install on
+          # `command -v clang` skipped llvm-lib and nasm. Both are needed:
+          # ring's build script asks cc-rs for "llvm-lib", and aws-lc-sys
+          # assembles with NASM. On the desk-linux host both were already
+          # present, which is why this only surfaced after the move.
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq clang lld llvm ninja-build nasm
+          else
+            sudo dnf install -y clang lld llvm ninja-build nasm
           fi
+          # llvm-lib lives in /usr/lib/llvm-*/bin, which is not on PATH.
+          LLVM_BIN="$(dirname "$(find /usr/lib /usr/local -maxdepth 4 -name llvm-lib -type f 2>/dev/null | head -1)")"
+          if [ -n "$LLVM_BIN" ] && [ -d "$LLVM_BIN" ]; then
+            echo "LLVM_BIN=$LLVM_BIN" >> "$GITHUB_ENV"
+            echo "$LLVM_BIN" >> "$GITHUB_PATH"
+          fi
+          command -v nasm
+          command -v llvm-lib
 
       - name: Install cargo-xwin
         run: cargo install --git https://github.com/rust-cross/cargo-xwin cargo-xwin
