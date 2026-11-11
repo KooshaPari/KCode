@@ -316,7 +316,9 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -1059,7 +1061,10 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight. cargo-xwin
+    # fetches the MSVC SDK itself, so this job needs nothing from the desk.
+    runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -1116,7 +1121,9 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
