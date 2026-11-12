@@ -89,18 +89,54 @@ jobs:
         # findings and 50 pre-existing warning-level ones. Warnings are reported
         # but not enforced; raise to `-S warning` once the backlog is cleared.
         #
-        # shellcheck is not guaranteed on the self-hosted runner. Install it if
-        # missing, and if that fails downgrade to a warning annotation rather
-        # than blocking every PR on runner provisioning.
+        # shellcheck is not guaranteed on the self-hosted runner. The runner is
+        # a Linux box WITHOUT apt-get (verified 2026-10-28: the first version of
+        # this step tried `apt-get`, found no apt-get, and degraded to a warning,
+        # so the gate silently never enforced anything). Install a pinned static
+        # binary instead, verifying the SHA256, with apt as a fallback for
+        # runners that do have a package manager. If neither works, degrade to a
+        # warning annotation rather than blocking every PR on runner
+        # provisioning.
         shell: bash
         run: |
           if ! command -v shellcheck >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -qq && sudo apt-get install -y shellcheck || true
+            # Pinned static x86_64 build. sha256 verified below; a mismatch
+            # aborts the install and falls through to the warning path.
+            SHELLCHECK_VERSION=v0.10.0
+            SHELLCHECK_SHA256=6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+            SHELLCHECK_URL="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+            tmpdir="$(mktemp -d)"
+            fetched=0
+            if command -v curl >/dev/null 2>&1; then
+              curl -sSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 120 -o "${tmpdir}/sc.tar.xz" "${SHELLCHECK_URL}" && fetched=1
+            elif command -v wget >/dev/null 2>&1; then
+              wget -q --https-only -T 120 -O "${tmpdir}/sc.tar.xz" "${SHELLCHECK_URL}" && fetched=1
             fi
+            if [ "${fetched}" = "1" ]; then
+              actual="$(sha256sum "${tmpdir}/sc.tar.xz" | cut -d' ' -f1)"
+              if [ "${actual}" = "${SHELLCHECK_SHA256}" ]; then
+                tar -xJf "${tmpdir}/sc.tar.xz" -C "${tmpdir}"
+                mkdir -p "${HOME}/.local/bin"
+                if ! install -m 0755 "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck 2>/dev/null; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                if [ ! -x /usr/local/bin/shellcheck ]; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                chmod +x "${HOME}/.local/bin/shellcheck" 2>/dev/null || true
+                export PATH="${HOME}/.local/bin:${PATH}"
+                echo "installed shellcheck ${SHELLCHECK_VERSION} (sha256 verified)"
+              else
+                echo "::warning::shellcheck download failed checksum (got ${actual}); not installing."
+              fi
+            fi
+            rm -rf "${tmpdir}"
+          fi
+          if ! command -v shellcheck >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y shellcheck || true
           fi
           if ! command -v shellcheck >/dev/null 2>&1; then
-            echo "::warning::shellcheck is unavailable on this runner; shell lint skipped. Install shellcheck on desk-kcode-1 to enforce it."
+            echo "::warning::shellcheck is unavailable on this runner; shell lint skipped. Install shellcheck on desk-kcode-1/2 to enforce it."
             exit 0
           fi
 
@@ -340,10 +376,12 @@ jobs:
         run: python3 -m py_compile scripts/post_discord_release.py scripts/test_post_discord_release.py
 
   build:
-    name: Build & Test (${{ matrix.os }})
-    # Fork PRs never run here: this is a persistent self-hosted runner with
-    # no isolation guarantees, so only same-repository pull requests get
-    # automatic CI. External contributions need a maintainer-run check.
+    # Name is fixed rather than interpolated from `matrix.os`: the required
+    # status check must stay stable if the runner image is ever repointed.
+    name: Build & Test (linux)
+    # Fork PRs never run here: the hosted runner now has isolation, but this
+    # guard is unchanged so fork pull requests still need a maintainer-run
+    # check. Only same-repository pull requests get automatic CI.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ matrix.os }}
     # 35 minutes covers a normal push (~12 min with a warm Swatinem cache) but
@@ -377,9 +415,15 @@ jobs:
       matrix:
         # macos-latest leg removed: hosted Actions minutes are capped at $0
         # (never pay for GH CI). macOS builds run manually when needed.
-        os: [desk-linux]
+        #
+        # Moved off the desk's self-hosted runner: its reconcilers reload the
+        # runner stack on a 5-15 minute cadence, which is shorter than this
+        # job's duration, so every attempt received a shutdown signal part way
+        # through and was reported as cancelled. Hosted Linux is free for this
+        # public repo. No step, threshold or test was removed to allow it.
+        os: [ubuntu-latest]
         include:
-          - os: desk-linux
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
 
     steps:
@@ -387,7 +431,25 @@ jobs:
         with:
           submodules: recursive
 
+      # Native build deps: the desk host carries these already, a hosted runner
+      # does not. `alsa-sys` aborts the build without libasound2-dev ("The
+      # system library `alsa` required by crate `alsa-sys` was not found"), and
+      # the crate is reached by the --all-targets --all-features steps.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config \
+            mold
+
+      # Desk-only: this asserts the desk runner's persistent target directory
+      # convention. It cannot run on a hosted runner, which has no durable
+      # per-runner disk, but the desk remains a legitimate local build host.
       - name: Test persistent cargo target setup
+        if: runner.environment != 'github-hosted'
         run: python3 scripts/test_ci_persistent_target.py
 
       # Persistent, per-runner cargo target dir.
@@ -405,7 +467,11 @@ jobs:
       # Per-runner (not shared) on purpose: concurrent cargo builds take an
       # exclusive lock on one target dir and would serialise against each other.
       #
+      # Desk-only, for the same reason as the test above: `$HOME` on a hosted
+      # runner is ephemeral, so a persistent target dir buys nothing there.
+      # Skipping it leaves CARGO_TARGET_DIR at its default `target/`.
       - name: Configure persistent cargo target dir
+        if: runner.environment != 'github-hosted'
         run: |
           set -euo pipefail
           # RUNNER_NAME becomes a path component, so a value containing a
@@ -501,13 +567,30 @@ jobs:
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
         run: |
-          if ! command -v mold >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -qq
-              sudo apt-get install -y -qq mold
-            else
-              sudo dnf install -y mold
-            fi
+          # mold is an optimisation, not a requirement to reach this point. The
+          # desk-linux runner image ships neither mold nor sudo, so an
+          # unconditional `sudo apt-get` aborted the job with exit 127
+          # ("sudo: command not found") before the build started. Install it when
+          # the runner allows it; otherwise warn and let the Build step fall back
+          # to the default linker.
+          if command -v mold >/dev/null 2>&1; then
+            echo "mold already present: $(mold --version | head -1)"
+            exit 0
+          fi
+          SUDO=""
+          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+          if command -v apt-get >/dev/null 2>&1; then
+            $SUDO apt-get update -qq || true
+            $SUDO apt-get install -y -qq mold || true
+          elif command -v dnf >/dev/null 2>&1; then
+            $SUDO dnf install -y mold || true
+          elif command -v apk >/dev/null 2>&1; then
+            $SUDO apk add --no-cache mold || true
+          fi
+          if command -v mold >/dev/null 2>&1; then
+            echo "mold installed: $(mold --version | head -1)"
+          else
+            echo "::warning::mold is unavailable on this runner; the build will use the default linker"
           fi
 
       - name: Build
@@ -515,11 +598,28 @@ jobs:
         run: |
           mkdir -p .cargo
           if [ "$RUNNER_OS" = "Linux" ]; then
-            cat > .cargo/config.toml << 'EOF'
-          [target.x86_64-unknown-linux-gnu]
-          linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
-          EOF
+            # Both mold and clang are optional here. A config that names a linker the
+            # runner does not have fails the very first build script:
+            #   error: linker `clang` not found
+            #   error: could not compile `proc-macro2` (build script)
+            # The desk-linux image carries whatever the image recipe bakes in, so only
+            # advertise the tools actually present on this runner.
+            LINKER_LINE=""
+            if command -v clang >/dev/null 2>&1; then
+              LINKER_LINE='linker = "clang"'
+            fi
+            RUSTFLAGS_LINE=""
+            if command -v mold >/dev/null 2>&1; then
+              RUSTFLAGS_LINE='rustflags = ["-C", "link-arg=-fuse-ld=mold"]'
+            fi
+            if [ -n "$LINKER_LINE" ] || [ -n "$RUSTFLAGS_LINE" ]; then
+              echo "[target.x86_64-unknown-linux-gnu]" > .cargo/config.toml
+              if [ -n "$LINKER_LINE" ]; then echo "$LINKER_LINE" >> .cargo/config.toml; fi
+              if [ -n "$RUSTFLAGS_LINE" ]; then echo "$RUSTFLAGS_LINE" >> .cargo/config.toml; fi
+              cat .cargo/config.toml
+            else
+              echo "::warning::neither clang nor mold is available on this runner; using cargo's default linker"
+            fi
           fi
           # NOTE: intentionally NOT exporting RUSTC_WRAPPER=sccache here. Only this
           # step used sccache while the later `cargo test --no-run` steps did not,
@@ -605,8 +705,8 @@ jobs:
           model_dir="$HOME/.jcode/models/all-MiniLM-L6-v2"
           mkdir -p "$model_dir"
           base="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main"
-          curl -sSfL --retry 3 -o "$model_dir/model.onnx" "$base/onnx/model.onnx"
-          curl -sSfL --retry 3 -o "$model_dir/tokenizer.json" "$base/tokenizer.json"
+          curl -sSfL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 -o "$model_dir/model.onnx" "$base/onnx/model.onnx"
+          curl -sSfL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 -o "$model_dir/tokenizer.json" "$base/tokenizer.json"
           # Fail loudly if the fetch produced something unusable, so this cannot
           # degrade back into a silent skip.
           test -s "$model_dir/model.onnx"
@@ -1094,9 +1194,10 @@ jobs:
           # job 121317250103 (2026-10-26), blocking the self-hosted runner the
           # whole time. The `-notarget` key + `cache-targets: "false"` make the
           # restore miss fast; PR #183 already applies this to the Build job.
-          key: windows-cross-check-notarget
+          key: windows-cross-check-notarget-nobin
           cache-all-crates: "true"
           cache-targets: "false"
+          cache-bin: "false"
 
       - name: Install LLVM toolchain for cargo-xwin
         run: |

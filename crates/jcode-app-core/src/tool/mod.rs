@@ -35,6 +35,7 @@ pub mod invalid;
 pub mod jcode_docs;
 pub mod ls;
 pub mod mcp;
+mod mcp_grant;
 pub mod memory;
 pub mod multiedit;
 pub mod open;
@@ -47,6 +48,7 @@ pub mod selfdev;
 pub(crate) mod serde_coerce;
 pub mod session_search;
 pub(crate) mod session_search_index;
+mod session_tool_policy;
 pub mod side_panel;
 pub mod skill;
 pub mod todo;
@@ -65,15 +67,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub(crate) fn tool_name_is_allowed(allowed: &HashSet<String>, name: &str) -> bool {
-    allowed.contains(name)
-        || (allowed.contains("mcp") && is_mcp_tool_name(name))
-        || (is_fixed_mcp_tool(name) && allowed.iter().any(|tool| tool.starts_with("mcp__")))
-}
-
-pub(crate) fn tool_name_is_disabled(disabled: &HashSet<String>, name: &str) -> bool {
-    disabled.contains(name) || (disabled.contains("mcp") && is_mcp_tool_name(name))
-}
+pub(crate) use mcp_grant::{tool_name_is_allowed, tool_name_is_disabled};
 
 fn is_fixed_mcp_tool(name: &str) -> bool {
     matches!(name, "mcp_search" | "mcp_call")
@@ -89,13 +83,7 @@ pub(crate) use jcode_tool_core::intent_schema_property;
 pub use jcode_tool_core::{StdinInputRequest, Tool, ToolContext, ToolExecutionMode};
 pub use jcode_tool_types::{ToolImage, ToolOutput};
 pub(crate) use session_search::spawn_recent_index_warmup;
-
-#[derive(Clone, Debug, Default)]
-struct SessionToolPolicy {
-    allowed_tools: Option<HashSet<String>>,
-    disabled_tools: HashSet<String>,
-    owner: Option<u64>,
-}
+pub(crate) use session_tool_policy::SessionToolPolicy;
 
 static SESSION_TOOL_POLICIES: LazyLock<StdRwLock<HashMap<String, SessionToolPolicy>>> =
     LazyLock::new(|| StdRwLock::new(HashMap::new()));
@@ -139,6 +127,7 @@ pub(crate) fn register_session_tool_policy(
         SessionToolPolicy {
             allowed_tools,
             disabled_tools,
+            allowed_mcp_tools: Vec::new(),
             owner: Some(owner),
         },
     );
@@ -162,6 +151,7 @@ pub(crate) fn set_session_tool_policy(
         SessionToolPolicy {
             allowed_tools,
             disabled_tools,
+            allowed_mcp_tools: Vec::new(),
             owner: None,
         },
     );
@@ -191,6 +181,9 @@ fn session_tool_policy(session_id: &str) -> Option<SessionToolPolicy> {
         if let Some(allowed) = policy.allowed_tools.as_mut() {
             allowed.extend(config.custom.into_iter().map(|t| t.name));
         }
+        // The overlay's grants are the session's grants: they are what lifts the
+        // blanket `mcp` deny for one named `(server, tool)` pair.
+        policy.allowed_mcp_tools = config.allowed_mcp_tools;
     }
     policy
 }
@@ -201,11 +194,9 @@ pub(crate) fn session_tool_policy_allows_tool_for_test(
     tool_name: &str,
 ) -> Option<bool> {
     session_tool_policy(session_id).map(|policy| {
-        policy
-            .allowed_tools
-            .as_ref()
-            .is_none_or(|allowed| tool_name_is_allowed(allowed, tool_name))
-            && !tool_name_is_disabled(&policy.disabled_tools, tool_name)
+        policy.allowed_tools.as_ref().is_none_or(|allowed| {
+            tool_name_is_allowed(allowed, tool_name, &policy.allowed_mcp_tools)
+        }) && !tool_name_is_disabled(&policy.disabled_tools, tool_name, &policy.allowed_mcp_tools)
     })
 }
 
@@ -233,13 +224,17 @@ pub(crate) fn session_mcp_alias_is_allowed(
         return true;
     };
     let allowed = policy.allowed_tools.as_ref().is_none_or(|allowed| {
-        tool_name_is_allowed(allowed, alias)
-            || tool_name_is_allowed(allowed, legacy_name)
+        tool_name_is_allowed(allowed, alias, &policy.allowed_mcp_tools)
+            || tool_name_is_allowed(allowed, legacy_name, &policy.allowed_mcp_tools)
             || allowed.contains(fixed_surface)
     });
     allowed
-        && !tool_name_is_disabled(&policy.disabled_tools, alias)
-        && !tool_name_is_disabled(&policy.disabled_tools, legacy_name)
+        && !tool_name_is_disabled(&policy.disabled_tools, alias, &policy.allowed_mcp_tools)
+        && !tool_name_is_disabled(
+            &policy.disabled_tools,
+            legacy_name,
+            &policy.allowed_mcp_tools,
+        )
 }
 
 /// Whether a tool call opted in to receiving an oversized (truncated) result.
@@ -639,7 +634,7 @@ impl Registry {
         let allowed = policy.as_ref().and_then(|p| p.allowed_tools.clone());
         let mut defs = self.definitions(allowed.as_ref()).await;
         if let Some(policy) = policy.as_ref() {
-            defs.retain(|def| !self.tool_is_disabled(&policy.disabled_tools, &def.name));
+            defs.retain(|def| !self.tool_is_denied_by_policy(policy, &def.name));
         }
         defs.retain(|def| !is_fixed_mcp_tool(&def.name));
         defs
@@ -1030,9 +1025,9 @@ impl Registry {
         let resolved_name = Self::resolve_tool_name_for_session(&ctx.session_id, name);
         let is_custom = sdk::custom(&ctx.session_id, resolved_name);
         if is_custom && let Some(config) = sdk::config(&ctx.session_id) {
-            let disabled = config.disabled.into_iter().collect();
+            let policy = SessionToolPolicy::from_sdk_config(&config);
             anyhow::ensure!(
-                !self.tool_is_disabled(&disabled, resolved_name),
+                !self.tool_is_denied_by_policy(&policy, resolved_name),
                 "Tool '{}' is disabled",
                 resolved_name
             );
@@ -1071,7 +1066,7 @@ impl Registry {
             {
                 return Err(anyhow::anyhow!("Tool '{}' is not allowed", resolved_name));
             }
-            if self.tool_is_disabled(&policy.disabled_tools, resolved_name) {
+            if self.tool_is_denied_by_policy(&policy, resolved_name) {
                 return Err(anyhow::anyhow!("Tool '{}' is disabled", resolved_name));
             }
         }
@@ -1385,16 +1380,36 @@ impl Registry {
         names
     }
 
+    /// Whether `name` survives the session allow-list.
+    ///
+    /// No MCP grant is applied here: a grant lifts the blanket `mcp` deny, it
+    /// never widens the allow-list. The empty grant slice keeps today's
+    /// behaviour byte-identical.
     pub(crate) fn tool_is_allowed(&self, allowed: &HashSet<String>, name: &str) -> bool {
         self.policy_names(name)
             .iter()
-            .any(|name| tool_name_is_allowed(allowed, name))
+            .any(|name| tool_name_is_allowed(allowed, name, &[]))
     }
 
+    /// Whether `name` is denied by a deny list that carries no grants of its own.
+    ///
+    /// The agent's own deny list is one of those: a grant belongs to the
+    /// session's SDK overlay and travels with the session policy. Use
+    /// [`Self::tool_is_denied_by_policy`] for that one.
     pub(crate) fn tool_is_disabled(&self, disabled: &HashSet<String>, name: &str) -> bool {
         self.policy_names(name)
             .iter()
-            .any(|name| tool_name_is_disabled(disabled, name))
+            .any(|name| tool_name_is_disabled(disabled, name, &[]))
+    }
+
+    /// Whether the session policy denies `name`, with its MCP grants applied.
+    ///
+    /// A grant lifts the blanket `mcp` deny for the one `(server, tool)` pair
+    /// it names, and for nothing else.
+    pub(crate) fn tool_is_denied_by_policy(&self, policy: &SessionToolPolicy, name: &str) -> bool {
+        self.policy_names(name).iter().any(|name| {
+            tool_name_is_disabled(&policy.disabled_tools, name, &policy.allowed_mcp_tools)
+        })
     }
 
     /// Original `(server, tool)` for a registered MCP alias. Aliases are
@@ -1423,10 +1438,12 @@ impl Registry {
         names.insert(alias.to_string());
         policy.allowed_tools.as_ref().is_none_or(|allowed| {
             allowed.contains(surface)
-                || names.iter().any(|name| tool_name_is_allowed(allowed, name))
-        }) && !names
-            .iter()
-            .any(|name| tool_name_is_disabled(&policy.disabled_tools, name))
+                || names
+                    .iter()
+                    .any(|name| tool_name_is_allowed(allowed, name, &[]))
+        }) && !names.iter().any(|name| {
+            tool_name_is_disabled(&policy.disabled_tools, name, &policy.allowed_mcp_tools)
+        })
     }
 
     /// Refresh connected servers, retaining cached proxies for offline servers.
@@ -1878,33 +1895,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
 }
 
 #[cfg(test)]
-mod mcp_allow_list_tests {
-    use super::{tool_name_is_allowed, tool_name_is_disabled};
-    use std::collections::HashSet;
-
-    #[test]
-    fn allowing_mcp_also_allows_dynamic_server_tools() {
-        let allowed = HashSet::from(["mcp".to_string()]);
-
-        assert!(tool_name_is_allowed(&allowed, "mcp"));
-        assert!(tool_name_is_allowed(&allowed, "mcp__filesystem__read_file"));
-        assert!(!tool_name_is_allowed(&allowed, "mcpish"));
-        assert!(!tool_name_is_allowed(&allowed, "bash"));
-    }
-
-    #[test]
-    fn disabling_mcp_also_disables_dynamic_server_tools() {
-        let disabled = HashSet::from(["mcp".to_string()]);
-
-        assert!(tool_name_is_disabled(&disabled, "mcp"));
-        assert!(tool_name_is_disabled(
-            &disabled,
-            "mcp__filesystem__read_file"
-        ));
-        assert!(!tool_name_is_disabled(&disabled, "mcpish"));
-        assert!(!tool_name_is_disabled(&disabled, "bash"));
-    }
-}
+mod mcp_allow_list_tests;
 
 #[cfg(test)]
 mod tests;

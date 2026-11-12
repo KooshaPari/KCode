@@ -55,6 +55,21 @@ pub mod linux {
         check_inner(pid, false)
     }
 
+    /// Kernel wait-channel symbols that mean "blocked in a read on fd 0".
+    ///
+    /// The symbol names are not stable across kernel releases: 6.9 split the
+    /// anonymous-pipe path out of `pipe_read` into `anon_pipe_read`, so a list
+    /// that only carries `pipe_read` silently stops matching on any modern
+    /// kernel and the whole wchan fallback becomes dead code.
+    const READ_WAIT_CHANNELS: &[&str] = &[
+        "pipe_read",
+        "anon_pipe_read",
+        "pipe_wait_readable",
+        "n_tty_read",
+        "wait_woken",
+        "unix_stream_read_generic",
+    ];
+
     fn check_inner(pid: u32, strict: bool) -> StdinState {
         // First try /proc/PID/syscall (most accurate - shows exact syscall + fd)
         if let Ok(contents) = std::fs::read_to_string(format!("/proc/{}/syscall", pid)) {
@@ -74,22 +89,50 @@ pub mod linux {
             }
         }
 
-        // Fallback: /proc/PID/wchan (no special permissions needed).
-        // This is less exact than /proc/PID/syscall, so pair it with an fd 0
-        // pipe/pty check. For child processes, check_process_tree also verifies
-        // the child shares the parent's stdin pipe before calling strict mode.
-        if let Ok(wchan) = std::fs::read_to_string(format!("/proc/{}/wchan", pid)) {
-            let wchan = wchan.trim();
-            if (wchan == "n_tty_read"
-                || wchan == "wait_woken"
-                || wchan == "pipe_read"
-                || wchan == "pipe_wait_readable"
-                || wchan == "unix_stream_read_generic")
-                && stdin_is_pipe_or_pty(pid)
-            {
-                return StdinState::Reading;
+        // Fallback: /proc/PID/wchan (no ptrace access needed). This is less
+        // exact than /proc/PID/syscall, so pair it with an fd 0 pipe/pty check.
+        // For child processes, check_process_tree also verifies the child shares
+        // the parent's stdin pipe before calling strict mode.
+        //
+        // Two ways this fallback can be uninformative rather than negative:
+        //   - `kernel.kptr_restrict=1` (the default on Ubuntu and Fedora) masks
+        //     the symbol for unprivileged readers, so wchan reads as "0";
+        //   - the process has no wchan at all.
+        // In both cases we must NOT conclude `NotReading`, because
+        // /proc/PID/syscall above is ptrace-gated and is already unavailable on
+        // hosts such as GitHub's hosted Ubuntu runners where the caller may not
+        // attach. Returning NotReading there makes stdin forwarding silently
+        // dead even though the child is blocked in read(0) on the pipe we gave
+        // it. Fall through to the state-based check instead.
+        let wchan_was_informative = match std::fs::read_to_string(format!("/proc/{}/wchan", pid)) {
+            Ok(wchan) => {
+                let wchan = wchan.trim();
+                if READ_WAIT_CHANNELS.contains(&wchan) {
+                    return if stdin_is_pipe_or_pty(pid) {
+                        StdinState::Reading
+                    } else {
+                        StdinState::NotReading
+                    };
+                }
+                // A real, readable symbol that is not a read channel is a
+                // definitive negative.
+                !wchan.is_empty() && wchan != "0"
             }
+            Err(_) => false,
+        };
+
+        if wchan_was_informative {
             return StdinState::NotReading;
+        }
+
+        // Last resort: both exact probes are unavailable. We only ever poll
+        // processes this tool spawned with a piped stdin, so a task that is
+        // asleep with our pipe as fd 0 is the best evidence available that it
+        // is waiting for input. A wrong guess costs at most one spurious stdin
+        // prompt; the previous behaviour (never prompt) breaks stdin forwarding
+        // outright.
+        if asleep_on_piped_stdin(pid) {
+            return StdinState::Reading;
         }
 
         if strict {
@@ -97,6 +140,24 @@ pub mod linux {
         } else {
             StdinState::Unknown
         }
+    }
+
+    /// True when `pid` is sleeping (uninterruptible/short-sleep) with fd 0
+    /// connected to a pipe or pty, using only `/proc/PID/stat` and
+    /// `/proc/PID/fd/0` - neither of which is ptrace-gated.
+    fn asleep_on_piped_stdin(pid: u32) -> bool {
+        if !stdin_is_pipe_or_pty(pid) {
+            return false;
+        }
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{}/stat", pid)) else {
+            return false;
+        };
+        // Field 3 is the single-letter state. `comm` (field 2) is parenthesised
+        // and may itself contain spaces or ')', so split after the LAST ')'.
+        let state = stat
+            .rsplit_once(')')
+            .and_then(|(_, rest)| rest.trim_start().chars().next());
+        matches!(state, Some('S') | Some('D'))
     }
 
     fn stdin_is_pipe_or_pty(pid: u32) -> bool {

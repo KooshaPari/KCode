@@ -1,4 +1,5 @@
 use super::*;
+use crate::session_tool_config::{SessionToolConfig, SessionToolDefinition};
 
 /// Serde default for boolean fields that should default to `true` when absent,
 /// so older clients that omit the field keep their previous (unconditional)
@@ -30,25 +31,6 @@ fn is_zero_u8(value: &u8) -> bool {
 
 fn is_false(value: &bool) -> bool {
     !*value
-}
-
-/// SDK-owned session tool declaration. Parameters is a JSON schema object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub parameters: serde_json::Value,
-}
-
-/// Replaces the session SDK overlay. None inherits normal selection.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SessionToolConfig {
-    #[serde(default)]
-    pub enabled: Option<Vec<String>>,
-    #[serde(default)]
-    pub disabled: Vec<String>,
-    #[serde(default)]
-    pub custom: Vec<SessionToolDefinition>,
 }
 
 /// Client request to server

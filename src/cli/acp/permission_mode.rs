@@ -29,6 +29,10 @@ pub(crate) async fn apply_permission_mode(session: &Arc<DaemonSession>, value: &
                     .map(|name| (*name).to_string())
                     .collect(),
                 custom: Vec::new(),
+                // A read-only session grants no MCP exception: the blanket deny
+                // stands, and a host that wants one names a single (server,
+                // tool) pair through ConfigureTools itself.
+                allowed_mcp_tools: Vec::new(),
             },
         })
         .await?;
