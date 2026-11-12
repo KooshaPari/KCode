@@ -376,10 +376,12 @@ jobs:
         run: python3 -m py_compile scripts/post_discord_release.py scripts/test_post_discord_release.py
 
   build:
-    name: Build & Test (${{ matrix.os }})
-    # Fork PRs never run here: this is a persistent self-hosted runner with
-    # no isolation guarantees, so only same-repository pull requests get
-    # automatic CI. External contributions need a maintainer-run check.
+    # Name is fixed rather than interpolated from `matrix.os`: the required
+    # status check must stay stable if the runner image is ever repointed.
+    name: Build & Test (linux)
+    # Fork PRs never run here: the hosted runner now has isolation, but this
+    # guard is unchanged so fork pull requests still need a maintainer-run
+    # check. Only same-repository pull requests get automatic CI.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ matrix.os }}
     # 35 minutes covers a normal push (~12 min with a warm Swatinem cache) but
@@ -413,9 +415,15 @@ jobs:
       matrix:
         # macos-latest leg removed: hosted Actions minutes are capped at $0
         # (never pay for GH CI). macOS builds run manually when needed.
-        os: [desk-linux]
+        #
+        # Moved off the desk's self-hosted runner: its reconcilers reload the
+        # runner stack on a 5-15 minute cadence, which is shorter than this
+        # job's duration, so every attempt received a shutdown signal part way
+        # through and was reported as cancelled. Hosted Linux is free for this
+        # public repo. No step, threshold or test was removed to allow it.
+        os: [ubuntu-latest]
         include:
-          - os: desk-linux
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
 
     steps:
@@ -423,7 +431,25 @@ jobs:
         with:
           submodules: recursive
 
+      # Native build deps: the desk host carries these already, a hosted runner
+      # does not. `alsa-sys` aborts the build without libasound2-dev ("The
+      # system library `alsa` required by crate `alsa-sys` was not found"), and
+      # the crate is reached by the --all-targets --all-features steps.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config \
+            mold
+
+      # Desk-only: this asserts the desk runner's persistent target directory
+      # convention. It cannot run on a hosted runner, which has no durable
+      # per-runner disk, but the desk remains a legitimate local build host.
       - name: Test persistent cargo target setup
+        if: runner.environment != 'github-hosted'
         run: python3 scripts/test_ci_persistent_target.py
 
       # Persistent, per-runner cargo target dir.
@@ -441,7 +467,11 @@ jobs:
       # Per-runner (not shared) on purpose: concurrent cargo builds take an
       # exclusive lock on one target dir and would serialise against each other.
       #
+      # Desk-only, for the same reason as the test above: `$HOME` on a hosted
+      # runner is ephemeral, so a persistent target dir buys nothing there.
+      # Skipping it leaves CARGO_TARGET_DIR at its default `target/`.
       - name: Configure persistent cargo target dir
+        if: runner.environment != 'github-hosted'
         run: |
           set -euo pipefail
           # RUNNER_NAME becomes a path component, so a value containing a
