@@ -104,8 +104,7 @@ pub mod linux {
         // attach. Returning NotReading there makes stdin forwarding silently
         // dead even though the child is blocked in read(0) on the pipe we gave
         // it. Fall through to the state-based check instead.
-        let wchan_was_informative = match std::fs::read_to_string(format!("/proc/{}/wchan", pid))
-        {
+        let wchan_was_informative = match std::fs::read_to_string(format!("/proc/{}/wchan", pid)) {
             Ok(wchan) => {
                 let wchan = wchan.trim();
                 if READ_WAIT_CHANNELS.contains(&wchan) {
