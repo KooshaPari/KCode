@@ -157,8 +157,27 @@ jobs:
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux' && matrix.compat_container != true
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq mold
+          # Same reasoning as ci.yml: mold is an optimisation. A runner image
+          # without sudo must not abort the release before it builds.
+          if command -v mold >/dev/null 2>&1; then
+            echo "mold already present: $(mold --version | head -1)"
+            exit 0
+          fi
+          SUDO=""
+          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+          if command -v apt-get >/dev/null 2>&1; then
+            $SUDO apt-get update -qq || true
+            $SUDO apt-get install -y -qq mold || true
+          elif command -v dnf >/dev/null 2>&1; then
+            $SUDO dnf install -y mold || true
+          elif command -v apk >/dev/null 2>&1; then
+            $SUDO apk add --no-cache mold || true
+          fi
+          if command -v mold >/dev/null 2>&1; then
+            echo "mold installed: $(mold --version | head -1)"
+          else
+            echo "::warning::mold is unavailable on this runner; the build will use the default linker"
+          fi
 
       - name: Build release binary
         if: matrix.compat_container != true
@@ -166,7 +185,8 @@ jobs:
         run: |
           mkdir -p .cargo
           if [ "$RUNNER_OS" = "Linux" ]; then
-            cat > .cargo/config.toml << 'EOF'
+            if command -v mold >/dev/null 2>&1; then
+              cat > .cargo/config.toml << 'EOF'
           [target.x86_64-unknown-linux-gnu]
           linker = "clang"
           rustflags = ["-C", "link-arg=-fuse-ld=mold"]
@@ -174,6 +194,15 @@ jobs:
           linker = "clang"
           rustflags = ["-C", "link-arg=-fuse-ld=mold", "-Z", "tls-model=emulated"]
           EOF
+            else
+              cat > .cargo/config.toml << 'EOF'
+          [target.x86_64-unknown-linux-gnu]
+          linker = "clang"
+          [target.aarch64-unknown-linux-gnu]
+          linker = "clang"
+          rustflags = ["-C", "-Z", "tls-model=emulated"]
+          EOF
+            fi
           fi
           if command -v sccache &>/dev/null && sccache --start-server 2>/dev/null; then
             export RUSTC_WRAPPER=sccache

@@ -537,13 +537,30 @@ jobs:
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
         run: |
-          if ! command -v mold >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -qq
-              sudo apt-get install -y -qq mold
-            else
-              sudo dnf install -y mold
-            fi
+          # mold is an optimisation, not a requirement to reach this point. The
+          # desk-linux runner image ships neither mold nor sudo, so an
+          # unconditional `sudo apt-get` aborted the job with exit 127
+          # ("sudo: command not found") before the build started. Install it when
+          # the runner allows it; otherwise warn and let the Build step fall back
+          # to the default linker.
+          if command -v mold >/dev/null 2>&1; then
+            echo "mold already present: $(mold --version | head -1)"
+            exit 0
+          fi
+          SUDO=""
+          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+          if command -v apt-get >/dev/null 2>&1; then
+            $SUDO apt-get update -qq || true
+            $SUDO apt-get install -y -qq mold || true
+          elif command -v dnf >/dev/null 2>&1; then
+            $SUDO dnf install -y mold || true
+          elif command -v apk >/dev/null 2>&1; then
+            $SUDO apk add --no-cache mold || true
+          fi
+          if command -v mold >/dev/null 2>&1; then
+            echo "mold installed: $(mold --version | head -1)"
+          else
+            echo "::warning::mold is unavailable on this runner; the build will use the default linker"
           fi
 
       - name: Build
@@ -551,11 +568,20 @@ jobs:
         run: |
           mkdir -p .cargo
           if [ "$RUNNER_OS" = "Linux" ]; then
-            cat > .cargo/config.toml << 'EOF'
+            # Only ask for mold when it actually exists; otherwise the linker
+            # invocation fails on an image we cannot change from here.
+            if command -v mold >/dev/null 2>&1; then
+              cat > .cargo/config.toml << 'EOF'
           [target.x86_64-unknown-linux-gnu]
           linker = "clang"
           rustflags = ["-C", "link-arg=-fuse-ld=mold"]
           EOF
+            else
+              cat > .cargo/config.toml << 'EOF'
+          [target.x86_64-unknown-linux-gnu]
+          linker = "clang"
+          EOF
+            fi
           fi
           # NOTE: intentionally NOT exporting RUSTC_WRAPPER=sccache here. Only this
           # step used sccache while the later `cargo test --no-run` steps did not,
