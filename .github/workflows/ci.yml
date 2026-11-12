@@ -14,8 +14,18 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only a pull request may cancel an in-flight run. A push to master must always
+  # finish. With one shared group plus `cancel-in-progress: true`, every new
+  # master push killed the verification already running, so healthy commits
+  # reported `cancelled` (2026-11-12: run 43318753096's jobs were cancelled at
+  # 22:19:28, one second after run 43318791123 started at 22:19:27) and the
+  # gate had no verdict to read. Cancelled is not a code failure.
+  #
+  # The sha is folded into the group for pushes as well: even with
+  # `cancel-in-progress: false`, GitHub cancels a *pending* run in the same
+  # group, so a distinct group per commit is what makes "always completes" true.
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pr' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   JCODE_CI: "1"
@@ -1130,19 +1140,12 @@ jobs:
 
   setup-friction:
     name: Setup Friction Eval (Linux installer)
-    # Disabled: the fork intentionally hard-disabled scripts/install.sh (release
-    # downloads off), which both the telemetry test and the friction scorecard
-    # exercise. Re-enable when the installer path is restored.
-    #
-    # `if: false` stays until the installer path is restored, so this job has no
-    # verdict to produce today. It is still moved off the desk: it needs nothing
-    # host-specific (bash, fish, zsh, and a POSIX `/usr/bin:/bin`; both scripts
-    # mock curl/uname/tar into a temp PATH), and `[self-hosted, desk-linux]` is
-    # the label that queued every job behind one 71-minute compile on
-    # 2026-11-12T19:28:45Z and took `ssh desk` down with it. Leaving a disabled
-    # job pinned there means the day someone deletes `if: false` it silently
-    # rejoins that queue. Re-enable on ubuntu-latest, not on the desk.
-    if: false
+    # Runs on ubuntu-latest, not on the desk: it needs nothing host-specific
+    # (bash, fish, zsh, and a POSIX `/usr/bin:/bin`; both scripts mock
+    # curl/uname/tar into a temp PATH), and `[self-hosted, desk-linux]` is the
+    # label that queued every job behind one 71-minute compile on
+    # 2026-11-12T19:28:45Z and took `ssh desk` down with it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -1158,10 +1161,28 @@ jobs:
             fi
           fi
 
+      - name: Installer is enabled?
+        id: gate
+        run: |
+          # scripts/install.sh currently exits 1 by design ("release downloads
+          # are disabled"), so the conversion test and the friction scorecard
+          # have nothing real to measure. The job itself now runs on every PR
+          # and master push and reports a verdict; the moment the installer
+          # path is restored these two steps start executing without anyone
+          # having to remember this job exists.
+          if grep -q 'release downloads are disabled' scripts/install.sh; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Setup friction::scripts/install.sh is intentionally disabled; nothing to evaluate."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Installer conversion telemetry tests
+        if: steps.gate.outputs.enabled == 'true'
         run: bash scripts/test_install_conversion.sh
 
       - name: Setup friction scorecard
+        if: steps.gate.outputs.enabled == 'true'
         run: bash scripts/setup_friction_eval.sh
 
   powershell-syntax:
@@ -1292,10 +1313,9 @@ jobs:
   # can merge green while a gate produced no verdict.
   #
   # Deliberately NOT in `needs:`, because they are `if: false` and therefore
-  # always `skipped`: `windows-build-test`, `setup-friction`,
-  # `powershell-syntax`. They stay skipped on purpose (hosted Windows minutes
-  # are capped at $0 / the fork disables the installer), so gating on them
-  # would fail every run; the loop below is written to fail on `skipped`
+  # always `skipped`: `windows-build-test`, `powershell-syntax`. They stay
+  # skipped on purpose (hosted Windows minutes are capped at $0), so gating on
+  # them would fail every run; the loop below is written to fail on `skipped`
   # instead of silently accepting it precisely so a real gate cannot join that
   # list by accident.
   test:
