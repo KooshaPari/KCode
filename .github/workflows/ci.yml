@@ -397,6 +397,12 @@ jobs:
     # so the previous 120-minute (7200s) cap left under 30 minutes for checkout,
     # toolchain, mold, and the nine cohort/e2e steps after the compile -- and the
     # retention-readiness cohort alone now carries a 1800s cold-compile budget.
+    #
+    # A GitHub-hosted runner has no durable per-runner disk, so every hosted
+    # run is a cold run of exactly that size. 240 minutes stays the bound:
+    # comfortably above the ~91-minute cold compile pair plus the cohort and
+    # e2e steps, and far below the 6-hour hosted ceiling, so a hung job
+    # fails visibly instead of holding a runner for hours.
     timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
@@ -1269,3 +1275,70 @@ jobs:
       - name: Run security preflight
         shell: bash
         run: scripts/security_preflight.sh --strict
+
+  # Single merge gate. Every job above that can actually fail a change is
+  # listed in `needs:`; the aggregate fails unless every one of them reports
+  # `success`. Without this, a job that is `cancelled` (a runner restart) or
+  # that never ran is indistinguishable from a job that passed, and a branch
+  # can merge green while a gate produced no verdict.
+  #
+  # Deliberately NOT in `needs:`, because they are `if: false` and therefore
+  # always `skipped`: `windows-build-test`, `setup-friction`,
+  # `powershell-syntax`. They stay skipped on purpose (hosted Windows minutes
+  # are capped at $0 / the fork disables the installer), so gating on them
+  # would fail every run; the loop below is written to fail on `skipped`
+  # instead of silently accepting it precisely so a real gate cannot join that
+  # list by accident.
+  test:
+    name: Aggregate gate
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    #
+    # `always()` is required so the gate still runs (and still reports a
+    # verdict) when an upstream job failed or was cancelled; without it a
+    # failure would skip the gate and the workflow would show no gate result
+    # at all, which is the exact failure mode this job exists to remove.
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs:
+      - quality
+      - cargo-check
+      - clippy
+      - release-automation
+      - build
+      - fmt
+      - typescript-sdk
+      - windows-cross-check
+      - security-preflight
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check every gated job succeeded
+        shell: bash
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          # Only `success` counts as a pass. `failure` and `cancelled` fail the
+          # aggregate, and so does `skipped`: a gate that did not run produced
+          # no verdict and must never read as a pass. A job that is genuinely
+          # allowed to stay skipped is left OUT of `needs:` above, so it never
+          # reaches this loop; that is the only sanctioned form of exemption.
+          fail=0
+          jobs=$(printf '%s' "$NEEDS_JSON" | jq -r 'keys[]')
+          for job in $jobs; do
+            result=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job" '.[$j].result')
+            if [ "$result" = "success" ]; then
+              echo "PASS  $job: $result"
+            else
+              echo "::error::$job finished as '$result'; only 'success' gates a merge"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "Aggregate gate FAILED"
+            exit 1
+          fi
+          count=$(printf '%s' "$NEEDS_JSON" | jq -r 'keys | length')
+          echo "Aggregate gate PASSED: all $count gated jobs succeeded"
