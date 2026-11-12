@@ -14,6 +14,7 @@ mod client_lifecycle_logging;
 mod client_lightweight_control;
 mod client_session;
 mod client_state;
+mod client_subscribe_context;
 mod client_writer;
 mod comm_await;
 mod comm_control;
@@ -43,6 +44,7 @@ mod reload_recovery;
 mod reload_state;
 mod reload_trace;
 mod runtime;
+mod session_mcp_registration;
 mod socket;
 mod swarm;
 mod swarm_channels;
@@ -659,25 +661,7 @@ const IDLE_TIMEOUT_SECS: u64 = 300;
 const EMBEDDING_IDLE_CHECK_SECS: u64 = 10;
 
 #[cfg(test)]
-mod idle_monitor_tests {
-    use super::idle_monitor_should_start;
-
-    #[test]
-    fn shared_idle_monitor_preserves_live_headless_worker() {
-        assert!(!idle_monitor_should_start(0, true));
-    }
-
-    #[test]
-    fn temporary_idle_monitor_preserves_live_headless_worker() {
-        assert!(!idle_monitor_should_start(0, true));
-    }
-
-    #[test]
-    fn idle_monitor_starts_only_without_clients_or_headless_workers() {
-        assert!(idle_monitor_should_start(0, false));
-        assert!(!idle_monitor_should_start(1, false));
-    }
-}
+mod idle_monitor_tests;
 
 /// How often the retained-heap watchdog samples allocator retention.
 const HEAP_RETENTION_CHECK_SECS: u64 = 120;
