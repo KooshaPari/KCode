@@ -1,3 +1,10 @@
+> **KCode fork installation:** This repository builds `kcode`, independently
+> of stock jcode. Use [KCode installation and isolation](docs/KCODE_ISOLATION.md)
+> and [Windows instructions](docs/WINDOWS.md). Download/self-update channels are
+> disabled pending fork release verification. The inherited `jcode.sh`,
+> Homebrew, Bun, and stock `jcode` instructions below are upstream reference,
+> not KCode installation commands.
+
 # KCode fork
 
 KCode uses the `kcode` executable, `KCODE_*` overrides and `.kcode` storage.
@@ -64,7 +71,7 @@ bun run --bun https://jcode.sh/install_bun.sh
 
 ```bash
 # GitHub Packages (replace <version> with desired release, e.g. 0.85.1-k1.1.1)
-docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+docker pull ghcr.io/KooshaPari/jcode/kcode-linux-x86_64:<version>
 ```
 
 **Manual download:** Grab a prebuilt binary from [GitHub Releases](https://github.com/KooshaPari/jcode/releases) and add it to your `PATH`.
@@ -982,7 +989,7 @@ bun run --bun https://jcode.sh/install_bun.sh
 
 ```bash
 # GitHub Packages (replace <version> with desired release)
-docker pull ghcr.io/KooshaPari/jcode/jcode-linux-x86_64:<version>
+docker pull ghcr.io/KooshaPari/jcode/kcode-linux-x86_64:<version>
 ```
 
 **Manual download:** Prebuilt binaries are available on the

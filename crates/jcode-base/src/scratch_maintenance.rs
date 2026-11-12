@@ -251,10 +251,10 @@ fn busy_process_dirs() -> Option<Vec<PathBuf>> {
             continue;
         }
         let path = unsafe { CStr::from_ptr(raw) };
-        if let Ok(text) = path.to_str() {
-            if !text.is_empty() {
-                dirs.push(PathBuf::from(text));
-            }
+        if let Ok(text) = path.to_str()
+            && !text.is_empty()
+        {
+            dirs.push(PathBuf::from(text));
         }
     }
 

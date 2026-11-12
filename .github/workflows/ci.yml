@@ -5,6 +5,13 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  # Needed for two real cases, both observed on this fork:
+  #   1. Re-running CI for a commit that was pushed while the self-hosted
+  #      runners were offline. No run is created, so `gh run rerun` has nothing
+  #      to target, and pushing an empty commit to nudge CI is not acceptable.
+  #   2. Validating a long job (Build & Test is ~45 min) without adding a
+  #      throwaway commit to the branch under review.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -22,7 +29,12 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    permissions:
+      contents: read
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, and each restart cancels the job in
+    # flight. This repo is public, so hosted runners cost nothing.
+    runs-on: ubuntu-latest
     # Measured on the shared desk-linux runner (run 41163955888, job
     # 125095678225, 2026-11-02): the 20 substantive steps took 43m29s
     # (04:30:49 -> 05:14:18), so the old 45m cap killed the job during the
@@ -37,6 +49,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          # The shell-lint gate diffs HEAD~1..HEAD. A fresh hosted runner
+          # checks out depth 1 by default, so HEAD~1 does not exist and the
+          # gate silently lints nothing at all. Depth 2 gives the merge
+          # commit's first parent, which on a PR checkout is the base tip.
+          fetch-depth: 2
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -72,18 +89,54 @@ jobs:
         # findings and 50 pre-existing warning-level ones. Warnings are reported
         # but not enforced; raise to `-S warning` once the backlog is cleared.
         #
-        # shellcheck is not guaranteed on the self-hosted runner. Install it if
-        # missing, and if that fails downgrade to a warning annotation rather
-        # than blocking every PR on runner provisioning.
+        # shellcheck is not guaranteed on the self-hosted runner. The runner is
+        # a Linux box WITHOUT apt-get (verified 2026-10-28: the first version of
+        # this step tried `apt-get`, found no apt-get, and degraded to a warning,
+        # so the gate silently never enforced anything). Install a pinned static
+        # binary instead, verifying the SHA256, with apt as a fallback for
+        # runners that do have a package manager. If neither works, degrade to a
+        # warning annotation rather than blocking every PR on runner
+        # provisioning.
         shell: bash
         run: |
           if ! command -v shellcheck >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -qq && sudo apt-get install -y shellcheck || true
+            # Pinned static x86_64 build. sha256 verified below; a mismatch
+            # aborts the install and falls through to the warning path.
+            SHELLCHECK_VERSION=v0.10.0
+            SHELLCHECK_SHA256=6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+            SHELLCHECK_URL="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+            tmpdir="$(mktemp -d)"
+            fetched=0
+            if command -v curl >/dev/null 2>&1; then
+              curl -sSL --retry 3 --max-time 120 -o "${tmpdir}/sc.tar.xz" "${SHELLCHECK_URL}" && fetched=1
+            elif command -v wget >/dev/null 2>&1; then
+              wget -q -T 120 -O "${tmpdir}/sc.tar.xz" "${SHELLCHECK_URL}" && fetched=1
             fi
+            if [ "${fetched}" = "1" ]; then
+              actual="$(sha256sum "${tmpdir}/sc.tar.xz" | cut -d' ' -f1)"
+              if [ "${actual}" = "${SHELLCHECK_SHA256}" ]; then
+                tar -xJf "${tmpdir}/sc.tar.xz" -C "${tmpdir}"
+                mkdir -p "${HOME}/.local/bin"
+                if ! install -m 0755 "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck 2>/dev/null; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                if [ ! -x /usr/local/bin/shellcheck ]; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                chmod +x "${HOME}/.local/bin/shellcheck" 2>/dev/null || true
+                export PATH="${HOME}/.local/bin:${PATH}"
+                echo "installed shellcheck ${SHELLCHECK_VERSION} (sha256 verified)"
+              else
+                echo "::warning::shellcheck download failed checksum (got ${actual}); not installing."
+              fi
+            fi
+            rm -rf "${tmpdir}"
+          fi
+          if ! command -v shellcheck >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y shellcheck || true
           fi
           if ! command -v shellcheck >/dev/null 2>&1; then
-            echo "::warning::shellcheck is unavailable on this runner; shell lint skipped. Install shellcheck on desk-kcode-1 to enforce it."
+            echo "::warning::shellcheck is unavailable on this runner; shell lint skipped. Install shellcheck on desk-kcode-1/2 to enforce it."
             exit 0
           fi
 
@@ -93,9 +146,12 @@ jobs:
           # rather than linting the whole tree.
           files=()
           if git rev-parse --verify 'HEAD~1' >/dev/null 2>&1; then
+            echo "lint base: $(git rev-parse --short HEAD~1) .. $(git rev-parse --short HEAD)"
             while IFS= read -r f; do
               [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
             done < <(git diff --name-only --diff-filter=ACMR HEAD~1 HEAD -- '*.sh')
+          else
+            echo "::warning::no diff base (HEAD~1 is missing), so this gate covers nothing; the checkout needs fetch-depth: 2"
           fi
 
           if [ "${#files[@]}" -eq 0 ]; then
@@ -125,12 +181,6 @@ jobs:
         continue-on-error: true
         run: cargo fmt --all -- --check
 
-      - name: Check all targets and all features
-        run: cargo check --all-targets --all-features
-
-      - name: Run clippy with warnings denied
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-
       - name: Enforce Cargo.lock is up to date
         shell: bash
         # Adding a dependency without regenerating Cargo.lock breaks every
@@ -152,6 +202,23 @@ jobs:
         shell: bash
         run: python3 scripts/check_code_size_budget.py
 
+      - name: Enforce no pre-rename symbols in build paths
+        shell: bash
+        # A build-config file is not compiled, so nothing type-checks the target
+        # names and environment variables it sets. Three real defects shipped
+        # this way: CI ran `cargo build -p jcode --bin jcode` and referenced
+        # `jcode.exe` (no such package, no such binary); release.yml set
+        # JCODE_RELEASE_BUILD / JCODE_CI_BUILD / JCODE_BUILD_SEMVER, which
+        # crates/jcode-build-meta/build.rs never reads, so every release was a
+        # dev-mode build whose own installer rejected it; and
+        # .github/scripts/verify_windows_install.ps1 verified a `.jcode` install
+        # the fork never performs. The gate scans .github/workflows/,
+        # .github/scripts/, scripts/, install.sh, install.ps1, Cargo.toml and
+        # .cargo/; crates/, src/ and tests/ keep `jcode` crate, library and
+        # ~/.jcode data names legitimately. Known pre-existing occurrences are
+        # enumerated in the gate's ratchet register and printed each run.
+        run: bash scripts/check_symbol_drift.sh
+
       - name: Enforce oversized-test ratchet
         shell: bash
         run: python3 scripts/check_test_size_budget.py
@@ -168,13 +235,65 @@ jobs:
         shell: bash
         run: python3 scripts/check_dependency_boundaries.py
 
-      - name: Enforce Rust and TypeScript SDK surface parity
-        shell: bash
-        run: cargo test -p jcode-sdk parity -- --nocapture
-
       - name: Enforce wildcard re-export ratchet
         shell: bash
         run: python3 scripts/check_wildcard_reexport_budget.py
+
+  cargo-check:
+    name: Cargo Check & Parity
+    # Split out of `Quality Guardrails` for the same reason `clippy` was
+    # (#1796, #1803) and `fmt` before that: `cargo check --all-targets
+    # --all-features` compiles the entire workspace and pushed the quality
+    # job past its 45-minute limit at run 41416765384, cancelling it at
+    # step 8 before the seventeen cheap ratchet gates above could run. Those
+    # gates take seconds and must never be blinded by a compile. Cargo check,
+    # the parity test and cargo-machete get their own 90-minute budget so
+    # their cost is their own signal.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    # GitHub-hosted Linux, not the shared desk-linux runner: the desk runner
+    # stack is being restarted every few minutes by the scale-set work, and
+    # each restart cancels whatever job is in flight. The symptom is a job
+    # that reports `failure` with a null step conclusion and no log blob at
+    # all, which reads like a product failure but is pure infrastructure.
+    # This repo is public, so hosted Linux runners cost nothing, and the
+    # fork-PR guard above is unchanged. Build & Test stays on desk-linux
+    # because it exercises the desk's persistent cargo target setup.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Native build deps: the desk-linux host carries these already, a hosted
+      # runner does not. `alsa-sys` aborts the build without libasound2-dev
+      # ("The system library `alsa` required by crate `alsa-sys` was not
+      # found"), and the crate is reached by --all-targets --all-features.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: quality-ubuntu-notarget
+          cache-all-crates: "true"
+          cache-targets: "false"
+
+      - name: Check all targets and all features
+        run: cargo check --all-targets --all-features
+
+      - name: Enforce Rust and TypeScript SDK surface parity
+        shell: bash
+        run: cargo test -p jcode-sdk parity -- --nocapture
 
       - name: Enforce no unused dependencies
         shell: bash
@@ -182,13 +301,70 @@ jobs:
           cargo install cargo-machete --locked
           cargo machete
 
+  clippy:
+    name: Clippy
+    # Decoupled from `Quality Guardrails` for the same reason `fmt` was
+    # (#1796, #1803): clippy compiles the whole workspace and took the quality
+    # job past its 45-minute limit at run 41021250873, cancelling the job at
+    # step 9 before seventeen cheap budget/ratchet gates could run. Those gates
+    # need seconds, not an hour, and must never be blinded by a compile.
+    # Clippy gets its own budget here so its cost is its own signal.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    # GitHub-hosted Linux, not the shared desk-linux runner: the desk runner
+    # stack is being restarted every few minutes by the scale-set work, and
+    # each restart cancels whatever job is in flight. The symptom is a job
+    # that reports `failure` with a null step conclusion and no log blob at
+    # all, which reads like a product failure but is pure infrastructure.
+    # This repo is public, so hosted Linux runners cost nothing, and the
+    # fork-PR guard above is unchanged. Build & Test stays on desk-linux
+    # because it exercises the desk's persistent cargo target setup.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Native build deps: the desk-linux host carries these already, a hosted
+      # runner does not. `alsa-sys` aborts the build without libasound2-dev
+      # ("The system library `alsa` required by crate `alsa-sys` was not
+      # found"), and the crate is reached by --all-targets --all-features.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          # Same `-notarget` eviction as the quality and build jobs: the old
+          # ~881 MB `quality-ubuntu` blob hung the runner for 26+ minutes
+          # (job 121317250103).
+          key: quality-ubuntu-notarget
+          cache-all-crates: "true"
+          cache-targets: "false"
+
+      - name: Run clippy with warnings denied
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
   release-automation:
     name: Release Automation
     # Fork PRs never run here: this is a persistent self-hosted runner with
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -231,6 +407,7 @@ jobs:
     # pinning it here makes every step use this job's installed stable toolchain.
     env:
       RUSTUP_TOOLCHAIN: stable
+      CARGO_BUILD_JOBS: "4"
     strategy:
       fail-fast: false
       matrix:
@@ -449,6 +626,16 @@ jobs:
         # tests are not otherwise run here at all, so without this step it would
         # never execute. Fetch the model first (~87MB) so the cohort is real
         # rather than a silent skip.
+        #
+        # 1800s, not 600s, for the same reason as the retention-readiness cohort
+        # above: the workspace declares no `default-members`, so the 3300s
+        # "Compile library and binary tests" step builds only the default member
+        # `kcode` and never pre-builds the jcode-embedding harness. This cohort
+        # therefore absorbs a cold compile of tract-data/tract-core/tract-
+        # nnef/tract-hir. It hit exactly 600s and failed with exit 124 on run
+        # 42002567377 (a warm run of the same step takes 215s), so 600s was
+        # measuring the compile, not the test. 1800s covers the one-time cold
+        # compile and nothing more; the test itself is sub-second once built.
         run: |
           set -euo pipefail
           model_dir="$HOME/.jcode/models/all-MiniLM-L6-v2"
@@ -460,7 +647,7 @@ jobs:
           # degrade back into a silent skip.
           test -s "$model_dir/model.onnx"
           test -s "$model_dir/tokenizer.json"
-          python3 .github/scripts/run_with_timeout.py 600 \
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-embedding --lib -- --nocapture \
             | tee /tmp/embedding-cohort.log
@@ -769,7 +956,7 @@ jobs:
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          & "target/x86_64-pc-windows-msvc/release/jcode.exe" --version
+          & "target/x86_64-pc-windows-msvc/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows binary failed to run --version'
           }
@@ -792,7 +979,7 @@ jobs:
           # this identity from the root package version and appends `-dev`.
           $version = 'v' + $cargoVersion.Matches[0].Groups[1].Value + '-dev'
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/jcode.exe' `
+            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/kcode.exe' `
             -Version $version
 
   fmt:
@@ -801,7 +988,9 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
+    runs-on: ubuntu-latest
     # `cargo fmt --all -- --check` needs no compilation, so 10 minutes looked
     # generous. It is not enough on this runner when the host is oversubscribed:
     # observed 2026-11-02 in run 41425751987, job 125211820283, Format exceeded
@@ -832,7 +1021,9 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
+    runs-on: ubuntu-latest
     # 10 min is not enough when the desk runner shares CPU with cargo builds;
     # npm run check alone has crossed the limit three runs in a row.
     timeout-minutes: 30
@@ -849,7 +1040,10 @@ jobs:
       # only guard that runs on a change is the Rust-side variant check, and a
       # typo in the TypeScript itself (or a broken client) reaches consumers.
       - name: Install
-        run: npm ci --no-audit --no-fund
+        # `--ignore-scripts`: the SDK's dependency tree (ajv, fast-uri,
+        # typescript) has no lifecycle scripts, and SonarCloud rule
+        # githubactions:S6505 requires install scripts to be off.
+        run: npm ci --no-audit --no-fund --ignore-scripts
         working-directory: sdk/typescript
 
       - name: Typecheck, build, and test
@@ -916,7 +1110,10 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight. cargo-xwin
+    # fetches the MSVC SDK itself, so this job needs nothing from the desk.
+    runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -939,14 +1136,25 @@ jobs:
 
       - name: Install LLVM toolchain for cargo-xwin
         run: |
-          if ! command -v clang >/dev/null 2>&1; then
-            if command -v apt-get >/dev/null 2>&1; then
-              sudo apt-get update -qq
-              sudo apt-get install -y -qq clang lld llvm ninja-build
-            else
-              sudo dnf install -y clang lld llvm ninja-build
-            fi
+          # A hosted runner already has clang, so gating the whole install on
+          # `command -v clang` skipped llvm-lib and nasm. Both are needed:
+          # ring's build script asks cc-rs for "llvm-lib", and aws-lc-sys
+          # assembles with NASM. On the desk-linux host both were already
+          # present, which is why this only surfaced after the move.
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq clang lld llvm ninja-build nasm
+          else
+            sudo dnf install -y clang lld llvm ninja-build nasm
           fi
+          # llvm-lib lives in /usr/lib/llvm-*/bin, which is not on PATH.
+          LLVM_BIN="$(dirname "$(find /usr/lib /usr/local -maxdepth 4 -name llvm-lib -type f 2>/dev/null | head -1)")"
+          if [ -n "$LLVM_BIN" ] && [ -d "$LLVM_BIN" ]; then
+            echo "LLVM_BIN=$LLVM_BIN" >> "$GITHUB_ENV"
+            echo "$LLVM_BIN" >> "$GITHUB_PATH"
+          fi
+          command -v nasm
+          command -v llvm-lib
 
       - name: Install cargo-xwin
         run: cargo install --git https://github.com/rust-cross/cargo-xwin cargo-xwin
@@ -973,7 +1181,9 @@ jobs:
     # no isolation guarantees, so only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, desk-linux]
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

@@ -1,7 +1,7 @@
 {
-  "total": 3853,
+  "total": 3846,
   "totals_by_pattern": {
-    "dot_ok": 1466,
+    "dot_ok": 1459,
     "let_underscore": 1439,
     "unwrap_or_default": 948
   },
@@ -1327,12 +1327,12 @@
       "unwrap_or_default": 2
     },
     "crates/jcode-build-meta/build.rs": {
-      "dot_ok": 15,
+      "dot_ok": 11,
       "let_underscore": 0,
       "unwrap_or_default": 2
     },
     "crates/jcode-build-meta/src/lib.rs": {
-      "dot_ok": 5,
+      "dot_ok": 2,
       "let_underscore": 0,
       "unwrap_or_default": 0
     },
@@ -2347,13 +2347,18 @@
       "unwrap_or_default": 3
     },
     "crates/jcode-tui/src/tui/app/remote/server_events.rs": {
-      "dot_ok": 8,
+      "dot_ok": 5,
       "let_underscore": 1,
       "unwrap_or_default": 4
     },
     "crates/jcode-tui/src/tui/app/remote/session_persistence.rs": {
       "dot_ok": 0,
       "let_underscore": 3,
+      "unwrap_or_default": 0
+    },
+    "crates/jcode-tui/src/tui/app/remote/version_ordering.rs": {
+      "dot_ok": 3,
+      "let_underscore": 0,
       "unwrap_or_default": 0
     },
     "crates/jcode-tui/src/tui/app/remote_header_hint.rs": {

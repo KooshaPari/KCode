@@ -1,10 +1,24 @@
 # Dependency Security Triage
 
-Last reviewed: 2026-10-30 (CI security-preflight remediation)
-Prior review: 2026-10-14 (P30 master remediation complete), 2026-10-13 (P30 audit refresh), 2026-05-14
+Last reviewed: 2026-11-10 (RUSTSEC-2026-0459 rusqlite bump)
+Prior review: 2026-10-30 (CI security-preflight remediation), 2026-10-14 (P30 master remediation complete), 2026-10-13 (P30 audit refresh), 2026-05-14
 
 This file tracks the current `cargo audit` findings for jcode and the intended remediation path.
 It is not an allowlist. It is a triage record so advisories are visible and actionable.
+
+## 2026-11-10 remediation
+
+| Advisory | Crate | Before | After | Outcome |
+|---|---|---|---|---|
+| `RUSTSEC-2026-0459` | `libsqlite3-sys` | 0.30.1 (via `rusqlite 0.32.1`) | 0.39.1 (via `rusqlite 0.41.1`) | **CLEARED** (dependency bump) |
+
+`rusqlite` is the only dependant of `libsqlite3-sys` in the graph, so clearing the advisory
+required moving `rusqlite` from the `0.32` line to the `0.41` line (the first line whose
+`libsqlite3-sys` requirement is `^0.39.0`). `rusqlite 0.41` dropped the `ToSql`/`FromSql`
+impls for `u64`, so `crates/jcode-base/src/model_usage.rs` now binds and reads timestamps and
+counts through explicit `i64` boundary helpers (`sql_u64`, `read_u64`, `read_opt_u64`). SQLite
+integers are signed 64-bit, so this is a type-boundary adaptation, not a behavior change.
+No `--ignore` is needed for this advisory.
 
 ## 2026-10-30 remediation
 
@@ -22,7 +36,7 @@ bumps; one is pinned by an `aws-sdk` release and is now a documented suppression
 
 | Advisory | Crate | Dependency path | Affected area in jcode | Triage | Planned action |
 |---|---|---|---|---|---|
-| `RUSTSEC-2026-0387` | `crypto-bigint` 0.5.5 | `aws-sdk-bedrockruntime 1.136.0 -> aws-sigv4 -> p256 0.13 -> elliptic-curve 0.13 -> crypto-bigint 0.5.5` | Bedrock provider only, which is an **optional** cargo feature | Timing-variability in operations intended to be constant-time. Not reached in our ECDSA verification path; the Bedrock feature is off by default. `aws-sigv4 1.6.4` exists and wants `p256 ^0.14`, but `aws-sdk-bedrockruntime 1.136.0` pins the `p256 0.13` line, so bumping `aws-sigv4` alone does **not** clear the advisory and was deliberately not done (it would duplicate the whole crypto stack for no security gain). | Bump `aws-sdk-bedrockruntime` to `>=1.152.0` (verified published) once it is compatible with the workspace's `aws-smithy-runtime-api` version. Then remove the `--ignore RUSTSEC-2026-0387` line from `scripts/security_preflight.sh`. |
+| `RUSTSEC-2026-0387` | `crypto-bigint` 0.5.5 | `aws-sdk-bedrockruntime 1.136.0 -> aws-sigv4 -> p256 0.13 -> elliptic-curve 0.13 -> crypto-bigint 0.5.5` | Bedrock provider, whose cargo feature is **enabled by default** (root `default = ["pdf", "bedrock"]`) | Timing-variability in operations intended to be constant-time. Not reached in our ECDSA verification path, but the `crypto-bigint` path is present in the **default** build, so it is not gated behind an opt-in feature. `aws-sigv4 1.6.4` exists and wants `p256 ^0.14`, but `aws-sdk-bedrockruntime 1.136.0` pins the `p256 0.13` line, so bumping `aws-sigv4` alone does **not** clear the advisory and was deliberately not done (it would duplicate the whole crypto stack for no security gain). | Bump `aws-sdk-bedrockruntime` to `>=1.152.0` (verified published) once it is compatible with the workspace's `aws-smithy-runtime-api` version. Then remove the `--ignore RUSTSEC-2026-0387` line from `scripts/security_preflight.sh`. |
 
 ## Current advisories
 
@@ -38,6 +52,7 @@ bumps; one is pinned by an `aws-sdk` release and is now a documented suppression
 | `RUSTSEC-2026-0104` | `rustls-webpki` | `rustls` dependency stack | TLS certificate revocation list parsing | Reachable panic in CRL parsing. Transitive via TLS libraries. | Upgrade rustls/webpki stack when compatible releases are available. |
 | `RUSTSEC-2026-0049` | `rustls-webpki` | `rustls` dependency stack (`aws-smithy` rustls 0.21, `imap`/`rustls-connector` rustls 0.22) | TLS certificate revocation list handling | CRLs not considered authoritative by Distribution Point due to faulty matching logic. Transitive via the older rustls stacks; fix needs rustls-webpki >=0.103.10, which requires major bumps of the `aws-sdk`/`imap` stacks. | Upgrade rustls/webpki stack when compatible releases are available. |
 | `RUSTSEC-2026-0187` | `lopdf` | `jcode-pdf -> pdf-extract 0.8.2 -> lopdf 0.34` | PDF text extraction (`/pdf`, image/PDF reads) | Stack overflow parsing deeply nested PDF objects. Only reached when extracting text from a (potentially malicious) PDF the user opens; not in the auth/provider/network path. `pdf-extract 0.8.2` pins `lopdf 0.34`, so it cannot be bumped to the fixed `>=0.42` without an upstream `pdf-extract` release. | Upgrade once `pdf-extract` ships a release depending on `lopdf >=0.42`; remove the ignore then. |
+| `RUSTSEC-2026-0387` | `crypto-bigint` | `aws-sigv4 -> crypto-bigint 0.5`, `elliptic-curve 0.13 -> ecdsa/p256/primeorder -> crypto-bigint 0.5` | Big-integer arithmetic behind SigV4 signing and RustCrypto ECDSA/P-256 operations | Timing variability in operations intended to be constant-time. `0.5.5` is the newest `0.5.x`, and both dependents pin `^0.5`, so the fix requires `crypto-bigint >=0.7.6` (per cargo audit / RustSec RUSTSEC-2026-0387), which neither `aws-sigv4` nor `elliptic-curve 0.13` has adopted. **ACCEPTED RISK, not proven unexploitable**: no analysis has established whether any local secret-key operation is reachable through an attacker-measured timing channel in this CLI. The Bedrock stack that pulls in `aws-sigv4`/`p256` is enabled by default (root `default = ["pdf", "bedrock"]`), so this dependency path ships in the default build. | Remove the ignore when `elliptic-curve`/`aws-sigv4` move to `crypto-bigint >=0.7.6`. |
 | `RUSTSEC-2023-0086` | `lexical-core` | `imap -> imap-proto -> lexical-core` | Gmail/IMAP support path | Old unsound transitive dependency in the mail stack. Higher priority than the UI-only findings because it touches network-parsed data. | Investigate upgrading or replacing `imap` / `imap-proto`. If no maintained path exists, isolate or remove the IMAP dependency. |
 
 ## Priority order
