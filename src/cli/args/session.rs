@@ -1,11 +1,29 @@
-use clap::Subcommand;
+use clap::{Args, Subcommand};
+
+#[derive(Args, Debug)]
+pub(crate) struct ImportJcodeArgs {
+    /// Session ID in ~/.jcode/sessions (no paths or credentials imported)
+    pub(crate) id: String,
+    /// Preview the selected files and conflicts without importing
+    #[arg(long)]
+    pub(crate) preview: bool,
+}
+
+impl super::super::commands::session_commands::SessionImportRequest for ImportJcodeArgs {
+    fn id(&self) -> &str {
+        &self.id
+    }
+    fn preview(&self) -> bool {
+        self.preview
+    }
+}
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum SessionCommand {
     /// Copy a selected jcode session into KCode; never modifies the source
     ImportJcode {
-        /// Session ID in ~/.jcode/sessions (no paths or credentials imported)
-        session: String,
+        #[command(flatten)]
+        session: ImportJcodeArgs,
     },
     /// Rename a saved session's human-readable name/title
     Rename {
@@ -24,4 +42,32 @@ pub(crate) enum SessionCommand {
         #[arg(long)]
         json: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct TestCli {
+        #[command(subcommand)]
+        command: SessionCommand,
+    }
+
+    #[test]
+    fn import_preview_is_opt_in() {
+        for (args, expected) in [
+            (vec!["test", "import-jcode", "fox"], false),
+            (vec!["test", "import-jcode", "fox", "--preview"], true),
+        ] {
+            let SessionCommand::ImportJcode { session } =
+                TestCli::try_parse_from(args).unwrap().command
+            else {
+                panic!("expected import command");
+            };
+            assert_eq!(session.id, "fox");
+            assert_eq!(session.preview, expected);
+        }
+    }
 }

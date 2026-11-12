@@ -13,6 +13,18 @@ pub fn import_jcode_session(session_id: &str) -> io::Result<Vec<PathBuf>> {
     import_session(&home.join(".jcode"), &destination, session_id)
 }
 
+pub struct PreviewFile {
+    pub name: String,
+    pub size: u64,
+    pub conflict: bool,
+}
+
+pub fn preview_jcode_session(session_id: &str) -> io::Result<Vec<PreviewFile>> {
+    let home = dirs::home_dir().ok_or_else(|| io::Error::other("No home directory"))?;
+    let destination = crate::jcode_dir().map_err(io::Error::other)?;
+    preview_session(&home.join(".jcode"), &destination, session_id)
+}
+
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, message)
 }
@@ -39,7 +51,7 @@ fn reject_links(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-fn import_session(source: &Path, destination: &Path, id: &str) -> io::Result<Vec<PathBuf>> {
+fn validate_paths(source: &Path, destination: &Path, id: &str) -> io::Result<PathBuf> {
     if id.is_empty()
         || id.len() > 160
         || !id
@@ -63,6 +75,48 @@ fn import_session(source: &Path, destination: &Path, id: &str) -> io::Result<Vec
     if existing.starts_with(&source) || source.starts_with(&existing) && destination.exists() {
         return Err(invalid("source and destination storage must be disjoint"));
     }
+    Ok(source)
+}
+
+fn preview_session(source: &Path, destination: &Path, id: &str) -> io::Result<Vec<PreviewFile>> {
+    let source = validate_paths(source, destination, id)?;
+    let source_sessions = source.join("sessions");
+    let output_dir = destination.join("sessions");
+    reject_links(&source_sessions)?;
+    reject_links(&output_dir)?;
+    let mut files = Vec::new();
+    for suffix in ["json", "bak", "journal.jsonl"] {
+        let name = format!("{id}.{suffix}");
+        let input = source_sessions.join(&name);
+        let metadata = match fs::symlink_metadata(&input) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => metadata,
+            Ok(_) => return Err(invalid("source session must be a regular file")),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        reject_links(&input)?;
+        let conflict = match fs::symlink_metadata(output_dir.join(&name)) {
+            Ok(_) => true,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error),
+        };
+        files.push(PreviewFile {
+            name,
+            size: metadata.len(),
+            conflict,
+        });
+    }
+    if !files.iter().any(|file| file.name == format!("{id}.json")) {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "session snapshot not found",
+        ));
+    }
+    Ok(files)
+}
+
+fn import_session(source: &Path, destination: &Path, id: &str) -> io::Result<Vec<PathBuf>> {
+    let source = validate_paths(source, destination, id)?;
     let source_sessions = source.join("sessions");
     reject_links(&source_sessions)?;
     let mut inputs = Vec::new();

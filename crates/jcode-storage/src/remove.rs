@@ -101,6 +101,7 @@ fn remove_unix(home: &Path, relative: &Path) -> std::io::Result<()> {
 mod tests {
     use super::remove_state_file;
     use std::io::Write;
+    #[cfg(unix)]
     use std::os::unix::fs::symlink;
 
     /// Serialize tests that mutate `KCODE_HOME`. Uses the shared lock
@@ -125,6 +126,7 @@ mod tests {
         assert!(!state_file.exists(), "state file must be removed");
     }
 
+    #[cfg(unix)]
     #[test]
     fn traverses_a_symlinked_home_to_remove_the_real_file() {
         let _guard = lock_env();
