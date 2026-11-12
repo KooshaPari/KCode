@@ -1133,8 +1133,17 @@ jobs:
     # Disabled: the fork intentionally hard-disabled scripts/install.sh (release
     # downloads off), which both the telemetry test and the friction scorecard
     # exercise. Re-enable when the installer path is restored.
+    #
+    # `if: false` stays until the installer path is restored, so this job has no
+    # verdict to produce today. It is still moved off the desk: it needs nothing
+    # host-specific (bash, fish, zsh, and a POSIX `/usr/bin:/bin`; both scripts
+    # mock curl/uname/tar into a temp PATH), and `[self-hosted, desk-linux]` is
+    # the label that queued every job behind one 71-minute compile on
+    # 2026-11-12T19:28:45Z and took `ssh desk` down with it. Leaving a disabled
+    # job pinned there means the day someone deletes `if: false` it silently
+    # rejoins that queue. Re-enable on ubuntu-latest, not on the desk.
     if: false
-    runs-on: [self-hosted, desk-linux]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
