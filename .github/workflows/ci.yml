@@ -568,19 +568,27 @@ jobs:
         run: |
           mkdir -p .cargo
           if [ "$RUNNER_OS" = "Linux" ]; then
-            # Only ask for mold when it actually exists; otherwise the linker
-            # invocation fails on an image we cannot change from here.
+            # Both mold and clang are optional here. A config that names a linker the
+            # runner does not have fails the very first build script:
+            #   error: linker `clang` not found
+            #   error: could not compile `proc-macro2` (build script)
+            # The desk-linux image carries whatever the image recipe bakes in, so only
+            # advertise the tools actually present on this runner.
+            LINKER_LINE=""
+            if command -v clang >/dev/null 2>&1; then
+              LINKER_LINE='linker = "clang"'
+            fi
+            RUSTFLAGS_LINE=""
             if command -v mold >/dev/null 2>&1; then
-              cat > .cargo/config.toml << 'EOF'
-          [target.x86_64-unknown-linux-gnu]
-          linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
-          EOF
+              RUSTFLAGS_LINE='rustflags = ["-C", "link-arg=-fuse-ld=mold"]'
+            fi
+            if [ -n "$LINKER_LINE" ] || [ -n "$RUSTFLAGS_LINE" ]; then
+              echo "[target.x86_64-unknown-linux-gnu]" > .cargo/config.toml
+              if [ -n "$LINKER_LINE" ]; then echo "$LINKER_LINE" >> .cargo/config.toml; fi
+              if [ -n "$RUSTFLAGS_LINE" ]; then echo "$RUSTFLAGS_LINE" >> .cargo/config.toml; fi
+              cat .cargo/config.toml
             else
-              cat > .cargo/config.toml << 'EOF'
-          [target.x86_64-unknown-linux-gnu]
-          linker = "clang"
-          EOF
+              echo "::warning::neither clang nor mold is available on this runner; using cargo's default linker"
             fi
           fi
           # NOTE: intentionally NOT exporting RUSTC_WRAPPER=sccache here. Only this
