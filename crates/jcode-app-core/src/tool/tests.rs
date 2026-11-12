@@ -244,55 +244,6 @@ async fn test_tool_definitions_are_sorted() {
 }
 
 #[test]
-fn deferred_mcp_surfaces_follow_umbrella_and_per_tool_filters() {
-    use std::collections::HashSet;
-
-    let umbrella = HashSet::from(["mcp".to_string()]);
-    assert!(super::tool_name_is_allowed(&umbrella, "mcp_search", &[]));
-    assert!(super::tool_name_is_allowed(&umbrella, "mcp_call", &[]));
-    assert!(super::tool_name_is_allowed(
-        &umbrella,
-        "mcp__server__tool",
-        &[]
-    ));
-
-    let one_tool = HashSet::from(["mcp__server__allowed".to_string()]);
-    assert!(super::tool_name_is_allowed(&one_tool, "mcp_search", &[]));
-    assert!(super::tool_name_is_allowed(&one_tool, "mcp_call", &[]));
-
-    let disabled = HashSet::from(["mcp".to_string()]);
-    assert!(super::tool_name_is_disabled(&disabled, "mcp_search", &[]));
-    assert!(super::tool_name_is_disabled(&disabled, "mcp_call", &[]));
-    assert!(super::tool_name_is_disabled(
-        &disabled,
-        "mcp__server__tool",
-        &[]
-    ));
-
-    super::set_session_tool_policy(
-        "deferred-filter-test",
-        Some(one_tool),
-        HashSet::from(["mcp__server__blocked".to_string()]),
-    );
-    assert!(super::session_mcp_dispatch_is_allowed(
-        "deferred-filter-test",
-        "mcp__server__allowed",
-        "mcp_call"
-    ));
-    assert!(!super::session_mcp_dispatch_is_allowed(
-        "deferred-filter-test",
-        "mcp__server__blocked",
-        "mcp_call"
-    ));
-    assert!(!super::session_mcp_dispatch_is_allowed(
-        "deferred-filter-test",
-        "mcp__server__other",
-        "mcp_call"
-    ));
-    super::clear_session_tool_policy("deferred-filter-test");
-}
-
-#[test]
 fn test_resolve_skill_aliases_to_skill_manage() {
     assert_eq!(Registry::resolve_tool_name("skill"), "skill_manage");
     assert_eq!(Registry::resolve_tool_name("Skill"), "skill_manage");
@@ -1901,6 +1852,9 @@ async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode()
          eligibility rule is too aggressive, a missing name means this list is stale"
     );
 }
+
+#[path = "tests/mcp_allow_filters.rs"]
+mod mcp_allow_filters;
 
 #[path = "tests/mcp_collision.rs"]
 mod mcp_collision;
