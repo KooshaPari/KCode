@@ -96,9 +96,7 @@ pub(crate) fn tool_name_is_disabled(
     grants: &[(String, String)],
 ) -> bool {
     disabled.contains(name)
-        || (disabled.contains("mcp")
-            && is_mcp_tool_name(name)
-            && !mcp_grant_covers(name, grants))
+        || (disabled.contains("mcp") && is_mcp_tool_name(name) && !mcp_grant_covers(name, grants))
 }
 
 /// Whether a grant covers the `mcp__<server>__<tool>` identity `name`.
@@ -1474,7 +1472,9 @@ impl Registry {
         names.insert(alias.to_string());
         policy.allowed_tools.as_ref().is_none_or(|allowed| {
             allowed.contains(surface)
-                || names.iter().any(|name| tool_name_is_allowed(allowed, name, &[]))
+                || names
+                    .iter()
+                    .any(|name| tool_name_is_allowed(allowed, name, &[]))
         }) && !names
             .iter()
             .any(|name| tool_name_is_disabled(&policy.disabled_tools, name, &[]))
@@ -1938,7 +1938,11 @@ mod mcp_allow_list_tests {
         let allowed = HashSet::from(["mcp".to_string()]);
 
         assert!(tool_name_is_allowed(&allowed, "mcp", &[]));
-        assert!(tool_name_is_allowed(&allowed, "mcp__filesystem__read_file", &[]));
+        assert!(tool_name_is_allowed(
+            &allowed,
+            "mcp__filesystem__read_file",
+            &[]
+        ));
         assert!(!tool_name_is_allowed(&allowed, "mcpish", &[]));
         assert!(!tool_name_is_allowed(&allowed, "bash", &[]));
     }
@@ -1988,7 +1992,11 @@ mod mcp_allow_list_tests {
             "mcp__filesystem__write_file",
             &grants
         ));
-        assert!(tool_name_is_disabled(&disabled, "mcp__other__read_file", &grants));
+        assert!(tool_name_is_disabled(
+            &disabled,
+            "mcp__other__read_file",
+            &grants
+        ));
         assert!(tool_name_is_disabled(&disabled, "mcp", &grants));
     }
 
@@ -2020,10 +2028,7 @@ mod mcp_allow_list_tests {
 
     #[test]
     fn an_explicit_per_tool_deny_still_wins_over_a_grant() {
-        let disabled = HashSet::from([
-            "mcp".to_string(),
-            "mcp__filesystem__read_file".to_string(),
-        ]);
+        let disabled = HashSet::from(["mcp".to_string(), "mcp__filesystem__read_file".to_string()]);
         let grants = vec![("filesystem".to_string(), "read_file".to_string())];
 
         assert!(tool_name_is_disabled(

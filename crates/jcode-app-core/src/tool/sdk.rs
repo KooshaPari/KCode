@@ -184,7 +184,11 @@ async fn execute_with_timeout(
             .ok_or_else(|| anyhow::anyhow!("SDK tool configuration disappeared"))?;
         anyhow::ensure!(
             overlay.config.custom.iter().any(|tool| tool.name == name)
-                && !tool_name_is_disabled(&overlay.config.disabled.iter().cloned().collect(), name, &[]),
+                && !tool_name_is_disabled(
+                    &overlay.config.disabled.iter().cloned().collect(),
+                    name,
+                    &[]
+                ),
             "SDK tool is no longer enabled: {name}"
         );
         let sender = overlay
@@ -278,7 +282,7 @@ mod tests {
             session,
             "timeout-owner",
             SessionToolConfig {
-                                allowed_mcp_tools: Vec::new(),
+                allowed_mcp_tools: Vec::new(),
                 custom: vec![SessionToolDefinition {
                     name: "callback".into(),
                     description: "test callback".into(),

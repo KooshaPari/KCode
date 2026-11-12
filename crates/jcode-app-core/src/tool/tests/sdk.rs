@@ -43,7 +43,7 @@ async fn sdk_selection_replacement_validation_and_isolation() {
     let own_session = agent.session_id().to_owned();
     let _own_cleanup = Cleanup(own_session.clone());
     let config = SessionToolConfig {
-                allowed_mcp_tools: Vec::new(),
+        allowed_mcp_tools: Vec::new(),
         enabled: Some(vec![]),
         disabled: vec![],
         custom: vec![custom("read"), custom("local")],
@@ -78,7 +78,7 @@ async fn sdk_selection_replacement_validation_and_isolation() {
         .is_err()
     );
     let bad = SessionToolConfig {
-                allowed_mcp_tools: Vec::new(),
+        allowed_mcp_tools: Vec::new(),
         custom: vec![SessionToolDefinition {
             parameters: json!(true),
             ..custom("bad")
@@ -104,7 +104,7 @@ async fn sdk_callbacks_owner_scoped_override_errors_and_disconnect() {
         session,
         "callback-owner",
         SessionToolConfig {
-                        allowed_mcp_tools: Vec::new(),
+            allowed_mcp_tools: Vec::new(),
             enabled: Some(vec![]),
             custom: vec![custom("read")],
             ..Default::default()
@@ -202,7 +202,7 @@ async fn sdk_disabled_batch_subcalls_and_cancel_cleanup() {
         session,
         "batch-owner",
         SessionToolConfig {
-                        allowed_mcp_tools: Vec::new(),
+            allowed_mcp_tools: Vec::new(),
             enabled: Some(vec!["batch".into()]),
             disabled: vec!["read".into()],
             custom: vec![custom("read"), custom("callback")],
@@ -270,7 +270,7 @@ fn sdk_inheritance_and_deferred_mcp_policy() {
         session,
         "mcp-owner",
         SessionToolConfig {
-                        allowed_mcp_tools: Vec::new(),
+            allowed_mcp_tools: Vec::new(),
             enabled: Some(vec!["mcp_call".into()]),
             disabled: vec!["mcp__test__blocked".into()],
             custom: vec![],
@@ -292,7 +292,7 @@ fn sdk_inheritance_and_deferred_mcp_policy() {
         session,
         "mcp-owner",
         SessionToolConfig {
-                        allowed_mcp_tools: Vec::new(),
+            allowed_mcp_tools: Vec::new(),
             enabled: Some(vec![]),
             ..Default::default()
         },
@@ -325,7 +325,7 @@ async fn sdk_nested_alias_and_deferred_mcp_use_callbacks() {
         )
         .await;
     let mut config = SessionToolConfig {
-                allowed_mcp_tools: Vec::new(),
+        allowed_mcp_tools: Vec::new(),
         enabled: Some(vec!["batch".into(), "mcp_call".into()]),
         disabled: vec![],
         custom: vec![custom("shell_exec"), custom("mcp__sdk__echo")],
@@ -425,7 +425,7 @@ async fn a_disabled_tool_list_removes_the_write_capable_tools() {
     );
 
     let config = SessionToolConfig {
-                allowed_mcp_tools: Vec::new(),
+        allowed_mcp_tools: Vec::new(),
         enabled: None,
         disabled: vec!["write".into(), "edit".into(), "bash".into()],
         custom: vec![],

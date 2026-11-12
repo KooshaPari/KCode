@@ -250,7 +250,11 @@ fn deferred_mcp_surfaces_follow_umbrella_and_per_tool_filters() {
     let umbrella = HashSet::from(["mcp".to_string()]);
     assert!(super::tool_name_is_allowed(&umbrella, "mcp_search", &[]));
     assert!(super::tool_name_is_allowed(&umbrella, "mcp_call", &[]));
-    assert!(super::tool_name_is_allowed(&umbrella, "mcp__server__tool", &[]));
+    assert!(super::tool_name_is_allowed(
+        &umbrella,
+        "mcp__server__tool",
+        &[]
+    ));
 
     let one_tool = HashSet::from(["mcp__server__allowed".to_string()]);
     assert!(super::tool_name_is_allowed(&one_tool, "mcp_search", &[]));
@@ -259,7 +263,11 @@ fn deferred_mcp_surfaces_follow_umbrella_and_per_tool_filters() {
     let disabled = HashSet::from(["mcp".to_string()]);
     assert!(super::tool_name_is_disabled(&disabled, "mcp_search", &[]));
     assert!(super::tool_name_is_disabled(&disabled, "mcp_call", &[]));
-    assert!(super::tool_name_is_disabled(&disabled, "mcp__server__tool", &[]));
+    assert!(super::tool_name_is_disabled(
+        &disabled,
+        "mcp__server__tool",
+        &[]
+    ));
 
     super::set_session_tool_policy(
         "deferred-filter-test",
