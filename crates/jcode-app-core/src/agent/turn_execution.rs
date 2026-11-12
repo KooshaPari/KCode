@@ -689,8 +689,8 @@ impl Agent {
         }
         let mut tools = crate::tool::sdk::apply_definitions(&self.session.id, tools);
         if let Some(config) = sdk.as_ref() {
-            let disabled = config.disabled.iter().cloned().collect();
-            tools.retain(|tool| !self.registry.tool_is_disabled(&disabled, &tool.name));
+            let policy = crate::tool::SessionToolPolicy::from_sdk_config(config);
+            tools.retain(|tool| !self.registry.tool_is_denied_by_policy(&policy, &tool.name));
         }
         tools
     }
@@ -1066,9 +1066,9 @@ impl Agent {
         };
         let mut sdk_enabled = false;
         if let Some(config) = crate::tool::sdk::config(&self.session.id) {
-            let disabled = config.disabled.into_iter().collect();
+            let policy = crate::tool::SessionToolPolicy::from_sdk_config(&config);
             anyhow::ensure!(
-                !self.registry.tool_is_disabled(&disabled, name),
+                !self.registry.tool_is_denied_by_policy(&policy, name),
                 "Tool '{}' is disabled",
                 name
             );

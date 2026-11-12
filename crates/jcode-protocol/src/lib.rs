@@ -207,9 +207,11 @@ impl AuthChanged {
 
 pub type ReloadRecoverySnapshot = jcode_selfdev_types::ReloadRecoveryDirective;
 
+mod session_tool_config;
 mod wire;
+pub use session_tool_config::{McpToolGrant, SessionToolConfig, SessionToolDefinition};
+pub use wire::TaskGraphNodeSpec;
 pub use wire::{Request, ServerEvent};
-pub use wire::{SessionToolConfig, SessionToolDefinition, TaskGraphNodeSpec};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCallSummary {

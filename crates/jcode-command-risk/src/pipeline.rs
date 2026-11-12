@@ -166,15 +166,11 @@ fn check_obfuscated_flags(unquoted_kq: &str, fully: &str) -> Option<PipelineResu
 fn check_backslash_ws(cmd: &str) -> Option<PipelineResult> {
     scan_quotes(cmd, |cmd, i, in_sq, in_dq| {
         let bytes = cmd.as_bytes();
-        if bytes[i] == b'\\'
+        bytes[i] == b'\\'
             && !in_sq
             && !in_dq
             && i + 1 < bytes.len()
             && matches!(bytes[i + 1], b' ' | b'\t')
-        {
-            return true;
-        }
-        false
     })
     .then_some(PipelineResult::Ask {
         reason: "Backslash-escaped whitespace could alter command parsing".into(),
@@ -184,15 +180,11 @@ fn check_backslash_ws(cmd: &str) -> Option<PipelineResult> {
 fn check_backslash_ops(cmd: &str) -> Option<PipelineResult> {
     scan_quotes(cmd, |cmd, i, in_sq, in_dq| {
         let bytes = cmd.as_bytes();
-        if bytes[i] == b'\\'
+        bytes[i] == b'\\'
             && !in_sq
             && !in_dq
             && i + 1 < bytes.len()
             && matches!(bytes[i + 1], b';' | b'|' | b'&' | b'>' | b'<')
-        {
-            return true;
-        }
-        false
     })
     .then_some(PipelineResult::Ask {
         reason: "Backslash-escaped shell operator could alter parsing".into(),
