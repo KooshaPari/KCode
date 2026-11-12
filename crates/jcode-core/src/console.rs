@@ -15,18 +15,22 @@
 /// to plain text instead of printing escape garbage.
 pub fn stderr_supports_ansi() -> bool {
     use std::io::IsTerminal;
-    if !std::io::stderr().is_terminal() {
-        return false;
-    }
 
+    // Only attempt platform-specific VT enabling once stderr is known to be a
+    // terminal; `&&` short-circuits, so the Windows probe never runs on a
+    // redirected stderr. Keeping the platform branch in a helper (rather than
+    // an early `return false`) satisfies clippy::needless_bool, which rejects
+    // an `if` whose arms are bool literals.
     #[cfg(windows)]
-    {
+    fn platform_ansi_ok() -> bool {
         enable_stderr_vt_processing()
     }
     #[cfg(not(windows))]
-    {
+    fn platform_ansi_ok() -> bool {
         true
     }
+
+    std::io::stderr().is_terminal() && platform_ansi_ok()
 }
 
 #[cfg(windows)]
