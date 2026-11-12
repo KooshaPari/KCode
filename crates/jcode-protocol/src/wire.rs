@@ -1,4 +1,5 @@
 use super::*;
+use crate::session_tool_config::{SessionToolConfig, SessionToolDefinition};
 
 /// Serde default for boolean fields that should default to `true` when absent,
 /// so older clients that omit the field keep their previous (unconditional)
@@ -30,45 +31,6 @@ fn is_zero_u8(value: &u8) -> bool {
 
 fn is_false(value: &bool) -> bool {
     !*value
-}
-
-/// SDK-owned session tool declaration. Parameters is a JSON schema object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub parameters: serde_json::Value,
-}
-
-/// An MCP tool the operator explicitly allowed in a restricted session.
-///
-/// A grant names ONE server and ONE tool. It is deliberately not a prefix and
-/// not a surface: the pair resolves to a single `mcp__<server>__<tool>`
-/// identity, so a grant can never widen into the generic `mcp_call`,
-/// `mcp_search`, or `mcp` surfaces, which reach every server at once.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct McpToolGrant {
-    pub server: String,
-    pub tool: String,
-}
-
-/// Replaces the session SDK overlay. None inherits normal selection.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SessionToolConfig {
-    #[serde(default)]
-    pub enabled: Option<Vec<String>>,
-    #[serde(default)]
-    pub disabled: Vec<String>,
-    #[serde(default)]
-    pub custom: Vec<SessionToolDefinition>,
-    /// MCP tools that survive a blanket MCP deny.
-    ///
-    /// A grant lifts the blanket `mcp` deny for exactly the named
-    /// `(server, tool)` pair and for nothing else. An explicit per-tool deny
-    /// still wins over a grant, and the generic surfaces are never grantable.
-    /// An empty list means no exception at all.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub allowed_mcp_tools: Vec<McpToolGrant>,
 }
 
 /// Client request to server
