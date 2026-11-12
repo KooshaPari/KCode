@@ -5,6 +5,7 @@
 //! MCP grant work had to pin down, so all of them move as-is.
 
 use super::{tool_name_is_allowed, tool_name_is_disabled};
+use crate::protocol::McpToolGrant;
 use std::collections::HashSet;
 
 #[test]
@@ -53,7 +54,10 @@ fn an_empty_grant_list_keeps_the_default_mcp_deny() {
 #[test]
 fn a_grant_lifts_the_blanket_mcp_deny_for_its_pair_only() {
     let disabled = HashSet::from(["mcp".to_string()]);
-    let grants = vec![("filesystem".to_string(), "read_file".to_string())];
+    let grants = vec![McpToolGrant {
+        server: "filesystem".into(),
+        tool: "read_file".into(),
+    }];
 
     assert!(!tool_name_is_disabled(
         &disabled,
@@ -77,7 +81,10 @@ fn a_grant_lifts_the_blanket_mcp_deny_for_its_pair_only() {
 #[test]
 fn a_grant_matches_the_model_facing_dispatch_name() {
     let disabled = HashSet::from(["mcp".to_string()]);
-    let grants = vec![("yc".to_string(), "hiring.create_job".to_string())];
+    let grants = vec![McpToolGrant {
+        server: "yc".into(),
+        tool: "hiring.create_job".into(),
+    }];
 
     assert!(!tool_name_is_disabled(
         &disabled,
@@ -90,9 +97,18 @@ fn a_grant_matches_the_model_facing_dispatch_name() {
 fn a_grant_never_exempts_the_generic_mcp_surfaces() {
     let disabled = HashSet::from(["mcp".to_string()]);
     let grants = vec![
-        ("mcp".to_string(), "call".to_string()),
-        ("mcp_call".to_string(), "server".to_string()),
-        ("mcp_search".to_string(), "server".to_string()),
+        McpToolGrant {
+            server: "mcp".into(),
+            tool: "call".into(),
+        },
+        McpToolGrant {
+            server: "mcp_call".into(),
+            tool: "server".into(),
+        },
+        McpToolGrant {
+            server: "mcp_search".into(),
+            tool: "server".into(),
+        },
     ];
 
     assert!(tool_name_is_disabled(&disabled, "mcp", &grants));
@@ -103,7 +119,10 @@ fn a_grant_never_exempts_the_generic_mcp_surfaces() {
 #[test]
 fn an_explicit_per_tool_deny_still_wins_over_a_grant() {
     let disabled = HashSet::from(["mcp".to_string(), "mcp__filesystem__read_file".to_string()]);
-    let grants = vec![("filesystem".to_string(), "read_file".to_string())];
+    let grants = vec![McpToolGrant {
+        server: "filesystem".into(),
+        tool: "read_file".into(),
+    }];
 
     assert!(tool_name_is_disabled(
         &disabled,
@@ -143,7 +162,10 @@ fn allowing_any_server_tool_also_readmits_the_generic_surfaces() {
 #[test]
 fn a_grant_never_widens_the_allow_list() {
     let allowed = HashSet::from(["bash".to_string()]);
-    let grants = vec![("filesystem".to_string(), "read_file".to_string())];
+    let grants = vec![McpToolGrant {
+        server: "filesystem".into(),
+        tool: "read_file".into(),
+    }];
 
     assert!(!tool_name_is_allowed(
         &allowed,

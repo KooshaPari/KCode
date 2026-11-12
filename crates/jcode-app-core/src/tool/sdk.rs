@@ -126,6 +126,7 @@ pub(crate) fn apply_definitions(
 ) -> Vec<ToolDefinition> {
     if let Some(config) = config(session) {
         let disabled: HashSet<_> = config.disabled.into_iter().collect();
+        let grants = &config.allowed_mcp_tools;
         for custom in config.custom {
             tools.retain(|t| t.name != custom.name);
             tools.push(ToolDefinition {
@@ -135,7 +136,7 @@ pub(crate) fn apply_definitions(
                 defer_loading: false,
             });
         }
-        tools.retain(|t| !tool_name_is_disabled(&disabled, &t.name, &[]));
+        tools.retain(|t| !tool_name_is_disabled(&disabled, &t.name, grants));
     }
     tools.sort_by(|a, b| a.name.cmp(&b.name));
     tools
@@ -187,7 +188,7 @@ async fn execute_with_timeout(
                 && !tool_name_is_disabled(
                     &overlay.config.disabled.iter().cloned().collect(),
                     name,
-                    &[]
+                    &overlay.config.allowed_mcp_tools
                 ),
             "SDK tool is no longer enabled: {name}"
         );

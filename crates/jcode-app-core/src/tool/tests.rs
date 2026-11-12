@@ -1856,6 +1856,9 @@ async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode()
 #[path = "tests/mcp_allow_filters.rs"]
 mod mcp_allow_filters;
 
+#[path = "tests/mcp_grant_enforcement.rs"]
+mod mcp_grant_enforcement;
+
 #[path = "tests/mcp_collision.rs"]
 mod mcp_collision;
 

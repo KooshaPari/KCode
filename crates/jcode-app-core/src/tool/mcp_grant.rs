@@ -12,6 +12,7 @@
 use std::collections::HashSet;
 
 use super::{is_fixed_mcp_tool, is_mcp_tool_name};
+use crate::protocol::McpToolGrant;
 
 /// The generic MCP surfaces. They reach every server at once, so no grant can
 /// ever exempt them.
@@ -26,7 +27,7 @@ const GENERIC_MCP_SURFACES: [&str; 3] = ["mcp", "mcp_call", "mcp_search"];
 pub(crate) fn tool_name_is_allowed(
     allowed: &HashSet<String>,
     name: &str,
-    _grants: &[(String, String)],
+    _grants: &[McpToolGrant],
 ) -> bool {
     allowed.contains(name)
         || (allowed.contains("mcp") && is_mcp_tool_name(name))
@@ -41,7 +42,7 @@ pub(crate) fn tool_name_is_allowed(
 pub(crate) fn tool_name_is_disabled(
     disabled: &HashSet<String>,
     name: &str,
-    grants: &[(String, String)],
+    grants: &[McpToolGrant],
 ) -> bool {
     disabled.contains(name)
         || (disabled.contains("mcp") && is_mcp_tool_name(name) && !mcp_grant_covers(name, grants))
@@ -54,11 +55,11 @@ pub(crate) fn tool_name_is_disabled(
 /// the way the registry normalizes it. The generic surfaces are rejected
 /// first: they are not `mcp__<server>__<tool>` identities at all, so no pair
 /// can address them.
-fn mcp_grant_covers(name: &str, grants: &[(String, String)]) -> bool {
+fn mcp_grant_covers(name: &str, grants: &[McpToolGrant]) -> bool {
     if GENERIC_MCP_SURFACES.contains(&name) {
         return false;
     }
     grants
         .iter()
-        .any(|(server, tool)| crate::mcp::dispatch_name(server, tool) == name)
+        .any(|grant| crate::mcp::dispatch_name(&grant.server, &grant.tool) == name)
 }
