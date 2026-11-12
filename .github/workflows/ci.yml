@@ -377,9 +377,15 @@ jobs:
 
   build:
     name: Build & Test (${{ matrix.os }})
-    # Fork PRs never run here: this is a persistent self-hosted runner with
-    # no isolation guarantees, so only same-repository pull requests get
+    # Fork PRs never run here: only same-repository pull requests get
     # automatic CI. External contributions need a maintainer-run check.
+    #
+    # The runner moved off the desk's self-hosted runner onto GitHub-hosted
+    # Linux. This repo is public, so hosted minutes are free. The desk node
+    # is power-cycled roughly every ten minutes, which is shorter than this
+    # job's runtime: every desk attempt was killed mid-build and came back
+    # as a failure with no log blob at all, so the aggregate gate was red
+    # for infrastructure reasons only.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ matrix.os }}
     # 35 minutes covers a normal push (~12 min with a warm Swatinem cache) but
@@ -395,6 +401,12 @@ jobs:
     # so the previous 120-minute (7200s) cap left under 30 minutes for checkout,
     # toolchain, mold, and the nine cohort/e2e steps after the compile -- and the
     # retention-readiness cohort alone now carries a 1800s cold-compile budget.
+    #
+    # A GitHub-hosted runner has no durable per-runner disk, so every hosted
+    # run is a cold run of exactly that size. 240 minutes stays the bound:
+    # comfortably above the ~91-minute cold compile pair plus the cohort and
+    # e2e steps, and far below the 6-hour hosted ceiling, so a hung job
+    # fails visibly instead of holding a runner for hours.
     timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
@@ -413,9 +425,16 @@ jobs:
       matrix:
         # macos-latest leg removed: hosted Actions minutes are capped at $0
         # (never pay for GH CI). macOS builds run manually when needed.
-        os: [desk-linux]
+        #
+        # The desk-linux leg is removed for the same billing reason and for
+        # one more: the desk node cannot host a job this long (it is
+        # power-cycled about every ten minutes), so the job was killed
+        # mid-build and reported as a failure with no log. Hosted Linux is
+        # free for this public repo. No step, threshold or test was removed
+        # to make the move.
+        os: [ubuntu-latest]
         include:
-          - os: desk-linux
+          - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
 
     steps:
@@ -423,7 +442,25 @@ jobs:
         with:
           submodules: recursive
 
+      # Native build deps: the desk-linux host carries these already, a hosted
+      # runner does not. `alsa-sys` aborts the build without libasound2-dev
+      # ("The system library `alsa` required by crate `alsa-sys` was not
+      # found"), and the crate is reached by the --all-targets --all-features
+      # steps below.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config
+
+      # Desk-only: this asserts the desk runner's persistent target directory
+      # convention. A GitHub-hosted runner has no durable per-runner disk, so
+      # that convention does not exist there and the step is skipped.
       - name: Test persistent cargo target setup
+        if: runner.environment != 'github-hosted'
         run: python3 scripts/test_ci_persistent_target.py
 
       # Persistent, per-runner cargo target dir.
@@ -441,7 +478,12 @@ jobs:
       # Per-runner (not shared) on purpose: concurrent cargo builds take an
       # exclusive lock on one target dir and would serialise against each other.
       #
+      # Desk-only, for the same reason as the test above: a GitHub-hosted
+      # runner has an ephemeral $HOME and no durable per-runner disk, so a
+      # persistent target dir buys nothing there. Skipping it leaves
+      # CARGO_TARGET_DIR unset, and cargo uses the workspace `target/`.
       - name: Configure persistent cargo target dir
+        if: runner.environment != 'github-hosted'
         run: |
           set -euo pipefail
           # RUNNER_NAME becomes a path component, so a value containing a
