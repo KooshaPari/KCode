@@ -648,10 +648,15 @@ impl AmbientRunnerHandle {
                 }
             }
 
+            // Direct spawns must respect operator activity even with cycles disabled.
+            // Filter before dequeue so deferred records remain durably queued.
+            let pause_spawns = config().ambient.pause_on_active_session
+                && *self.inner.active_user_sessions.read().await > 0;
+
             // Load manager to check should_run and update queue info
             let (should_run, ready_direct_items, next_direct_due) = match AmbientManager::new() {
                 Ok(mut mgr) => {
-                    let ready_direct_items = mgr.take_ready_direct_items();
+                    let ready_direct_items = mgr.take_ready_direct_items(pause_spawns);
                     let next_direct_due = mgr
                         .queue()
                         .items()
