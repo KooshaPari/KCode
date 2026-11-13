@@ -117,10 +117,18 @@ jobs:
             SHELLCHECK_URL="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
             tmpdir="$(mktemp -d)"
             fetched=0
+            # curl only. The release URL above 302-redirects to
+            # release-assets.githubusercontent.com, so a fetch tool must follow
+            # redirects while still refusing a redirect to plain http. wget's
+            # --https-only constrains only the initial URL and GNU wget has no
+            # redirect-protocol flag, so the wget fallback could not express
+            # that restriction (static analysis S6506 flagged it correctly).
+            # --max-redirect=0 would be worse than useless here: it refuses the
+            # required redirect and the fetch always fails. curl carries both
+            # constraints in --proto and --proto-redir, so it is the only
+            # supported path; ubuntu-latest always ships curl.
             if command -v curl >/dev/null 2>&1; then
               curl -sSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 120 -o "${tmpdir}/sc.tar.xz" "${SHELLCHECK_URL}" && fetched=1
-            elif command -v wget >/dev/null 2>&1; then
-              wget -q --https-only -T 120 -O "${tmpdir}/sc.tar.xz" "${SHELLCHECK_URL}" && fetched=1
             fi
             if [ "${fetched}" = "1" ]; then
               actual="$(sha256sum "${tmpdir}/sc.tar.xz" | cut -d' ' -f1)"
