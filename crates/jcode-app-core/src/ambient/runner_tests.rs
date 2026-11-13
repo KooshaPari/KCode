@@ -54,6 +54,32 @@ impl Drop for ResetConfigCache {
     }
 }
 
+#[tokio::test]
+async fn ambient_loop_cancellation_clears_running_and_allows_restart() {
+    let _guard = crate::storage::lock_test_env();
+    let _cache = ResetConfigCache;
+    let temp = tempfile::tempdir().expect("tempdir");
+    let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
+    let _enabled = EnvVarGuard::unset("KCODE_AMBIENT_ENABLED");
+    let path = Config::path().expect("config path");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "[ambient]\nenabled = false\n").unwrap();
+    Config::invalidate_cache();
+
+    let runner = AmbientRunnerHandle::new(Arc::new(crate::safety::SafetySystem::new()));
+    assert!(!runner.is_running().await);
+    let task = tokio::spawn(runner.clone().run_loop(Arc::new(TestProvider)));
+    tokio::task::yield_now().await;
+    assert!(runner.is_running().await, "real loop must be alive");
+    assert!(!runner.start(Arc::new(TestProvider)).await);
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    assert!(!runner.is_running().await, "cancelled loop must clear running");
+    assert!(runner.start(Arc::new(TestProvider)).await, "second start must succeed");
+    tokio::task::yield_now().await;
+    assert!(runner.is_running().await, "restarted loop must be alive");
+}
+
 #[test]
 fn ambient_gate_tracks_config_toggles_and_preserves_disabled_override() {
     let _guard = crate::storage::lock_test_env();
