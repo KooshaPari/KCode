@@ -123,8 +123,8 @@ impl ScheduledQueue {
         for item in self.items.drain(..) {
             let is_ready = item.scheduled_for <= now;
             let is_direct_target = item.target.is_direct_delivery();
-            let spawn_paused = pause_spawns
-                && matches!(item.target, super::ScheduleTarget::Spawn { .. });
+            let spawn_paused =
+                pause_spawns && matches!(item.target, super::ScheduleTarget::Spawn { .. });
             if is_ready && is_direct_target && !spawn_paused {
                 ready_direct.push(item);
             } else {
