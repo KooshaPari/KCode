@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 use std::process::Command as ProcessCommand;
 
 use crate::{
@@ -15,10 +15,22 @@ fn sync_output_style_from_config() {
     crate::output_style::set_emoji_enabled(crate::config::config().display.emoji);
 }
 
+/// Parse using the invoked binary's name so a renamed build reports that name
+/// in `--help` and `--version`; the `jcode` binary is unchanged.
+fn parse_args() -> Args {
+    let name = crate::process_title::program_name();
+    Args::command()
+        .name(name)
+        .bin_name(name)
+        .try_get_matches()
+        .and_then(|matches| Args::from_arg_matches(&matches))
+        .unwrap_or_else(|err| err.exit())
+}
+
 pub async fn run() -> Result<()> {
     // Parse once, before startup side effects. Invalid arguments and --help
     // must not harden credential files or create configuration/telemetry state.
-    let args = Args::parse();
+    let args = parse_args();
     // Data belongs to the executable, not to the application/TUI dependency
     // chain. Every entrypoint using this startup path gets version-matched docs.
     crate::register_bundled_docs();

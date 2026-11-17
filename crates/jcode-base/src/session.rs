@@ -99,6 +99,10 @@ pub struct Session {
     /// Model identifier for this session (e.g., "gpt-5.2-codex")
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Fork client that created this session when it is not jcode itself.
+    /// Additive and ignorable: jcode omits and ignores this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_origin: Option<String>,
     /// API method/runtime route used to select this model (e.g. "openrouter",
     /// "openai-compatible:nvidia-nim", "openai-api").
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -208,6 +212,8 @@ struct SessionStartupStub {
     #[serde(default)]
     model: Option<String>,
     #[serde(default)]
+    client_origin: Option<String>,
+    #[serde(default)]
     route_api_method: Option<String>,
     #[serde(default)]
     reasoning_effort: Option<String>,
@@ -288,6 +294,7 @@ impl Session {
         session.provider_session_id = stub.provider_session_id;
         session.provider_key = stub.provider_key;
         session.model = stub.model;
+        session.client_origin = stub.client_origin;
         session.route_api_method = stub.route_api_method;
         session.reasoning_effort = stub.reasoning_effort;
         session.context_cap = stub.context_cap;
@@ -329,6 +336,7 @@ impl Session {
         session.provider_session_id = snapshot.provider_session_id;
         session.provider_key = snapshot.provider_key;
         session.model = snapshot.model;
+        session.client_origin = snapshot.client_origin;
         session.route_api_method = snapshot.route_api_method;
         session.reasoning_effort = snapshot.reasoning_effort;
         session.context_cap = snapshot.context_cap;
@@ -789,6 +797,7 @@ impl Session {
             provider_session_id: None,
             provider_key: None,
             model: None,
+            client_origin: crate::process_title::session_origin_marker(),
             route_api_method: None,
             reasoning_effort: None,
             context_cap: None,
@@ -849,6 +858,7 @@ impl Session {
             provider_session_id: None,
             provider_key: None,
             model: None,
+            client_origin: crate::process_title::session_origin_marker(),
             route_api_method: None,
             reasoning_effort: None,
             context_cap: None,
@@ -1725,6 +1735,8 @@ struct RemoteStartupSessionSnapshot {
     provider_key: Option<String>,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    client_origin: Option<String>,
     #[serde(default)]
     route_api_method: Option<String>,
     #[serde(default)]

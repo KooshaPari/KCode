@@ -19,6 +19,31 @@ pub fn session_name(session_id: &str) -> String {
         .unwrap_or_else(|| session_id.to_string())
 }
 
+fn program_name_from_arg0(arg0: Option<&std::ffi::OsStr>) -> String {
+    arg0.and_then(|arg| std::path::Path::new(arg).file_stem())
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or_else(|| "jcode".to_string())
+}
+
+/// Name the running binary was invoked as, from `argv[0]`'s file stem.
+///
+/// `kcode.exe` reports `kcode`, `jcode` reports `jcode`. Falls back to `jcode`
+/// when `argv[0]` is unset or has no usable stem, so a binary named `jcode`
+/// keeps its historical name.
+pub fn program_name() -> &'static str {
+    static NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| program_name_from_arg0(std::env::args_os().next().as_deref()))
+}
+
+/// Additive session-origin marker for fork builds.
+///
+/// Only a binary invoked as `kcode` stamps an origin; the `jcode` binary writes
+/// nothing, keeping its session snapshots byte-identical.
+pub fn session_origin_marker() -> Option<String> {
+    (program_name() == "kcode").then(|| "kcode".to_string())
+}
+
 fn normalized_display_title(title: &str) -> Option<String> {
     let normalized = title.split_whitespace().collect::<Vec<_>>().join(" ");
     (!normalized.is_empty()).then_some(normalized)
@@ -150,6 +175,19 @@ pub fn set_client_remote_display_title(server_name: &str, session_name: &str, is
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn program_name_uses_the_invoked_file_stem_and_falls_back_to_jcode() {
+        assert_eq!(
+            program_name_from_arg0(Some(std::ffi::OsStr::new("kcode.exe"))),
+            "kcode"
+        );
+        assert_eq!(
+            program_name_from_arg0(Some(std::ffi::OsStr::new("/usr/local/bin/jcode"))),
+            "jcode"
+        );
+        assert_eq!(program_name_from_arg0(None), "jcode");
+    }
     use crate::storage::lock_test_env;
 
     #[test]

@@ -6,6 +6,7 @@ use jcode_session_types::SessionStatus;
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SessionSource {
     Jcode,
+    Kcode,
     ClaudeCode,
     Codex,
     Pi,
@@ -17,11 +18,23 @@ impl SessionSource {
     pub fn badge(self) -> Option<&'static str> {
         match self {
             Self::Jcode => None,
+            Self::Kcode => Some("K kcode"),
             Self::ClaudeCode => Some("🧵 Claude Code"),
             Self::Codex => Some("🧠 Codex"),
             Self::Pi => Some("π Pi"),
             Self::OpenCode => Some("◌ OpenCode"),
             Self::Cursor => Some("▮ Cursor"),
+        }
+    }
+
+    /// Honour a fork's additive origin marker, but only where it does not
+    /// override a stronger backend classification (an imported/external
+    /// session keeps its source so resume still uses the right transcript).
+    pub fn with_client_origin(self, origin: Option<&str>) -> Self {
+        if origin == Some("kcode") && matches!(self, Self::Jcode) {
+            Self::Kcode
+        } else {
+            self
         }
     }
 }
@@ -326,5 +339,22 @@ mod tests {
             SessionSource::Jcode,
             Some("opencode-go")
         ));
+    }
+
+    #[test]
+    fn kcode_origin_marks_only_native_sessions() {
+        assert_eq!(
+            SessionSource::Jcode.with_client_origin(Some("kcode")),
+            SessionSource::Kcode
+        );
+        assert_eq!(
+            SessionSource::Codex.with_client_origin(Some("kcode")),
+            SessionSource::Codex
+        );
+        assert_eq!(
+            SessionSource::Jcode.with_client_origin(None),
+            SessionSource::Jcode
+        );
+        assert_eq!(SessionSource::Kcode.badge(), Some("K kcode"));
     }
 }

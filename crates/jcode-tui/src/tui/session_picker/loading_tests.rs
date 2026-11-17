@@ -701,6 +701,44 @@ fn load_sessions_prefers_custom_title_over_generated_title() {
 }
 
 #[test]
+fn load_sessions_reads_kcode_origin_marker() {
+    let _env_lock = crate::storage::lock_test_env();
+    let temp = tempfile::tempdir().expect("temp dir");
+    let _home = EnvVarGuard::set_path("JCODE_HOME", temp.path());
+    let session_id = "session_kcode_origin_1770000000000";
+
+    let mut session = Session::create_with_id(
+        session_id.to_string(),
+        None,
+        Some("Fork session".to_string()),
+    );
+    session.client_origin = Some("kcode".to_string());
+    session.append_stored_message(crate::session::StoredMessage {
+        id: "msg1".to_string(),
+        role: crate::message::Role::User,
+        content: vec![crate::message::ContentBlock::Text {
+            text: "made in the fork".to_string(),
+            cache_control: None,
+        }]
+        .into(),
+        display_role: None,
+        timestamp: None,
+        tool_duration_ms: None,
+        token_usage: None,
+    });
+    session.save().expect("save session");
+    invalidate_session_list_cache();
+
+    let sessions = load_sessions().expect("load sessions");
+    let loaded = sessions
+        .iter()
+        .find(|session| session.id == session_id)
+        .expect("kcode session present");
+    assert_eq!(loaded.source, SessionSource::Kcode);
+    assert_eq!(loaded.source.badge(), Some("K kcode"));
+}
+
+#[test]
 fn load_sessions_prefers_todo_group_over_generated_title() {
     let _env_lock = crate::storage::lock_test_env();
     let temp = tempfile::tempdir().expect("temp dir");

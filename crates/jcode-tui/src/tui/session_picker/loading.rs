@@ -1321,6 +1321,8 @@ struct SessionSummary {
     #[serde(default)]
     model: Option<String>,
     #[serde(default)]
+    client_origin: Option<String>,
+    #[serde(default)]
     is_canary: bool,
     #[serde(default)]
     is_debug: bool,
@@ -1851,7 +1853,8 @@ fn parse_jcode_session_info(
         stem,
         session.provider_key.as_deref(),
         session.model.as_deref(),
-    );
+    )
+    .with_client_origin(session.client_origin.as_deref());
 
     let title = session
         .custom_title

@@ -161,7 +161,10 @@ fn ensure_private_runtime_dir(path: &Path) {
 }
 
 pub fn jcode_dir() -> Result<PathBuf> {
-    if let Ok(path) = std::env::var("JCODE_HOME") {
+    // State-directory precedence: KCODE_HOME, then JCODE_HOME, then ~/.jcode.
+    // kcode shares jcode's store by default (one store, one server, two
+    // clients); it does not create a separate `.kcode` store.
+    if let Some(path) = std::env::var_os("KCODE_HOME").or_else(|| std::env::var_os("JCODE_HOME")) {
         return Ok(PathBuf::from(path));
     }
 
@@ -818,5 +821,41 @@ mod env_file_tests {
             std::fs::read_to_string(&path).expect("unchanged env"),
             "SAFE_KEY=safe-value\n"
         );
+    }
+}
+
+#[cfg(test)]
+mod state_dir_precedence_tests {
+    use super::*;
+
+    struct RestoreEnv(Vec<(&'static str, Option<std::ffi::OsString>)>);
+
+    impl Drop for RestoreEnv {
+        fn drop(&mut self) {
+            for (name, value) in self.0.drain(..) {
+                match value {
+                    Some(value) => jcode_core::env::set_var(name, value),
+                    None => jcode_core::env::remove_var(name),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn kcode_home_wins_then_jcode_home() {
+        let _lock = test_jcode_home_lock();
+        let _restore = RestoreEnv(vec![
+            ("KCODE_HOME", std::env::var_os("KCODE_HOME")),
+            ("JCODE_HOME", std::env::var_os("JCODE_HOME")),
+        ]);
+        let kcode = std::env::temp_dir().join("kcode-home-precedence");
+        let jcode = std::env::temp_dir().join("jcode-home-precedence");
+
+        jcode_core::env::set_var("JCODE_HOME", &jcode);
+        jcode_core::env::set_var("KCODE_HOME", &kcode);
+        assert_eq!(jcode_dir().unwrap(), kcode);
+
+        jcode_core::env::remove_var("KCODE_HOME");
+        assert_eq!(jcode_dir().unwrap(), jcode);
     }
 }
