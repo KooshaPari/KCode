@@ -837,6 +837,19 @@ fn insert_input_text_with_undo(app: &mut App, text: &str, typed: bool) {
     app.sync_model_picker_preview_from_input();
 }
 
+/// Whether a `Ctrl+Enter` right now is the line break of a paste.
+pub(super) fn pasted_newline_in_progress() -> bool {
+    paste_guard::ctrl_enter_is_pasted_newline()
+}
+
+/// Test hook: close the pasted-newline window, so the next `Ctrl+Enter` is read as
+/// the deliberate chord. Tests drive keys microseconds apart, which is indistinguishable
+/// from a paste burst without this.
+#[cfg(test)]
+pub(super) fn expire_char_press_for_test() {
+    paste_guard::clear_char_press();
+}
+
 pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
     // Windows decodes keys with ReadConsoleInputW, so a host that reports kitty
     // releases delivers `[119;1:3u` as ordinary characters. Remember the burst
@@ -849,6 +862,13 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
     }
     if text.is_empty() {
         return false;
+    }
+    // Remember character keystrokes so a following Ctrl+Enter can be recognised as
+    // the line break of a paste rather than a deliberate chord.
+    if text.chars().count() == 1 {
+        paste_guard::note_char_press();
+    } else {
+        paste_guard::clear_char_press();
     }
 
     let onboarding_suggestions = matches!(
