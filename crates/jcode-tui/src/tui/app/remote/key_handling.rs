@@ -172,7 +172,7 @@ fn queue_prepared_remote_input(app: &mut App, prepared: input::PreparedInput) {
         app.queued_messages.len()
     ));
     // Preparation consumed pasted text storage. Restore its expanded contents,
-    // not now-unresolvable [pasted ...] placeholders.
+    // not now-unresolvable [Paste #N - M lines] placeholders.
     app.restore_failover_payload(app_mod::FallbackResendPayload {
         content: prepared.expanded,
         images: prepared.images,
