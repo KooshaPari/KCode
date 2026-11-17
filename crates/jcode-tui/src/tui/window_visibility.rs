@@ -90,6 +90,7 @@ const PROBE_EVERY_UNKNOWN: Duration = Duration::from_secs(30);
 /// A hidden result older than this is ignored, so a probe that stops being refreshed
 /// (or hangs) can never leave a window stuck in the hidden cadence.
 const FRESH_FOR: Duration = Duration::from_secs(8);
+#[cfg(unix)]
 const PROBE_IO_TIMEOUT: Duration = Duration::from_millis(400);
 
 static STATE: AtomicU8 = AtomicU8::new(0);
@@ -430,6 +431,9 @@ mod tests {
         json!({"Ok": {"Windows": windows}})
     }
 
+    // `parse_niri` only exists on Unix; the Windows probe always answers
+    // `Unknown`, so there is nothing to exercise here.
+    #[cfg(unix)]
     #[test]
     // `parse_niri` is Unix-only, so the niri tests are the only ones that cannot
     // run on Windows. Everything else in this module is portable.
@@ -452,6 +456,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     #[cfg(unix)]
     fn niri_single_instance_terminal_is_hidden_only_if_all_its_windows_are() {
@@ -474,6 +479,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     #[cfg(unix)]
     fn niri_answers_unknown_rather_than_guess() {

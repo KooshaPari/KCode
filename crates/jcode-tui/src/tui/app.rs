@@ -90,6 +90,7 @@ mod idle_hibernation;
 mod inline_interactive;
 mod input;
 mod input_help;
+mod link_click;
 mod local;
 mod misc_ui;
 mod model_context;
