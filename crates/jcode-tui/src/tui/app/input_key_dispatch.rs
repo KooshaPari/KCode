@@ -135,9 +135,9 @@ impl App {
         // not as a submit/queue chord.
         if code == KeyCode::Enter
             && modifiers.contains(KeyModifiers::CONTROL)
-            && input::pasted_newline_in_progress()
+            && pasted_newline_in_progress()
         {
-            input::handle_text_input(self, "\n");
+            handle_text_input(self, "\n");
             return Ok(());
         }
         if is_alternate_enter(code, modifiers) {

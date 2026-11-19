@@ -657,7 +657,7 @@ struct StashedDraft {
     cursor_pos: usize,
     pasted_contents: Vec<String>,
     pending_images: Vec<(String, String)>,
-    undo: Vec<(String, usize)>,
+    undo: Vec<(String, usize, Vec<String>)>,
 }
 
 fn stash_draft_for_voice(app: &mut App, transcript: &str) -> StashedDraft {

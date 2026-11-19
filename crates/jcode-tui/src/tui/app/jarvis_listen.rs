@@ -380,12 +380,13 @@ impl App {
                         listener.state = Some(state);
                     }
                     ContinuousEvent::Level(_) => {}
-                    ContinuousEvent::Caption(text) => {
+                    ContinuousEvent::Caption { text, .. } => {
                         if !paused && !listener.failed && !speech_busy && !external_capture {
                             listener.update_caption(&text);
                             changed = true;
                         }
                     }
+                    ContinuousEvent::CaptionScore { .. } => {}
                     ContinuousEvent::Rejected(_) => {} // Never save ambient speech in chat or logs.
                     ContinuousEvent::Transcript(text)
                         if !paused && !listener.failed && !speech_busy && !external_capture =>
