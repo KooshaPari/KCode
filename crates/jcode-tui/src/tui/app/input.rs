@@ -838,6 +838,12 @@ fn insert_input_text_with_undo(app: &mut App, text: &str, typed: bool) {
 }
 
 pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
+    // Windows decodes keys with ReadConsoleInputW, so a host that reports kitty
+    // releases delivers `[119;1:3u` as ordinary characters. Remember the burst
+    // so a whole report can be removed below instead of landing in a prompt.
+    #[cfg(windows)]
+    crate::tui::keyboard_protocol::note_typed_text(text);
+
     if app.append_ssh_login_input(text) {
         return true;
     }
@@ -874,6 +880,19 @@ pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
     }
 
     insert_input_text_with_undo(app, text, true);
+    #[cfg(windows)]
+    if let Some(fragment) =
+        crate::tui::keyboard_protocol::scrub_leaked_report(&mut app.input, &mut app.cursor_pos)
+    {
+        crate::logging::info(&format!(
+            "Stripped a keyboard-protocol report that arrived as text: {fragment:?}"
+        ));
+        // The picker filter was built from the text before the strip, so a report
+        // arriving after `/model ` can leave the picker matching nothing while the
+        // visible command is clean. Rebuild it from what is actually there.
+        app.sync_model_picker_preview_from_input();
+        app.reset_tab_completion();
+    }
     // A key stream may still be receiving the rest of a multi-file drop. Do not
     // strip quoting from a verified non-image prefix until submission, otherwise
     // later paths make its now-unquoted spaces ambiguous.
