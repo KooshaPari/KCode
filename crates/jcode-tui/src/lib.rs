@@ -23,6 +23,7 @@
 pub use jcode_app_core::*;
 
 // Presentation layer (kept in this crate).
+pub mod oauth_tiers;
 pub mod swarm_compose;
 pub mod tui;
 pub mod video_export;
