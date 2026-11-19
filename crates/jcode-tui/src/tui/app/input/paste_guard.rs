@@ -79,6 +79,10 @@ thread_local! {
 /// Record that a bracketed-paste event was just handled.
 pub(super) fn note_paste() {
     LAST_PASTE.with(|cell| cell.set(Some(Instant::now())));
+    // A paste is one burst even when the terminal delivers it as key events.
+    // Seeding the character timestamp here also covers a block whose first
+    // line is blank: its leading Ctrl+Enter has no character to follow.
+    note_char_press();
 }
 
 /// Returns true (and consumes the marker) when a bare Enter arrives within the
@@ -157,7 +161,7 @@ pub(super) fn load_dropped_image(path: &std::path::Path) -> Option<(String, Vec<
 mod tests {
     use super::{
         Duration, PASTED_NEWLINE_MAX_GAP, age_char_press_for_test, clear_char_press,
-        ctrl_enter_is_pasted_newline, force_pasted_newline_for_test,
+        ctrl_enter_is_pasted_newline, force_pasted_newline_for_test, note_paste,
     };
 
     #[test]
@@ -183,6 +187,13 @@ mod tests {
         age_char_press_for_test(Duration::from_millis(5));
         clear_char_press();
         assert!(!ctrl_enter_is_pasted_newline());
+    }
+
+    #[test]
+    fn a_paste_with_a_leading_blank_line_keeps_its_first_newline_in_the_draft() {
+        clear_char_press();
+        note_paste();
+        assert!(ctrl_enter_is_pasted_newline());
     }
 
     #[test]

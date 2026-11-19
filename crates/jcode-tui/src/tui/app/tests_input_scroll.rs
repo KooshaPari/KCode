@@ -387,6 +387,26 @@ fn test_remote_ctrl_enter_right_after_a_character_is_a_pasted_line_break() {
 }
 
 #[test]
+fn test_remote_pasted_leading_blank_line_does_not_submit_existing_draft() {
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let _guard = rt.enter();
+    let mut app = create_test_app();
+    let mut remote = crate::tui::backend::RemoteConnection::dummy();
+    app.set_input_for_test("draft");
+
+    // A bracketed paste is one edit even if the terminal delivers its newline
+    // keystrokes separately; no character has followed "draft" in this pause.
+    input::handle_paste(&mut app, "\nnext line".into());
+    input::force_pasted_newline_for_test();
+    rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::CONTROL, &mut remote))
+        .unwrap();
+
+    assert_eq!(app.input(), "draft\nnext line");
+    assert!(app.queued_messages().is_empty());
+    assert!(!app.is_processing);
+}
+
+#[test]
 fn test_remote_cmd_enter_queues_while_processing() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     let _guard = rt.enter();
