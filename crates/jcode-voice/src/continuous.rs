@@ -1030,7 +1030,8 @@ async fn run(
                         out.context = GateContext::default();
                         out.queue.retain(|event| !matches!(event, ContinuousEvent::Caption { .. } | ContinuousEvent::CaptionScore { .. } | ContinuousEvent::Transcript(_) | ContinuousEvent::Rejected(_)));
                         drop(out);
-                        live = None; warm = None;
+                        if live.take().is_some() { super::timing::release(); }
+                        warm = None;
                         for (handle,token,_) in jobs.drain(..) { token.store(true,Ordering::SeqCst); handle.abort(); }
                         break Ok(());
                     }
