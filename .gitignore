@@ -20,3 +20,4 @@ captures/
 /*.avif
 /*.mp4
 /*.png
+.cargo-home/  
