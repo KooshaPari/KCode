@@ -1292,11 +1292,9 @@ pub(super) fn draw_messages(
 mod viewport_margins;
 pub(super) use viewport_margins::{INFO_WIDGET_LOOKAHEAD_ROWS, windowed_min};
 
-<<<<<<< HEAD
-/// Worker activity and progress live in the pinned todo lanes.
-=======
-/// Passive worker status lives in the todo lanes. The focused swarm panel
-/// remains available for keyboard navigation and its transcript controls.
+/// Passive worker status and worker activity/progress live in the pinned todo
+/// lanes. The focused swarm panel remains available for keyboard navigation
+/// and its transcript controls.
 pub(crate) fn pinned_todos_show_workers(app: &dyn TuiState, width: u16) -> bool {
     crate::config::config().display.todo_header_mode() == crate::config::TodoHeaderMode::Full
         && app.pinned_todos_payload().is_some()
@@ -1309,7 +1307,6 @@ pub(crate) fn pinned_todos_show_workers(app: &dyn TuiState, width: u16) -> bool 
         )
 }
 
->>>>>>> 229529fb5 (feat(tui): add full/minimal/hidden todo header modes)
 pub(crate) fn pinned_todo_band_lines(
     app: &dyn TuiState,
     width: u16,

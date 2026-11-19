@@ -12,12 +12,8 @@ pub use jcode_config_types::{
     NamedProviderConfig, NamedProviderModelConfig, NamedProviderType, NativeScrollbarConfig,
     NotificationsConfig, PowerConfig, ProviderConfig, ReasoningDisplayMode, ResumeOpenElsewhere,
     ResumeTimeMode, SafetyConfig, SessionConfig, SessionPickerResumeAction, SponsorsConfig,
-<<<<<<< HEAD
-    SwarmSpawnMode, TerminalConfig, UpdateChannel, WebSearchConfig, WebSearchEngine,
-=======
     SwarmSpawnMode, SwarmStripLayout, TerminalConfig, TodoHeaderMode, UpdateChannel,
     WebSearchConfig, WebSearchEngine,
->>>>>>> 229529fb5 (feat(tui): add full/minimal/hidden todo header modes)
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
