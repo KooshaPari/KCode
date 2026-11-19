@@ -27,6 +27,8 @@ const PASTED_NEWLINE_MAX_GAP: Duration = Duration::from_millis(150);
 
 thread_local! {
     static LAST_CHAR_PRESS: Cell<Option<Instant>> = const { Cell::new(None) };
+    #[cfg(test)]
+    static PASTED_NEWLINE_FORCED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Remember that a character arrived from a key press.
@@ -37,6 +39,12 @@ pub(super) fn note_char_press() {
 /// Whether a `Ctrl+Enter` right now is the line break of a paste, rather than a
 /// deliberate chord.
 pub(super) fn ctrl_enter_is_pasted_newline() -> bool {
+    // A test can pin the guard on instead of racing a loaded runner between
+    // the last character and the chord; production still uses the timestamp.
+    #[cfg(test)]
+    if PASTED_NEWLINE_FORCED.with(Cell::get) {
+        return true;
+    }
     LAST_CHAR_PRESS.with(|cell| {
         cell.get()
             .is_some_and(|at| at.elapsed() <= PASTED_NEWLINE_MAX_GAP)
@@ -46,6 +54,15 @@ pub(super) fn ctrl_enter_is_pasted_newline() -> bool {
 /// The paste is over once a key other than a character or its newline arrives.
 pub(super) fn clear_char_press() {
     LAST_CHAR_PRESS.with(|cell| cell.set(None));
+    #[cfg(test)]
+    PASTED_NEWLINE_FORCED.with(|cell| cell.set(false));
+}
+
+/// Test hook: make the next `Ctrl+Enter` read as a pasted newline regardless of
+/// how long the runner takes to deliver it.
+#[cfg(test)]
+pub(super) fn force_pasted_newline_for_test() {
+    PASTED_NEWLINE_FORCED.with(|cell| cell.set(true));
 }
 
 /// Test hook: pretend the last character arrived `age` ago, so window edges can be
@@ -140,7 +157,7 @@ pub(super) fn load_dropped_image(path: &std::path::Path) -> Option<(String, Vec<
 mod tests {
     use super::{
         Duration, PASTED_NEWLINE_MAX_GAP, age_char_press_for_test, clear_char_press,
-        ctrl_enter_is_pasted_newline,
+        ctrl_enter_is_pasted_newline, force_pasted_newline_for_test,
     };
 
     #[test]
@@ -164,6 +181,16 @@ mod tests {
     #[test]
     fn clearing_the_character_press_ends_the_paste() {
         age_char_press_for_test(Duration::from_millis(5));
+        clear_char_press();
+        assert!(!ctrl_enter_is_pasted_newline());
+    }
+
+    #[test]
+    fn a_forced_pasted_newline_ignores_elapsed_test_time_until_reset() {
+        clear_char_press();
+        force_pasted_newline_for_test();
+        age_char_press_for_test(PASTED_NEWLINE_MAX_GAP + Duration::from_secs(1));
+        assert!(ctrl_enter_is_pasted_newline());
         clear_char_press();
         assert!(!ctrl_enter_is_pasted_newline());
     }

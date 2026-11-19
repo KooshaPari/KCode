@@ -375,6 +375,9 @@ fn test_remote_ctrl_enter_right_after_a_character_is_a_pasted_line_break() {
         rt.block_on(app.handle_remote_key(KeyCode::Char(key), KeyModifiers::empty(), &mut remote))
             .unwrap();
     }
+    // A loaded runner can take longer than the production burst window between
+    // these calls. Pin the guard on for this assertion rather than racing the clock.
+    input::force_pasted_newline_for_test();
     rt.block_on(app.handle_remote_key(KeyCode::Enter, KeyModifiers::CONTROL, &mut remote))
         .unwrap();
 

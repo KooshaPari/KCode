@@ -850,6 +850,12 @@ pub(super) fn expire_char_press_for_test() {
     paste_guard::clear_char_press();
 }
 
+/// Test hook: pin the pasted-newline guard on independently of timing.
+#[cfg(test)]
+pub(super) fn force_pasted_newline_for_test() {
+    paste_guard::force_pasted_newline_for_test();
+}
+
 pub(super) fn handle_text_input(app: &mut App, text: &str) -> bool {
     if app.append_ssh_login_input(text) {
         return true;
