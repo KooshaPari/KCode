@@ -97,13 +97,15 @@ pub(crate) fn pinned_todo_band_lines_for_mode(
     mode: TodoHeaderMode,
 ) -> (Vec<Line<'static>>, Option<usize>) {
     if width < 16 || viewport_height < 3 || mode == TodoHeaderMode::Hidden {
+        PINNED_TODO_LAST_MAX.store(0, std::sync::atomic::Ordering::Relaxed);
         return (Vec::new(), None);
     }
     if mode == TodoHeaderMode::Minimal {
         let Some(payload) = payload.filter(|payload| !payload.trim().is_empty()) else {
+            PINNED_TODO_LAST_MAX.store(0, std::sync::atomic::Ordering::Relaxed);
             return (Vec::new(), None);
         };
-        return (vec![minimal_todo_header_line(payload)], None);
+        return (vec![minimal_todo_header_line(payload, width)], None);
     }
 
     let card_lines =
@@ -163,19 +165,21 @@ pub(crate) fn pinned_todo_band_lines_for_mode(
     (lines, more_line)
 }
 
-/// Exactly one line of todo state for `todo_header = "minimal"`.
-fn minimal_todo_header_line(payload: &str) -> Line<'static> {
-    let summary = minimal_todo_summary(payload).unwrap_or_else(|| "Todos".to_string());
-    Line::from(vec![
+/// Exactly one line of todo state for `todo_header = "minimal"`, clipped to
+/// terminal cells so wide characters and narrow panes still get an ellipsis.
+fn minimal_todo_header_line(payload: &str, width: u16) -> Line<'static> {
+    let summary = minimal_todo_summary(payload, width).unwrap_or_else(|| "Todos".to_string());
+    let line = Line::from(vec![
         Span::raw("  "),
         Span::styled(summary, Style::default().fg(dim_color())),
-    ])
+    ]);
+    super::truncate_line_with_ellipsis_to_width(&line, usize::from(width))
 }
 
 /// Summarize a todo payload as one short phrase: progress counts plus the
 /// active (or next pending) task. Returns `None` when the payload is not the
 /// expected JSON object, so the caller can fall back to a generic label.
-fn minimal_todo_summary(payload: &str) -> Option<String> {
+fn minimal_todo_summary(payload: &str, width: u16) -> Option<String> {
     let value = match serde_json::from_str::<serde_json::Value>(payload) {
         Ok(value) => value,
         Err(_) => return None,
@@ -215,18 +219,26 @@ fn minimal_todo_summary(payload: &str) -> Option<String> {
             })
             .and_then(content)
     });
+    // Leave room for the two-space indent; the line builder performs the
+    // final cell-aware truncation with an ellipsis.
+    let budget = usize::from(width.saturating_sub(2));
     let label = |text: String| -> String {
-        // The composer owns the width; keep the summary one short phrase.
-        let mut text: String = text.chars().take(80).collect();
-        if text.chars().count() == 80 {
-            text.push('…');
+        let mut out = String::new();
+        let mut used = 0usize;
+        for ch in text.chars() {
+            let cells = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+            if used + cells > budget {
+                break;
+            }
+            used += cells;
+            out.push(ch);
         }
-        text
+        out
     };
     Some(match (active, next.flatten()) {
         (Some(task), _) => label(format!("Todos {done}/{total} · {task}")),
         (None, Some(task)) => label(format!("Todos {done}/{total} · next: {task}")),
-        (None, None) => format!("Todos {done}/{total} done"),
+        (None, None) => label(format!("Todos {done}/{total} done")),
     })
 }
 

@@ -213,6 +213,9 @@ impl Config {
             && let Some(parsed) = parse_env_bool(&v)
         {
             self.display.pin_todos = parsed;
+            if parsed {
+                self.display.set_todo_header_mode(crate::config::TodoHeaderMode::Full);
+            }
         }
         if let Ok(v) = std::env::var("JCODE_DISPLAY_CENTERED") {
             if let Some(parsed) = parse_env_bool(&v) {
