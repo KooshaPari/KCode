@@ -34,7 +34,8 @@ DEFAULT_CONTROL = Path(os.environ.get(
 
 
 def run_one(name: str, binary: str, fixture: Path, out: Path, expect_bug: bool,
-            gap_ms: float, inject_mode: str, resume_arg: str = "") -> dict:
+            gap_ms: float, inject_mode: str, resume_arg: str = "",
+            dismiss_overlay: bool = False) -> dict:
     run_dir = out / name
     if run_dir.exists():
         shutil.rmtree(run_dir)
@@ -49,6 +50,8 @@ def run_one(name: str, binary: str, fixture: Path, out: Path, expect_bug: bool,
     ]
     if resume_arg:
         argv += ["--resume-arg", resume_arg]
+    if dismiss_overlay:
+        argv.append("--dismiss-overlay")
     if expect_bug:
         argv.append("--expect-bug")
     proc = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -78,6 +81,8 @@ def main() -> int:
     ap.add_argument("--resume-arg", default="",
                     help="session name to resume; derived from the fixture filename when omitted")
     ap.add_argument("--no-controls", action="store_true")
+    ap.add_argument("--dismiss-overlay", action="store_true",
+                    help="step past the first-run welcome overlay in every probe run")
     args = ap.parse_args()
 
     out = Path(args.out).resolve()
@@ -89,15 +94,15 @@ def main() -> int:
 
     if not args.no_controls and Path(args.control_binary).exists():
         rows.append(run_one("control-pre", args.control_binary, fixture, out, True, args.gap_ms,
-                            args.inject_mode, args.resume_arg))
+                            args.inject_mode, args.resume_arg, args.dismiss_overlay))
 
     for index in range(1, args.runs + 1):
         rows.append(run_one(f"fixed-{index:02d}", args.binary, fixture, out, False, args.gap_ms,
-                            args.inject_mode, args.resume_arg))
+                            args.inject_mode, args.resume_arg, args.dismiss_overlay))
 
     if not args.no_controls and Path(args.control_binary).exists():
         rows.append(run_one("control-post", args.control_binary, fixture, out, True, args.gap_ms,
-                            args.inject_mode, args.resume_arg))
+                            args.inject_mode, args.resume_arg, args.dismiss_overlay))
 
     fixed = [r for r in rows if r["label"].startswith("fixed-")]
     controls = [r for r in rows if r["label"].startswith("control-")]
@@ -128,6 +133,7 @@ def main() -> int:
         "failure_histogram": dict(failures),
         "gap_max_ms_per_run": [r.get("gap_max_ms") for r in fixed],
         "inject_mode": args.inject_mode,
+        "dismiss_overlay": args.dismiss_overlay,
         "verdicts": {r["label"]: r.get("verdict") for r in rows},
         "passed": (
             len(greens) == args.runs
