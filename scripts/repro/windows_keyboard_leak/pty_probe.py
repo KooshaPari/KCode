@@ -32,10 +32,12 @@ import shutil
 import sys
 import threading
 import time
+import ctypes
 from pathlib import Path
 
 import pyte
 from winpty import PtyProcess
+from ctypes import wintypes
 
 DEFAULT_BINARY = r"C:\Users\koosh\AppData\Local\jcode\bin\jcode.exe"
 
@@ -50,6 +52,62 @@ POSITIVE = "zzqx"
 # apart. The harness types fast enough to be inside that contract and records
 # the observed gap so a slow-machine red is distinguishable from a real red.
 MAX_INTERCHAR_GAP_MS = 750.0
+
+
+# Win32 FOCUS_EVENT injection. ConPTY hosts can move their pane while the
+# console rect stays the same; the app's focus-in path is the only signal that
+# forces a full viewport repaint on Windows. pywinpty writes key bytes only, so
+# a real FOCUS_EVENT_RECORD has to go through WriteConsoleInputW.
+class _FocusEventRecord(ctypes.Structure):
+    _fields_ = [("bSetFocus", wintypes.BOOL)]
+
+
+class _InputRecordUnion(ctypes.Union):
+    _fields_ = [("FocusEventRecord", _FocusEventRecord)]
+
+
+class _InputRecord(ctypes.Structure):
+    _fields_ = [("EventType", wintypes.WORD), ("Event", _InputRecordUnion)]
+
+
+FOCUS_EVENT = 0x0010
+
+
+def inject_focus_event(pid: int, set_focus: bool = True) -> tuple[bool, str]:
+    """Attach to the child's console and write a FOCUS_EVENT_RECORD.
+
+    Returns (success, error_detail) so the probe can record why injection
+    failed rather than treating it as a binary regression.
+    """
+    kernel32 = ctypes.windll.kernel32
+    kernel32.FreeConsole()
+    if not kernel32.AttachConsole(pid):
+        err = ctypes.get_last_error()
+        return False, f"AttachConsole failed: {err}"
+    try:
+        # The probe subprocess inherits its standard handles from run_matrix,
+        # so GetStdHandle(STD_INPUT_HANDLE) can point at the parent console
+        # even after AttachConsole. Opening CONIN$ resolves the attached one.
+        handle = kernel32.CreateFileW(
+            "CONIN$", 0x80000000 | 0x40000000,  # GENERIC_READ | GENERIC_WRITE
+            0x00000001 | 0x00000002,            # FILE_SHARE_READ | FILE_SHARE_WRITE
+            None, 3, 0x00000080, None)          # OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL
+        if not handle or handle == wintypes.HANDLE(-1).value:
+            return False, f"CreateFileW(CONIN$) failed: {handle}"
+        record = _InputRecord()
+        record.EventType = FOCUS_EVENT
+        record.Event.FocusEventRecord.bSetFocus = 1 if set_focus else 0
+        written = wintypes.DWORD(0)
+        ok = kernel32.WriteConsoleInputW(
+            handle, ctypes.byref(record), 1, ctypes.byref(written))
+        if not ok or written.value != 1:
+            return False, (
+                f"WriteConsoleInputW failed: ok={ok} written={written.value} "
+                f"err={ctypes.get_last_error()}")
+        return True, ""
+    finally:
+        kernel32.CloseHandle(handle)
+        kernel32.FreeConsole()
 
 
 class Capture:
@@ -169,6 +227,26 @@ def wait_for_text_gone(cap: "Capture", needle: str, timeout_s: float) -> bool:
             return True
         time.sleep(0.05)
     return False
+
+
+def find_row(screen_text: str, needle: str) -> int | None:
+    """0-based row of the first line containing needle, or None."""
+    for idx, line in enumerate(screen_text.splitlines()):
+        if needle in line:
+            return idx
+    return None
+
+
+def find_composer_prompt_row(screen_text: str) -> int | None:
+    """0-based row of the composer prompt marker (`2> ` at a line start).
+
+    Transcript message headers use the unicode chevron, while the composer
+    prompt is an ASCII `2> `, so this is unambiguous on the pyte screen.
+    """
+    for idx, line in enumerate(screen_text.splitlines()):
+        if line.lstrip().startswith("2>"):
+            return idx
+    return None
 
 
 def main() -> int:
@@ -389,6 +467,100 @@ def main() -> int:
             f'Stripped a keyboard-protocol report that arrived as text: "[{LEAK_TEXT}u"' in log_text)
         result["checks"]["stream_emits_stack_neutral_clear"] = "\x1b[=0u" in stream
         result["checks"]["stream_decoded_losslessly"] = "\ufffd" not in stream
+
+        # Structural composer-row check (#1812). Screenshots showed the input
+        # line detaching from the `2> ` prompt after a ConPTY pane shift, but
+        # no automated assertion covered it. Pin the prompt row, type a unique
+        # sentinel, and require both to share a row before and after a resize.
+        # The picker path hands the composer to a child that dies under this
+        # isolated socket, so the structural probe only applies on direct resume.
+        if not args.menu_pick:
+            row_sentinel = "ROWCHK7K"
+            prompt_row_before = find_composer_prompt_row(after_positive)
+            for ch in row_sentinel:
+                if not proc.isalive():
+                    break
+                proc.write(ch)
+                time.sleep(args.gap_ms / 1000.0)
+            time.sleep(args.settle_s)
+            after_row_input = snapshot("04-rowcheck-typed")
+            sentinel_row_before = find_row(after_row_input, row_sentinel)
+
+            # Simulate a host pane shift: scroll the terminal's own view up a
+            # few rows without telling the app. A half-supporting ConPTY host
+            # (herdr, VS Code) can repaint/move its pane while the console rect
+            # crossterm reports stays unchanged. ratatui diffs against its own
+            # buffer, so a stale build leaves the composer anchored to the old
+            # rows while the host shows a shifted view.
+            shift_rows = 4
+            with cap.lock:
+                # index() only scrolls a row away when the cursor is on the
+                # bottom margin; anywhere else it just moves the cursor. On
+                # this fixture the composer sits mid-screen, so park the cursor
+                # on the bottom margin first or the shift moves nothing and the
+                # alignment check passes on any build.
+                bottom = (cap.vt.margins.bottom if cap.vt.margins
+                          else cap.vt.lines - 1)
+                for _ in range(shift_rows):
+                    cap.vt.cursor.y = bottom
+                    cap.vt.index()
+            shifted = snapshot("05-rowcheck-pane-shifted")
+            prompt_row_shifted = find_composer_prompt_row(shifted)
+            sentinel_row_shifted = find_row(shifted, row_sentinel)
+
+            # Trigger focus-in without changing the console rect. The fixed
+            # build repaints the whole viewport here; a stale build leaves the
+            # composer anchored to the pre-shift rows.
+            focus_injected = False
+            focus_inject_error = ""
+            if proc.isalive():
+                focus_injected, focus_inject_error = inject_focus_event(proc.pid, True)
+                time.sleep(args.settle_s)
+
+            # Type a second sentinel after the shift: on a stale build this
+            # lands at the app's old row while the prompt sits at the shifted
+            # row, which is exactly the reported detachment.
+            after_sentinel = "ROWCKA4"
+            for ch in after_sentinel:
+                if not proc.isalive():
+                    break
+                proc.write(ch)
+                time.sleep(args.gap_ms / 1000.0)
+            time.sleep(args.settle_s)
+            after_row_shift = snapshot("06-rowcheck-after-shift")
+            prompt_row_after = find_composer_prompt_row(after_row_shift)
+            after_row = find_row(after_row_shift, after_sentinel)
+
+            aligned_before = (
+                prompt_row_before is not None
+                and sentinel_row_before is not None
+                and prompt_row_before == sentinel_row_before
+            )
+            shifted_together = (
+                prompt_row_shifted is not None
+                and sentinel_row_shifted is not None
+                and prompt_row_shifted == sentinel_row_shifted
+            )
+            aligned_after = (
+                prompt_row_after is not None
+                and after_row is not None
+                and prompt_row_after == after_row
+            )
+            result["rowcheck"] = {
+                "sentinel_before": row_sentinel,
+                "sentinel_after": after_sentinel,
+                "shift_rows": shift_rows,
+                "focus_injected": focus_injected,
+                "focus_inject_error": focus_inject_error,
+                "prompt_row_before": prompt_row_before,
+                "sentinel_row_before": sentinel_row_before,
+                "prompt_row_shifted": prompt_row_shifted,
+                "sentinel_row_shifted": sentinel_row_shifted,
+                "prompt_row_after": prompt_row_after,
+                "after_row": after_row,
+            }
+            result["checks"]["composer_row_alignment_after_shift"] = bool(
+                aligned_before and shifted_together and focus_injected and aligned_after)
 
         if args.menu_pick:
             # The picker hands off to a child client. Under an isolated socket that
