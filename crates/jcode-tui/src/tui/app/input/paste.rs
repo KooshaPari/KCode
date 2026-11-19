@@ -1,6 +1,6 @@
 //! Collapsed paste blocks in the composer.
 //!
-//! A multi-line paste is shown as a numbered `[Paste #N - M lines]`
+//! A multi-line or very long paste is shown as a numbered `[Paste #N - ...]`
 //! placeholder so the composer stays readable. The raw text lives in
 //! `App::pasted_contents` and is restored on submit, when queueing, and by the
 //! expand hotkey (Alt+X). Prompt history always records the expanded text.
@@ -8,14 +8,50 @@
 use super::super::App;
 use super::insert_input_text;
 
+/// Minimum number of lines before a paste collapses into a numbered block.
+///
+/// A paste with at least this many lines is collapsed even when it is short,
+/// because raw newlines in the composer break cursor movement and submit
+/// handling.
+pub(crate) const PASTE_COLLAPSE_MIN_LINES: usize = 2;
+
+/// Minimum number of characters before a single-line paste collapses.
+///
+/// Terminals deliver a long single line as one bracketed paste; leaving it
+/// inline dumps thousands of characters into the composer and makes editing
+/// unusable. 400 chars is roughly two screen widths, a sensible cut-off that
+/// keeps short snippets inline while collapsing anything that would dominate
+/// the input.
+pub(crate) const PASTE_COLLAPSE_MIN_CHARS: usize = 400;
+
 /// Placeholder shown in the composer for the paste stored at `paste_number`
 /// (1-based) with `content`.
 pub(in crate::tui::app) fn paste_placeholder(paste_number: usize, content: &str) -> String {
     let line_count = content.lines().count().max(1);
-    format!(
-        "[Paste #{paste_number} - {line_count} line{}]",
-        if line_count == 1 { "" } else { "s" }
-    )
+    let char_count = content.chars().count();
+
+    // Each part is included only when it actually motivated the collapse, so
+    // a short multi-line paste reads `[Paste #1 - 3 lines]` while a long
+    // single line reads `[Paste #2 - 5000 chars]` and a paste that is both
+    // long and multi-line carries both: `[Paste #1 - 3 lines, 412 chars]`.
+    let mut parts = Vec::new();
+    if line_count >= PASTE_COLLAPSE_MIN_LINES {
+        parts.push(format!(
+            "{line_count} line{}",
+            if line_count == 1 { "" } else { "s" }
+        ));
+    }
+    if char_count >= PASTE_COLLAPSE_MIN_CHARS {
+        parts.push(format!("{char_count} chars"));
+    }
+    if parts.is_empty() {
+        parts.push(format!(
+            "{line_count} line{}",
+            if line_count == 1 { "" } else { "s" }
+        ));
+    }
+
+    format!("[Paste #{paste_number} - {}]", parts.join(", "))
 }
 
 pub(in crate::tui::app) fn handle_text_paste(app: &mut App, text: String) {
@@ -25,9 +61,13 @@ pub(in crate::tui::app) fn handle_text_paste(app: &mut App, text: String) {
         text.lines().count()
     ));
 
-    // Single-line pastes stay inline (including a trailing newline); only
-    // genuinely multi-line blocks collapse.
-    if text.lines().count() <= 1 {
+    let line_count = text.lines().count().max(1);
+    let char_count = text.chars().count();
+
+    // Single-line short pastes stay inline; multi-line or very long blocks
+    // collapse. Both axes are considered so a 5000-char single line does not
+    // dump raw into the composer.
+    if line_count < PASTE_COLLAPSE_MIN_LINES && char_count < PASTE_COLLAPSE_MIN_CHARS {
         insert_input_text(app, &text);
         return;
     }
