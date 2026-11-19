@@ -131,6 +131,15 @@ impl App {
 
         // Ctrl+Enter / Cmd+Enter: does opposite of queue_mode during processing.
         // Terminals may encode Command as either Super or Meta.
+        // A pasted newline arrives as Ctrl+Enter on ConPTY; treat it as text,
+        // not as a submit/queue chord.
+        if code == KeyCode::Enter
+            && modifiers.contains(KeyModifiers::CONTROL)
+            && input::pasted_newline_in_progress()
+        {
+            input::handle_text_input(self, "\n");
+            return Ok(());
+        }
         if is_alternate_enter(code, modifiers) {
             handle_alternate_enter(self);
             return Ok(());

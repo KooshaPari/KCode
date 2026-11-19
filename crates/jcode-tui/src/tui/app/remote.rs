@@ -2064,6 +2064,16 @@ fn handle_disconnected_key_internal(
         }
     }
 
+    // A pasted newline arrives as Ctrl+Enter on ConPTY; treat it as text,
+    // not as a queued message.
+    if code == KeyCode::Enter
+        && modifiers.contains(KeyModifiers::CONTROL)
+        && input::pasted_newline_in_progress()
+    {
+        input::handle_text_input(app, "\n");
+        return Ok(());
+    }
+
     if input::is_alternate_enter(code, modifiers) {
         queue_message_for_reconnect(app);
         return Ok(());

@@ -417,9 +417,12 @@ pub(super) async fn handle_remote_key_internal(
                 return Ok(());
             }
             // Alt+X expands a collapsed paste block locally instead of being
-            // forwarded to the server as an unknown chord.
+            // forwarded to the server as an unknown chord. Do not consume
+            // Ctrl+Alt+X here: that belongs to the Ctrl+X cut handler below.
             KeyCode::Char('x') => {
-                if input::expand_paste_at_cursor(app) {
+                if !modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER | KeyModifiers::META)
+                    && input::expand_paste_at_cursor(app)
+                {
                     return Ok(());
                 }
             }

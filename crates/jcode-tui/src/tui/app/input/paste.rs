@@ -58,9 +58,7 @@ fn expand_matching_paste(app: &mut App, text: &str) -> bool {
         return false;
     };
 
-    replace_placeholder_with_text(app, placeholder_start, placeholder.len(), text);
-    app.pasted_contents.remove(content_index);
-    renumber_paste_placeholders(app, content_index);
+    expand_and_renumber(app, placeholder_start, placeholder.len(), text, content_index);
     true
 }
 
@@ -139,11 +137,46 @@ pub(in crate::tui::app) fn expand_paste_at_cursor(app: &mut App) -> bool {
 
     let text = app.pasted_contents[content_index].clone();
     let placeholder_len = paste_placeholder(content_index + 1, &text).len();
-    replace_placeholder_with_text(app, start, placeholder_len, &text);
-    app.pasted_contents.remove(content_index);
-    renumber_paste_placeholders(app, content_index);
+
+    expand_and_renumber(app, start, placeholder_len, &text, content_index);
     app.set_status_notice("Expanded paste");
     true
+}
+
+/// Expand one placeholder and renumber the remaining ones.
+///
+/// Renumbering happens before the raw text is inserted, so a pasted block that
+/// itself contains a `[Paste #N ...]` label cannot be mistaken for a real
+/// placeholder by `rfind`. The target's byte offset is adjusted for every
+/// earlier label that shrinks.
+fn expand_and_renumber(
+    app: &mut App,
+    start: usize,
+    placeholder_len: usize,
+    text: &str,
+    content_index: usize,
+) {
+    let mut target_start = start;
+    for index in content_index + 1..app.pasted_contents.len() {
+        let old = paste_placeholder(index + 1, &app.pasted_contents[index]);
+        let new = paste_placeholder(index, &app.pasted_contents[index]);
+        let Some(at) = app.input.rfind(&old) else {
+            continue;
+        };
+        let end = at + old.len();
+        if at < target_start {
+            target_start -= old.len() - new.len();
+        }
+        if app.cursor_pos >= end {
+            app.cursor_pos -= old.len() - new.len();
+        } else if app.cursor_pos > at {
+            app.cursor_pos = at + new.len();
+        }
+        app.input.replace_range(at..end, &new);
+    }
+
+    replace_placeholder_with_text(app, target_start, placeholder_len, text);
+    app.pasted_contents.remove(content_index);
 }
 
 fn replace_placeholder_with_text(app: &mut App, start: usize, placeholder_len: usize, text: &str) {
@@ -154,25 +187,6 @@ fn replace_placeholder_with_text(app: &mut App, start: usize, placeholder_len: u
     app.cursor_pos = start + text.len();
     app.reset_tab_completion();
     app.sync_model_picker_preview_from_input();
-}
-
-/// Deleting a stored paste shifts every later paste down one number, so rewrite
-/// the remaining placeholders to keep them matching their stored text.
-fn renumber_paste_placeholders(app: &mut App, removed_index: usize) {
-    for index in removed_index..app.pasted_contents.len() {
-        let old = paste_placeholder(index + 2, &app.pasted_contents[index]);
-        let new = paste_placeholder(index + 1, &app.pasted_contents[index]);
-        let Some(start) = app.input.rfind(&old) else {
-            continue;
-        };
-        let end = start + old.len();
-        if app.cursor_pos >= end {
-            app.cursor_pos -= old.len() - new.len();
-        } else if app.cursor_pos > start {
-            app.cursor_pos = start + new.len();
-        }
-        app.input.replace_range(start..end, &new);
-    }
 }
 
 pub(in crate::tui::app) fn expand_paste_placeholders(app: &App, input: &str) -> String {

@@ -369,7 +369,7 @@ fn parse_niri(
     result
 }
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
