@@ -421,14 +421,12 @@ def main() -> int:
         # a partial observation up as a pass or a failure.
         if checks.get("menu_loaded_session"):
             result["verdict"] = "MENU_SELECTED"
-        elif checks.get("menu_left_terminal_unpolluted"):
-            result["verdict"] = "MENU_TERMINAL_CLEAN"
         else:
             result["verdict"] = "MENU_NOT_OBSERVED"
         result["notes"].append(
             "menu path stops at the handover; the composer is not reachable here, so "
             "typing after a menu pick is not verified")
-        ok = result["verdict"] in ("MENU_SELECTED", "MENU_TERMINAL_CLEAN")
+        ok = result["verdict"] == "MENU_SELECTED"
     elif args.expect_bug:
         # Negative control: the harness must be able to SEE the bug. Green here
         # means "the leak was reproduced", which is what makes the fixed run's
