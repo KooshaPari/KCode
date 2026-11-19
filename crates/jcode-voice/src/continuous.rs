@@ -173,7 +173,12 @@ impl Events {
         }
     }
     fn classified(&mut self, caption: ClassifiedCaption) {
-        if self.context.inflight.as_ref().is_some_and(|(id, _)| *id == caption.id) {
+        if self
+            .context
+            .inflight
+            .as_ref()
+            .is_some_and(|(id, _)| *id == caption.id)
+        {
             self.context.inflight = None;
         }
         if self.context.claimed == Some(caption.id) {
@@ -204,8 +209,9 @@ impl Events {
                 // Live revisions replace only their own utterance's caption;
                 // scores for other utterances must survive.
                 let id = *id;
-                self.queue
-                    .retain(|e| !matches!(e, ContinuousEvent::Caption { id: old, .. } if *old == id))
+                self.queue.retain(
+                    |e| !matches!(e, ContinuousEvent::Caption { id: old, .. } if *old == id),
+                )
             }
             ContinuousEvent::State(_) => self
                 .queue
@@ -714,9 +720,14 @@ async fn early_trigger(
         if !live() {
             return None;
         }
-        let state = events.lock().unwrap_or_else(|e| e.into_inner()).context.state(&text, require_jev);
+        let state = events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .context
+            .state(&text, require_jev);
         super::timing::mark("partial gate sent");
-        let Ok(Some((probability, true))) = semantic_gate(&gate, &text, threshold, state).await else {
+        let Ok(Some((probability, true))) = semantic_gate(&gate, &text, threshold, state).await
+        else {
             continue;
         };
         if !live() {
@@ -724,8 +735,15 @@ async fn early_trigger(
         }
         super::timing::mark("partial gate accepted");
         let mut output = events.lock().unwrap_or_else(|e| e.into_inner());
-        output.push(ContinuousEvent::Caption { id, text: text.chars().take(256).collect() });
-        output.push(ContinuousEvent::CaptionScore { id, probability, accepted: true });
+        output.push(ContinuousEvent::Caption {
+            id,
+            text: text.chars().take(256).collect(),
+        });
+        output.push(ContinuousEvent::CaptionScore {
+            id,
+            probability,
+            accepted: true,
+        });
         let payload = output.context.accepted(text.clone());
         // Mark the request provisional: Jarvis may prepare but must not speak
         // until the Continuation with the finished utterance arrives.
@@ -1479,8 +1497,7 @@ mod tests {
         ctx.remember_at("old", now - MANUAL_TRIGGER_WINDOW - Duration::from_secs(1));
         ctx.remember_at("first", now - Duration::from_secs(10));
         ctx.remember_at("latest", now);
-        let payload: serde_json::Value =
-            serde_json::from_str(&ctx.manual(now).unwrap()).unwrap();
+        let payload: serde_json::Value = serde_json::from_str(&ctx.manual(now).unwrap()).unwrap();
         assert_eq!(
             payload,
             serde_json::json!({"trigger":"latest","background_transcript":["first"]})
@@ -1607,7 +1624,10 @@ mod tests {
     #[ignore = "Live latency e2e: JCODE_TEST_CONTINUOUS_PCM, Nari/Jev accounts, no real microphone"]
     fn live_e2e_latency() {
         let fixture = std::env::var("JCODE_TEST_CONTINUOUS_PCM").unwrap();
-        let rounds: usize = std::env::var("JCODE_TEST_ROUNDS").ok().and_then(|v| v.parse().ok()).unwrap_or(3);
+        let rounds: usize = std::env::var("JCODE_TEST_ROUNDS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3);
         let warm = std::env::var("JCODE_TEST_WARM").map_or(true, |v| v != "0");
         let marker = std::env::temp_dir().join(format!("jcode-e2e-{}", std::process::id()));
         let key = crate::nari_api_key().unwrap();
@@ -1625,13 +1645,22 @@ mod tests {
             Arc::new(AtomicBool::new(false)),
             &key,
             &script,
-            ContinuousConfig { action_probability: 0.5, warm_nari: warm, ..Default::default() },
+            ContinuousConfig {
+                action_probability: 0.5,
+                warm_nari: warm,
+                ..Default::default()
+            },
         )
         .unwrap();
         let deadline = Instant::now() + Duration::from_secs(20 * rounds as u64 + 20);
         let mut seen = Vec::new();
         let mut fired: Option<i128> = None;
-        let now_ns = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos() as i128;
+        let now_ns = || {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos() as i128
+        };
         while Instant::now() < deadline && seen.len() < rounds {
             let ends = std::fs::read_to_string(&marker).unwrap_or_default();
             let ends: Vec<i128> = ends.lines().filter_map(|l| l.trim().parse().ok()).collect();
@@ -1639,15 +1668,22 @@ mod tests {
             // fired on a partial before the user stopped talking.
             if let (Some(at), Some(end)) = (fired, ends.get(seen.len())) {
                 let ms = (at - end) / 1_000_000;
-                eprintln!("warm={warm} round {}: speech end -> accepted request {ms} ms", seen.len());
+                eprintln!(
+                    "warm={warm} round {}: speech end -> accepted request {ms} ms",
+                    seen.len()
+                );
                 seen.push(ms);
                 fired = None;
             }
             while let Some(event) = recording.try_event() {
                 match event {
                     ContinuousEvent::Transcript(_) if fired.is_none() => fired = Some(now_ns()),
-                    ContinuousEvent::Caption { id, text } => eprintln!("caption {id} +{}ms: {text}", now_ns() / 1_000_000 % 100_000),
-                    ContinuousEvent::Continuation(text) => eprintln!("continuation: {} words", text.split_whitespace().count()),
+                    ContinuousEvent::Caption { id, text } => {
+                        eprintln!("caption {id} +{}ms: {text}", now_ns() / 1_000_000 % 100_000)
+                    }
+                    ContinuousEvent::Continuation(text) => {
+                        eprintln!("continuation: {} words", text.split_whitespace().count())
+                    }
                     ContinuousEvent::Error(error) => panic!("pipeline failed: {error}"),
                     _ => {}
                 }

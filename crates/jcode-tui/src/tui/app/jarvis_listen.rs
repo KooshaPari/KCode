@@ -9,7 +9,11 @@ use std::collections::VecDeque;
 
 /// Audible cue that speech reached Jarvis (gate or Fn tap). Fire and forget.
 fn play_trigger_sound() {
-    let sound = crate::config::config().jarvis.listening.trigger_sound.clone();
+    let sound = crate::config::config()
+        .jarvis
+        .listening
+        .trigger_sound
+        .clone();
     if sound.is_empty() || !std::path::Path::new(&sound).is_file() {
         return;
     }
@@ -558,7 +562,9 @@ impl App {
             listener.turns.pop_front();
         }
         if let Some(full) = listener.continuation.take() {
-            let content = format!("(The user finished speaking. Full request: \"{full}\". Now acknowledge and complete any necessary actions.)");
+            let content = format!(
+                "(The user finished speaking. Full request: \"{full}\". Now acknowledge and complete any necessary actions.)"
+            );
             if let Some((text, _)) = listener.pending.as_mut() {
                 // Not dispatched yet: send the final utterance as a normal request.
                 if let Ok(mut env) = serde_json::from_str::<serde_json::Value>(text) {
