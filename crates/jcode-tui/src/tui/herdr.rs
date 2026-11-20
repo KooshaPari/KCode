@@ -22,6 +22,10 @@ const SOURCE: &str = "jcode";
 const AGENT: &str = "jcode";
 /// Upper bound on a single herdr CLI call.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
+/// Re-send an unchanged state this often. herdr treats a stale report as a
+/// dead agent, so a turn (or a child agent, or a background task) that runs
+/// longer than this window must still look alive.
+pub const STATE_HEARTBEAT: Duration = Duration::from_secs(20);
 /// herdr's resume argv limits.
 const MAX_RESUME_ARGS: usize = 64;
 const MAX_RESUME_BYTES: usize = 8 * 1024;
@@ -37,6 +41,42 @@ impl AgentState {
         match self {
             Self::Idle => "idle",
             Self::Working => "working",
+        }
+    }
+}
+
+/// The single authority for what this pane reports: a session is `working`
+/// while a turn is processing, a background task is still running, or a
+/// child/subagent session it spawned is still working. Everything else is
+/// `idle`. Pure so the contract is testable without a live herdr pane.
+pub fn resolve_agent_state(
+    processing: bool,
+    background_task_running: bool,
+    child_agent_working: bool,
+) -> AgentState {
+    if processing || background_task_running || child_agent_working {
+        AgentState::Working
+    } else {
+        AgentState::Idle
+    }
+}
+
+/// Whether a state report must be sent, given the last submission. Unchanged
+/// state is suppressed only until [`STATE_HEARTBEAT`] elapses so a long task
+/// cannot go stale in herdr's view.
+pub fn report_due(
+    last: Option<(AgentState, Option<&str>, Instant)>,
+    state: AgentState,
+    session_id: Option<&str>,
+    now: Instant,
+    heartbeat: Duration,
+) -> bool {
+    match last {
+        None => true,
+        Some((last_state, last_session, sent_at)) => {
+            last_state != state
+                || last_session != session_id
+                || now.saturating_duration_since(sent_at) >= heartbeat
         }
     }
 }
@@ -84,7 +124,16 @@ struct Slot {
 struct Reporter {
     env: HerdrEnv,
     slot: Arc<(Mutex<Slot>, Condvar)>,
-    last_submitted: Mutex<Option<StateReport>>,
+    last_submitted: Mutex<Option<SentReport>>,
+}
+
+/// The last report handed to the worker thread, and when. Used only to drop
+/// redundant submissions between heartbeats.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SentReport {
+    state: AgentState,
+    session_id: Option<String>,
+    sent_at: Instant,
 }
 
 static REPORTER: OnceLock<Option<Reporter>> = OnceLock::new();
@@ -128,12 +177,13 @@ pub fn sync(state: AgentState, session_id: Option<&str>) {
     let Some(reporter) = reporter() else {
         return;
     };
+    let now = Instant::now();
     let report = {
         let mut last = lock(&reporter.last_submitted);
-        if last
+        let last_view = last
             .as_ref()
-            .is_some_and(|last| last.state == state && last.session_id.as_deref() == session_id)
-        {
+            .map(|sent| (sent.state, sent.session_id.as_deref(), sent.sent_at));
+        if !report_due(last_view, state, session_id, now, STATE_HEARTBEAT) {
             return;
         }
         let report = StateReport {
@@ -142,7 +192,11 @@ pub fn sync(state: AgentState, session_id: Option<&str>) {
             resume_argv: session_id
                 .and_then(|id| resume_argv_for_session(id, |key| std::env::var(key).ok())),
         };
-        *last = Some(report.clone());
+        *last = Some(SentReport {
+            state,
+            session_id: session_id.map(str::to_owned),
+            sent_at: now,
+        });
         report
     };
     let (slot, wake) = &*reporter.slot;
@@ -385,6 +439,73 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn processing_turn_is_working() {
+        assert_eq!(resolve_agent_state(true, false, false), AgentState::Working);
+    }
+
+    #[test]
+    fn running_background_task_is_working() {
+        assert_eq!(resolve_agent_state(false, true, false), AgentState::Working);
+    }
+
+    #[test]
+    fn live_child_agent_is_working() {
+        assert_eq!(resolve_agent_state(false, false, true), AgentState::Working);
+    }
+
+    #[test]
+    fn nothing_live_is_idle() {
+        assert_eq!(resolve_agent_state(false, false, false), AgentState::Idle);
+    }
+
+    #[test]
+    fn unchanged_state_is_suppressed_until_heartbeat() {
+        let now = Instant::now();
+        let last = Some((AgentState::Working, Some("s1"), now));
+        assert!(!report_due(
+            last,
+            AgentState::Working,
+            Some("s1"),
+            now + Duration::from_secs(1),
+            STATE_HEARTBEAT
+        ));
+        assert!(report_due(
+            last,
+            AgentState::Working,
+            Some("s1"),
+            now + STATE_HEARTBEAT,
+            STATE_HEARTBEAT
+        ));
+    }
+
+    #[test]
+    fn state_or_session_change_reports_immediately() {
+        let now = Instant::now();
+        let last = Some((AgentState::Working, Some("s1"), now));
+        assert!(report_due(
+            last,
+            AgentState::Idle,
+            Some("s1"),
+            now,
+            STATE_HEARTBEAT
+        ));
+        assert!(report_due(
+            last,
+            AgentState::Working,
+            Some("s2"),
+            now,
+            STATE_HEARTBEAT
+        ));
+        assert!(report_due(
+            None,
+            AgentState::Idle,
+            None,
+            now,
+            STATE_HEARTBEAT
+        ));
+    }
 
     fn env(pairs: &[(&str, &str)]) -> Option<HerdrEnv> {
         let map: std::collections::HashMap<String, String> = pairs
