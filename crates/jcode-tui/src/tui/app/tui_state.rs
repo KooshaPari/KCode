@@ -2585,6 +2585,22 @@ pub(crate) fn filter_inline_swarm_subtree(
     members: &[crate::protocol::SwarmMemberStatus],
     self_id: &str,
 ) -> Vec<crate::protocol::SwarmMemberStatus> {
+    let descendants = swarm_subtree_session_ids(members, self_id);
+    members
+        .iter()
+        .filter(|m| descendants.contains(m.session_id.as_str()))
+        .cloned()
+        .collect()
+}
+
+/// Session ids of every descendant `self_id` spawned, excluding `self_id`.
+///
+/// Borrowed, allocation-light walk over the spawn tree used by both the inline
+/// gallery filter and the herdr agent-state authority.
+pub(crate) fn swarm_subtree_session_ids<'a>(
+    members: &'a [crate::protocol::SwarmMemberStatus],
+    self_id: &'a str,
+) -> std::collections::HashSet<&'a str> {
     use std::collections::{HashMap, HashSet};
 
     // Build the parent -> children index once, then walk outward from this
@@ -2615,12 +2631,7 @@ pub(crate) fn filter_inline_swarm_subtree(
             }
         }
     }
-
-    members
-        .iter()
-        .filter(|m| descendants.contains(m.session_id.as_str()))
-        .cloned()
-        .collect()
+    descendants
 }
 
 #[cfg(test)]
