@@ -4,6 +4,9 @@ use std::cell::RefCell;
 use std::sync::Mutex;
 use std::time::Duration;
 
+#[path = "tui_state_inline_swarm.rs"]
+mod tui_state_inline_swarm;
+
 const REMOTE_STARTUP_HEADER_DEBOUNCE: Duration = Duration::from_millis(400);
 
 /// How long a routine `LoadingSession` phase may keep showing the known model
@@ -2585,53 +2588,12 @@ pub(crate) fn filter_inline_swarm_subtree(
     members: &[crate::protocol::SwarmMemberStatus],
     self_id: &str,
 ) -> Vec<crate::protocol::SwarmMemberStatus> {
-    let descendants = swarm_subtree_session_ids(members, self_id);
+    let descendants = tui_state_inline_swarm::swarm_subtree_session_ids(members, self_id);
     members
         .iter()
         .filter(|m| descendants.contains(m.session_id.as_str()))
         .cloned()
         .collect()
-}
-
-/// Session ids of every descendant `self_id` spawned, excluding `self_id`.
-///
-/// Borrowed, allocation-light walk over the spawn tree used by both the inline
-/// gallery filter and the herdr agent-state authority.
-pub(crate) fn swarm_subtree_session_ids<'a>(
-    members: &'a [crate::protocol::SwarmMemberStatus],
-    self_id: &'a str,
-) -> std::collections::HashSet<&'a str> {
-    use std::collections::{HashMap, HashSet};
-
-    // Build the parent -> children index once, then walk outward from this
-    // session. The previous implementation rebuilt a cycle-detection HashSet
-    // while walking the parent chain for every member, on every frame. Large,
-    // long-lived swarms made that input render path needlessly expensive.
-    let mut children_by_parent: HashMap<&str, Vec<&str>> = HashMap::new();
-    for member in members {
-        if let Some(parent) = member.report_back_to_session_id.as_deref() {
-            children_by_parent
-                .entry(parent)
-                .or_default()
-                .push(member.session_id.as_str());
-        }
-    }
-
-    let mut descendants: HashSet<&str> = HashSet::new();
-    let mut pending = vec![self_id];
-    while let Some(parent) = pending.pop() {
-        let Some(children) = children_by_parent.get(parent) else {
-            continue;
-        };
-        for &child in children {
-            // This both excludes cycles and ensures each subtree node is
-            // expanded at most once.
-            if child != self_id && descendants.insert(child) {
-                pending.push(child);
-            }
-        }
-    }
-    descendants
 }
 
 #[cfg(test)]

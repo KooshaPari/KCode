@@ -124,7 +124,6 @@ pub(crate) mod tui_event;
 mod tui_lifecycle;
 mod tui_lifecycle_runtime;
 mod tui_state;
-mod tui_state_inline_swarm;
 mod turn;
 mod turn_memory;
 mod turn_notify;
