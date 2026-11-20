@@ -17,13 +17,13 @@ impl App {
         let Some(self_id) = self_id else {
             return false;
         };
-        let descendants = super::tui_state::swarm_subtree_session_ids(&self.remote_swarm_members, self_id);
+        let descendants =
+            super::tui_state::swarm_subtree_session_ids(&self.remote_swarm_members, self_id);
         self.remote_swarm_members.iter().any(|member| {
             descendants.contains(member.session_id.as_str())
                 && member_status_is_working(&member.status)
         })
     }
-
 }
 
 /// Lifecycle statuses that mean a spawned agent is actively doing work. Kept
