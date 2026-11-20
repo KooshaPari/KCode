@@ -242,9 +242,7 @@ mod tests {
 
     #[test]
     fn classifies_body_decode_failures_without_a_timeout_marker() {
-        assert!(
-            classify_message("error decoding response body: invalid gzip header").is_some()
-        );
+        assert!(classify_message("error decoding response body: invalid gzip header").is_some());
         assert!(
             classify_message("error decoding response body: error reading a body from connection")
                 .is_some()
