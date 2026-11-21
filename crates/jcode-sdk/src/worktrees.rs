@@ -158,6 +158,32 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// Fixture-only Git invocation. Shadows the production `git` above so tests
+    /// never inherit host Git configuration: a global `core.hooksPath` ledger
+    /// hook would otherwise reject commits made inside throwaway fixture repos.
+    /// Production call sites keep using the module-level `git` and are
+    /// unaffected.
+    fn git(working_dir: &str, args: &[&str]) -> Result<Vec<u8>> {
+        let output = Command::new("git")
+            .current_dir(working_dir)
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "SDK Test")
+            .env("GIT_AUTHOR_EMAIL", "sdk-test@example.invalid")
+            .env("GIT_COMMITTER_NAME", "SDK Test")
+            .env("GIT_COMMITTER_EMAIL", "sdk-test@example.invalid")
+            .output()
+            .context("Failed to run Git")?;
+        ensure!(
+            output.status.success(),
+            "git {} failed: {}",
+            args.first().unwrap_or(&""),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+        Ok(output.stdout)
+    }
+
     fn repo() -> (TempDir, String) {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("repo with spaces");
