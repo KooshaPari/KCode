@@ -2173,7 +2173,7 @@
     },
     "crates/jcode-tui/src/tui/app/commands.rs": {
       "dot_ok": 4,
-      "let_underscore": 14,
+      "let_underscore": 9,
       "unwrap_or_default": 20
     },
     "crates/jcode-tui/src/tui/app/commands_cloud.rs": {
@@ -2538,7 +2538,7 @@
     },
     "crates/jcode-tui/src/tui/mod.rs": {
       "dot_ok": 2,
-      "let_underscore": 1,
+      "let_underscore": 0,
       "unwrap_or_default": 1
     },
     "crates/jcode-tui/src/tui/redraw_schedule.rs": {
@@ -2579,6 +2579,11 @@
     "crates/jcode-tui/src/tui/status_bar.rs": {
       "dot_ok": 1,
       "let_underscore": 0,
+      "unwrap_or_default": 0
+    },
+    "crates/jcode-tui/src/tui/terminal_modes.rs": {
+      "dot_ok": 0,
+      "let_underscore": 6,
       "unwrap_or_default": 0
     },
     "crates/jcode-tui/src/tui/terminal_setup.rs": {
