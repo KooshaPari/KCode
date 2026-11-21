@@ -150,6 +150,9 @@ HC has **no** `pane.report_agent`, `pane.report_agent_session` or
   `HERDR_ENV` + `HERDR_PANE_ID` contract (`crates/jcode-terminal-launch`). It
   does not fire under HC, which injects `HC_TERMINAL_ID` instead. HC-driven
   launch is not implemented.
+- `kcode herdr install` writes the TOML screen manifests, which are legacy-only,
+  and now says so. Under HC it refuses with a non-zero exit instead of writing
+  files nothing reads: HC infers agent state itself via `terminal.wait`.
 
 ### `jcode herdr status`
 
