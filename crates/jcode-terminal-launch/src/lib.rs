@@ -1,6 +1,10 @@
 use anyhow::Result;
 #[cfg(unix)]
-use jcode_herdr::env::{HerdrEnv, RuntimeKind};
+mod herdr_runtime;
+#[cfg(unix)]
+use herdr_runtime::herdr_runtime_kind;
+#[cfg(unix)]
+use jcode_herdr::env::RuntimeKind;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -214,17 +218,6 @@ fn terminal_env_value(client_terminal_env: &[(String, String)], key: &str) -> Op
         .find(|(candidate, _)| candidate == key)
         .map(|(_, value)| value.clone())
         .filter(|value| !value.is_empty())
-}
-
-/// Which HERDR runtime the requesting client is inside, if any.
-///
-/// The classification rule lives in `jcode-herdr`, not here: herdr-core (HC)
-/// injects `HC_TERMINAL_ID` and no legacy variable at all, so the old
-/// "`HERDR_ENV` + `HERDR_PANE_ID`" test read an HC pane as "not herdr" and let
-/// the spawn escape into the outer emulator. One rule, both runtimes (#317).
-#[cfg(unix)]
-fn herdr_runtime_kind(client_terminal_env: &[(String, String)]) -> RuntimeKind {
-    HerdrEnv::capture_from(|key| terminal_env_value(client_terminal_env, key)).kind()
 }
 
 #[cfg(unix)]
@@ -1745,80 +1738,5 @@ mod tests {
             env_value(&cmd, "KCODE_SPAWN_SESSION_ID").as_deref(),
             Some("ses_abc")
         );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn hc_client_env_is_detected_as_herdr() {
-        // herdr-core injects `HC_TERMINAL_ID` and no legacy variable. Before
-        // #317 this env produced no candidate at all, so the spawn escaped
-        // into the outer emulator instead of staying in the HC workspace.
-        let hc_env = vec![("HC_TERMINAL_ID".to_string(), "t1".to_string())];
-        assert_eq!(
-            detected_resume_terminal_with_client_env(&hc_env),
-            Some("herdr".to_string())
-        );
-        assert_eq!(
-            resume_terminal_candidates_with_client_env(&hc_env, None)[0],
-            "herdr"
-        );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn hc_spawn_adapter_uses_hc_run() {
-        let command = TerminalCommand::new(
-            "/usr/local/bin/jcode",
-            vec!["--resume".to_string(), "ses hc".to_string()],
-        )
-        .client_terminal_env(vec![
-            ("HC_TERMINAL_ID".to_string(), "t1".to_string()),
-            ("HC_SOCKET".to_string(), "/tmp/hc.sock".to_string()),
-        ]);
-
-        let cmd = build_spawn_command("herdr", &command, Path::new("/work/a b"))
-            .expect("HC spawn command should build");
-        assert_eq!(cmd.get_program().to_string_lossy(), "hc");
-        let args: Vec<String> = cmd
-            .get_args()
-            .map(|arg| arg.to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(
-            args,
-            vec![
-                "run",
-                "--bg",
-                "--rm",
-                "--cwd",
-                "/work/a b",
-                "--",
-                "sh",
-                "-c",
-                "'/usr/local/bin/jcode' '--resume' 'ses hc'",
-            ]
-        );
-        // HC has no persistent shell to close, so `&& exit` (legacy HERDR's
-        // empty-pane guard) must not leak into the HC path.
-        assert!(!args.iter().any(|arg| arg.contains("&& exit")));
-        assert!(!args.iter().any(|arg| arg.contains("pane split")));
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn legacy_herdr_client_env_keeps_pane_split_adapter() {
-        let command =
-            TerminalCommand::new("/usr/local/bin/jcode", Vec::new()).client_terminal_env(vec![
-                ("HERDR_ENV".to_string(), "1".to_string()),
-                ("HERDR_PANE_ID".to_string(), "w1:p1".to_string()),
-            ]);
-        let cmd = build_spawn_command("herdr", &command, Path::new("/work/dir"))
-            .expect("legacy HERDR spawn command should build");
-        assert_eq!(cmd.get_program().to_string_lossy(), "sh");
-        let script = cmd
-            .get_args()
-            .nth(1)
-            .map(|arg| arg.to_string_lossy().into_owned())
-            .unwrap();
-        assert!(script.contains("pane split --current --direction right"));
     }
 }
