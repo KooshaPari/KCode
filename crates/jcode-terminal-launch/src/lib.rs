@@ -667,72 +667,11 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
     match term {
         #[cfg(unix)]
         "herdr" => {
-            // HERDR and herdr-core (HC) are distinct runtimes with distinct
-            // verbs. `pane split` / `pane run` exist only on legacy HERDR's
-            // socket API; HC's CLI has no split verb at all. Its verb for
-            // "start a program in a terminal I manage" is `run`, measured on
-            // hc 0.1.21: `hc run --bg --rm --cwd <dir> -- <argv>` returns the
-            // new terminal's address and removes it once it exits. So HC gets a
-            // NEW terminal rather than a split of this one - the smallest
-            // mapping its surface allows, and still infinitely better than the
-            // old behaviour of escaping into the outer emulator.
             let program_line = shell_command(&command_parts(command));
-            if herdr_runtime_kind(&command.client_terminal_env) == RuntimeKind::Hc {
-                // No `&& exit` here: HC runs the program directly, so the
-                // terminal ends with it - there is no lingering interactive
-                // shell to close. `--rm` keeps `hc ls` clean, at the cost of a
-                // failed worker's screen disappearing once it exits, so errors
-                // are reported through jcode's own output instead of a parked
-                // terminal. `--cwd` is explicit because HC's default is the
-                // core's cwd, not the requesting client's.
-                cmd = Command::new("hc");
-                cmd.current_dir(cwd)
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .args(["run", "--bg", "--rm", "--cwd"])
-                    .arg(cwd)
-                    .arg("--")
-                    .arg("sh")
-                    .arg("-c")
-                    .arg(&program_line);
-                if command.fresh_spawn {
-                    cmd.env("KCODE_FRESH_SPAWN", "1");
-                }
-                return Some(cmd);
+            if let Some(hc) = herdr_runtime::hc_run_command(command, cwd) {
+                return Some(hc);
             }
-
-            // `pane split` deliberately creates a shell and returns its pane id;
-            // `pane run` is the atomic, bracketed-paste-aware way to start a
-            // command in that shell. Keep the small composition here rather
-            // than requiring every user to configure an equivalent spawn hook.
-            let herdr = terminal_env_value(&command.client_terminal_env, "HERDR_BIN_PATH")
-                .unwrap_or_else(|| "herdr".to_string());
-            // Unlike tmux/zellij, herdr runs the command inside an interactive
-            // shell, which would outlive jcode and leave an empty pane behind
-            // (e.g. after `swarm stop`). Exit that shell when jcode exits
-            // cleanly so the pane closes, but keep it open after a failure so
-            // the error stays readable.
-            let shell = format!("{} && exit", program_line);
-            let script = concat!(
-                "set -eu; ",
-                "response=\"$(\"$1\" pane split --current --direction right --cwd \"$2\" --focus)\"; ",
-                "pane_id=\"$(printf '%s\\n' \"$response\" | sed -n '",
-                "s/.*\\\"pane_id\\\"[[:space:]]*:[[:space:]]*\\\"\\([^\\\"]*\\)\\\".*/\\1/p' | head -n 1)\"; ",
-                "test -n \"$pane_id\"; ",
-                "exec \"$1\" pane run \"$pane_id\" \"$3\""
-            );
-            cmd = Command::new("sh");
-            cmd.current_dir(cwd)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .args(["-c", script, "kcode-herdr-spawn", &herdr])
-                .arg(cwd)
-                .arg(shell);
-            if command.fresh_spawn {
-                cmd.env("KCODE_FRESH_SPAWN", "1");
-            }
+            cmd = herdr_runtime::legacy_herdr_spawn(command, cwd, &program_line);
         }
         #[cfg(unix)]
         "tmux" => {

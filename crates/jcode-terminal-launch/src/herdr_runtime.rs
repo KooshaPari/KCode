@@ -1,14 +1,18 @@
-//! HERDR runtime classification for terminal launching.
+//! HERDR runtime classification and spawn adapters for terminal launching.
 //!
 //! The classification rule itself lives in `jcode-herdr`; this module only
-//! adapts the launch crate's client environment to it. Kept in its own file so
-//! `lib.rs` does not grow past its size ratchet (#329).
+//! adapts the launch crate's client environment to it and owns the two HERDR
+//! spawn shapes. Kept out of `lib.rs` so that oversized file does not grow
+//! past its size ratchet (#329).
 
+#[cfg(unix)]
+use crate::{TerminalCommand, command_parts, shell_command, terminal_env_value};
 #[cfg(unix)]
 use jcode_herdr::env::{HerdrEnv, RuntimeKind};
-
 #[cfg(unix)]
-use crate::terminal_env_value;
+use std::path::Path;
+#[cfg(unix)]
+use std::process::{Command, Stdio};
 
 /// Which HERDR runtime the requesting client is inside, if any.
 ///
@@ -19,6 +23,85 @@ use crate::terminal_env_value;
 #[cfg(unix)]
 pub(crate) fn herdr_runtime_kind(client_terminal_env: &[(String, String)]) -> RuntimeKind {
     HerdrEnv::capture_from(|key| terminal_env_value(client_terminal_env, key)).kind()
+}
+
+/// Build the herdr-core (HC) spawn command, or `None` when this is not HC.
+///
+/// HERDR and herdr-core (HC) are distinct runtimes with distinct verbs.
+/// `pane split` / `pane run` exist only on legacy HERDR's socket API; HC's CLI
+/// has no split verb at all. Its verb for "start a program in a terminal I
+/// manage" is `run`, measured on hc 0.1.21: `hc run --bg --rm --cwd <dir> --
+/// <argv>` returns the new terminal's address and removes it once it exits. So
+/// HC gets a NEW terminal rather than a split of this one - the smallest
+/// mapping its surface allows, and still infinitely better than the old
+/// behaviour of escaping into the outer emulator.
+#[cfg(unix)]
+pub(crate) fn hc_run_command(command: &TerminalCommand, cwd: &Path) -> Option<Command> {
+    if herdr_runtime_kind(&command.client_terminal_env) != RuntimeKind::Hc {
+        return None;
+    }
+    let program_line = shell_command(&command_parts(command));
+    // No `&& exit` here: HC runs the program directly, so the terminal ends
+    // with it - there is no lingering interactive shell to close. `--rm`
+    // keeps `hc ls` clean, at the cost of a failed worker's screen
+    // disappearing once it exits, so errors are reported through jcode's own
+    // output instead of a parked terminal. `--cwd` is explicit because HC's
+    // default is the core's cwd, not the requesting client's.
+    let mut cmd = Command::new("hc");
+    cmd.current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .args(["run", "--bg", "--rm", "--cwd"])
+        .arg(cwd)
+        .arg("--")
+        .arg("sh")
+        .arg("-c")
+        .arg(&program_line);
+    if command.fresh_spawn {
+        cmd.env("KCODE_FRESH_SPAWN", "1");
+    }
+    Some(cmd)
+}
+
+/// Build the legacy HERDR `pane split` + `pane run` spawn command.
+#[cfg(unix)]
+pub(crate) fn legacy_herdr_spawn(
+    command: &TerminalCommand,
+    cwd: &Path,
+    program_line: &str,
+) -> Command {
+    // `pane split` deliberately creates a shell and returns its pane id;
+    // `pane run` is the atomic, bracketed-paste-aware way to start a command
+    // in that shell. Keep the small composition here rather than requiring
+    // every user to configure an equivalent spawn hook.
+    let herdr = terminal_env_value(&command.client_terminal_env, "HERDR_BIN_PATH")
+        .unwrap_or_else(|| "herdr".to_string());
+    // Unlike tmux/zellij, herdr runs the command inside an interactive shell,
+    // which would outlive jcode and leave an empty pane behind (e.g. after
+    // `swarm stop`). Exit that shell when jcode exits cleanly so the pane
+    // closes, but keep it open after a failure so the error stays readable.
+    let shell = format!("{} && exit", program_line);
+    let script = concat!(
+        "set -eu; ",
+        "response=\"$(\"$1\" pane split --current --direction right --cwd \"$2\" --focus)\"; ",
+        "pane_id=\"$(printf '%s\\n' \"$response\" | sed -n '",
+        "s/.*\\\"pane_id\\\"[[:space:]]*:[[:space:]]*\\\"\\([^\\\"]*\\)\\\".*/\\1/p' | head -n 1)\"; ",
+        "test -n \"$pane_id\"; ",
+        "exec \"$1\" pane run \"$pane_id\" \"$3\""
+    );
+    let mut cmd = Command::new("sh");
+    cmd.current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .args(["-c", script, "kcode-herdr-spawn", &herdr])
+        .arg(cwd)
+        .arg(shell);
+    if command.fresh_spawn {
+        cmd.env("KCODE_FRESH_SPAWN", "1");
+    }
+    cmd
 }
 
 #[cfg(all(test, unix))]
