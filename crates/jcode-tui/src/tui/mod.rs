@@ -122,7 +122,6 @@ pub use jcode_tui_messages::DisplayMessage;
 mod terminal_modes;
 pub use terminal_modes::*;
 
-
 /// Hash a rendered image's transcript anchor into `hasher`. Shared by the
 /// default and `App` implementations of `side_pane_images_signature` so both
 /// stay in lockstep.
