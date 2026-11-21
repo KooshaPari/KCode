@@ -317,6 +317,17 @@ pub fn show_crash_resume_hint() {
     eprintln!();
 }
 
+/// Invocation name used in user-facing resume hints.
+///
+/// The installed binary is `kcode`. A hint that says `jcode --resume <id>` sends
+/// the operator to *upstream* jcode, which reads `~/.jcode` instead of
+/// `~/.kcode`, so the session they were told to resume is not in that store -
+/// part of the "sessions on reload have issues" report. Matches
+/// `ssh::resume_hint`, which already names the kcode binary.
+pub(crate) fn resume_binary_stem() -> &'static str {
+    "kcode"
+}
+
 /// Build the crash-resume hint lines for `crashed`, newest first.
 ///
 /// Pure so the wording is testable: the lines are printed to stderr outside the
@@ -334,16 +345,17 @@ fn crash_resume_hint_lines(
         return Vec::new();
     };
     let session_label = id::extract_session_name(id).unwrap_or(name.as_str());
+    let bin = resume_binary_stem();
 
     if crashed.len() == 1 {
         vec![
             format!(
-                "{yellow}💥 Session {bold}{session_label}{reset}{yellow} crashed. Resume with:{reset}  jcode --resume {id}"
+                "{yellow}💥 Session {bold}{session_label}{reset}{yellow} crashed. Resume with:{reset}  {bin} --resume {id}"
             ),
             // Always mention the picker. Showing only the ID form reads as
             // "write this down or lose the session", when bare
             // `jcode --resume` opens a searchable list (issue #690).
-            format!("{yellow}   Or browse all:{reset} jcode --resume"),
+            format!("{yellow}   Or browse all:{reset} {bin} --resume"),
         ]
     } else {
         vec![
@@ -351,15 +363,15 @@ fn crash_resume_hint_lines(
                 "{yellow}💥 {} sessions crashed recently. Most recent: {bold}{session_label}{reset}",
                 crashed.len()
             ),
-            format!("{yellow}   Resume with:{reset}  jcode --resume {id}"),
-            format!("{yellow}   List all:{reset}     jcode --resume"),
+            format!("{yellow}   Resume with:{reset}  {bin} --resume {id}"),
+            format!("{yellow}   List all:{reset}     {bin} --resume"),
         ]
     }
 }
 
 #[cfg(test)]
 mod crash_resume_hint_tests {
-    use super::crash_resume_hint_lines;
+    use super::{crash_resume_hint_lines, resume_binary_stem};
 
     fn session(id: &str, name: &str) -> (String, String) {
         (id.to_string(), name.to_string())
@@ -381,10 +393,9 @@ mod crash_resume_hint_tests {
             joined.contains("kcode --resume ses_koala_123"),
             "the direct resume command must still be offered: {joined}"
         );
+        let picker = format!("Or browse all: {} --resume", resume_binary_stem());
         assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("Or browse all: jcode --resume")),
+            lines.iter().any(|line| line.contains(&picker)),
             "the picker form (bare --resume) must be mentioned too: {joined}"
         );
     }
@@ -618,7 +629,7 @@ fn write_session_resume_hint(mut writer: impl Write, session_id: &str) -> io::Re
     if let Some(command) = super::ssh::resume_hint(session_id) {
         writeln!(writer, "  {command}")?;
     } else {
-        writeln!(writer, "  jcode --resume {}", session_id)?;
+        writeln!(writer, "  {} --resume {}", resume_binary_stem(), session_id)?;
     }
     writeln!(writer)?;
     Ok(())

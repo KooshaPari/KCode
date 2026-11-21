@@ -1253,8 +1253,12 @@ pub(crate) fn run_cli(command: super::args::CloudCommand) -> Result<()> {
                     ),
                 };
                 println!(
-                    "Returned {} from `{}` ({} messages). Code: {merge}.\n  Resume: jcode --resume {}",
-                    report.session_id, report.host, report.messages, report.session_id
+                    "Returned {} from `{}` ({} messages). Code: {merge}.\n  Resume: {} --resume {}",
+                    report.session_id,
+                    report.host,
+                    report.messages,
+                    crate::cli::terminal::resume_binary_stem(),
+                    report.session_id
                 );
             }
             if attach {
