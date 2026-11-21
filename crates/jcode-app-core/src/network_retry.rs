@@ -62,6 +62,12 @@ fn classify_text(text: &str) -> Option<String> {
         "connection closed before message completed",
         "unexpected eof",
         "end of file before message completed",
+        // Body-level transport faults reported by reqwest/hyper while decoding
+        // or streaming a response. Mirrors the markers in
+        // crates/jcode-provider-core/src/transport.rs.
+        "error decoding response body",
+        "error reading a body from connection",
+        "stream error received",
     ];
     if network_markers.iter().any(|marker| text.contains(marker)) {
         return Some("the network connection appears to have dropped".to_string());
@@ -232,6 +238,15 @@ mod tests {
                 "should classify as network interruption: {error}"
             );
         }
+    }
+
+    #[test]
+    fn classifies_body_decode_failures_without_a_timeout_marker() {
+        assert!(classify_message("error decoding response body: invalid gzip header").is_some());
+        assert!(
+            classify_message("error decoding response body: error reading a body from connection")
+                .is_some()
+        );
     }
 
     /// Deterministic failures must NOT trigger the wait-for-network path,
