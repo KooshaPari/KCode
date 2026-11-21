@@ -306,7 +306,8 @@ mod tests {
     /// install path branches on, for the same host environment.
     #[test]
     fn status_and_install_agree_on_runtime_kind() {
-        let cases: [(&[(&str, &str)], &str, bool); 4] = [
+        type InstallCase = (&'static [(&'static str, &'static str)], &'static str, bool);
+        let cases: [InstallCase; 4] = [
             (&[], "none", true),
             (&[("HERDR_ENV", "1")], "legacy herdr", true),
             (
