@@ -779,7 +779,7 @@ pub fn list_sessions() -> Result<()> {
                             );
                             warned_no_terminal = true;
                         }
-                        eprintln!("  jcode --resume {}", session_id);
+                        eprintln!("  {}", crate::cli::terminal::resume_hint(&session_id));
                     }
                     Err(e) => {
                         eprintln!("Failed to spawn session {}: {}", session_id, e);
