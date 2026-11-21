@@ -1203,3 +1203,63 @@ fn tool_names_arrive_before_any_arguments_and_interleaved_inputs_keep_call_ids()
         );
     }
 }
+
+/// A16 wiring: `run` is the SDK's live one-shot turn path and it returns the
+/// first `error` unconditionally, so `turn_retry` (a public export with zero
+/// non-test construction sites) never reaches a real turn. A transient
+/// failure must be retried through the same session before `run` gives up.
+#[test]
+fn run_retries_a_transient_failure_before_failing() {
+    let turns = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = std::sync::Arc::clone(&turns);
+    let client = fake_harness(move |frame, writer| {
+        if let ApiRequest::SendMessage { session_id, .. } = &frame.request {
+            let turn = seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if turn == 0 {
+                // First attempt fails transiently.
+                push(
+                    ApiEvent::TurnStopped {
+                        session_id: session_id.clone(),
+                        reason: jcode_harness_api::TurnStopReason::Failure,
+                        message: String::new(),
+                        provider_stop_reason: None,
+                    },
+                    writer,
+                );
+                push(
+                    ApiEvent::Error {
+                        code: jcode_harness_api::ErrorCode::Internal,
+                        message: "error sending request: connection reset by peer".to_string(),
+                    },
+                    writer,
+                );
+                push(
+                    ApiEvent::TurnDone {
+                        session_id: session_id.clone(),
+                    },
+                    writer,
+                );
+            } else {
+                push(
+                    ApiEvent::TextDelta {
+                        message_id: None,
+                        session_id: session_id.clone(),
+                        text: "recovered".to_string(),
+                    },
+                    writer,
+                );
+                push(
+                    ApiEvent::TurnDone {
+                        session_id: session_id.clone(),
+                    },
+                    writer,
+                );
+            }
+        }
+    });
+    let turn = client
+        .run("s1", "hi", Default::default())
+        .expect("a transient failure must be retried, not surfaced");
+    assert_eq!(turn.text, "recovered");
+    assert_eq!(turns.load(std::sync::atomic::Ordering::SeqCst), 2);
+}

@@ -160,9 +160,15 @@ fn contains_code(text: &str, code: &str) -> bool {
     text.match_indices(code).any(|(start, _)| {
         let before = text[..start].chars().next_back();
         let after = text[start + code.len()..].chars().next();
-        !before.is_some_and(|c| c.is_ascii_alphanumeric())
-            && !after.is_some_and(|c| c.is_ascii_alphanumeric())
+        is_code_boundary(before) && is_code_boundary(after)
     })
+}
+
+/// A status code only counts when it is a standalone token. `_` is a word
+/// character here, not a separator: `req_500` and `req_503_abc` are request
+/// ids, not statuses, and must not be read as a transient provider error.
+fn is_code_boundary(c: Option<char>) -> bool {
+    !c.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 const TRANSIENT_MARKERS: &[&str] = &[
@@ -214,6 +220,31 @@ const TRANSIENT_MARKERS: &[&str] = &[
     "try again",
 ];
 
+/// Words that denote a duration. A bare number only binds to one of these; any
+/// other following word (`2 attempts`) does not make the number a delay hint.
+fn is_time_unit(word: &str) -> bool {
+    matches!(
+        word,
+        "ms" | "millisecond"
+            | "milliseconds"
+            | "s"
+            | "sec"
+            | "secs"
+            | "second"
+            | "seconds"
+            | "m"
+            | "min"
+            | "mins"
+            | "minute"
+            | "minutes"
+            | "h"
+            | "hr"
+            | "hrs"
+            | "hour"
+            | "hours"
+    )
+}
+
 fn parse_retry_after(lower: &str) -> Option<Duration> {
     let tail = &lower[lower.find("retry")?..];
     let mut words = tail.split_whitespace().take(8).peekable();
@@ -222,21 +253,34 @@ fn parse_retry_after(lower: &str) -> Option<Duration> {
         if digits.is_empty() {
             continue;
         }
-        let value: u64 = digits.parse().ok()?;
-        let unit = match word[digits.len()..].trim_matches(|c: char| !c.is_ascii_alphabetic()) {
-            "" => words
+        let attached = word[digits.len()..].trim_matches(|c: char| !c.is_ascii_alphabetic());
+        // A number with no unit glued to it is only a delay when the very next
+        // word is a time unit. Otherwise it belongs to an unrelated phrase
+        // (`retry in 2 attempts`) and we keep scanning for a real hint.
+        let unit = if attached.is_empty() {
+            let next = words
                 .peek()
-                .map(|next| {
-                    next.trim_matches(|c: char| !c.is_ascii_alphabetic())
-                        .to_string()
-                })
-                .unwrap_or_default(),
-            unit => unit.to_string(),
+                .map(|next| next.trim_matches(|c: char| !c.is_ascii_alphabetic()))
+                .unwrap_or("");
+            if !is_time_unit(next) {
+                continue;
+            }
+            next.to_string()
+        } else if is_time_unit(attached) {
+            attached.to_string()
+        } else {
+            continue;
         };
+        // An overflowing run is still an explicit hint when it carries a unit.
+        // Saturate so the retry policy, not the decoder, rejects the wait; a
+        // bare overflowing run was already skipped above as a non-hint.
+        let value = digits.parse::<u64>().unwrap_or(u64::MAX);
         let secs = match unit.as_str() {
-            "ms" | "milliseconds" => return Some(Duration::from_millis(value)),
+            "ms" | "millisecond" | "milliseconds" => {
+                return (value > 0).then(|| Duration::from_millis(value));
+            }
             "m" | "min" | "mins" | "minute" | "minutes" => value.saturating_mul(60),
-            "h" | "hr" | "hour" | "hours" => value.saturating_mul(3600),
+            "h" | "hr" | "hrs" | "hour" | "hours" => value.saturating_mul(3600),
             _ => value,
         };
         return (secs > 0).then(|| Duration::from_secs(secs));
