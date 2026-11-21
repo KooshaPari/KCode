@@ -1,4 +1,6 @@
 use anyhow::Result;
+#[cfg(unix)]
+use jcode_herdr::env::{HerdrEnv, RuntimeKind};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -214,6 +216,17 @@ fn terminal_env_value(client_terminal_env: &[(String, String)], key: &str) -> Op
         .filter(|value| !value.is_empty())
 }
 
+/// Which HERDR runtime the requesting client is inside, if any.
+///
+/// The classification rule lives in `jcode-herdr`, not here: herdr-core (HC)
+/// injects `HC_TERMINAL_ID` and no legacy variable at all, so the old
+/// "`HERDR_ENV` + `HERDR_PANE_ID`" test read an HC pane as "not herdr" and let
+/// the spawn escape into the outer emulator. One rule, both runtimes (#317).
+#[cfg(unix)]
+fn herdr_runtime_kind(client_terminal_env: &[(String, String)]) -> RuntimeKind {
+    HerdrEnv::capture_from(|key| terminal_env_value(client_terminal_env, key)).kind()
+}
+
 #[cfg(unix)]
 fn detected_resume_terminal_with_client_env(
     client_terminal_env: &[(String, String)],
@@ -222,7 +235,9 @@ fn detected_resume_terminal_with_client_env(
     // Herdr is a terminal multiplexer, so headed sessions should remain in the
     // workspace that requested them instead of escaping into the underlying
     // emulator. Prefer it even when the pane also advertises kitty/wezterm.
-    if is_set("HERDR_ENV") && is_set("HERDR_PANE_ID") {
+    // HC qualifies as well: it sets no legacy variable, so asking for
+    // `HERDR_ENV` here used to miss it.
+    if !matches!(herdr_runtime_kind(client_terminal_env), RuntimeKind::None) {
         return Some("herdr".to_string());
     }
     if is_set("HANDTERM_SESSION") || is_set("HANDTERM_PID") {
@@ -375,8 +390,7 @@ fn resume_terminal_candidates_with_client_env(
     // A tmux client already owns the user's terminal layout. Prefer a pane in
     // that exact client over opening another emulator window. Explicit
     // KCODE_TERMINAL and configured spawn hooks still take precedence.
-    let in_herdr = terminal_env_value(client_terminal_env, "HERDR_ENV").is_some()
-        && terminal_env_value(client_terminal_env, "HERDR_PANE_ID").is_some();
+    let in_herdr = !matches!(herdr_runtime_kind(client_terminal_env), RuntimeKind::None);
     let in_inner_multiplexer = in_herdr
         || terminal_env_value(client_terminal_env, "ZELLIJ").is_some()
         || terminal_env_value(client_terminal_env, "STY").is_some();
@@ -660,6 +674,41 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
     match term {
         #[cfg(unix)]
         "herdr" => {
+            // HERDR and herdr-core (HC) are distinct runtimes with distinct
+            // verbs. `pane split` / `pane run` exist only on legacy HERDR's
+            // socket API; HC's CLI has no split verb at all. Its verb for
+            // "start a program in a terminal I manage" is `run`, measured on
+            // hc 0.1.21: `hc run --bg --rm --cwd <dir> -- <argv>` returns the
+            // new terminal's address and removes it once it exits. So HC gets a
+            // NEW terminal rather than a split of this one - the smallest
+            // mapping its surface allows, and still infinitely better than the
+            // old behaviour of escaping into the outer emulator.
+            let program_line = shell_command(&command_parts(command));
+            if herdr_runtime_kind(&command.client_terminal_env) == RuntimeKind::Hc {
+                // No `&& exit` here: HC runs the program directly, so the
+                // terminal ends with it - there is no lingering interactive
+                // shell to close. `--rm` keeps `hc ls` clean, at the cost of a
+                // failed worker's screen disappearing once it exits, so errors
+                // are reported through jcode's own output instead of a parked
+                // terminal. `--cwd` is explicit because HC's default is the
+                // core's cwd, not the requesting client's.
+                cmd = Command::new("hc");
+                cmd.current_dir(cwd)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .args(["run", "--bg", "--rm", "--cwd"])
+                    .arg(cwd)
+                    .arg("--")
+                    .arg("sh")
+                    .arg("-c")
+                    .arg(&program_line);
+                if command.fresh_spawn {
+                    cmd.env("KCODE_FRESH_SPAWN", "1");
+                }
+                return Some(cmd);
+            }
+
             // `pane split` deliberately creates a shell and returns its pane id;
             // `pane run` is the atomic, bracketed-paste-aware way to start a
             // command in that shell. Keep the small composition here rather
@@ -671,7 +720,7 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
             // (e.g. after `swarm stop`). Exit that shell when jcode exits
             // cleanly so the pane closes, but keep it open after a failure so
             // the error stays readable.
-            let shell = format!("{} && exit", shell_command(&command_parts(command)));
+            let shell = format!("{} && exit", program_line);
             let script = concat!(
                 "set -eu; ",
                 "response=\"$(\"$1\" pane split --current --direction right --cwd \"$2\" --focus)\"; ",
@@ -1696,5 +1745,80 @@ mod tests {
             env_value(&cmd, "KCODE_SPAWN_SESSION_ID").as_deref(),
             Some("ses_abc")
         );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn hc_client_env_is_detected_as_herdr() {
+        // herdr-core injects `HC_TERMINAL_ID` and no legacy variable. Before
+        // #317 this env produced no candidate at all, so the spawn escaped
+        // into the outer emulator instead of staying in the HC workspace.
+        let hc_env = vec![("HC_TERMINAL_ID".to_string(), "t1".to_string())];
+        assert_eq!(
+            detected_resume_terminal_with_client_env(&hc_env),
+            Some("herdr".to_string())
+        );
+        assert_eq!(
+            resume_terminal_candidates_with_client_env(&hc_env, None)[0],
+            "herdr"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn hc_spawn_adapter_uses_hc_run() {
+        let command = TerminalCommand::new(
+            "/usr/local/bin/jcode",
+            vec!["--resume".to_string(), "ses hc".to_string()],
+        )
+        .client_terminal_env(vec![
+            ("HC_TERMINAL_ID".to_string(), "t1".to_string()),
+            ("HC_SOCKET".to_string(), "/tmp/hc.sock".to_string()),
+        ]);
+
+        let cmd = build_spawn_command("herdr", &command, Path::new("/work/a b"))
+            .expect("HC spawn command should build");
+        assert_eq!(cmd.get_program().to_string_lossy(), "hc");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args,
+            vec![
+                "run",
+                "--bg",
+                "--rm",
+                "--cwd",
+                "/work/a b",
+                "--",
+                "sh",
+                "-c",
+                "'/usr/local/bin/jcode' '--resume' 'ses hc'",
+            ]
+        );
+        // HC has no persistent shell to close, so `&& exit` (legacy HERDR's
+        // empty-pane guard) must not leak into the HC path.
+        assert!(!args.iter().any(|arg| arg.contains("&& exit")));
+        assert!(!args.iter().any(|arg| arg.contains("pane split")));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn legacy_herdr_client_env_keeps_pane_split_adapter() {
+        let command =
+            TerminalCommand::new("/usr/local/bin/jcode", Vec::new()).client_terminal_env(vec![
+                ("HERDR_ENV".to_string(), "1".to_string()),
+                ("HERDR_PANE_ID".to_string(), "w1:p1".to_string()),
+            ]);
+        let cmd = build_spawn_command("herdr", &command, Path::new("/work/dir"))
+            .expect("legacy HERDR spawn command should build");
+        assert_eq!(cmd.get_program().to_string_lossy(), "sh");
+        let script = cmd
+            .get_args()
+            .nth(1)
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .unwrap();
+        assert!(script.contains("pane split --current --direction right"));
     }
 }
