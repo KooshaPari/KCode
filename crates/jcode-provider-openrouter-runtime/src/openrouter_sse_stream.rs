@@ -133,13 +133,15 @@ fn http_status_hint(status: u16, api_base: &str, model: &str) -> &'static str {
 /// the message text as `(request_id: gw-...)`. Either form is surfaced verbatim
 /// so a failing lane can be matched to the provider's logs (#324).
 fn provider_request_id(body: &str) -> Option<String> {
-    let from_json = serde_json::from_str::<Value>(body).ok().and_then(|value| {
-        value
+    let from_json = match serde_json::from_str::<Value>(body) {
+        Ok(value) => value
             .get("request_id")
             .or_else(|| value.get("error").and_then(|err| err.get("request_id")))
             .and_then(Value::as_str)
-            .map(str::to_string)
-    });
+            .map(str::to_string),
+        // Not JSON: the gateway may have inlined the id in plain text instead.
+        Err(_) => None,
+    };
     if from_json.is_some() {
         return from_json;
     }
@@ -367,9 +369,10 @@ async fn stream_response(
         let retry_after = jcode_provider_core::retry_after::retry_after(response.headers());
         let body = jcode_base::util::http_error_body(response, "HTTP error").await;
         let hint = http_status_hint(status.as_u16(), &api_base, &model);
-        let request_id = provider_request_id(&body)
-            .map(|id| format!("\n  request_id: {id}"))
-            .unwrap_or_default();
+        let request_id = match provider_request_id(&body) {
+            Some(id) => format!("\n  request_id: {id}"),
+            None => String::new(),
+        };
         return Err(jcode_provider_core::retry_after::error_with_retry_after(
             format!(
                 "OpenAI-compatible chat request failed\n  endpoint: {}\n  model: {}\n  auth: {}\n  status: {}\n  response: {}{}\n{}",
