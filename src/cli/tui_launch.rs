@@ -779,7 +779,7 @@ pub fn list_sessions() -> Result<()> {
                             );
                             warned_no_terminal = true;
                         }
-                        eprintln!("  jcode --resume {}", session_id);
+                        eprintln!("  {}", super::terminal::resume_command(&session_id));
                     }
                     Err(e) => {
                         eprintln!("Failed to spawn session {}: {}", session_id, e);

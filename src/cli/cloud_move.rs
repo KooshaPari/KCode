@@ -1252,14 +1252,14 @@ pub(crate) fn run_cli(command: super::args::CloudCommand) -> Result<()> {
                         files.join(", ")
                     ),
                 };
+                let hint = crate::cli::terminal::resume_command(&report.session_id);
                 println!(
-                    "Returned {} from `{}` ({} messages). Code: {merge}.\n  Resume: jcode --resume {}",
-                    report.session_id, report.host, report.messages, report.session_id
+                    "Returned {} from `{}` ({} messages). Code: {merge}.\n  Resume: {hint}",
+                    report.session_id, report.host, report.messages
                 );
             }
             if attach {
-                let exe = std::env::current_exe()?;
-                let mut command = Command::new(exe);
+                let mut command = Command::new(std::env::current_exe()?);
                 command.arg("--resume").arg(&report.session_id);
                 let error = crate::platform::replace_process(&mut command);
                 bail!("failed to resume locally: {error}");
