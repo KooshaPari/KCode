@@ -117,8 +117,39 @@ fn http_status_hint(status: u16, api_base: &str, model: &str) -> &'static str {
         500..=599 if !is_local => {
             "Hint: the provider is overloaded or having a temporary server problem, not a network problem. jcode already retried; try again shortly or switch to another provider with /model."
         }
+        // Any other 4xx: the provider received the request and rejected it. The
+        // network is fine, and resending the identical request cannot succeed,
+        // so name the request as the problem instead of printing connectivity
+        // advice next to a status the server did answer (#324).
+        400..=499 if !is_local => {
+            "Hint: the provider rejected this request itself (a client error, not a network problem). Its own message and request id are printed above; resending the identical request will fail the same way, so fix the request or switch to another provider with /model."
+        }
         _ => endpoint_hint,
     }
+}
+
+/// The provider's own request id, when it supplied one. The gateway reports it
+/// either as a JSON `request_id` field (top level or under `error`) or inline in
+/// the message text as `(request_id: gw-...)`. Either form is surfaced verbatim
+/// so a failing lane can be matched to the provider's logs (#324).
+fn provider_request_id(body: &str) -> Option<String> {
+    if let Ok(value) = serde_json::from_str::<Value>(body) {
+        if let Some(id) = value
+            .get("request_id")
+            .or_else(|| value.get("error").and_then(|err| err.get("request_id")))
+            .and_then(Value::as_str)
+        {
+            return Some(id.to_string());
+        }
+    }
+
+    let idx = body.find("request_id:")?;
+    let rest = body[idx + "request_id:".len()..].trim_start();
+    let id: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    (!id.is_empty()).then_some(id)
 }
 
 // ============================================================================
@@ -335,14 +366,18 @@ async fn stream_response(
         let retry_after = jcode_provider_core::retry_after::retry_after(response.headers());
         let body = jcode_base::util::http_error_body(response, "HTTP error").await;
         let hint = http_status_hint(status.as_u16(), &api_base, &model);
+        let request_id = provider_request_id(&body)
+            .map(|id| format!("\n  request_id: {id}"))
+            .unwrap_or_default();
         return Err(jcode_provider_core::retry_after::error_with_retry_after(
             format!(
-                "OpenAI-compatible chat request failed\n  endpoint: {}\n  model: {}\n  auth: {}\n  status: {}\n  response: {}\n{}",
+                "OpenAI-compatible chat request failed\n  endpoint: {}\n  model: {}\n  auth: {}\n  status: {}\n  response: {}{}\n{}",
                 url,
                 model,
                 auth.label(),
                 status,
                 body,
+                request_id,
                 hint
             ),
             retry_after,
@@ -806,5 +841,77 @@ mod tests {
         assert!(
             http_status_hint(503, "http://localhost:11434/v1", "llama3.2").contains("ollama serve")
         );
+    }
+
+    /// Verbatim body captured from the desk on 2026-11-21 (t1h) against
+    /// `https://opencode.ai/zen/go/v1/chat/completions`, model
+    /// `deepseek-v4.1-flash`. It is the regression fixture for #324: a 400 that
+    /// the harness used to label with connectivity advice.
+    const OVERSIZED_REQUEST_400_BODY: &str = r#"{"error":{"param":null,"type":"invalid_request_error","code":"invalid_request_error","message":"Upstream request failed: [invalid_request_error] decoded body exceeds 50331648 bytes (request_id: gw-c7c454bf54df-107d856)"}}"#;
+
+    fn oversized_request_400_error(hint: &str) -> String {
+        format!(
+            "OpenAI-compatible chat request failed\n  endpoint: https://opencode.ai/zen/go/v1/chat/completions\n  model: deepseek-v4.1-flash\n  auth: OPENCODE_GO_API_KEY\n  status: 400 Bad Request\n  response: {OVERSIZED_REQUEST_400_BODY}\n{hint}"
+        )
+    }
+
+    /// The bug was the label, not the presence of an error: a 400 the server
+    /// answered must not be reported as a connectivity problem.
+    #[test]
+    fn oversized_request_400_is_labelled_as_a_rejected_request() {
+        let hint = http_status_hint(400, "https://opencode.ai/zen/go/v1", "deepseek-v4.1-flash");
+        assert!(hint.contains("rejected this request"), "{hint}");
+        assert!(hint.contains("not a network problem"), "{hint}");
+        assert!(hint.contains("/model"), "{hint}");
+        assert!(!hint.contains("network connectivity"), "{hint}");
+        assert!(!hint.contains("DNS/TLS"), "{hint}");
+
+        let err = oversized_request_400_error(hint);
+        assert!(err.contains("status: 400 Bad Request"), "{err}");
+        assert!(!err.contains("network connectivity"), "{err}");
+    }
+
+    /// The provider's own request id must reach the surfaced error, both when it
+    /// arrives as a JSON field and when the gateway inlines it in the message.
+    #[test]
+    fn oversized_request_400_carries_the_provider_request_id() {
+        let id = provider_request_id(OVERSIZED_REQUEST_400_BODY);
+        assert_eq!(id.as_deref(), Some("gw-c7c454bf54df-107d856"));
+
+        let line = format!("\n  request_id: {}", id.unwrap());
+        let err = oversized_request_400_error(&format!(
+            "{line}\n{}",
+            http_status_hint(400, "https://opencode.ai/zen/go/v1", "deepseek-v4.1-flash")
+        ));
+        assert!(
+            err.contains("\n  request_id: gw-c7c454bf54df-107d856"),
+            "{err}"
+        );
+
+        // A JSON field wins over nothing at all, and an absent id stays absent.
+        assert_eq!(
+            provider_request_id(r#"{"request_id":"req-abc123"}"#).as_deref(),
+            Some("req-abc123")
+        );
+        assert_eq!(
+            provider_request_id(r#"{"error":{"request_id":"err-9"}}"#).as_deref(),
+            Some("err-9")
+        );
+        assert_eq!(provider_request_id("plain failure text"), None);
+    }
+
+    /// Retrying this request can never succeed: it is deterministic. The
+    /// fixture contains `50331648`, whose "50" substring must not make the
+    /// loose server-error heuristic treat it as retryable.
+    #[test]
+    fn oversized_request_400_is_not_retryable() {
+        let err = oversized_request_400_error(&http_status_hint(
+            400,
+            "https://opencode.ai/zen/go/v1",
+            "deepseek-v4.1-flash",
+        ));
+        assert!(err.contains("50331648"), "fixture must keep the byte count");
+        assert!(!is_retryable_error(&err), "{err}");
+        assert_eq!(parsed_http_status(&err), Some(400));
     }
 }
