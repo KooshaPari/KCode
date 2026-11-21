@@ -283,11 +283,47 @@ pub struct StoredMessage {
     pub token_usage: Option<StoredTokenUsage>,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+/// How a stored message should be displayed. Unknown values are preserved
+/// verbatim so a newer JCode session can be loaded and saved by an older
+/// KCode without losing its original display marker.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoredDisplayRole {
     System,
     BackgroundTask,
+    /// Informational file-change marker authored by JCode. It is not a user
+    /// turn or a background task; render it like a system note.
+    FileActivity,
+    /// A display role from a newer client, retained byte-for-byte.
+    Other(String),
+}
+
+impl<'de> Deserialize<'de> for StoredDisplayRole {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(match raw.as_str() {
+            "system" => Self::System,
+            "background_task" => Self::BackgroundTask,
+            "file_activity" => Self::FileActivity,
+            _ => Self::Other(raw),
+        })
+    }
+}
+
+impl Serialize for StoredDisplayRole {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Self::System => serializer.serialize_str("system"),
+            Self::BackgroundTask => serializer.serialize_str("background_task"),
+            Self::FileActivity => serializer.serialize_str("file_activity"),
+            Self::Other(raw) => serializer.serialize_str(raw),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1109,6 +1145,66 @@ mod session_search_tests {
         let fenced = session_search_markdown_code_block("contains ``` fence");
         assert!(fenced.starts_with("````text\n"));
         assert!(fenced.ends_with("\n````"));
+    }
+}
+
+#[cfg(test)]
+mod display_role_tests {
+    use super::*;
+    use serde_json::{Value, json};
+
+    fn text_message(display_role: &'static str, text: &str) -> Value {
+        json!({
+            "id": format!("message-{display_role}"),
+            "role": "user",
+            "content": [{ "type": "text", "text": text }],
+            "display_role": display_role,
+            "timestamp": "2026-11-21T02:00:00Z",
+        })
+    }
+
+    #[test]
+    fn file_activity_display_role_deserializes() {
+        let message: StoredMessage =
+            serde_json::from_value(text_message("file_activity", "changed one file"))
+                .expect("file_activity should decode");
+
+        assert_eq!(message.display_role, Some(StoredDisplayRole::FileActivity));
+        assert_eq!(message.role, Role::User);
+        assert_eq!(message.content_preview(), "changed one file");
+    }
+
+    #[test]
+    fn file_activity_display_role_round_trips() {
+        let message: StoredMessage =
+            serde_json::from_value(text_message("file_activity", "changed one file"))
+                .expect("file_activity should decode");
+
+        let encoded = serde_json::to_value(&message).expect("serialize message");
+        assert_eq!(encoded["display_role"], json!("file_activity"));
+
+        let decoded: StoredMessage = serde_json::from_value(encoded).expect("decode round trip");
+        assert_eq!(decoded.display_role, Some(StoredDisplayRole::FileActivity));
+        assert_eq!(decoded.content_preview(), "changed one file");
+    }
+
+    #[test]
+    fn unknown_display_role_round_trips_losslessly() {
+        let original = text_message("some_future_role", "still readable");
+        let message: StoredMessage =
+            serde_json::from_value(original.clone()).expect("future role should remain decodable");
+
+        assert_eq!(
+            message.display_role,
+            Some(StoredDisplayRole::Other("some_future_role".into()))
+        );
+        assert_eq!(message.id, "message-some_future_role");
+        assert_eq!(message.content_preview(), "still readable");
+
+        let encoded = serde_json::to_value(&message).expect("serialize message");
+        assert_eq!(encoded["display_role"], json!("some_future_role"));
+        assert_ne!(encoded["display_role"], json!("unknown"));
+        assert_eq!(encoded, original);
     }
 }
 
