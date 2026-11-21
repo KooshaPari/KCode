@@ -142,9 +142,8 @@ impl RetryBudget {
     /// total time budget is the count multiplied by the cap, which bounds the
     /// wait even when each attempt stalls for the full cap.
     pub fn new(max_attempts: u32, per_attempt_cap_secs: u64) -> Self {
-        let max_elapsed = Duration::from_secs(
-            u64::from(max_attempts.max(1)) * per_attempt_cap_secs.max(1),
-        );
+        let max_elapsed =
+            Duration::from_secs(u64::from(max_attempts.max(1)) * per_attempt_cap_secs.max(1));
         Self {
             max_attempts: max_attempts.max(1),
             max_elapsed,

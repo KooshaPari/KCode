@@ -135,7 +135,10 @@ mod tests {
         // After the full budget elapses, the deadline is expired regardless
         // of how many heartbeats arrived.
         tokio::time::advance(Duration::from_secs(1)).await;
-        assert!(deadline.expired(), "heartbeats must not extend total deadline");
+        assert!(
+            deadline.expired(),
+            "heartbeats must not extend total deadline"
+        );
     }
 
     #[test]
