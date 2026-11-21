@@ -5,7 +5,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use super::journal::{PersistVectorMode, SessionJournalEntry, metadata_requires_snapshot};
-use super::storage_paths::{file_len_or_zero, session_journal_path_from_snapshot, session_path};
+use super::storage_paths::{
+    file_len_or_zero, session_journal_path_from_snapshot, session_path,
+    session_save_lock_path_from_snapshot,
+};
 use super::{MAX_SESSION_JOURNAL_BYTES, RemoteStartupSessionSnapshot, Session, SessionStartupStub};
 use crate::storage;
 
@@ -27,6 +30,15 @@ impl JournalReplayStats {
 /// exclusively so `process::exit` cannot land between a checkpoint's snapshot
 /// write and its journal delete (#1632).
 static SAVES_IN_FLIGHT: std::sync::RwLock<()> = std::sync::RwLock::new(());
+
+/// How long a save waits for another writer's session lock before failing.
+///
+/// Long enough to ride out a concurrent full-snapshot write of a large
+/// transcript, short enough that a wedged peer cannot stall a turn loop
+/// indefinitely. The save then fails with an error naming the holder instead
+/// of dropping the write silently, because a silently lost save is a lost
+/// transcript.
+const SESSION_SAVE_LOCK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Block until no session save is in progress (or `timeout` elapses), then
 /// keep new saves from starting. Call right before exiting the process.
@@ -671,6 +683,21 @@ impl Session {
             return Ok(());
         }
 
+        // Cross-process exclusion for the whole read-modify-write below. Atomic
+        // rename keeps readers safe, but without this two writers can read the
+        // same journal length and then interleave an append with the other's
+        // checkpoint, or one snapshot can silently discard the other's newer
+        // messages. Contended saves wait briefly, then fail with the holder's
+        // identity; a write is never dropped silently.
+        let save_lock_path = session_save_lock_path_from_snapshot(&path);
+        let save_lock = match storage::lock_exclusive(&save_lock_path, SESSION_SAVE_LOCK_TIMEOUT) {
+            Ok(guard) => guard,
+            Err(err) => {
+                crate::logging::warn(&format!("Session {} not persisted: {err}", self.id));
+                return Err(anyhow::anyhow!(err.to_string()));
+            }
+        };
+
         let start = std::time::Instant::now();
         let snapshot_bytes_before = file_len_or_zero(&path);
         let journal_bytes_before = file_len_or_zero(&journal_path);
@@ -822,6 +849,9 @@ impl Session {
         let elapsed = start.elapsed();
         let snapshot_bytes_after = file_len_or_zero(&path);
         let result_ok = result.is_ok();
+        // The transcript write is finished; index and telemetry work below
+        // must not keep a peer writer waiting on the session lock.
+        drop(save_lock);
         if elapsed.as_millis() > 50 {
             crate::logging::info(&format!(
                 "Session save slow: total={:.0}ms mode={} metadata_snapshot={} vectors_snapshot={} entry_build={}ms append={}ms journal_stat={}ms checkpoint={}ms messages={} delta_messages={} delta_env_snapshots={} delta_memory_injections={} delta_replay_events={} snapshot_bytes_before={} journal_bytes_before={} journal_bytes_after={}",
@@ -1004,5 +1034,207 @@ mod tests {
         );
         assert_eq!(std::fs::read(&snapshot_path).unwrap(), original);
         assert!(pre_wipe_backups(dir.path()).is_empty());
+    }
+
+    struct HomeGuard(Option<std::ffi::OsString>);
+
+    impl HomeGuard {
+        fn set(path: &Path) -> Self {
+            let previous = std::env::var_os("JCODE_HOME");
+            crate::env::set_var("JCODE_HOME", path);
+            Self(previous)
+        }
+    }
+
+    impl Drop for HomeGuard {
+        fn drop(&mut self) {
+            if let Some(previous) = &self.0 {
+                crate::env::set_var("JCODE_HOME", previous);
+            } else {
+                crate::env::remove_var("JCODE_HOME");
+            }
+        }
+    }
+
+    fn session_with_tagged_messages(id: &str, tag: &str, count: usize) -> Session {
+        let mut session = Session::create_with_id(id.into(), None, None);
+        for index in 0..count {
+            session.add_message(
+                Role::User,
+                vec![ContentBlock::Text {
+                    text: format!("{tag}-{index}"),
+                    cache_control: None,
+                }],
+            );
+        }
+        session
+    }
+
+    fn tagged_texts(count: usize, tag: &str) -> Vec<String> {
+        (0..count).map(|index| format!("{tag}-{index}")).collect()
+    }
+
+    fn stored_texts(session: &Session) -> Vec<String> {
+        session
+            .messages
+            .iter()
+            .flat_map(|message| message.content.iter())
+            .filter_map(|block| match block {
+                ContentBlock::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn save_waits_for_the_holder_then_fails_loudly_naming_it() {
+        let _env = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _home = HomeGuard::set(temp.path());
+
+        let mut session = session_with_tagged_messages("session_held_lock", "alpha", 1);
+        let path = session_path(&session.id).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let lock_path = session_save_lock_path_from_snapshot(&path);
+        let held = storage::lock_exclusive(&lock_path, std::time::Duration::from_millis(50))
+            .expect("test must hold the session lock");
+
+        let started = Instant::now();
+        let error = session
+            .save()
+            .expect_err("a contended save must fail, never silently drop the write");
+        assert!(started.elapsed() >= SESSION_SAVE_LOCK_TIMEOUT);
+        let message = error.to_string();
+        assert!(message.contains("timed out"), "{message}");
+        assert!(
+            message.contains(&format!("pid={}", std::process::id())),
+            "timeout must name the recorded holder: {message}"
+        );
+        assert!(
+            !path.exists(),
+            "a save that never took the lock must not write a transcript"
+        );
+
+        // Once the holder releases, the same in-memory session saves normally.
+        drop(held);
+        session
+            .save()
+            .expect("save succeeds after the lock is released");
+        assert_eq!(
+            stored_texts(&Session::load_from_path(&path).unwrap()),
+            vec!["alpha-0".to_string()]
+        );
+    }
+
+    #[test]
+    fn concurrent_saves_of_one_session_never_interleave() {
+        let _env = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _home = HomeGuard::set(temp.path());
+
+        const COUNT: usize = 300;
+        let id = "session_concurrent_save";
+        let path = session_path(id).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+
+        let alpha = session_with_tagged_messages(id, "alpha", COUNT);
+        let beta = session_with_tagged_messages(id, "beta", COUNT);
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+        let spawn = |mut session: Session, barrier: std::sync::Arc<std::sync::Barrier>| {
+            std::thread::spawn(move || {
+                barrier.wait();
+                session.save()
+            })
+        };
+        let alpha_thread = spawn(alpha, barrier.clone());
+        let beta_thread = spawn(beta, barrier);
+        alpha_thread.join().unwrap().unwrap();
+        beta_thread.join().unwrap().unwrap();
+
+        let loaded = Session::load_from_path(&path).unwrap();
+        let texts = stored_texts(&loaded);
+        let expected_alpha = tagged_texts(COUNT, "alpha");
+        let expected_beta = tagged_texts(COUNT, "beta");
+        assert_eq!(
+            texts.len(),
+            COUNT,
+            "transcript must hold one writer's messages"
+        );
+        assert!(
+            texts == expected_alpha || texts == expected_beta,
+            "transcript mixed two writers' messages: {} entries",
+            texts.len()
+        );
+    }
+
+    #[test]
+    fn single_writer_save_round_trips_and_releases_the_lock() {
+        let _env = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _home = HomeGuard::set(temp.path());
+
+        let mut session = session_with_tagged_messages("session_single_writer", "alpha", 2);
+        session.save().unwrap();
+        let path = session_path(&session.id).unwrap();
+        assert_eq!(
+            stored_texts(&Session::load_from_path(&path).unwrap()),
+            tagged_texts(2, "alpha")
+        );
+
+        // Appending to an existing transcript keeps working unchanged.
+        session.add_message(
+            Role::User,
+            vec![ContentBlock::Text {
+                text: "alpha-2".into(),
+                cache_control: None,
+            }],
+        );
+        session.save().unwrap();
+        assert_eq!(
+            stored_texts(&Session::load_from_path(&path).unwrap()),
+            tagged_texts(3, "alpha")
+        );
+
+        let lock_path = session_save_lock_path_from_snapshot(&path);
+        let released = storage::lock_exclusive(&lock_path, std::time::Duration::from_millis(100));
+        assert!(
+            released.is_ok(),
+            "the save must release its lock: {:?}",
+            released.err()
+        );
+    }
+
+    #[test]
+    fn leftover_temp_from_crashed_writer_keeps_previous_transcript() {
+        let _env = crate::storage::lock_test_env();
+        let temp = tempfile::tempdir().unwrap();
+        let _home = HomeGuard::set(temp.path());
+
+        let mut session = session_with_tagged_messages("session_crash_temp", "prior", 2);
+        session.save().unwrap();
+        let path = session_path(&session.id).unwrap();
+
+        // A writer died after filling its temp file but before the rename that
+        // publishes it. The published snapshot must still be the prior one.
+        let orphan = path.with_extension(format!("tmp.{}.{}", std::process::id(), 424242u64));
+        std::fs::write(&orphan, b"{\"half\":\"written").unwrap();
+        assert_eq!(
+            stored_texts(&Session::load_from_path(&path).unwrap()),
+            tagged_texts(2, "prior")
+        );
+
+        // The orphan is ignored by the next save, which publishes in full.
+        session.add_message(
+            Role::User,
+            vec![ContentBlock::Text {
+                text: "prior-2".into(),
+                cache_control: None,
+            }],
+        );
+        session.save().unwrap();
+        assert_eq!(
+            stored_texts(&Session::load_from_path(&path).unwrap()),
+            tagged_texts(3, "prior")
+        );
     }
 }

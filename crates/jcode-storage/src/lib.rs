@@ -87,6 +87,9 @@ pub use active_pids::{
     unregister_active_pid, user_session_counts, user_session_presence,
 };
 
+mod file_lock;
+pub use file_lock::{FileLockGuard, LockError, lock_exclusive};
+
 mod session_lease;
 pub use session_lease::{
     SessionLease, SessionLeaseBlock, read_session_lease, remove_session_lease, session_lease_block,

@@ -36,6 +36,23 @@ pub fn session_journal_path_from_snapshot(path: &Path) -> PathBuf {
     path.with_file_name(name)
 }
 
+/// Sidecar lock guarding one session's save read-modify-write.
+///
+/// Kept in a `.locks` subdirectory rather than beside the transcript so session
+/// directory scans (which filter `*.json`) and cloud copies never mistake it
+/// for session data.
+pub fn session_save_lock_path_from_snapshot(path: &Path) -> PathBuf {
+    let mut name = path
+        .file_stem()
+        .map(|stem| stem.to_os_string())
+        .unwrap_or_default();
+    name.push(".lock");
+    path.parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(".locks")
+        .join(name)
+}
+
 pub fn session_journal_path(session_id: &str) -> Result<PathBuf> {
     Ok(session_journal_path_from_snapshot(&session_path(
         session_id,
