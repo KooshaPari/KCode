@@ -492,6 +492,11 @@ fn with_reasoning_current_home<T>(f: impl FnOnce() -> T) -> T {
 fn create_jcode_repo_fixture() -> tempfile::TempDir {
     let temp = tempfile::TempDir::new().expect("temp repo");
     std::fs::create_dir_all(temp.path().join(".git")).expect("git dir");
+    // Must match the real crate name: `is_jcode_repo` accepts only
+    // `name = "kcode"`, which is what the workspace `Cargo.toml` declares
+    // after the rename. A fixture still named "jcode" is not recognisable as
+    // this repository, so `/selfdev` fails with "Could not find the jcode
+    // repository" instead of entering self-dev mode.
     std::fs::write(
         temp.path().join("Cargo.toml"),
         "[package]\nname = \"kcode\"\nversion = \"0.1.0\"\n",
