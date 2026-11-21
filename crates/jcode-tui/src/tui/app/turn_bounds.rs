@@ -47,10 +47,13 @@ pub(super) async fn await_network_retry(
     app: &mut App,
     retry_budget: &mut crate::network_retry::RetryBudget,
 ) -> anyhow::Result<()> {
-    let _ = crate::network_retry::wait_until_probably_online_bounded(*retry_budget).await;
-    app.push_display_message(DisplayMessage::system(
-        "Network connectivity looks restored; retrying request.".to_string(),
-    ));
+    let restored = crate::network_retry::wait_until_probably_online_bounded(*retry_budget).await;
+    let notice = if restored {
+        "Network connectivity looks restored; retrying request."
+    } else {
+        "Network still looks offline; retrying the request anyway."
+    };
+    app.push_display_message(DisplayMessage::system(notice.to_string()));
     if !retry_budget.record_attempt() {
         return fail_retry_limit(app);
     }
