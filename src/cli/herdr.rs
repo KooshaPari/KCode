@@ -125,6 +125,8 @@ fn push_row(out: &mut String, label: &str, value: &str) {
 
 /// Write screen detection manifests for jcode and ForgeCode.
 pub(crate) fn run_herdr_install() -> Result<()> {
+    require_legacy_runtime(&HerdrEnv::capture())?;
+
     let dir = herdr_agent_detection_dir()?;
     std::fs::create_dir_all(&dir)?;
 
@@ -142,10 +144,26 @@ pub(crate) fn run_herdr_install() -> Result<()> {
 
     println!();
     println!("Screen manifests written to {}", dir.display());
-    println!(
-        "HERDR will use these rules to detect jcode and ForgeCode agent state from terminal output."
-    );
+    println!("{LEGACY_MANIFEST_NOTICE}");
 
+    Ok(())
+}
+
+/// Refuse an install that the detected runtime would never read.
+///
+/// Screen manifests are a legacy-HERDR mechanism. Under herdr-core (HC) agent
+/// state is inferred by HC itself (`terminal.wait` / `terminal.interrupt`), and
+/// nothing reads `~/.config/herdr/agent-detection`. Writing the files anyway
+/// would report success for an install that cannot do anything, so this is an
+/// error rather than a warning.
+///
+/// Takes the whole captured environment rather than a pre-computed kind so that
+/// the install decision and the `herdr status` label are always derived from
+/// the same probe; `status_and_install_agree_on_runtime_kind` pins that.
+fn require_legacy_runtime(env: &HerdrEnv) -> Result<()> {
+    if env.kind() == RuntimeKind::Hc {
+        anyhow::bail!("{LEGACY_MANIFEST_NOTICE} Nothing installed.");
+    }
     Ok(())
 }
 
@@ -161,6 +179,11 @@ fn herdr_agent_detection_dir() -> Result<PathBuf> {
 
 /// Placeholder for an unset value.
 const MISSING: &str = "(not set)";
+
+/// One shared sentence for the legacy-only nature of screen manifests, so the
+/// status text, the install footer and the HC refusal cannot drift apart.
+const LEGACY_MANIFEST_NOTICE: &str = "Screen manifests are legacy-HERDR only: herdr-core (HC) \
+     infers agent state from the terminal and never reads them.";
 
 /// Format an optional value as itself or the placeholder.
 fn value_or_missing(value: Option<&str>) -> &str {
@@ -264,6 +287,47 @@ mod tests {
         let rendered = render_status(&env, false);
         assert_eq!(row(&rendered, "Runtime"), "herdr-core (HC)");
         assert_eq!(row(&rendered, "Push-capable"), "no");
+    }
+
+    #[test]
+    fn install_refuses_under_hc_and_allows_elsewhere() {
+        let err = require_legacy_runtime(&env_from(&[("HC_TERMINAL_ID", "t1")]))
+            .expect_err("install must not report success under HC");
+        let message = err.to_string();
+        assert!(message.contains("legacy-HERDR only"));
+        assert!(message.contains("herdr-core (HC)"));
+        assert!(message.contains("Nothing installed"));
+
+        assert!(require_legacy_runtime(&env_from(&[])).is_ok());
+        assert!(require_legacy_runtime(&env_from(&[("HERDR_ENV", "1")])).is_ok());
+    }
+
+    /// The contract: whichever kind `herdr status` names is the kind the
+    /// install path branches on, for the same host environment.
+    #[test]
+    fn status_and_install_agree_on_runtime_kind() {
+        type InstallCase = (&'static [(&'static str, &'static str)], &'static str, bool);
+        let cases: [InstallCase; 4] = [
+            (&[], "none", true),
+            (&[("HERDR_ENV", "1")], "legacy herdr", true),
+            (
+                &[("HERDR_ENV", "1"), ("HERDR_PANE_ID", "w1:p1")],
+                "legacy herdr",
+                true,
+            ),
+            (&[("HC_TERMINAL_ID", "t1")], "herdr-core (HC)", false),
+        ];
+
+        for (pairs, label, install_allowed) in cases {
+            let env = env_from(pairs);
+            let rendered = render_status(&env, false);
+            assert_eq!(row(&rendered, "Runtime"), label, "for {pairs:?}");
+            assert_eq!(
+                require_legacy_runtime(&env).is_ok(),
+                install_allowed,
+                "install decision disagrees with status label {label} for {pairs:?}"
+            );
+        }
     }
 
     #[test]
