@@ -77,6 +77,21 @@ impl HerdrEnv {
         }
     }
 
+    /// Claim a legacy HERDR runtime without touching the process environment.
+    ///
+    /// This is what the `--herdr` force flag uses: it marks the captured
+    /// environment active even when `HERDR_ENV` is unset. It does not invent a
+    /// pane identity, so a forced environment with no `HERDR_PANE_ID` and no
+    /// `HERDR_SOCKET_PATH` still fails [`is_valid`](Self::is_valid) and stays
+    /// silent — the flag selects a runtime, it cannot make one exist. Faking
+    /// one by setting `HERDR_ENV=1` in the process instead lied to every other
+    /// reader of that variable, including `jcode-tui-mermaid`'s
+    /// directory-hiding check and every child process spawned afterwards.
+    pub fn with_forced_active(mut self) -> Self {
+        self.active = true;
+        self
+    }
+
     /// Which runtime this environment belongs to. HC wins when both are
     /// present: inside HC a stale legacy variable must not shadow it.
     pub fn kind(&self) -> RuntimeKind {

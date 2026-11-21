@@ -16,8 +16,13 @@
 //! [`HerdrReporter::is_push_capable`] returns `false`.
 //!
 //! When no terminal runtime is detected, all operations are zero-cost no-ops.
+//!
+//! [`global`] owns the one process-wide reporter. The binary and the TUI both
+//! report through it, so there is a single `OnceLock` and a single owner of
+//! runtime state.
 
 pub mod env;
+pub mod global;
 pub mod manifest;
 pub mod reporter;
 pub mod socket;

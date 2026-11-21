@@ -90,10 +90,19 @@ struct AgentStateInner {
 }
 
 impl HerdrReporter {
-    /// Create a new reporter for the given agent label.
+    /// Create a new reporter for the given agent label, capturing the runtime
+    /// from the process environment.
     /// If HERDR is not active, all operations are no-ops.
     pub fn new(agent_label: &str) -> Self {
-        let env = HerdrEnv::capture();
+        Self::from_env(agent_label, HerdrEnv::capture())
+    }
+
+    /// Create a reporter from an explicitly supplied runtime environment.
+    ///
+    /// The runtime is injected rather than captured, so a caller that needs a
+    /// runtime the process is not running inside does not have to mutate the
+    /// process environment to get one.
+    pub fn from_env(agent_label: &str, env: HerdrEnv) -> Self {
         if env.kind() == RuntimeKind::Hc {
             // herdr-core has no `pane.report_agent` / `pane.report_agent_session`
             // / `pane.release_agent` verb and infers working state from the

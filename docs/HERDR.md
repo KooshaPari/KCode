@@ -153,10 +153,19 @@ HC has **no** `pane.report_agent`, `pane.report_agent_session` or
 
 ### `kcode herdr-status`
 
-`kcode herdr-status` prints the legacy `HERDR_*` variables only. Under HC those
-are unset while `HERDR pane valid` still reports `yes`, because validity is
-derived from the detected runtime. Treat the printed variable list as
-legacy-bridge diagnostics, not as an HC view.
+`kcode herdr status` starts with a `Runtime` row naming what it actually
+probed: `herdr-core (HC)`, `legacy herdr`, or `none`. The kind comes from
+`HerdrEnv::kind()` over the live environment, so the label and the printed
+values always agree. Under HC it also prints `HC_TERMINAL_ID`, `HC_SOCKET` and
+`HC_SESSION`; under legacy HERDR it prints the `HERDR_*` variables. Where a
+legacy `HERDR_*` row is still shown under HC, treat it as legacy-bridge
+diagnostics, not as an HC view.
+
+Two rows are easy to misread. `HERDR pane valid` means only that identity and
+an endpoint were detected, for either runtime. `Reporter active` reports
+whether a reporter object exists, which is true under HC too. The row that
+answers "will state actually be delivered" is `Push-capable`, which is
+legacy-HERDR-and-valid, matching `HerdrReporter::is_push_capable`.
 
 Official references (legacy Herdr; HC self-describes through `hc schema` and
 `hc --skill` instead):
