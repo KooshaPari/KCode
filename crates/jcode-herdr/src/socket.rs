@@ -17,7 +17,7 @@
 #[cfg(not(unix))]
 use anyhow::anyhow;
 use anyhow::{Context, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
@@ -234,9 +234,7 @@ impl HelloOutcome {
             .and_then(Value::as_u64)
             .context("HC hello result missing generation")? as u32;
         let version = required_str(result, "version")?;
-        let core = result
-            .get("core")
-            .context("HC hello result missing core")?;
+        let core = result.get("core").context("HC hello result missing core")?;
         let core_id = required_str(core, "id")?;
         let core_name = required_str(core, "name")?;
         let framed = result
@@ -287,10 +285,8 @@ fn string_array(value: &Value, key: &str) -> Result<Vec<String>> {
 }
 
 #[cfg(not(unix))]
-fn string_array(value: &Value, key: &str) -> Result<Vec<String>> {
-    let _ = value;
-    let _ = key;
-    anyhow::bail!("HC is not supported on this platform (Unix-only)")
+fn string_array(_value: &Value, _key: &str) -> Result<Vec<String>> {
+    Err(anyhow!("HC is not supported on this platform (Unix-only)"))
 }
 
 /// Parameters for `terminal.get` (by-name).
@@ -691,7 +687,10 @@ mod tests {
         let terminal = &list.terminals[0];
         assert_eq!(terminal.address, "t7");
         assert_eq!(terminal.state, "live");
-        assert_eq!(terminal.labels.get("name").map(String::as_str), Some("review"));
+        assert_eq!(
+            terminal.labels.get("name").map(String::as_str),
+            Some("review")
+        );
         assert_eq!(terminal.cols, 80);
     }
 
