@@ -26,7 +26,7 @@
 //! # }
 //! ```
 
-use crate::env::HerdrEnv;
+use crate::env::{HerdrEnv, RuntimeKind};
 use crate::socket;
 use crate::state::AgentState;
 use std::sync::Arc;
@@ -94,6 +94,15 @@ impl HerdrReporter {
     /// If HERDR is not active, all operations are no-ops.
     pub fn new(agent_label: &str) -> Self {
         let env = HerdrEnv::capture();
+        if env.kind() == RuntimeKind::Hc {
+            // herdr-core has no `pane.report_agent` / `pane.report_agent_session`
+            // / `pane.release_agent` verb and infers working state from the
+            // terminal itself. Pushing state here would emit frames nothing
+            // consumes, so this reporter stays a no-op under HC.
+            tracing::debug!(
+                "herdr-core detected: agent state is inferred by the core, reporter will not push frames"
+            );
+        }
         let source = format!("jcode:{agent_label}");
         let idle_debounce_ms = parse_duration_env("HERDR_KCODE_IDLE_DEBOUNCE_MS", 250);
         let retry_grace_ms = parse_duration_env("HERDR_KCODE_RETRY_GRACE_MS", 2500);
@@ -116,9 +125,18 @@ impl HerdrReporter {
         }
     }
 
-    /// Returns `true` if HERDR is active and this reporter can send.
+    /// Returns `true` if a supported terminal runtime is present and
+    /// configured (true for legacy HERDR and for herdr-core).
     pub fn is_active(&self) -> bool {
         self.env.is_valid()
+    }
+
+    /// Returns `true` only when this reporter can actually push state
+    /// frames: legacy HERDR. herdr-core exposes no report verb, so callers
+    /// that depend on state reaching herdr must check this rather than
+    /// assume [`Self::is_active`] implies delivery.
+    pub fn is_push_capable(&self) -> bool {
+        self.env.kind() == RuntimeKind::LegacyHerdr && self.env.is_valid()
     }
 
     /// Report a state transition to HERDR.
@@ -128,7 +146,7 @@ impl HerdrReporter {
 
     /// Report a state transition with an optional message.
     pub async fn set_state_with_message(&self, state: AgentState, message: Option<String>) {
-        if !self.is_active() {
+        if !self.is_push_capable() {
             return;
         }
 
@@ -150,7 +168,7 @@ impl HerdrReporter {
 
     /// Report session identity for restore.
     pub async fn set_session_id(&self, session_id: String) {
-        if !self.is_active() {
+        if !self.is_push_capable() {
             return;
         }
 
@@ -178,7 +196,7 @@ impl HerdrReporter {
 
     /// Report session file path for restore.
     pub async fn set_session_path(&self, session_path: String) {
-        if !self.is_active() {
+        if !self.is_push_capable() {
             return;
         }
 
@@ -208,7 +226,7 @@ impl HerdrReporter {
     /// Called automatically on drop, but can be called explicitly
     /// for deterministic cleanup.
     pub async fn release(&self) {
-        if !self.is_active() {
+        if !self.is_push_capable() {
             return;
         }
 
@@ -235,7 +253,7 @@ impl HerdrReporter {
 
     /// Send the initial idle report on session start.
     pub async fn on_session_start(&self) {
-        if !self.is_active() {
+        if !self.is_push_capable() {
             return;
         }
         self.send_state_report(AgentState::Idle, None).await;
@@ -245,7 +263,7 @@ impl HerdrReporter {
     /// `retry_grace_ms` (default 2.5s) to allow auto-retry, then
     /// marks as blocked with the error message.
     pub async fn report_error(&self, error_message: String) {
-        if !self.is_active() {
+        if !self.is_push_capable() {
             return;
         }
 
@@ -328,7 +346,7 @@ impl HerdrReporter {
 
 impl Drop for HerdrReporter {
     fn drop(&mut self) {
-        if !self.is_active() {
+        if !self.is_push_capable() {
             return;
         }
 
@@ -436,7 +454,14 @@ mod tests {
     /// Set the standard HERDR env vars for tests, returning a guard
     /// that restores original values on drop.
     fn set_herdr_env(sock: &std::path::Path) -> EnvGuard {
-        let keys = ["HERDR_ENV", "HERDR_PANE_ID", "HERDR_SOCKET_PATH"];
+        let keys = [
+            "HERDR_ENV",
+            "HERDR_PANE_ID",
+            "HERDR_SOCKET_PATH",
+            "HC_TERMINAL_ID",
+            "HC_SOCKET",
+            "HC_SESSION",
+        ];
         let vars: Vec<(String, Option<String>)> = keys
             .iter()
             .map(|k| (k.to_string(), std::env::var(k).ok()))
@@ -445,8 +470,67 @@ mod tests {
             std::env::set_var("HERDR_ENV", "1");
             std::env::set_var("HERDR_PANE_ID", "test-pane");
             std::env::set_var("HERDR_SOCKET_PATH", sock.to_str().unwrap());
+            std::env::remove_var("HC_TERMINAL_ID");
+            std::env::remove_var("HC_SOCKET");
+            std::env::remove_var("HC_SESSION");
         }
         EnvGuard { vars }
+    }
+
+    /// Set herdr-core env vars for tests (and clear any legacy HERDR vars so
+    /// HC wins), returning a guard that restores original values on drop.
+    fn set_hc_env(sock: &std::path::Path) -> EnvGuard {
+        let keys = [
+            "HERDR_ENV",
+            "HERDR_PANE_ID",
+            "HERDR_SOCKET_PATH",
+            "HC_TERMINAL_ID",
+            "HC_SOCKET",
+            "HC_SESSION",
+        ];
+        let vars: Vec<(String, Option<String>)> = keys
+            .iter()
+            .map(|k| (k.to_string(), std::env::var(k).ok()))
+            .collect();
+        unsafe {
+            std::env::remove_var("HERDR_ENV");
+            std::env::remove_var("HERDR_PANE_ID");
+            std::env::remove_var("HERDR_SOCKET_PATH");
+            std::env::set_var("HC_TERMINAL_ID", "term-1");
+            std::env::set_var("HC_SOCKET", sock.to_str().unwrap());
+            std::env::set_var("HC_SESSION", "test");
+        }
+        EnvGuard { vars }
+    }
+
+    /// Remove every runtime env var for the duration of a test.
+    fn clear_runtime_env() -> EnvGuard {
+        let keys = [
+            "HERDR_ENV",
+            "HERDR_PANE_ID",
+            "HERDR_SOCKET_PATH",
+            "HC_TERMINAL_ID",
+            "HC_SOCKET",
+            "HC_SESSION",
+        ];
+        let vars: Vec<(String, Option<String>)> = keys
+            .iter()
+            .map(|k| (k.to_string(), std::env::var(k).ok()))
+            .collect();
+        unsafe {
+            for k in keys {
+                std::env::remove_var(k);
+            }
+        }
+        EnvGuard { vars }
+    }
+
+    /// Replace the volatile `id` and `seq` values so frames can be pinned.
+    fn mask_volatile(value: &mut serde_json::Value) {
+        value["id"] = serde_json::Value::String("<id>".to_string());
+        if let Some(params) = value.get_mut("params") {
+            params["seq"] = serde_json::Value::Number(0.into());
+        }
     }
 
     #[test]
@@ -585,5 +669,150 @@ mod tests {
         assert!(seq2 > seq1, "seq2 ({seq2}) should be > seq1 ({seq1})");
 
         reporter.release().await;
+    }
+
+    #[tokio::test]
+    async fn hc_runtime_emits_no_frames() {
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let _guard = set_hc_env(&sock);
+
+        let reporter = HerdrReporter::new("jcode");
+        assert!(reporter.is_active(), "HC runtime should be detected");
+        assert!(
+            !reporter.is_push_capable(),
+            "HC exposes no report verb, so pushing must be disabled"
+        );
+
+        reporter.on_session_start().await;
+        reporter.set_state(AgentState::Working).await;
+        reporter.set_session_id("sess_hc".to_string()).await;
+        reporter
+            .set_session_path("/tmp/sess-hc.json".to_string())
+            .await;
+        reporter.report_error("boom".to_string()).await;
+        reporter.release().await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        assert!(
+            rx.try_recv().is_err(),
+            "herdr-core must receive zero state frames"
+        );
+
+        // Dropping must also stay silent under HC.
+        drop(reporter);
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(rx.try_recv().is_err(), "drop must not emit frames under HC");
+    }
+
+    #[tokio::test]
+    async fn legacy_frames_are_pinned() {
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let _guard = set_herdr_env(&sock);
+
+        let reporter = HerdrReporter::new("jcode");
+        assert!(reporter.is_push_capable());
+
+        reporter.on_session_start().await;
+        reporter.set_state(AgentState::Working).await;
+        reporter.set_session_id("sess_abc123".to_string()).await;
+        reporter
+            .set_session_path("/tmp/sess.json".to_string())
+            .await;
+        reporter.release().await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+
+        let mut frames = Vec::new();
+        while let Ok(frame) = rx.try_recv() {
+            frames.push(frame);
+        }
+        assert_eq!(frames.len(), 5, "expected exactly five legacy frames");
+
+        for frame in &mut frames {
+            assert_eq!(frame["jsonrpc"], serde_json::Value::Null);
+            mask_volatile(frame);
+        }
+
+        let expected = vec![
+            serde_json::json!({
+                "id": "<id>",
+                "method": "pane.report_agent",
+                "params": {
+                    "pane_id": "test-pane",
+                    "source": "jcode:jcode",
+                    "agent": "jcode",
+                    "state": "idle",
+                    "seq": 0,
+                },
+            }),
+            serde_json::json!({
+                "id": "<id>",
+                "method": "pane.report_agent",
+                "params": {
+                    "pane_id": "test-pane",
+                    "source": "jcode:jcode",
+                    "agent": "jcode",
+                    "state": "working",
+                    "seq": 0,
+                },
+            }),
+            serde_json::json!({
+                "id": "<id>",
+                "method": "pane.report_agent_session",
+                "params": {
+                    "pane_id": "test-pane",
+                    "source": "jcode:jcode",
+                    "agent": "jcode",
+                    "agent_session_id": "sess_abc123",
+                    "seq": 0,
+                },
+            }),
+            serde_json::json!({
+                "id": "<id>",
+                "method": "pane.report_agent_session",
+                "params": {
+                    "pane_id": "test-pane",
+                    "source": "jcode:jcode",
+                    "agent": "jcode",
+                    "agent_session_path": "/tmp/sess.json",
+                    "seq": 0,
+                },
+            }),
+            serde_json::json!({
+                "id": "<id>",
+                "method": "pane.release_agent",
+                "params": {
+                    "pane_id": "test-pane",
+                    "source": "jcode:jcode",
+                    "agent": "jcode",
+                    "seq": 0,
+                },
+            }),
+        ];
+
+        assert_eq!(frames, expected);
+    }
+
+    #[tokio::test]
+    async fn no_runtime_emits_nothing() {
+        // The mock server exists only to prove nothing is sent; the runtime env is
+        // cleared below, so the socket is intentionally unused here.
+        let (_sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let _guard = clear_runtime_env();
+
+        let reporter = HerdrReporter::new("jcode");
+        assert!(!reporter.is_active());
+        assert!(!reporter.is_push_capable());
+
+        reporter.on_session_start().await;
+        reporter.set_state(AgentState::Working).await;
+        reporter.set_session_id("sess_none".to_string()).await;
+        reporter.release().await;
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(rx.try_recv().is_err());
     }
 }
