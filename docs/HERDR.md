@@ -154,13 +154,15 @@ HC has **no** `pane.report_agent`, `pane.report_agent_session` or
   and now says so. Under HC it refuses with a non-zero exit instead of writing
   files nothing reads: HC infers agent state itself via `terminal.wait`.
 
-### `jcode herdr status`
+### `kcode herdr-status`
 
-`jcode herdr status` starts with a `Runtime` row naming what it actually
+`kcode herdr status` starts with a `Runtime` row naming what it actually
 probed: `herdr-core (HC)`, `legacy herdr`, or `none`. The kind comes from
 `HerdrEnv::kind()` over the live environment, so the label and the printed
 values always agree. Under HC it also prints `HC_TERMINAL_ID`, `HC_SOCKET` and
-`HC_SESSION`; under legacy HERDR it prints the `HERDR_*` variables.
+`HC_SESSION`; under legacy HERDR it prints the `HERDR_*` variables. Where a
+legacy `HERDR_*` row is still shown under HC, treat it as legacy-bridge
+diagnostics, not as an HC view.
 
 Two rows are easy to misread. `HERDR pane valid` means only that identity and
 an endpoint were detected, for either runtime. `Reporter active` reports

@@ -178,11 +178,16 @@ mod tests {
     fn forgecode_manifest_generates_valid_toml() {
         let manifest = forgecode_manifest();
         let toml = manifest.to_toml();
+        // Pin the agent/version pair that the installer writes to
+        // `~/.config/herdr/agent-detection/forgecode.toml`. A change here is a
+        // manifest-version change and must be deliberate.
         assert!(toml.contains("agent = \"forgecode\""));
+        assert!(toml.contains("version = \"1\""));
         let parsed: toml::Value = toml::from_str(&toml).expect("manifest should be valid TOML");
         assert_eq!(
             parsed.get("agent").and_then(|v| v.as_str()),
             Some("forgecode")
         );
+        assert_eq!(parsed.get("version").and_then(|v| v.as_str()), Some("1"));
     }
 }
