@@ -140,6 +140,7 @@
 
 mod auth;
 mod client;
+mod client_retry;
 mod diagnostics;
 mod errors;
 mod launch;
