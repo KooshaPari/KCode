@@ -19,6 +19,6 @@ pub mod reporter;
 pub mod socket;
 pub mod state;
 
-pub use env::HerdrEnv;
+pub use env::{HerdrEnv, RuntimeKind};
 pub use reporter::HerdrReporter;
 pub use state::AgentState;
