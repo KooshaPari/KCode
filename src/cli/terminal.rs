@@ -324,6 +324,24 @@ pub(crate) fn resume_binary_stem() -> &'static str {
     "kcode"
 }
 
+/// `<bin> --resume <id>` - the exact command that resumes `session_id`.
+///
+/// Callers that print a resume instruction should render it through this helper
+/// so the binary name is never hand-written (see `resume_binary_stem`).
+pub(crate) fn resume_hint(session_id: &str) -> String {
+    format!("{} --resume {session_id}", resume_binary_stem())
+}
+
+/// Hint (leading newline included) that bare `--resume` opens the picker.
+///
+/// Rendered through `resume_binary_stem` so it never names the wrong binary.
+pub(crate) fn resume_picker_hint() -> String {
+    format!(
+        "\nUse `{} --resume` to list available sessions.",
+        resume_binary_stem()
+    )
+}
+
 /// Build the crash-resume hint lines for `crashed`, newest first.
 ///
 /// Pure so the wording is testable: the lines are printed to stderr outside the
@@ -631,7 +649,7 @@ fn write_session_resume_hint(mut writer: impl Write, session_id: &str) -> io::Re
     if let Some(command) = super::ssh::resume_hint(session_id) {
         writeln!(writer, "  {command}")?;
     } else {
-        writeln!(writer, "  {} --resume {}", resume_binary_stem(), session_id)?;
+        writeln!(writer, "  {}", resume_hint(session_id))?;
     }
     writeln!(writer)?;
     Ok(())

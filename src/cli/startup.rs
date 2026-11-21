@@ -562,11 +562,7 @@ fn report_main_error(error: &anyhow::Error) {
     if let Some(session_id) = terminal::get_current_session() {
         output::stderr_blank_line();
         output::stderr_info("\x1b[33mTo restore this session, run:\x1b[0m");
-        output::stderr_info(format!(
-            "  {} --resume {}",
-            crate::cli::terminal::resume_binary_stem(),
-            session_id
-        ));
+        output::stderr_info(format!("  {}", terminal::resume_hint(&session_id)));
         output::stderr_blank_line();
     }
 }
