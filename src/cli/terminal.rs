@@ -320,7 +320,7 @@ pub fn show_crash_resume_hint() {
 /// `~/.kcode`, so the session they were told to resume is not in that store -
 /// part of the "sessions on reload have issues" report. Matches
 /// `ssh::resume_hint`, which already names the kcode binary.
-fn resume_binary_stem() -> &'static str {
+pub(crate) fn resume_binary_stem() -> &'static str {
     "kcode"
 }
 
@@ -351,7 +351,7 @@ fn crash_resume_hint_lines(
             // Always mention the picker. Showing only the ID form reads as
             // "write this down or lose the session", when bare
             // `jcode --resume` opens a searchable list (issue #690).
-            format!("{yellow}   Or browse all:{reset} jcode --resume"),
+            format!("{yellow}   Or browse all:{reset} {bin} --resume"),
         ]
     } else {
         vec![
@@ -360,14 +360,14 @@ fn crash_resume_hint_lines(
                 crashed.len()
             ),
             format!("{yellow}   Resume with:{reset}  {bin} --resume {id}"),
-            format!("{yellow}   List all:{reset}     jcode --resume"),
+            format!("{yellow}   List all:{reset}     {bin} --resume"),
         ]
     }
 }
 
 #[cfg(test)]
 mod crash_resume_hint_tests {
-    use super::crash_resume_hint_lines;
+    use super::{crash_resume_hint_lines, resume_binary_stem};
 
     fn session(id: &str, name: &str) -> (String, String) {
         (id.to_string(), name.to_string())
@@ -389,10 +389,9 @@ mod crash_resume_hint_tests {
             joined.contains("kcode --resume ses_koala_123"),
             "the direct resume command must still be offered: {joined}"
         );
+        let picker = format!("Or browse all: {} --resume", resume_binary_stem());
         assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("Or browse all: jcode --resume")),
+            lines.iter().any(|line| line.contains(&picker)),
             "the picker form (bare --resume) must be mentioned too: {joined}"
         );
     }
