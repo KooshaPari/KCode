@@ -33,6 +33,22 @@ pub(super) fn fail_retry_limit(app: &mut App) -> anyhow::Result<()> {
     Err(anyhow::anyhow!("Network retry limit exceeded"))
 }
 
+/// Wait for connectivity and consume one retry from the budget. On exhaustion
+/// the visible retry-limit error is pushed and the turn fails.
+pub(super) async fn await_network_retry(
+    app: &mut App,
+    retry_budget: &mut crate::network_retry::RetryBudget,
+) -> anyhow::Result<()> {
+    let _ = crate::network_retry::wait_until_probably_online_bounded(*retry_budget).await;
+    app.push_display_message(DisplayMessage::system(
+        "Network connectivity looks restored; retrying request.".to_string(),
+    ));
+    if !retry_budget.record_attempt() {
+        return fail_retry_limit(app);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
