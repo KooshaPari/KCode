@@ -133,14 +133,15 @@ fn http_status_hint(status: u16, api_base: &str, model: &str) -> &'static str {
 /// the message text as `(request_id: gw-...)`. Either form is surfaced verbatim
 /// so a failing lane can be matched to the provider's logs (#324).
 fn provider_request_id(body: &str) -> Option<String> {
-    if let Ok(value) = serde_json::from_str::<Value>(body) {
-        if let Some(id) = value
+    let from_json = serde_json::from_str::<Value>(body).ok().and_then(|value| {
+        value
             .get("request_id")
             .or_else(|| value.get("error").and_then(|err| err.get("request_id")))
             .and_then(Value::as_str)
-        {
-            return Some(id.to_string());
-        }
+            .map(str::to_string)
+    });
+    if from_json.is_some() {
+        return from_json;
     }
 
     let idx = body.find("request_id:")?;
@@ -905,7 +906,7 @@ mod tests {
     /// loose server-error heuristic treat it as retryable.
     #[test]
     fn oversized_request_400_is_not_retryable() {
-        let err = oversized_request_400_error(&http_status_hint(
+        let err = oversized_request_400_error(http_status_hint(
             400,
             "https://opencode.ai/zen/go/v1",
             "deepseek-v4.1-flash",
