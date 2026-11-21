@@ -151,9 +151,9 @@ HC has **no** `pane.report_agent`, `pane.report_agent_session` or
   does not fire under HC, which injects `HC_TERMINAL_ID` instead. HC-driven
   launch is not implemented.
 
-### `jcode herdr status`
+### `kcode herdr-status`
 
-`jcode herdr status` prints the legacy `HERDR_*` variables only. Under HC those
+`kcode herdr-status` prints the legacy `HERDR_*` variables only. Under HC those
 are unset while `HERDR pane valid` still reports `yes`, because validity is
 derived from the detected runtime. Treat the printed variable list as
 legacy-bridge diagnostics, not as an HC view.
