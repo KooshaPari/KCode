@@ -797,7 +797,9 @@ mod tests {
 
     #[tokio::test]
     async fn no_runtime_emits_nothing() {
-        let (sock, mut rx, _dir) = start_mock_server().await;
+        // The mock server exists only to prove nothing is sent; the runtime env is
+        // cleared below, so the socket is intentionally unused here.
+        let (_sock, mut rx, _dir) = start_mock_server().await;
         let _env_lock = crate::env::test_support::lock_test_env();
         let _guard = clear_runtime_env();
 
