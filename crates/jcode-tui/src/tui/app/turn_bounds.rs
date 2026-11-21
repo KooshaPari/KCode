@@ -4,10 +4,18 @@
 use super::super::{App, DisplayMessage};
 
 /// Start the fixed deadline and retry budget together.
-pub(super) fn start_bounds() -> (crate::provider::TurnDeadline, crate::network_retry::RetryBudget) {
+pub(super) fn start_bounds() -> (
+    crate::provider::TurnDeadline,
+    crate::network_retry::RetryBudget,
+) {
     let cfg = crate::config::config();
-    (crate::provider::TurnDeadline::start(),
-     crate::network_retry::RetryBudget::new(cfg.provider.max_retries, cfg.provider.retry_backoff_cap_secs))
+    (
+        crate::provider::TurnDeadline::start(),
+        crate::network_retry::RetryBudget::new(
+            cfg.provider.max_retries,
+            cfg.provider.retry_backoff_cap_secs,
+        ),
+    )
 }
 
 /// Error message shown when the fixed total-turn deadline fires.
