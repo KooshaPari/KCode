@@ -49,12 +49,12 @@ jcode --herdr --herdr-kind forge       # ForgeCode
 jcode --herdr --herdr-kind forgecode   # ForgeCode (alias)
 ```
 
-### `jcode herdr status`
+### `kcode herdr-status`
 
 Show current HERDR environment and reporter state:
 
 ```bash
-$ jcode herdr status
+$ kcode herdr-status
 HERDR Pane Status
 ─────────────────
   HERDR_ENV          1
@@ -68,12 +68,17 @@ HERDR Pane Status
   Reporter active    yes
 ```
 
-### `jcode herdr install`
+### `kcode herdr-install`
 
 Write screen detection manifests:
 
+> **Legacy-only.** These manifests are read by the legacy HERDR bridge, which is
+> deprecated. herdr-core (HC) is the supported runtime (`hc`, alias
+> `herdr-core`); it infers agent state itself and never reads
+> `~/.config/herdr/agent-detection`, so under HC these files have no effect.
+
 ```bash
-$ jcode herdr install
+$ kcode herdr-install
 Installed ~/.config/herdr/agent-detection/jcode.toml
 Installed ~/.config/herdr/agent-detection/forgecode.toml
 
@@ -229,7 +234,7 @@ crates/jcode-herdr/
 1. **Startup** (`src/cli/startup.rs`): Reporter initialized before TUI launch
 2. **TUI** (`crates/jcode-tui/src/tui/app/local.rs`): Working→idle transitions wired
 3. **CLI** (`src/cli/args.rs`): `--herdr`, `--herdr-kind` flags
-4. **Subcommands** (`src/cli/herdr.rs`): `herdr status`, `herdr install`
+4. **Subcommands** (`src/cli/herdr.rs`): `herdr-status`, `herdr-install`
 
 ## herdr-core (HC)
 
