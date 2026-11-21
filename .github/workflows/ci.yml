@@ -1321,9 +1321,10 @@ jobs:
   # can merge green while a gate produced no verdict.
   #
   # Deliberately NOT in `needs:`, because they are `if: false` and therefore
-  # always `skipped`: `windows-build-test`, `powershell-syntax`. They stay
-  # skipped on purpose (hosted Windows minutes are capped at $0), so gating on
-  # them would fail every run; the loop below is written to fail on `skipped`
+  # always `skipped`: `windows-build-test`, `setup-friction`,
+  # `powershell-syntax`. They stay skipped on purpose (hosted Windows minutes
+  # are capped at $0 / the fork disables the installer), so gating on them
+  # would fail every run; the loop below is written to fail on `skipped`
   # instead of silently accepting it precisely so a real gate cannot join that
   # list by accident.
   test:
