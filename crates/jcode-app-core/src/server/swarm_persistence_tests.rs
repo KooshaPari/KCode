@@ -176,11 +176,93 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
     assert_eq!(recovered.status, "stopped");
     assert_eq!(
         recovered.detail.as_deref(),
-        Some("idle worker not restored after server restart")
+        Some("idle worker session file missing after server restart; cannot restore")
     );
     assert_eq!(
         recovered.latest_completion_report.as_deref(),
         Some("Done. Built the worker; all tests pass.")
+    );
+}
+
+#[test]
+fn idle_headless_child_with_persisted_session_is_restored_not_stopped() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let members = vec![SwarmMember {
+        session_id: "session-idle-restore".to_string(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: Some(PathBuf::from("/tmp/swarm-restore")),
+        swarm_id: Some("swarm-restore".to_string()),
+        swarm_enabled: true,
+        status: "ready".to_string(),
+        detail: None,
+        friendly_name: Some("otter".to_string()),
+        report_back_to_session_id: Some("session-coordinator".to_string()),
+        latest_completion_report: None,
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: true,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: None,
+    }];
+
+    // The restore path needs the persisted session file to exist.
+    let session_path = crate::session::session_path("session-idle-restore").expect("path");
+    std::fs::create_dir_all(session_path.parent().expect("parent")).expect("mkdir");
+    std::fs::write(&session_path, b"{}").expect("write session");
+
+    persist_swarm_state("swarm-restore", None, None, &members);
+    let loaded = load_runtime_state();
+
+    let recovered = loaded.members.get("session-idle-restore").expect("member");
+    assert_eq!(recovered.status, "ready", "idle child must be restored, not stopped");
+    assert_eq!(recovered.detail, None);
+}
+
+#[test]
+fn idle_headless_child_with_missing_session_reports_specific_reason() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let members = vec![SwarmMember {
+        session_id: "session-idle-missing".to_string(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: Some(PathBuf::from("/tmp/swarm-missing")),
+        swarm_id: Some("swarm-missing".to_string()),
+        swarm_enabled: true,
+        status: "ready".to_string(),
+        detail: None,
+        friendly_name: Some("heron".to_string()),
+        report_back_to_session_id: Some("session-coordinator".to_string()),
+        latest_completion_report: None,
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: true,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: None,
+    }];
+
+    persist_swarm_state("swarm-missing", None, None, &members);
+    let loaded = load_runtime_state();
+
+    let recovered = loaded.members.get("session-idle-missing").expect("member");
+    assert_eq!(recovered.status, "stopped");
+    assert_eq!(
+        recovered.detail.as_deref(),
+        Some("idle worker session file missing after server restart; cannot restore")
     );
 }
 
