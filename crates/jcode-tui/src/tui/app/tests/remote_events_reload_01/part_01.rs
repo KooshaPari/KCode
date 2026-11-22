@@ -43,6 +43,7 @@ fn test_remote_bus_dictation_completion_ignores_other_session() {
             text: " dictated text".to_string(),
             mode: crate::protocol::TranscriptMode::Append,
         }),
+        &mut Default::default(),
     ));
 
     assert!(app.dictation_in_flight);
@@ -66,6 +67,7 @@ fn test_remote_bus_productivity_failure_clears_refresh_state() {
                 result: Err("generation failed".to_string()),
             },
         )),
+        &mut Default::default(),
     ));
 
     assert!(handled);
@@ -1404,7 +1406,7 @@ fn test_remote_done_waits_for_paced_backlog_and_one_live_frame() {
     // The first tick drains the short backlog, but deliberately leaves the live
     // streaming representation visible for one frame before committing it.
     std::thread::sleep(Duration::from_millis(60));
-    rt.block_on(crate::tui::app::remote::handle_tick(&mut app, &mut remote));
+    rt.block_on(crate::tui::app::remote::handle_tick(&mut app, &mut remote, &mut Default::default()));
     assert!(app.stream_buffer.is_empty());
     assert!(app.is_processing);
     assert_eq!(app.deferred_stream_done_id, Some(42));
@@ -1412,7 +1414,7 @@ fn test_remote_done_waits_for_paced_backlog_and_one_live_frame() {
 
     // The following tick replays Done now that the preceding live frame was
     // eligible to render, committing exactly the text that was paced out.
-    rt.block_on(crate::tui::app::remote::handle_tick(&mut app, &mut remote));
+    rt.block_on(crate::tui::app::remote::handle_tick(&mut app, &mut remote, &mut Default::default()));
     assert!(!app.is_processing);
     assert_eq!(app.deferred_stream_done_id, None);
     assert!(app.display_messages.iter().any(|message| {

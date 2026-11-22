@@ -160,6 +160,13 @@ struct PendingRemoteMessage {
     retry_at: Option<Instant>,
 }
 
+struct UncertainSshRequest {
+    session_id: Option<String>,
+    acknowledged: bool,
+    payload: PendingRemoteMessage,
+    queued_user_text: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 struct PendingSplitPrompt {
     content: String,
@@ -935,6 +942,12 @@ pub struct App {
     // Message queueing
     queued_messages: Vec<String>,
     hidden_queued_system_messages: Vec<String>,
+    parked_ssh_queues: Vec<(Option<String>, Vec<String>, Vec<String>, bool)>,
+    ssh_hidden_selection: Option<(String, Vec<String>)>,
+    ssh_hidden_inflight: Option<(Option<u64>, String, Vec<String>)>,
+    ssh_hidden_ack_deadline: Option<Instant>,
+    ssh_hidden_generation: Option<u64>,
+    ssh_hidden_tombstones: Vec<(u64, u64)>,
     current_turn_system_reminder: Option<String>,
     // Upstream provider (e.g., which provider OpenRouter routed to)
     upstream_provider: Option<String>,
@@ -1615,10 +1628,12 @@ pub struct App {
     interleave_message: Option<String>,
     // Image attachments associated with the staged interleave message.
     interleave_images: Vec<(String, String)>,
+    staged_ssh_interleave_session: Option<Option<String>>,
     // Message sent as soft interrupt but not yet injected (shown in queue preview until injected)
     pending_soft_interrupts: Vec<String>,
     // Soft interrupts written to the socket but not yet acknowledged by the server.
     pending_soft_interrupt_requests: Vec<(u64, String)>,
+    pending_ssh_soft_interrupt_payloads: Vec<(String, Vec<(String, String)>)>,
     // Whether the current remote turn should trigger autoreview after completion.
     autoreview_after_current_turn: bool,
     // Whether the current remote turn should trigger autojudge after completion.
@@ -1674,6 +1689,10 @@ pub struct App {
     rate_limit_reset: Option<Instant>,
     // Message being sent when rate limit hit (to auto-retry in remote mode)
     rate_limit_pending_message: Option<PendingRemoteMessage>,
+    uncertain_ssh_sessions: Vec<Option<String>>,
+    uncertain_ssh_requests: Vec<UncertainSshRequest>,
+    ssh_recovery_cursor: Option<(Option<String>, usize)>,
+    pending_queued_user_text: Option<String>,
     // Consecutive turn errors that classify as credential/auth failures.
     // Reset on turn success or auth change; drives the credential-failure
     // circuit breaker that halts automatic resends (see

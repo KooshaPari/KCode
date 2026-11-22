@@ -89,19 +89,28 @@ pub(in crate::tui::app) async fn send_interleave_now(
     images: Vec<(String, String)>,
     remote: &mut RemoteConnection,
 ) {
-    if content.trim().is_empty() {
+    if content.trim().is_empty() && images.is_empty() {
+        return;
+    }
+    if input_dispatch::ssh_outcome_unresolved(app) {
+        input_dispatch::retain_failed_ssh_interleave(app, content, images);
+        app.set_status_notice("Reconcile the previous SSH outcome before sending");
         return;
     }
     let msg_clone = content.clone();
-    match remote.soft_interrupt(content, images, false).await {
+    match remote
+        .soft_interrupt(content.clone(), images.clone(), false)
+        .await
+    {
         Err(e) => {
+            input_dispatch::retain_failed_ssh_interleave(app, content, images);
             app.push_display_message(DisplayMessage::error(format!(
                 "Failed to send interleave: {}",
                 e
             )));
         }
         Ok(request_id) => {
-            app.track_pending_soft_interrupt(request_id, msg_clone);
+            app.track_pending_soft_interrupt(request_id, msg_clone, images);
             app.set_status_notice("⏭ Interleave sent");
         }
     }
@@ -1084,6 +1093,11 @@ async fn handle_remote_key_internal(
         }
         KeyCode::Enter => {
             if app.activate_picker_from_preview() {
+                return Ok(());
+            }
+            if super::queue_recovery::handle_hidden_recovery_command(app, remote).await { return Ok(()); }
+            if super::input_dispatch::ssh_outcome_unresolved(app) {
+                app.set_status_notice("Reconcile the unknown SSH outcome before sending");
                 return Ok(());
             }
             if !app.input.is_empty() {
@@ -2121,12 +2135,23 @@ async fn handle_remote_key_internal(
                     if app.is_processing {
                         let pause_message = app_mod::commands::transfer_pause_message();
                         let pause_display = pause_message.clone();
+                        if input_dispatch::ssh_outcome_unresolved(app) {
+                            app.pending_split_label = None;
+                            app.set_status_notice(
+                                "Reconcile the previous SSH outcome before sending",
+                            );
+                            return Ok(());
+                        }
                         match remote
-                            .soft_interrupt(pause_message, Vec::new(), false)
+                            .soft_interrupt(pause_message.clone(), Vec::new(), false)
                             .await
                         {
                             Ok(request_id) => {
-                                app.track_pending_soft_interrupt(request_id, pause_display);
+                                app.track_pending_soft_interrupt(
+                                    request_id,
+                                    pause_display,
+                                    Vec::new(),
+                                );
                                 app.pending_transfer_request = true;
                                 app.push_display_message(DisplayMessage::system(
                                     "Queued /transfer. The current session will be asked to pause, then the compacted handoff will open in a new window."
@@ -2135,6 +2160,11 @@ async fn handle_remote_key_internal(
                                 app.set_status_notice("Transfer queued after current turn");
                             }
                             Err(error) => {
+                                input_dispatch::retain_failed_ssh_interleave(
+                                    app,
+                                    pause_message,
+                                    Vec::new(),
+                                );
                                 app.pending_split_label = None;
                                 app.push_display_message(DisplayMessage::error(format!(
                                     "Failed to queue transfer pause: {}",
@@ -2244,16 +2274,27 @@ async fn handle_remote_key_internal(
                         "/commit"
                     };
                     if app.is_processing {
+                        if input_dispatch::ssh_outcome_unresolved(app) {
+                            app.set_status_notice(
+                                "Reconcile the previous SSH outcome before sending",
+                            );
+                            return Ok(());
+                        }
                         app.push_display_message(DisplayMessage::system(launch_notice(true)));
                         match remote
                             .soft_interrupt(prompt.clone(), Vec::new(), false)
                             .await
                         {
                             Ok(request_id) => {
-                                app.track_pending_soft_interrupt(request_id, prompt);
+                                app.track_pending_soft_interrupt(request_id, prompt, Vec::new());
                                 app.set_status_notice(format!("Interrupting for {}...", cmd_label));
                             }
                             Err(error) => {
+                                input_dispatch::retain_failed_ssh_interleave(
+                                    app,
+                                    prompt,
+                                    Vec::new(),
+                                );
                                 app.push_display_message(DisplayMessage::error(format!(
                                     "Failed to start {}: {}",
                                     cmd_label, error

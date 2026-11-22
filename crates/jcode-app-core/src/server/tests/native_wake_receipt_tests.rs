@@ -224,3 +224,33 @@ async fn native_receipt_admits_attached_session_and_replays_without_target() {
         crate::env::remove_var("JCODE_NATIVE_WAKE_SESSION_ALLOWLIST");
     }
 }
+
+
+#[tokio::test]
+async fn lease_denial_after_receipt_claim_never_appends_twice_on_retry() {
+    let _env_guard = crate::storage::lock_test_env();
+    let home = tempfile::TempDir::new().unwrap();
+    let old_home = std::env::var_os("KCODE_HOME");
+    crate::env::set_var("KCODE_HOME", home.path());
+    let agent = test_agent(Arc::new(StreamingMockProvider::default())).await;
+    let session_id = agent.lock().await.session_id().to_string();
+    let receipt_id = "synthetic:failed:1";
+    super::super::wake_receipts::submit(receipt_id, &session_id, "synthetic wake").unwrap();
+    crate::storage::write_session_lease(&crate::storage::SessionLease {
+        session_id: session_id.clone(), epoch: 1, away_host: Some("elsewhere".into()),
+        repo_root: None, last_sync_snapshot: None, last_sync_head: None,
+        updated_at: "2026-11-01T00:00:00Z".into(),
+    }).unwrap();
+    let (event_tx, _event_rx) = mpsc::unbounded_channel();
+    let mut agent = agent.lock().await;
+    let before = agent.messages().len();
+    assert!(agent.run_once_streaming_mpsc_with_receipt("synthetic wake", receipt_id, event_tx.clone()).await.is_err());
+    let after = agent.messages().len();
+    assert_eq!(after, before + 1);
+    assert!(super::super::wake_receipts::get(receipt_id).unwrap().unwrap().attempt_started);
+    assert!(agent.run_once_streaming_mpsc_with_receipt("synthetic wake", receipt_id, event_tx).await.is_err());
+    assert_eq!(agent.messages().len(), after);
+    drop(agent);
+    if let Some(value) = old_home { crate::env::set_var("KCODE_HOME", value); }
+    else { crate::env::remove_var("KCODE_HOME"); }
+}

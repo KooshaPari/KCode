@@ -1160,6 +1160,30 @@ pub(super) async fn handle_client(
             continue;
         }
 
+        // The connection's session is checked in this sequential request loop,
+        // before conversion to an ordinary message and before it can be dispatched.
+        request = match request {
+            Request::SessionBoundHiddenMessage { id, session_id, system_reminder } => {
+                if session_id != client_session_id || provisional_session {
+                    let _ = client_event_tx.send(ServerEvent::Error {
+                        id,
+                        message: "Session-bound hidden message rejected: session is not attached".into(),
+                        retry_after_secs: None,
+                    });
+                    continue;
+                }
+                Request::Message {
+                    id,
+                    content: String::new(),
+                    images: Vec::new(),
+                    system_reminder: Some(system_reminder),
+                    active_skill: None,
+                    no_reply: false,
+                }
+            }
+            request => request,
+        };
+
         // Send ack
         let ack = ServerEvent::Ack { id: request.id() };
         let json = encode_event(&ack);
@@ -1238,6 +1262,7 @@ pub(super) async fn handle_client(
         }
         let sdk_session_before_request = client_session_id.clone();
         match request {
+            Request::SessionBoundHiddenMessage { .. } => unreachable!("session-bound request normalized before dispatch"),
             Request::ConfigureTools { .. } | Request::ListTools { .. } | Request::ToolResult { .. } => unreachable!("SDK controls dispatched before acknowledgment"),
             Request::Message {
                 id,

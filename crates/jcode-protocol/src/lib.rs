@@ -209,6 +209,33 @@ pub type ReloadRecoverySnapshot = jcode_selfdev_types::ReloadRecoveryDirective;
 
 mod wire;
 pub use wire::{Request, ServerEvent};
+
+/// A staged wire envelope. It must not be advertised or emitted until every
+/// live and replayed turn event is tagged at its source with the same turn ID.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OriginTaggedEvent {
+    pub version: OriginTaggedEventVersion,
+    #[serde(deserialize_with = "deserialize_nonempty_origin")]
+    pub session_id: String,
+    #[serde(deserialize_with = "deserialize_nonempty_origin")]
+    pub turn_id: String,
+    pub event: ServerEvent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OriginTaggedEventVersion {
+    #[serde(rename = "turn-origin-v1")]
+    V1,
+}
+
+fn deserialize_nonempty_origin<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    let value = String::deserialize(deserializer)?;
+    if value.trim().is_empty() {
+        return Err(serde::de::Error::custom("origin identifier must not be empty"));
+    }
+    Ok(value)
+}
 pub use wire::{SessionToolConfig, SessionToolDefinition, TaskGraphNodeSpec};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -636,7 +663,7 @@ impl Request {
             Request::ConfigureTools { id, .. }
             | Request::ListTools { id }
             | Request::ToolResult { id, .. } => *id,
-            Request::Message { id, .. } => *id,
+            Request::Message { id, .. } | Request::SessionBoundHiddenMessage { id, .. } => *id,
             Request::Cancel { id } => *id,
             Request::BackgroundTool { id } => *id,
             Request::SoftInterrupt { id, .. } => *id,

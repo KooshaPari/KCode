@@ -143,6 +143,7 @@ impl Agent {
         receipt_id: &str,
         event_tx: mpsc::UnboundedSender<ServerEvent>,
     ) -> Result<()> {
+        crate::server::wake_receipts::begin_attempt(receipt_id, self.session_id(), message)?;
         // Receipt turns carry no reminder. A turn that panicked before its own
         // cleanup can leave the field set on this reused agent, and the stale
         // reminder would then ride along with the synthetic wake input.
@@ -157,7 +158,7 @@ impl Agent {
         )?;
         // System-displayed inputs do not count as visible conversation for
         // the normal first-save guard. Force the first snapshot before proof.
-        self.session.save_prepared()?;
+        self.session.save_prepared_checked()?;
         self.session.sync_wake_turn_entry()?;
         crate::server::wake_receipts::mark_awakened(receipt_id, self.session_id())?;
         crate::telemetry::record_turn();

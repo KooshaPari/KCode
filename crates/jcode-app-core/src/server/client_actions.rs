@@ -208,7 +208,7 @@ pub(super) async fn handle_notify_session_receipt(
             }
         }
         let receipt = super::wake_receipts::submit(&receipt_id, &session_id, &message)?;
-        if receipt.state == super::wake_receipts::WakeState::Queued {
+        if receipt.state == super::wake_receipts::WakeState::Queued && !receipt.attempt_started {
             let has_client = ctx
                 .client_connections
                 .read()

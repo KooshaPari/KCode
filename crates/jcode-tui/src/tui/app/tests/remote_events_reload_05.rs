@@ -61,7 +61,7 @@ fn test_busy_automatic_continuation_waits_for_running_turn_without_retrying() {
         );
         assert!(app.remote_resume_activity.is_none());
         rt.block_on(remote::process_remote_followups(&mut app, &mut remote));
-        rt.block_on(remote::handle_tick(&mut app, &mut remote));
+        rt.block_on(remote::handle_tick(&mut app, &mut remote, &mut Default::default()));
         assert!(app.is_processing);
         assert!(app.current_message_id.is_none());
         assert_eq!(

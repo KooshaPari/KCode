@@ -13,7 +13,7 @@ fn with_ssh_remote_test_home(f: impl FnOnce()) {
             }
         }
         let _restore = RestoreEnv(
-            ["KCODE_SSH_REMOTE", "KCODE_SOCKET", "KCODE_SELFDEV"]
+            ["KCODE_SSH_REMOTE", "KCODE_SSH_LOCAL_GATE", "KCODE_SOCKET", "KCODE_SELFDEV"]
                 .into_iter()
                 .map(|key| (key, std::env::var_os(key)))
                 .collect(),
@@ -21,6 +21,48 @@ fn with_ssh_remote_test_home(f: impl FnOnce()) {
         crate::env::set_var("KCODE_SSH_REMOTE", "test-remote");
         crate::env::remove_var("KCODE_SELFDEV");
         f();
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn ssh_local_gate_blocks_subscribe_until_ready_and_refusal_sends_nothing() {
+    with_ssh_remote_test_home(|| {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use std::time::Duration;
+        crate::env::set_var("KCODE_SSH_LOCAL_GATE", "1");
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            for (frame, accepted) in [
+                (b"KCODE-SSH-LOCAL/1 REJECT\n".as_slice(), false),
+                (b"KCODE-SSH-LOCAL/1 READY\n".as_slice(), true),
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                let socket = dir.path().join("gate.sock");
+                crate::server::set_socket_path(socket.to_str().unwrap());
+                let listener = crate::transport::Listener::bind(&socket).unwrap();
+                let connect = tokio::spawn(crate::tui::backend::RemoteConnection::connect_with_session(
+                    Some("remote-only-session"), Some("ssh-client"), false, false, Some("/remote/project"),
+                ));
+                let (stream, _) = listener.accept().await.unwrap();
+                let (reader, mut writer) = stream.into_split();
+                let mut reader = BufReader::new(reader);
+                let mut line = String::new();
+                assert!(tokio::time::timeout(Duration::from_millis(50), reader.read_line(&mut line)).await.is_err());
+                assert!(line.is_empty(), "no request before gate");
+                writer.write_all(frame).await.unwrap();
+                if accepted {
+                    let connection = connect.await.unwrap().unwrap();
+                    reader.read_line(&mut line).await.unwrap();
+                    assert!(matches!(serde_json::from_str::<crate::protocol::Request>(&line).unwrap(), crate::protocol::Request::Subscribe { .. }));
+                    drop(connection);
+                } else {
+                    let error = connect.await.unwrap().err().unwrap();
+                    assert!(error.downcast_ref::<crate::tui::backend::ssh_gate::LocalSshGateError>().is_some());
+                    assert_eq!(reader.read_line(&mut line).await.unwrap(), 0);
+                    assert!(line.is_empty(), "no request after refusal");
+                }
+            }
+        });
     });
 }
 
@@ -247,5 +289,101 @@ fn ssh_remote_header_guides_remote_login_and_hides_local_scheduler() {
         assert!(info.ambient_info.is_none());
         assert!(info.git_info.is_none());
         assert!(crate::tui::scheduled_notification_text(info.ambient_info.as_ref()).is_none());
+    });
+}
+
+fn ssh_test_history(session: &str) -> crate::protocol::ServerEvent {
+    crate::protocol::ServerEvent::History {
+            id: 1,
+            session_id: session.into(),
+            messages: vec![],
+            images: vec![],
+            provider_name: Some("remote-provider".into()),
+            provider_model: Some("remote-model".into()),
+            subagent_model: None,
+            autoreview_enabled: Some(false),
+            autojudge_enabled: Some(false),
+            available_models: vec![],
+            available_model_routes: vec![],
+            mcp_servers: vec![],
+            skills: vec![],
+            total_tokens: None,
+            token_usage_totals: None,
+            all_sessions: vec![],
+            client_count: None,
+            is_canary: Some(false),
+            reload_recovery: None,
+            server_version: Some("v0.0.1".into()),
+            server_name: Some("remote-daemon".into()),
+            server_icon: None,
+            server_has_update: Some(true),
+            was_interrupted: None,
+            connection_type: None,
+            status_detail: None,
+            upstream_provider: None,
+            resolved_credential: None,
+            reasoning_effort: None,
+            service_tier: None,
+            compaction_mode: crate::config::CompactionMode::Reactive,
+            activity: None,
+            side_panel: crate::side_panel::SidePanelSnapshot::default(),
+            applets: Default::default(),
+        }
+}
+
+#[test]
+fn ssh_session_switch_parks_queues_for_both_event_orders() {
+    with_ssh_remote_test_home(|| {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _entered = runtime.enter();
+        for use_session_id in [false, true] {
+            for resume_only in [false, true] {
+                let mut app = App::new_for_remote(Some("a".into()));
+                if !resume_only { app.remote_session_id = Some("a".into()); }
+                let mut remote = crate::tui::backend::RemoteConnection::dummy();
+                app.queued_messages.push("a message".into());
+                app.hidden_queued_system_messages.push("a hidden".into());
+                if use_session_id { app.handle_server_event(crate::protocol::ServerEvent::SessionId { session_id: "b".into() }, &mut remote); }
+                app.handle_server_event(ssh_test_history("b"), &mut remote);
+                assert!(app.queued_messages.is_empty());
+                assert!(app.hidden_queued_system_messages.is_empty());
+                app.queued_messages.push("b message".into());
+                if use_session_id { app.handle_server_event(crate::protocol::ServerEvent::SessionId { session_id: "a".into() }, &mut remote); }
+                app.handle_server_event(ssh_test_history("a"), &mut remote);
+                assert_eq!(app.queued_messages, ["a message"]);
+                assert_eq!(app.hidden_queued_system_messages, ["a hidden"]);
+                assert!(app.parked_ssh_queues.iter().any(|(id, messages, ..)| id.as_deref() == Some("b") && messages == &["b message"]));
+            }
+        }
+        for use_session_id in [false, true] {
+            let mut app = App::new_for_remote(None);
+            let mut remote = crate::tui::backend::RemoteConnection::dummy();
+            app.queued_messages.push("unknown origin".into());
+            if use_session_id { app.handle_server_event(crate::protocol::ServerEvent::SessionId { session_id: "b".into() }, &mut remote); }
+            app.handle_server_event(ssh_test_history("b"), &mut remote);
+            assert!(app.queued_messages.is_empty());
+            assert!(app.uncertain_ssh_requests.iter().any(|request| request.session_id.is_none() && request.payload.content == "unknown origin"));
+        }
+    });
+}
+
+#[test]
+fn ssh_startup_session_id_preserves_in_flight_request() {
+    with_ssh_remote_test_home(|| {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _entered = runtime.enter();
+        let mut app = App::new_for_remote(None);
+        let mut remote = crate::tui::backend::RemoteConnection::dummy();
+        app.pending_startup_prompt_echo = Some("startup".into());
+        app.current_message_id = Some(123);
+        app.rate_limit_pending_message = Some(PendingRemoteMessage {
+            content: "startup".into(), images: vec![("image/png".into(), "data".into())],
+            is_system: false, system_reminder: None, auto_retry: false,
+            retry_attempts: 0, retry_at: None,
+        });
+        app.handle_server_event(crate::protocol::ServerEvent::SessionId { session_id: "a".into() }, &mut remote);
+        app.handle_server_event(ssh_test_history("a"), &mut remote);
+        assert_eq!(app.rate_limit_pending_message.as_ref().unwrap().content, "startup");
+        assert!(app.uncertain_ssh_requests.is_empty());
     });
 }

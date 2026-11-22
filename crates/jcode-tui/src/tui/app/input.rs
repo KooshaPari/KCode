@@ -2929,6 +2929,15 @@ pub(super) fn stage_local_interleave(
     content: String,
     images: Vec<(String, String)>,
 ) {
+    app.staged_ssh_interleave_session = if crate::tui::is_ssh_remote() {
+        Some(
+            app.remote_session_id
+                .clone()
+                .or_else(|| app.resume_session_id.clone()),
+        )
+    } else {
+        None
+    };
     app.interleave_message = Some(content);
     app.interleave_images = images;
     app.set_status_notice("⏭ Sending now (interleave)");

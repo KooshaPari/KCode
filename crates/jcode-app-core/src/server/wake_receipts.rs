@@ -24,6 +24,9 @@ pub(super) struct WakeReceipt {
     pub session_id: String,
     pub message: String,
     pub state: WakeState,
+    /// A turn-entry attempt began; retry requires reconciliation, not replay.
+    #[serde(default)]
+    pub attempt_started: bool,
     /// Nanoseconds since the Unix epoch when this receipt was first accepted.
     /// Ledgers written before pruning existed default this to 0, so those
     /// entries sort oldest and are pruned first.
@@ -56,6 +59,33 @@ fn receipt_lock() -> &'static Mutex<()> {
 
 fn path() -> Result<PathBuf> {
     Ok(crate::storage::jcode_dir()?.join("native-wake-receipts.json"))
+}
+
+fn attempt_marker_path(receipt_id: &str) -> Result<PathBuf> {
+    use sha2::{Digest, Sha256};
+    let encoded: String = Sha256::digest(receipt_id.as_bytes()).iter().map(|byte| format!("{byte:02x}")).collect();
+    Ok(crate::storage::jcode_dir()?.join("native-wake-attempts").join(encoded))
+}
+
+fn attempt_marker_exists(receipt_id: &str) -> Result<bool> {
+    match std::fs::read(attempt_marker_path(receipt_id)?) {
+        Ok(bytes) if bytes == receipt_id.as_bytes() => Ok(true),
+        Ok(_) => bail!("wake attempt marker identity mismatch or incomplete; reconcile before retry"),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn create_attempt_marker(receipt_id: &str) -> Result<()> {
+    let path = attempt_marker_path(receipt_id)?;
+    let parent = path.parent().ok_or_else(|| anyhow::anyhow!("missing attempt marker directory"))?;
+    std::fs::create_dir_all(parent)?;
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(path)?;
+    std::io::Write::write_all(&mut file, receipt_id.as_bytes())?;
+    file.sync_all()?;
+    #[cfg(unix)]
+    std::fs::File::open(parent)?.sync_all()?;
+    Ok(())
 }
 
 fn load() -> Result<Ledger> {
@@ -204,8 +234,11 @@ pub(super) fn submit(receipt_id: &str, session_id: &str, message: &str) -> Resul
         {
             bail!("receipt_id already belongs to another wake payload");
         }
-        return Ok(existing.clone());
+        let mut existing = existing.clone();
+        if existing.state == WakeState::Queued && attempt_marker_exists(receipt_id)? { existing.attempt_started = true; }
+        return Ok(existing);
     }
+    if attempt_marker_exists(receipt_id)? { bail!("wake attempt marker exists without receipt; reconcile before retry"); }
     // Make room by settling awakened receipts before refusing the new wake.
     prune(&mut ledger, receipt_id, 1);
     if ledger.receipts.len() >= MAX_RECEIPTS {
@@ -218,6 +251,7 @@ pub(super) fn submit(receipt_id: &str, session_id: &str, message: &str) -> Resul
         session_id: session_id.to_string(),
         message: message.to_string(),
         state: WakeState::Queued,
+        attempt_started: false,
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|elapsed| elapsed.as_nanos() as u64)
@@ -236,11 +270,27 @@ pub(super) fn get(receipt_id: &str) -> Result<Option<WakeReceipt>> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let ledger = load()?;
-    Ok(ledger
-        .receipts
-        .get(receipt_id)
-        .or_else(|| ledger.settled.get(receipt_id))
-        .cloned())
+    let mut receipt = ledger.receipts.get(receipt_id).or_else(|| ledger.settled.get(receipt_id)).cloned();
+    if let Some(receipt) = &mut receipt {
+        if receipt.state == WakeState::Queued && attempt_marker_exists(receipt_id)? { receipt.attempt_started = true; }
+    } else if attempt_marker_exists(receipt_id)? {
+        bail!("wake attempt marker exists without receipt; reconcile before retry");
+    }
+    Ok(receipt)
+}
+
+/// Durably claim a receipt before mutating the transcript. A previous claim
+/// is an unknown outcome and must not be retried automatically.
+pub(crate) fn begin_attempt(receipt_id: &str, session_id: &str, message: &str) -> Result<()> {
+    let _guard = receipt_lock().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut ledger = load()?;
+    if ledger.settled.contains_key(receipt_id) { bail!("wake receipt is already settled"); }
+    let receipt = ledger.receipts.get_mut(receipt_id).ok_or_else(|| anyhow::anyhow!("unknown receipt_id"))?;
+    if receipt.session_id != session_id || receipt.message != message { bail!("wake receipt target or payload mismatch"); }
+    if receipt.state != WakeState::Queued || receipt.attempt_started { bail!("wake receipt attempt already started; reconcile before retry"); }
+    create_attempt_marker(receipt_id)?;
+    receipt.attempt_started = true;
+    save(&ledger)
 }
 
 /// Called only after the exact receipt's content has been saved in the target transcript.
@@ -272,6 +322,7 @@ pub(super) fn status_event(id: u64, receipt: WakeReceipt) -> crate::protocol::Se
         receipt_id: receipt.receipt_id,
         session_id: receipt.session_id,
         status: match receipt.state {
+            WakeState::Queued if receipt.attempt_started => "uncertain",
             WakeState::Queued => "queued",
             WakeState::Awakened => "awakened",
         }
@@ -282,6 +333,29 @@ pub(super) fn status_event(id: u64, receipt: WakeReceipt) -> crate::protocol::Se
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn attempt_marker_blocks_replay_after_interrupted_ledger_update() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = tempfile::TempDir::new().unwrap();
+        let old_home = std::env::var_os("KCODE_HOME");
+        crate::env::set_var("KCODE_HOME", temp.path());
+        for len in [127, 128] {
+            let receipt_id = "x".repeat(len);
+            submit(&receipt_id, "ses_target", "wake").unwrap();
+            create_attempt_marker(&receipt_id).unwrap();
+            let marker = attempt_marker_path(&receipt_id).unwrap();
+            assert_eq!(std::fs::read(marker).unwrap(), receipt_id.as_bytes());
+            assert!(get(&receipt_id).unwrap().unwrap().attempt_started);
+            assert!(submit(&receipt_id, "ses_target", "wake").unwrap().attempt_started);
+            assert!(begin_attempt(&receipt_id, "ses_target", "wake").is_err());
+            std::fs::write(attempt_marker_path(&receipt_id).unwrap(), b"partial").unwrap();
+            assert!(get(&receipt_id).is_err());
+            assert!(submit(&receipt_id, "ses_target", "wake").is_err());
+        }
+        if let Some(value) = old_home { crate::env::set_var("KCODE_HOME", value); }
+        else { crate::env::remove_var("KCODE_HOME"); }
+    }
 
     #[test]
     fn queued_receipt_survives_reload_and_retries_without_duplicate() {

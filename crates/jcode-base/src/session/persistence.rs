@@ -9,6 +9,21 @@ use super::storage_paths::{file_len_or_zero, session_journal_path_from_snapshot,
 use super::{MAX_SESSION_JOURNAL_BYTES, RemoteStartupSessionSnapshot, Session, SessionStartupStub};
 use crate::storage;
 
+/// A prepared save refused because this copy no longer owns the session.
+#[derive(Debug)]
+pub struct PreparedSaveLeaseDenied {
+    pub session_id: String,
+    pub reason: crate::storage::SessionLeaseBlock,
+}
+
+impl std::fmt::Display for PreparedSaveLeaseDenied {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Session {} was not persisted: {}", self.session_id, self.reason)
+    }
+}
+
+impl std::error::Error for PreparedSaveLeaseDenied {}
+
 /// Outcome of replaying one session journal file.
 #[derive(Debug, Default)]
 struct JournalReplayStats {
@@ -529,7 +544,7 @@ impl Session {
     }
 
     pub fn save(&mut self) -> Result<()> {
-        self.save_inner(false)
+        self.save_inner(false, false)
     }
 
     /// Make a saved native wake turn entry durable before its receipt advances.
@@ -567,10 +582,16 @@ impl Session {
     /// another (for example visible swarm spawns), where caller-configured
     /// state such as model, provider, or effort must survive until attach.
     pub fn save_prepared(&mut self) -> Result<()> {
-        self.save_inner(true)
+        self.save_inner(true, false)
     }
 
-    fn save_inner(&mut self, force: bool) -> Result<()> {
+    /// Save a prepared session, returning an explicit error if the migration
+    /// lease rejects the write. This does not imply an fsync or a transaction.
+    pub fn save_prepared_checked(&mut self) -> Result<()> {
+        self.save_inner(true, true)
+    }
+
+    fn save_inner(&mut self, force: bool, reject_lease_denial: bool) -> Result<()> {
         // Shutdown waits for this guard so it cannot exit mid-checkpoint.
         let _save_guard = SAVES_IN_FLIGHT
             .read()
@@ -578,7 +599,16 @@ impl Session {
         // A session that migrated to another machine (or whose on-disk copy was
         // replaced by a newer returned transcript) must not be overwritten by
         // this stale in-memory copy.
-        if let Some(block) = self.migration_lease_block() {
+        let lease_block = if reject_lease_denial {
+            crate::storage::session_lease_block_checked(&self.id, self.migration_epoch)
+                .context("unable to verify session migration lease")?
+        } else {
+            self.migration_lease_block()
+        };
+        if let Some(block) = lease_block {
+            if reject_lease_denial {
+                return Err(PreparedSaveLeaseDenied { session_id: self.id.clone(), reason: block }.into());
+            }
             crate::logging::warn(&format!("Session {} not persisted: {}", self.id, block));
             return Ok(());
         }

@@ -95,6 +95,7 @@ pub use active_pids::{
 mod session_lease;
 pub use session_lease::{
     SessionLease, SessionLeaseBlock, read_session_lease, remove_session_lease, session_lease_block,
+    session_lease_block_checked,
     session_leases_dir, write_session_lease,
 };
 

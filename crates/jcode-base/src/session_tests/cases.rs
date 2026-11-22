@@ -2911,3 +2911,62 @@ fn first_visible_user_prompt_becomes_the_generated_title() {
     session.rename_title(Some("Custom".into()));
     assert_eq!(session.display_title(), Some("Custom"));
 }
+
+
+#[test]
+fn checked_prepared_save_reports_lease_denial_and_preserves_legacy_behavior() -> Result<()> {
+    let _env_lock = lock_env();
+    let home = tempfile::tempdir()?;
+    let _home = EnvVarGuard::set("KCODE_HOME", home.path());
+    let id = "checked_lease_denial";
+    let mut session = Session::create_with_id(id.into(), None, None);
+    let lease_dir = home.path().join("session_leases");
+    std::fs::create_dir_all(&lease_dir)?;
+    let lease_path = lease_dir.join(format!("{id}.json"));
+    let write_lease = |epoch: u64, away_host: Option<&str>| -> Result<()> {
+        std::fs::write(&lease_path, serde_json::to_vec(&serde_json::json!({
+            "session_id": id, "epoch": epoch, "away_host": away_host,
+            "repo_root": null, "last_sync_snapshot": null, "last_sync_head": null,
+            "updated_at": "2026-11-01T00:00:00Z"
+        }))?)?;
+        Ok(())
+    };
+    for (epoch, away_host) in [(1, Some("remote")), (1, None)] {
+        write_lease(epoch, away_host)?;
+        let error = session.save_prepared_checked().unwrap_err();
+        assert!(error.downcast_ref::<PreparedSaveLeaseDenied>().is_some());
+        assert!(!session_path(id)?.exists());
+        assert!(session.save_prepared().is_ok(), "legacy API keeps its existing skip behavior");
+        assert!(!session_path(id)?.exists());
+    }
+    std::fs::write(&lease_path, b"invalid json")?;
+    assert!(session.save_prepared_checked().is_err());
+    assert!(!session_path(id)?.exists());
+    std::fs::write(&lease_path, serde_json::to_vec(&serde_json::json!({
+        "session_id":"different", "epoch":0, "updated_at":"2026-11-01T00:00:00Z"
+    }))?)?;
+    assert!(session.save_prepared_checked().is_err());
+    std::fs::remove_file(&lease_path)?;
+    std::fs::create_dir(&lease_path)?;
+    assert!(session.save_prepared_checked().is_err());
+    Ok(())
+}
+
+#[test]
+fn checked_prepared_save_writes_and_reports_io_failure() -> Result<()> {
+    let _env_lock = lock_env();
+    let home = tempfile::tempdir()?;
+    let _home = EnvVarGuard::set("KCODE_HOME", home.path());
+    let mut session = Session::create_with_id("checked_write".into(), None, None);
+    session.save_prepared_checked()?;
+    assert!(session_path("checked_write")?.exists());
+    assert_eq!(Session::load("checked_write")?.id, "checked_write");
+
+    let failed_home = tempfile::tempdir()?;
+    std::fs::write(failed_home.path().join("sessions"), b"not a directory")?;
+    let _failed_home = EnvVarGuard::set("KCODE_HOME", failed_home.path());
+    let mut failed = Session::create_with_id("checked_io_failure".into(), None, None);
+    let error = failed.save_prepared_checked().unwrap_err();
+    assert!(error.downcast_ref::<PreparedSaveLeaseDenied>().is_none());
+    Ok(())
+}

@@ -40,6 +40,7 @@ mod maintenance;
 mod memory_profile;
 mod model;
 mod persistence;
+pub use persistence::PreparedSaveLeaseDenied;
 mod render;
 mod storage_paths;
 pub use crash::{

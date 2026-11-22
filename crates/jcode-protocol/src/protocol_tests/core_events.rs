@@ -786,3 +786,56 @@ fn swarm_rename_is_rejected_by_legacy_server_and_requires_target() {
     assert!(serde_json::from_str::<LegacyRequest>(&json).is_err());
     assert!(parse_request_json(r#"{"type":"rename_swarm_session","id":44}"#).is_err());
 }
+
+
+#[test]
+fn session_bound_hidden_message_has_distinct_wire_tag_and_identity() {
+    let request = Request::SessionBoundHiddenMessage {
+        id: 7,
+        session_id: "session-A".into(),
+        system_reminder: "hidden".into(),
+    };
+    let wire = serde_json::to_value(&request).unwrap();
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "type")]
+    enum LegacyRequest {
+        #[serde(rename = "message")]
+        Message,
+    }
+    assert!(serde_json::from_value::<LegacyRequest>(wire.clone()).is_err());
+    assert_eq!(wire["type"], "session_bound_hidden_message");
+    assert_eq!(wire["session_id"], "session-A");
+    assert_eq!(request.id(), 7);
+    assert!(matches!(serde_json::from_value::<Request>(wire).unwrap(),
+        Request::SessionBoundHiddenMessage { session_id, system_reminder, .. }
+        if session_id == "session-A" && system_reminder == "hidden"));
+    assert!(serde_json::from_str::<Request>(r#"{"type":"session_bound_hidden_message","id":7,"system_reminder":"hidden"}"#).is_err());
+}
+
+
+#[test]
+fn staged_origin_envelope_requires_version_and_both_origin_ids() {
+    let envelope = OriginTaggedEvent {
+        version: OriginTaggedEventVersion::V1,
+        session_id: "session-A".into(),
+        turn_id: "turn-unique-A".into(),
+        event: ServerEvent::TextDelta { text: "hello".into() },
+    };
+    let wire = serde_json::to_value(&envelope).unwrap();
+    let decoded: OriginTaggedEvent = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(decoded.session_id, "session-A");
+    assert_eq!(decoded.turn_id, "turn-unique-A");
+    assert!(matches!(decoded.event, ServerEvent::TextDelta { text } if text == "hello"));
+    assert!(serde_json::from_value::<ServerEvent>(wire.clone()).is_err());
+    for field in ["version", "session_id", "turn_id", "event"] {
+        let mut missing = wire.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<OriginTaggedEvent>(missing).is_err());
+    }
+    let mut bad_version = wire.clone();
+    bad_version["version"] = "turn-origin-v2".into();
+    assert!(serde_json::from_value::<OriginTaggedEvent>(bad_version).is_err());
+    let mut empty_turn = wire;
+    empty_turn["turn_id"] = " ".into();
+    assert!(serde_json::from_value::<OriginTaggedEvent>(empty_turn).is_err());
+}

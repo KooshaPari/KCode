@@ -86,6 +86,14 @@ pub enum Request {
         no_reply: bool,
     },
 
+    /// Send only if the connection still owns the named session.
+    #[serde(rename = "session_bound_hidden_message")]
+    SessionBoundHiddenMessage {
+        id: u64,
+        session_id: String,
+        system_reminder: String,
+    },
+
     /// Cancel current generation
     #[serde(rename = "cancel")]
     Cancel { id: u64 },

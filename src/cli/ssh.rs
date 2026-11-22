@@ -74,6 +74,7 @@ async fn run_unix(args: Args) -> Result<()> {
     .await?;
     let working_dir = connection.remote_working_dir().to_owned();
     crate::env::set_var("KCODE_SSH_REMOTE", host);
+    crate::env::set_var("KCODE_SSH_LOCAL_GATE", "1");
     crate::env::set_var("KCODE_SSH_BINARY", binary);
     crate::env::set_var("KCODE_SSH_WORKING_DIR", &working_dir);
     if let Some(socket) = args.ssh_server_socket.as_deref() {
@@ -117,6 +118,7 @@ async fn run_unix(args: Args) -> Result<()> {
         _ = quit.recv() => Ok(()),
     };
     let cleanup = connection.close().await;
+    crate::env::remove_var("KCODE_SSH_LOCAL_GATE");
     let result = result.and(cleanup);
     if result.is_ok()
         && let Some(handoff) = super::cloud_move::take_stashed_handoff()

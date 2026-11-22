@@ -21,10 +21,12 @@ use tokio::task::{JoinHandle, JoinSet};
 
 mod bridge;
 mod handshake;
+mod local_gate;
 #[cfg(test)]
 use bridge::bridge_stream;
 pub(crate) use bridge::run_stdio;
 use handshake::{read_handshake, verify_daemon_protocol};
+use local_gate::forward_matching_connection;
 
 const PROTOCOL: u32 = 1;
 const HANDSHAKE_LIMIT: usize = 8192;
@@ -411,31 +413,6 @@ impl Drop for SshConnection {
     fn drop(&mut self) {
         self.stderr_task.abort();
     }
-}
-
-async fn forward_matching_connection(
-    stream: UnixStream,
-    mut ssh: SshConnection,
-    expected: &NativeHandshake,
-    mut stopped: watch::Receiver<bool>,
-) -> Result<()> {
-    if let Err(error) = expected.verify_target_metadata(&ssh.handshake) {
-        eprintln!("{error:#}");
-        ssh.shutdown().await;
-        return Err(error);
-    }
-    let (mut read, mut write) = stream.into_split();
-    let outcome = tokio::select! {
-        biased;
-        _ = stopped.changed() => Ok(0),
-        result = tokio::io::copy(&mut read, &mut ssh.writer) => result,
-        result = tokio::io::copy(&mut ssh.reader, &mut write) => result,
-    };
-    ssh.shutdown().await;
-    if let Err(error) = outcome {
-        bail!("native SSH stream failed: {error}; {}", ssh.diagnostic());
-    }
-    Ok(())
 }
 
 async fn accept_connections(

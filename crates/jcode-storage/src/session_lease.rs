@@ -112,6 +112,23 @@ pub fn remove_session_lease(session_id: &str) {
     }
 }
 
+/// Like `session_lease_block`, but missing is the only ignored read failure.
+/// Malformed, unreadable or mismatched lease files are not evidence of ownership.
+pub fn session_lease_block_checked(session_id: &str, copy_epoch: u64) -> anyhow::Result<Option<SessionLeaseBlock>> {
+    let path = lease_path(session_id).ok_or_else(|| anyhow::anyhow!("invalid session id or unavailable lease directory"))?;
+    let raw = match std::fs::read(&path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let lease: SessionLease = serde_json::from_slice(&raw)?;
+    if lease.session_id != session_id { anyhow::bail!("session lease identity mismatch"); }
+    if let Some(host) = lease.away_host {
+        return Ok(Some(SessionLeaseBlock::MovedAway { host, epoch: lease.epoch }));
+    }
+    Ok((copy_epoch < lease.epoch).then_some(SessionLeaseBlock::StaleCopy { copy_epoch, lease_epoch: lease.epoch }))
+}
+
 /// Check whether a session copy at `copy_epoch` may run turns / persist here.
 /// Cheap when no session ever migrated: a single failed directory lookup.
 pub fn session_lease_block(session_id: &str, copy_epoch: u64) -> Option<SessionLeaseBlock> {

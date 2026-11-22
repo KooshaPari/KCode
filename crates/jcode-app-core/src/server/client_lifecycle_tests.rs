@@ -1621,6 +1621,10 @@ async fn sdk_socket_configure_list_callback_and_busy_rejection() {
         matches!(e, ServerEvent::Done { id: 1 })
     })
     .await;
+    send(&mut client_writer, json!({"type":"session_bound_hidden_message","id":901,"session_id":"wrong-session","system_reminder":"private"})).await;
+    let rejected = until(&mut client_reader, |event| matches!(event,
+        ServerEvent::Ack { id: 901 } | ServerEvent::Error { id: 901, .. })).await;
+    assert!(matches!(rejected, ServerEvent::Error { id: 901, .. }), "wrong-session request must be rejected before ACK");
     send(&mut client_writer, json!({"type":"configure_tools","id":2,"tools":{"enabled":[],"custom":[{"name":"read","description":"SDK read callback","parameters":{"type":"object"}}]}})).await;
     let configured = until(&mut client_reader, |e| {
         matches!(

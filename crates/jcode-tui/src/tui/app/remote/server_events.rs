@@ -456,6 +456,15 @@ pub(in crate::tui::app) fn handle_server_event(
     event: ServerEvent,
     remote: &mut impl RemoteEventState,
 ) -> bool {
+    handle_server_event_with_uncertainty(app, event, remote, false)
+}
+
+pub(super) fn handle_server_event_with_uncertainty(
+    app: &mut App,
+    event: ServerEvent,
+    remote: &mut impl RemoteEventState,
+    uncertain_retained: bool,
+) -> bool {
     if let ServerEvent::Done { id } = &event
         && app.usage_reset.invalidate_requests.remove(id).is_some()
     {
@@ -1270,6 +1279,10 @@ pub(in crate::tui::app) fn handle_server_event(
             }
             remote.clear_pending();
             remote.reset_call_output_tokens_seen();
+            if uncertain_retained {
+                app.rate_limit_reset = None;
+                return false;
+            }
             // Connectivity failures (DNS, connection reset, no route, transient
             // TLS, timeouts) are always transient: the request never reached the
             // provider. Hold the turn and resume when the network recovers,
@@ -1364,8 +1377,14 @@ pub(in crate::tui::app) fn handle_server_event(
             false
         }
         ServerEvent::SessionId { session_id } => {
+            if app.remote_session_id.as_deref().or(app.resume_session_id.as_deref())
+                != Some(session_id.as_str())
+            {
+                super::queue_recovery::retain_pending_ssh_on_session_switch(app);
+            }
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
+            super::queue_recovery::restore_parked_ssh_queue(app, &session_id);
             crate::set_current_session(&session_id);
             app.note_client_focus(true);
             app.update_terminal_title();
@@ -1494,7 +1513,7 @@ pub(in crate::tui::app) fn handle_server_event(
             side_panel,
             ..
         } => {
-            let prev_session_id = app.remote_session_id.clone();
+            let prev_session_id = app.remote_session_id.clone().or_else(|| app.resume_session_id.clone());
             let history_message_count = messages.len();
             let history_mcp_count = mcp_servers.len();
             let history_model = provider_model.clone();
@@ -1572,6 +1591,10 @@ pub(in crate::tui::app) fn handle_server_event(
                 return false;
             }
 
+            if prev_session_id.as_deref() != Some(session_id.as_str())
+            {
+                super::queue_recovery::retain_pending_ssh_on_session_switch(app);
+            }
             remote.set_session_id(session_id.clone());
             app.remote_session_id = Some(session_id.clone());
             crate::set_current_session(&session_id);
@@ -1639,6 +1662,7 @@ pub(in crate::tui::app) fn handle_server_event(
                     app.interleave_images.clear();
                     app.clear_pending_soft_interrupt_tracking();
                 }
+                super::queue_recovery::restore_parked_ssh_queue(app, &session_id);
                 app.remote_total_tokens = None;
                 app.remote_token_usage_totals = None;
                 app.remote_side_pane_images.clear();

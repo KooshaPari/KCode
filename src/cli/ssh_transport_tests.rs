@@ -58,6 +58,9 @@ async fn mismatch_closes_owned_bridge_before_forwarding() {
         .await
         .unwrap_err();
     assert!(error.to_string().contains("SSH reconnect refused"));
+    let mut rejection = String::new();
+    client.read_to_string(&mut rejection).await.unwrap();
+    assert_eq!(rejection, "KCODE-SSH-LOCAL/1 REJECT\n");
     assert!(!marker.exists());
     assert_eq!(
         unsafe { libc::kill(pid, 0) },
@@ -92,7 +95,7 @@ async fn matching_metadata_forwards_the_stream() {
         .unwrap();
     let mut reply = String::new();
     client.read_to_string(&mut reply).await.unwrap();
-    assert_eq!(reply, "echo:hello\n");
+    assert_eq!(reply, "KCODE-SSH-LOCAL/1 READY\necho:hello\n");
 }
 
 fn shell(script: &str) -> Command {

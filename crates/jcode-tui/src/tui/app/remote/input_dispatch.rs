@@ -2,6 +2,67 @@ use super::super::{PendingRemoteMessage, PendingSplitPrompt};
 use super::*;
 use crate::tui::app as app_mod;
 
+#[derive(Debug)]
+pub(super) struct UncertainSshWrite;
+
+impl std::fmt::Display for UncertainSshWrite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SSH request write failed; the remote outcome is unknown")
+    }
+}
+
+impl std::error::Error for UncertainSshWrite {}
+
+pub(super) fn is_uncertain_ssh_write(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<UncertainSshWrite>().is_some()
+}
+
+pub(super) fn ssh_outcome_unresolved(app: &App) -> bool {
+    let session = app
+        .remote_session_id
+        .as_ref()
+        .or(app.resume_session_id.as_ref());
+    crate::tui::is_ssh_remote()
+        && (app.ssh_hidden_inflight.is_some() || app
+            .uncertain_ssh_sessions
+            .iter()
+            .any(|held| held.is_none() || held.as_ref() == session))
+}
+
+pub(super) fn retain_failed_ssh_interleave(
+    app: &mut App,
+    content: String,
+    images: Vec<(String, String)>,
+) -> bool {
+    if !crate::tui::is_ssh_remote() {
+        return false;
+    }
+    super::reconnect::record_uncertain_ssh_request(
+        app,
+        PendingRemoteMessage {
+            content,
+            images,
+            is_system: false,
+            system_reminder: None,
+            auto_retry: false,
+            retry_attempts: 0,
+            retry_at: None,
+        },
+        None,
+    );
+    true
+}
+
+pub(super) fn queued_user_text(messages: &[String]) -> Option<String> {
+    let text = messages
+        .iter()
+        .filter(|message| !super::super::commands::is_poke_message(message))
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    (!text.is_empty()).then_some(text)
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "remote send needs explicit message payload, reminders, retry metadata, and image attachments"
@@ -16,14 +77,77 @@ pub(in crate::tui::app) async fn begin_remote_send(
     auto_retry: bool,
     retry_attempts: u8,
 ) -> Result<u64> {
-    let msg_id = remote
+    begin_remote_send_with_origin(
+        app,
+        remote,
+        content,
+        images,
+        is_system,
+        system_reminder,
+        auto_retry,
+        retry_attempts,
+        None,
+    )
+    .await
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "queued origin must remain bound to its exact request"
+)]
+pub(super) async fn begin_remote_send_with_origin(
+    app: &mut App,
+    remote: &mut RemoteConnection,
+    content: String,
+    images: Vec<(String, String)>,
+    is_system: bool,
+    system_reminder: Option<String>,
+    auto_retry: bool,
+    retry_attempts: u8,
+    queued_user_text: Option<String>,
+) -> Result<u64> {
+    let session = app
+        .remote_session_id
+        .as_ref()
+        .or(app.resume_session_id.as_ref());
+    if app.ssh_hidden_inflight.is_some() || app
+        .uncertain_ssh_sessions
+        .iter()
+        .any(|held| held.is_none() || held.as_ref() == session)
+    {
+        anyhow::bail!("SSH request outcome is unknown; accept it with Ctrl+E before sending");
+    }
+    app.pending_queued_user_text = None;
+    let result = remote
         .send_message_with_images_reminder_and_skill(
             content.clone(),
             images.clone(),
             system_reminder.clone(),
             app.active_skill.clone(),
         )
-        .await?;
+        .await;
+    let msg_id = match result {
+        Ok(id) => id,
+        Err(error) if crate::tui::is_ssh_remote() => {
+            crate::logging::warn(&format!("SSH request write failed: {error}"));
+            super::reconnect::record_uncertain_ssh_request(
+                app,
+                PendingRemoteMessage {
+                    content,
+                    images,
+                    is_system,
+                    system_reminder,
+                    auto_retry,
+                    retry_attempts,
+                    retry_at: None,
+                },
+                queued_user_text,
+            );
+            return Err(UncertainSshWrite.into());
+        }
+        Err(error) => return Err(error),
+    };
+    app.pending_queued_user_text = queued_user_text;
     app.current_message_id = Some(msg_id);
     app.deferred_stream_done_id = None;
     app.is_processing = true;
@@ -453,14 +577,14 @@ async fn submit_remote_transcript_input(
     Ok(())
 }
 
-async fn submit_remote_input_shell(
+pub(super) async fn submit_remote_input_shell(
     app: &mut App,
     remote: &mut RemoteConnection,
     raw_input: String,
     command: String,
 ) -> Result<()> {
     app.commit_pending_streaming_assistant_message();
-    app.push_display_message(DisplayMessage::user(raw_input));
+    app.push_display_message(DisplayMessage::user(raw_input.clone()));
 
     if command.trim().is_empty() {
         app.push_display_message(DisplayMessage::system(
@@ -470,7 +594,19 @@ async fn submit_remote_input_shell(
         return Ok(());
     }
 
-    let request_id = remote.send_input_shell(command.clone()).await?;
+    if ssh_outcome_unresolved(app) {
+        retain_failed_ssh_interleave(app, raw_input, Vec::new());
+        anyhow::bail!("Reconcile the previous SSH outcome before sending");
+    }
+    let request_id = match remote.send_input_shell(command.clone()).await {
+        Ok(id) => id,
+        Err(error) if crate::tui::is_ssh_remote() => {
+            crate::logging::warn(&format!("SSH shell request write failed: {error}"));
+            retain_failed_ssh_interleave(app, raw_input, Vec::new());
+            return Err(UncertainSshWrite.into());
+        }
+        Err(error) => return Err(error),
+    };
     app.current_message_id = Some(request_id);
     app.is_processing = true;
     app.status = ProcessingStatus::Sending;
@@ -483,7 +619,19 @@ async fn submit_remote_input_shell(
     app.thought_line_inserted = false;
     app.thinking_prefix_emitted = false;
     app.thinking_buffer.clear();
-    app.rate_limit_pending_message = None;
+    app.rate_limit_pending_message = if crate::tui::is_ssh_remote() {
+        Some(PendingRemoteMessage {
+            content: raw_input,
+            images: Vec::new(),
+            is_system: false,
+            system_reminder: None,
+            auto_retry: false,
+            retry_attempts: 0,
+            retry_at: None,
+        })
+    } else {
+        None
+    };
     remote.reset_call_output_tokens_seen();
     app.set_status_notice(format!(
         "Running remote shell: {}",
