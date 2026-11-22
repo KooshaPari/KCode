@@ -589,6 +589,22 @@ mod copy_chain_tests {
     }
 }
 
+/// Decide whether a clipboard write actually landed.
+///
+/// A write returning Ok is not proof: a Windows clipboard path can report
+/// success while the clipboard stays empty, which then shows a false "Copied".
+/// The write only counts when reading the clipboard back yields the same text.
+pub(crate) fn write_verified(
+    write: impl FnOnce() -> Result<(), String>,
+    read_back: impl FnOnce() -> Option<String>,
+    expected: &str,
+) -> bool {
+    if write().is_err() {
+        return false;
+    }
+    read_back().as_deref() == Some(expected)
+}
+
 /// Fill the *local* (server-side) clipboard using the platform-native chain.
 ///
 /// - Windows: Win32 via arboard, which is authoritative there (issue #497).
@@ -602,9 +618,14 @@ mod copy_chain_tests {
 fn copy_to_local_clipboard(text: &str) -> bool {
     #[cfg(windows)]
     {
-        arboard::Clipboard::new()
-            .and_then(|mut cb| cb.set_text(text.to_string()))
-            .is_ok()
+        match arboard::Clipboard::new() {
+            Ok(mut cb) => write_verified(
+                || cb.set_text(text.to_string()).map_err(|e| e.to_string()),
+                || cb.get_text().ok(),
+                text,
+            ),
+            Err(_) => false,
+        }
     }
 
     #[cfg(target_os = "macos")]
