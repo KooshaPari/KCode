@@ -10,6 +10,34 @@ use std::time::{Duration, Instant};
 
 const PASTE_ENTER_SUPPRESS_WINDOW: Duration = Duration::from_millis(150);
 
+/// How soon after a character a `Ctrl+Enter` must arrive to be that character's
+/// pasted line break.
+const PASTED_NEWLINE_MAX_GAP: Duration = Duration::from_millis(150);
+
+thread_local! {
+    static LAST_CHAR_PRESS: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+pub(super) fn note_char_press() {
+    LAST_CHAR_PRESS.with(|cell| cell.set(Some(Instant::now())));
+}
+
+pub(super) fn ctrl_enter_is_pasted_newline() -> bool {
+    LAST_CHAR_PRESS.with(|cell| {
+        cell.get()
+            .is_some_and(|at| at.elapsed() <= PASTED_NEWLINE_MAX_GAP)
+    })
+}
+
+pub(super) fn clear_char_press() {
+    LAST_CHAR_PRESS.with(|cell| cell.set(None));
+}
+
+#[cfg(test)]
+pub(super) fn age_char_press_for_test(age: Duration) {
+    LAST_CHAR_PRESS.with(|cell| cell.set(Instant::now().checked_sub(age)));
+}
+
 thread_local! {
     static LAST_PASTE: Cell<Option<Instant>> = const { Cell::new(None) };
 }
@@ -58,7 +86,38 @@ fn has_image_extension(path: &std::path::Path) -> bool {
         })
 }
 
-/// Load a dropped image file as a provider-safe `(media_type, bytes)` pair.
+#[cfg(test)]
+mod tests {
+    use super::{
+        Duration, PASTED_NEWLINE_MAX_GAP, age_char_press_for_test, clear_char_press,
+        ctrl_enter_is_pasted_newline,
+    };
+
+    #[test]
+    fn a_plain_ctrl_enter_with_no_character_before_it_is_the_deliberate_chord() {
+        clear_char_press();
+        assert!(!ctrl_enter_is_pasted_newline());
+    }
+
+    #[test]
+    fn a_ctrl_enter_right_after_a_character_is_a_pasted_line_break() {
+        age_char_press_for_test(Duration::from_millis(5));
+        assert!(ctrl_enter_is_pasted_newline());
+    }
+
+    #[test]
+    fn a_ctrl_enter_after_the_window_is_the_deliberate_chord() {
+        age_char_press_for_test(PASTED_NEWLINE_MAX_GAP + Duration::from_millis(60));
+        assert!(!ctrl_enter_is_pasted_newline());
+    }
+
+    #[test]
+    fn clearing_the_character_press_ends_the_paste() {
+        age_char_press_for_test(Duration::from_millis(5));
+        clear_char_press();
+        assert!(!ctrl_enter_is_pasted_newline());
+    }
+}
 ///
 /// The extension only decides whether to try. The media type comes from the
 /// bytes, and BMP/ICO/TIFF are converted to PNG, because an unsupported image
