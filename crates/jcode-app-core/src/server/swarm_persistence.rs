@@ -97,9 +97,17 @@ pub(super) struct LoadedSwarmRuntimeState {
 }
 
 /// Recovery note on an idle headless worker that a server restart stopped.
-/// No headless process survives a restart (issue #1651).
+/// A headless worker whose dead process has no durable session file to
+/// reattach to cannot be restored (issue #1651). When the worker does have a
+/// persisted session we restore it instead and use
+/// [`IDLE_WORKER_RESTORED_NOTE`].
 pub(super) const IDLE_WORKER_NOT_RESTORED_NOTE: &str =
     "idle worker not restored after server restart";
+/// Recovery note on an idle headless worker that was reattached after a
+/// restart. Its persisted session is the durable continuation, so the worker
+/// is restored as `ready` rather than reported stopped.
+pub(super) const IDLE_WORKER_RESTORED_NOTE: &str =
+    "idle worker reattached after server restart";
 /// Suffix appended only after the owner's model-facing interrupt was accepted.
 /// Persisting it suppresses reconnect/restart duplicates. Delivery precedes
 /// acknowledgement, so a crash in between may repeat a notice rather than lose it.
@@ -380,6 +388,7 @@ fn recover_member_status(
     status: SwarmLifecycleStatus,
     detail: Option<String>,
     is_headless: bool,
+    session_id: &str,
 ) -> (SwarmLifecycleStatus, Option<String>) {
     if status == SwarmLifecycleStatus::Running {
         return (
@@ -388,21 +397,52 @@ fn recover_member_status(
         );
     }
 
-    // No client or headless process survives a server restart. A connected TUI
-    // will explicitly mark its member ready again during subscribe; until that
+    // No client process survives a server restart. A connected TUI will
+    // explicitly mark its member ready again during subscribe; until that
     // happens, restoring a persisted `ready` member as live creates a ghost
     // that can never enter terminal-member GC. This previously resurrected
     // hundreds of detached historical clients as ready on every reload.
+    //
+    // Headless workers are different: their durable session file IS the
+    // continuation. An idle headless worker with a persisted session must be
+    // restored (reattached to that session id) instead of being reported
+    // stopped, otherwise every restart silently discards an idle lane. Only a
+    // worker with no session id or no session file is unrestorable, and then
+    // the detail names the concrete reason instead of a generic message.
     if status == SwarmLifecycleStatus::Ready {
+        if is_headless {
+            if session_id.trim().is_empty() {
+                return (
+                    SwarmLifecycleStatus::Stopped,
+                    append_recovery_detail(
+                        detail,
+                        &format!(
+                            "{IDLE_WORKER_NOT_RESTORED_NOTE} (no session id persisted for this member)"
+                        ),
+                    ),
+                );
+            }
+            if crate::session::session_exists(session_id) {
+                return (
+                    SwarmLifecycleStatus::Ready,
+                    append_recovery_detail(detail, IDLE_WORKER_RESTORED_NOTE),
+                );
+            }
+            return (
+                SwarmLifecycleStatus::Stopped,
+                append_recovery_detail(
+                    detail,
+                    &format!(
+                        "{IDLE_WORKER_NOT_RESTORED_NOTE} (no persisted session file for {session_id})"
+                    ),
+                ),
+            );
+        }
         return (
             SwarmLifecycleStatus::Stopped,
             append_recovery_detail(
                 detail,
-                if is_headless {
-                    IDLE_WORKER_NOT_RESTORED_NOTE
-                } else {
-                    "client not attached after server restart"
-                },
+                "client not attached after server restart",
             ),
         );
     }
@@ -443,7 +483,12 @@ pub(super) fn from_persisted_member(
     let original_status = record.status.as_str();
     let was_terminal_before_recovery =
         super::swarm::member_status_is_terminal(original_status.as_ref());
-    let (status, detail) = recover_member_status(record.status, record.detail, record.is_headless);
+    let (status, detail) = recover_member_status(
+        record.status,
+        record.detail,
+        record.is_headless,
+        &record.session_id,
+    );
     let status_text = status.as_str();
     let terminal_since_unix_ms = super::swarm::member_status_is_terminal(status_text.as_ref())
         .then(|| {

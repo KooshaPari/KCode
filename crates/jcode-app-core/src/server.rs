@@ -412,11 +412,10 @@ pub(super) async fn remove_persisted_swarm_state_for(swarm_id: &str, swarm_state
 }
 
 fn headless_member_should_restore(status: &str, is_headless: bool) -> bool {
-    is_headless
-        && !matches!(
-            status,
-            "ready" | "completed" | "done" | "failed" | "stopped"
-        )
+    // `ready` is included on purpose: idle headless workers have no process,
+    // but a persisted session file is a durable continuation. Startup recovery
+    // reattaches them instead of reporting the lane stopped.
+    is_headless && !matches!(status, "completed" | "done" | "failed" | "stopped")
 }
 
 fn headless_reload_continuation_message(reload_ctx: Option<ReloadContext>) -> Option<String> {

@@ -215,10 +215,17 @@ async fn startup_recovery_honors_pending_intent_for_stopped_worker() -> Result<(
     })
     .await
     .expect("durable intent must resume even a stopped worker");
+    {
+        let members = server.swarm_state.members.read().await;
+        assert_eq!(
+            members[&idle.id].status, "ready",
+            "an idle headless worker with a persisted session must be restored, not stopped"
+        );
+    }
     let sessions = server.sessions.read().await;
     assert!(
-        !sessions.contains_key(&idle.id),
-        "idle workers must not be resurrected"
+        sessions.contains_key(&idle.id),
+        "idle headless worker must be reattached to its persisted session"
     );
     assert!(
         !sessions.contains_key(&headed.id),
@@ -233,6 +240,121 @@ async fn startup_recovery_honors_pending_intent_for_stopped_worker() -> Result<(
     assert!(super::super::reload_recovery::has_pending_for_session(
         &headed.id
     ));
+    Ok(())
+}
+
+#[tokio::test]
+#[allow(
+    clippy::await_holding_lock,
+    reason = "test intentionally serializes process-wide JCODE_HOME/env state across async recovery assertions"
+)]
+async fn startup_recovery_restores_idle_headless_worker_and_notifies_parent() -> Result<()> {
+    let _storage_guard = crate::storage::lock_test_env();
+    let temp = tempfile::TempDir::new()?;
+    let _env = configure_test_env(&temp);
+
+    let provider = Arc::new(StreamingMockProvider::default());
+
+    // The child was idle when the server restarted. Its persisted session is
+    // the durable continuation, so it must come back ready rather than stopped.
+    let mut child = crate::session::Session::create(None, Some("idle-child".to_string()));
+    child.add_message(
+        Role::Assistant,
+        vec![crate::message::ContentBlock::Text {
+            text: "Lane ready for more work".to_string(),
+            cache_control: None,
+        }],
+    );
+    child.save()?;
+
+    let parent_id = "session-durable-parent".to_string();
+    let swarm_id = "swarm-durable-idle";
+    let mut child_member = persisted_headless_member(&child.id, swarm_id, "ready", "lane idle");
+    child_member.report_back_to_session_id = Some(parent_id.clone());
+    let mut parent_member = persisted_headless_member(&parent_id, swarm_id, "ready", "parent");
+    parent_member.is_headless = false;
+    persist_swarm_state_snapshot(
+        swarm_id,
+        None,
+        None,
+        &[child_member, parent_member],
+    );
+
+    let server = Server::new(provider);
+    {
+        let members = server.swarm_state.members.read().await;
+        assert_eq!(
+            members[&child.id].status, "ready",
+            "idle headless worker with a persisted session must load ready"
+        );
+        assert!(
+            members[&child.id]
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("idle worker reattached after server restart"))
+        );
+    }
+
+    server.recover_headless_sessions_on_startup().await;
+    {
+        let sessions = server.sessions.read().await;
+        assert!(
+            sessions.contains_key(&child.id),
+            "startup recovery must rebuild the idle worker's agent"
+        );
+        let members = server.swarm_state.members.read().await;
+        assert_eq!(members[&child.id].status, "ready");
+        assert!(
+            !members[&child.id].event_tx.is_closed(),
+            "restored worker must have a live event channel"
+        );
+    }
+
+    // Install a live parent channel, then let the restored child take and
+    // finish work. Completion must still reach the parent after the restart.
+    let (parent_tx, mut parent_rx) = mpsc::unbounded_channel();
+    {
+        let mut members = server.swarm_state.members.write().await;
+        members
+            .get_mut(&parent_id)
+            .expect("parent member")
+            .event_tx = parent_tx;
+    }
+    update_member_status(
+        &child.id,
+        "running",
+        Some("resumed lane".to_string()),
+        None,
+        &server.swarm_state.members,
+        &server.swarm_state.swarms_by_id,
+        Some(&server.event_history),
+        Some(&server.event_counter),
+        Some(&server.swarm_event_tx),
+    )
+    .await;
+    update_member_status(
+        &child.id,
+        "completed",
+        None,
+        Some("Lane finished after restore".to_string()),
+        &server.swarm_state.members,
+        &server.swarm_state.swarms_by_id,
+        Some(&server.event_history),
+        Some(&server.event_counter),
+        Some(&server.swarm_event_tx),
+    )
+    .await;
+
+    let event = timeout(Duration::from_secs(2), parent_rx.recv())
+        .await
+        .expect("parent must be notified when a restored child completes")
+        .expect("parent event channel open");
+    match event {
+        ServerEvent::Notification { from_session, .. } => {
+            assert_eq!(from_session, child.id);
+        }
+        other => panic!("expected Notification, got {other:?}"),
+    }
     Ok(())
 }
 

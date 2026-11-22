@@ -176,11 +176,116 @@ fn ready_headless_member_with_report_stops_without_losing_report() {
     assert_eq!(recovered.status, "stopped");
     assert_eq!(
         recovered.detail.as_deref(),
-        Some("idle worker not restored after server restart")
+        Some("idle worker not restored after server restart (no persisted session for session-ready)")
     );
     assert_eq!(
         recovered.latest_completion_report.as_deref(),
         Some("Done. Built the worker; all tests pass.")
+    );
+}
+
+#[test]
+fn ready_headless_member_with_persisted_session_is_restored_after_restart() {
+    // An idle headless worker has no live process after a restart, but its
+    // persisted session file is a durable continuation. It must load as ready
+    // (reattachable), not stopped.
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+    let home = dir.path().join("home");
+    std::fs::create_dir_all(&home).expect("home dir");
+    let previous_home = std::env::var_os("JCODE_HOME");
+    crate::env::set_var("JCODE_HOME", &home);
+
+    let session = crate::session::Session::create(None, Some("idle-durable".to_string()));
+    session.save().expect("persist session");
+    assert!(crate::session::session_exists(&session.id));
+
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let members = vec![SwarmMember {
+        session_id: session.id.clone(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: None,
+        swarm_id: Some("swarm-idle-durable".to_string()),
+        swarm_enabled: true,
+        status: "ready".to_string(),
+        detail: None,
+        friendly_name: Some("heron".to_string()),
+        report_back_to_session_id: Some("session-parent".to_string()),
+        latest_completion_report: None,
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: true,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: None,
+    }];
+
+    persist_swarm_state("swarm-idle-durable", None, None, &members);
+    let loaded = load_runtime_state();
+    let recovered = loaded.members.get(&session.id).expect("member");
+    assert_eq!(
+        recovered.status, "ready",
+        "idle headless worker with a persisted session must survive restart"
+    );
+    assert!(
+        recovered
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("idle worker reattached after server restart"))
+    );
+    assert_eq!(
+        recovered.report_back_to_session_id.as_deref(),
+        Some("session-parent"),
+        "restored worker must keep its parent edge"
+    );
+
+    match previous_home {
+        Some(value) => crate::env::set_var("JCODE_HOME", value),
+        None => crate::env::remove_var("JCODE_HOME"),
+    }
+}
+
+#[test]
+fn ready_headless_member_without_session_id_reports_specific_reason() {
+    let dir = tempfile::TempDir::new().expect("tempdir");
+    let _env = test_env(&dir);
+
+    let (event_tx, _event_rx) = tokio::sync::mpsc::unbounded_channel();
+    let members = vec![SwarmMember {
+        session_id: String::new(),
+        event_tx,
+        event_txs: HashMap::new(),
+        working_dir: None,
+        swarm_id: Some("swarm-no-id".to_string()),
+        swarm_enabled: true,
+        status: "ready".to_string(),
+        detail: None,
+        friendly_name: Some("nameless".to_string()),
+        report_back_to_session_id: None,
+        latest_completion_report: None,
+        role: "agent".to_string(),
+        joined_at: Instant::now(),
+        last_status_change: Instant::now(),
+        is_headless: true,
+        output_tail: None,
+        todo_progress: None,
+        todo_items: Vec::new(),
+        runtime: crate::protocol::SwarmMemberRuntime::default(),
+        task_label: None,
+    }];
+
+    persist_swarm_state("swarm-no-id", None, None, &members);
+    let loaded = load_runtime_state();
+    let recovered = loaded.members.get("").expect("member");
+    assert_eq!(recovered.status, "stopped");
+    let detail = recovered.detail.as_deref().expect("detail");
+    assert!(
+        detail.contains("no session id persisted"),
+        "detail must name the concrete reason, got: {detail}"
     );
 }
 

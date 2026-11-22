@@ -64,7 +64,10 @@ impl Server {
                     update_member_status(
                         &session_id,
                         "failed",
-                        Some(truncate_detail(&error.to_string(), 120)),
+                        Some(truncate_detail(
+                            &format!("cannot restore headless worker: {error}"),
+                            160,
+                        )),
                         &self.swarm_state.members,
                         &self.swarm_state.swarms_by_id,
                         Some(&self.event_history),
@@ -124,6 +127,21 @@ impl Server {
                 register_background_tool_signal(&session_id, agent_guard.background_tool_signal());
             }
 
+            // A member loaded from durable state carries a closed placeholder
+            // event channel. Give the reattached worker a draining channel so
+            // fanout and reachability checks treat it as live again.
+            {
+                let (event_tx, mut event_rx) =
+                    tokio::sync::mpsc::unbounded_channel::<ServerEvent>();
+                tokio::spawn(async move { while event_rx.recv().await.is_some() {} });
+                let mut members = self.swarm_state.members.write().await;
+                if let Some(member) = members.get_mut(&session_id)
+                    && member.event_tx.is_closed()
+                {
+                    member.event_tx = event_tx;
+                }
+            }
+
             let stored_recovery_record = reload_recovery::peek_for_session(&session_id)
                 .ok()
                 .flatten();
@@ -164,7 +182,7 @@ impl Server {
                 update_member_status(
                     &session_id,
                     "ready",
-                    None,
+                    Some(super::swarm_persistence::IDLE_WORKER_RESTORED_NOTE.to_string()),
                     &self.swarm_state.members,
                     &self.swarm_state.swarms_by_id,
                     Some(&self.event_history),
