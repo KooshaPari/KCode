@@ -137,5 +137,14 @@ fn bare_terminal_report_length(bytes: &[u8]) -> Option<usize> {
         return None;
     }
     const REPORT_FINALS: [u8; 6] = *b"Mm~RIO";
-    REPORT_FINALS.contains(&bytes[len - 1]).then_some(len)
+    if REPORT_FINALS.contains(&bytes[len - 1]) {
+        return Some(len);
+    }
+    // Unknown finals are only accepted for multi-field numeric parameters
+    // (`999;1z`), which prose almost never produces inside brackets.
+    let multi_field = params.contains(&b';')
+        && params
+            .split(|byte| *byte == b';')
+            .all(|field| !field.is_empty() && field.iter().all(u8::is_ascii_digit));
+    (multi_field && bytes[len - 1].is_ascii_alphabetic()).then_some(len)
 }

@@ -22,6 +22,12 @@ fn strips_escape_and_bare_report_remnants() {
         ("a\tb\nc", "a\tb\nc"),
         // Truncated escape with no final byte: drop the remnant.
         ("\x1b[<65;5", ""),
+        // Unknown multi-field CSI, bare and with ESC.
+        ("[999;1z", ""),
+        ("\x1b[999;1z", ""),
+        ("hi[999;1zthere", "hithere"),
+        // Split sequence tails never reach the composer.
+        ("[<67;46;17M", ""),
     ] {
         assert_eq!(
             strip_terminal_control_sequences(input),
