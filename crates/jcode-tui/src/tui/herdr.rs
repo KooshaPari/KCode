@@ -140,7 +140,7 @@ pub fn sync(state: AgentState, session_id: Option<&str>) {
             state,
             session_id: session_id.map(str::to_owned),
             resume_argv: session_id
-                .and_then(|id| resume_argv_for_session(id, |key| std::env::var(key).ok())),
+                .and_then(|id| resume_argv_for_local_session(id, |key| std::env::var(key).ok())),
         };
         *last = Some(report.clone());
         report
@@ -313,9 +313,10 @@ pub fn valid_resume_argv(argv: &[String]) -> bool {
 /// behaves like this one. The model and provider live with the session.
 fn resume_argv_for_session(
     session_id: &str,
+    program: &str,
     get: impl Fn(&str) -> Option<String>,
 ) -> Option<Vec<String>> {
-    let mut argv = vec!["jcode".to_string()];
+    let mut argv = vec![program.to_string()];
     if let Some(host) = get("JCODE_SSH_REMOTE").filter(|h| !h.trim().is_empty()) {
         argv.extend(["--ssh".to_string(), host]);
         for (flag, variable) in [
@@ -333,6 +334,63 @@ fn resume_argv_for_session(
         argv.push("self-dev".to_string());
     }
     valid_resume_argv(&argv).then_some(argv)
+}
+
+/// Session ids are plain tokens; anything else is never used in a path.
+fn valid_session_id(id: &str) -> bool {
+    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// Which product owns `session_id`, judged only by which store holds its
+/// transcript (`<home>/sessions/<id>.json`). `None` is UNRESOLVED: the id is
+/// in neither store, or in both, so no launcher can be chosen without guessing.
+fn resolve_session_program(
+    session_id: &str,
+    jcode_home: &std::path::Path,
+    kcode_home: &std::path::Path,
+) -> Option<&'static str> {
+    if !valid_session_id(session_id) {
+        return None;
+    }
+    let transcript = |home: &std::path::Path| {
+        home.join("sessions")
+            .join(format!("{session_id}.json"))
+            .is_file()
+    };
+    match (transcript(jcode_home), transcript(kcode_home)) {
+        (true, false) => Some("jcode"),
+        (false, true) => Some("kcode"),
+        _ => None,
+    }
+}
+
+/// Resume argv for a session on this host. Remote SSH sessions keep the jcode
+/// launcher because their store is not visible locally. Unresolved sessions
+/// return `None` and are logged, never launched as jcode.
+fn resume_argv_for_local_session(
+    session_id: &str,
+    get: impl Fn(&str) -> Option<String>,
+) -> Option<Vec<String>> {
+    let remote = get("JCODE_SSH_REMOTE").is_some_and(|h| !h.trim().is_empty());
+    let program = if remote {
+        "jcode"
+    } else {
+        let resolved = crate::storage::jcode_dir().ok().zip(dirs::home_dir()).and_then(
+            |(jcode_home, home)| {
+                resolve_session_program(session_id, &jcode_home, &home.join(".kcode"))
+            },
+        );
+        match resolved {
+            Some(program) => program,
+            None => {
+                crate::logging::warn(&format!(
+                    "herdr: UNRESOLVED session {session_id}: not found in exactly one of ~/.jcode or ~/.kcode; no resume command reported"
+                ));
+                return None;
+            }
+        }
+    };
+    resume_argv_for_session(session_id, program, get)
 }
 
 /// Run one herdr CLI call with a timeout. Returns its exit status, or `None`
@@ -429,7 +487,7 @@ mod tests {
         let report = StateReport {
             state: AgentState::Idle,
             session_id: Some("session_fox_123".into()),
-            resume_argv: resume_argv_for_session("session_fox_123", |_| None),
+            resume_argv: resume_argv_for_session("session_fox_123", "jcode", |_| None),
         };
         assert_eq!(
             report_args("p1", &report, 42),
@@ -495,7 +553,7 @@ mod tests {
         assert!(!ok(&["jcode", "a\nb"]));
         assert!(!ok(&vec!["x"; 65]));
         assert!(!ok(&["jcode", &"x".repeat(9000)]));
-        assert_eq!(resume_argv_for_session("bad'id", |_| None), None);
+        assert_eq!(resume_argv_for_session("bad'id", "jcode", |_| None), None);
     }
 
     #[test]
@@ -508,7 +566,7 @@ mod tests {
         .into_iter()
         .collect();
         assert_eq!(
-            resume_argv_for_session("session_a", |k| vars.get(k).map(|v| v.to_string())).unwrap(),
+            resume_argv_for_session("session_a", "jcode", |k| vars.get(k).map(|v| v.to_string())).unwrap(),
             [
                 "jcode",
                 "--ssh",
@@ -598,7 +656,7 @@ mod tests {
         StateReport {
             state: AgentState::Idle,
             session_id: Some("session_fox_1".into()),
-            resume_argv: resume_argv_for_session("session_fox_1", |_| None),
+            resume_argv: resume_argv_for_session("session_fox_1", "jcode", |_| None),
         }
     }
 
@@ -633,3 +691,4 @@ mod tests {
         assert!(calls[0].contains(" -- jcode --resume session_fox_1"));
     }
 }
+
