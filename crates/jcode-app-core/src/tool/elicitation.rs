@@ -11,6 +11,35 @@ use async_trait::async_trait;
 use jcode_tool_core::{ElicitMessage, ElicitRequest, elicit_channel};
 use serde_json::{Value, json};
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_const_typed(v: &Value, path: &str) {
+        match v {
+            Value::Object(m) => {
+                if m.contains_key("const") && !m.contains_key("type") {
+                    panic!("const without type at {path}");
+                }
+                for (k, c) in m {
+                    assert_const_typed(c, &format!("{path}/{k}"));
+                }
+            }
+            Value::Array(a) => {
+                for (i, c) in a.iter().enumerate() {
+                    assert_const_typed(c, &format!("{path}/{i}"));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn parameters_schema_const_always_typed() {
+        assert_const_typed(&ElicitateMcpTool::new().parameters_schema(), "");
+    }
+}
+
 pub struct ElicitateMcpTool;
 
 impl ElicitateMcpTool {
@@ -73,12 +102,12 @@ impl Tool for ElicitateMcpTool {
                 "field": {
                     "description": "The input field configuration.",
                     "oneOf": [
-                        {"type": "object", "properties": {"kind": {"const": "text"}, "label": {"type": "string"}, "default": {"type": "string"}, "placeholder": {"type": "string"}, "max_length": {"type": "integer"}, "secret": {"type": "boolean"}}, "required": ["kind", "label"]},
-                        {"type": "object", "properties": {"kind": {"const": "long_text"}, "label": {"type": "string"}, "default": {"type": "string"}, "max_length": {"type": "integer"}}, "required": ["kind", "label"]},
-                        {"type": "object", "properties": {"kind": {"const": "integer"}, "label": {"type": "string"}, "default": {"type": "integer"}, "min": {"type": "integer"}, "max": {"type": "integer"}}, "required": ["kind", "label"]},
-                        {"type": "object", "properties": {"kind": {"const": "choice"}, "label": {"type": "string"}, "options": {"type": "array", "items": {"type": "object", "properties": {"label": {"type": "string"}, "value": {"type": "string"}, "description": {"type": "string"}}, "required": ["label", "value"]}}, "default_index": {"type": "integer"}}, "required": ["kind", "label", "options"]},
-                        {"type": "object", "properties": {"kind": {"const": "boolean"}, "label": {"type": "string"}, "default": {"type": "boolean"}}, "required": ["kind", "label"]},
-                        {"type": "object", "properties": {"kind": {"const": "date_time"}, "label": {"type": "string"}, "default": {"type": "string"}, "picker_kind": {"type": "string", "enum": ["date", "time", "datetime"]}}, "required": ["kind", "label"]}
+                        {"type": "object", "properties": {"kind": {"type": "string", "const": "text"}, "label": {"type": "string"}, "default": {"type": "string"}, "placeholder": {"type": "string"}, "max_length": {"type": "integer"}, "secret": {"type": "boolean"}}, "required": ["kind", "label"]},
+                        {"type": "object", "properties": {"kind": {"type": "string", "const": "long_text"}, "label": {"type": "string"}, "default": {"type": "string"}, "max_length": {"type": "integer"}}, "required": ["kind", "label"]},
+                        {"type": "object", "properties": {"kind": {"type": "string", "const": "integer"}, "label": {"type": "string"}, "default": {"type": "integer"}, "min": {"type": "integer"}, "max": {"type": "integer"}}, "required": ["kind", "label"]},
+                        {"type": "object", "properties": {"kind": {"type": "string", "const": "choice"}, "label": {"type": "string"}, "options": {"type": "array", "items": {"type": "object", "properties": {"label": {"type": "string"}, "value": {"type": "string"}, "description": {"type": "string"}}, "required": ["label", "value"]}}, "default_index": {"type": "integer"}}, "required": ["kind", "label", "options"]},
+                        {"type": "object", "properties": {"kind": {"type": "string", "const": "boolean"}, "label": {"type": "string"}, "default": {"type": "boolean"}}, "required": ["kind", "label"]},
+                        {"type": "object", "properties": {"kind": {"type": "string", "const": "date_time"}, "label": {"type": "string"}, "default": {"type": "string"}, "picker_kind": {"type": "string", "enum": ["date", "time", "datetime"]}}, "required": ["kind", "label"]}
                     ]
                 },
                 "notes": {
