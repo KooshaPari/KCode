@@ -1,4 +1,21 @@
 #[test]
+fn small_frame_resize_renders_without_a_recovered_panic() {
+    let _lock = viewport_snapshot_test_lock();
+    let state = TestState {
+        display_messages: vec![DisplayMessage::assistant("streaming response")],
+        messages_version: 1,
+        ..Default::default()
+    };
+    let mut terminal = Terminal::new(TestBackend::new(89, 24)).unwrap();
+    for (width, height) in [(89, 24), (89, 3), (89, 24), (89, 3)] {
+        terminal.backend_mut().resize(width, height);
+        terminal
+            .draw(|frame| super::super::draw_inner(frame, &state))
+            .unwrap();
+    }
+}
+
+#[test]
 fn test_reset_available_hint_renders_and_keeps_redrawing_at_deep_idle() {
     let _lock = viewport_snapshot_test_lock();
     let mut state = TestState {
