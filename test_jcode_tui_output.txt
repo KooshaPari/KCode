@@ -1,0 +1,607 @@
+warning: resolver for the non root package will be ignored, specify resolver at the workspace root:
+package:   C:\Users\koosh\agents\worktrees\jcode\paste-rebase2\vendor\ratatui-jcode\ratatui-core\Cargo.toml
+workspace: C:\Users\koosh\agents\worktrees\jcode\paste-rebase2\Cargo.toml
+warning: resolver for the non root package will be ignored, specify resolver at the workspace root:
+package:   C:\Users\koosh\agents\worktrees\jcode\paste-rebase2\vendor\ratatui-jcode\ratatui-widgets\Cargo.toml
+workspace: C:\Users\koosh\agents\worktrees\jcode\paste-rebase2\Cargo.toml
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+warning: profile package spec `cosmic-text` in profile `selfdev` did not match any packages
+warning: profile package spec `swash` in profile `selfdev` did not match any packages
+
+help: a package with a similar name exists: `ahash`
+warning: profile package spec `unicode-linebreak` in profile `selfdev` did not match any packages
+warning: profile package spec `yazi` in profile `selfdev` did not match any packages
+
+help: a package with a similar name exists: `wasi`
+warning: profile package spec `cosmic-text` in profile `dev` did not match any packages
+warning: profile package spec `swash` in profile `dev` did not match any packages
+
+help: a package with a similar name exists: `ahash`
+warning: profile package spec `unicode-linebreak` in profile `dev` did not match any packages
+warning: profile package spec `yazi` in profile `dev` did not match any packages
+
+help: a package with a similar name exists: `wasi`
+warning: profile package spec `cosmic-text` in profile `test` did not match any packages
+warning: profile package spec `swash` in profile `test` did not match any packages
+
+help: a package with a similar name exists: `ahash`
+warning: profile package spec `unicode-linebreak` in profile `test` did not match any packages
+warning: profile package spec `yazi` in profile `test` did not match any packages
+
+help: a package with a similar name exists: `wasi`
+    Blocking waiting for file lock on build directory
+warning: unused import: `File`
+ --> crates\jcode-telemetry-core\src\usage_outbox.rs:9:15
+  |
+9 | use std::fs::{File, OpenOptions};
+  |               ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `jcode-telemetry-core` (lib) generated 1 warning (run `cargo fix --lib -p jcode-telemetry-core` to apply 1 suggestion)
+warning: unused import: `Write`
+ --> crates\jcode-base\src\cloud_environment.rs:8:21
+  |
+8 | use std::io::{Read, Write};
+  |                     ^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates\jcode-base\src\mcp\oauth.rs:192:9
+    |
+192 |     let mut options = OpenOptions::new();
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `cloud_store` is never used
+   --> crates\jcode-base\src\auth\transfer.rs:764:4
+    |
+764 | fn cloud_store(
+    |    ^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `identity_hints_match` is never used
+   --> crates\jcode-base\src\auth\transfer.rs:968:4
+    |
+968 | fn identity_hints_match(
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `identity_hints_present` is never used
+   --> crates\jcode-base\src\auth\transfer.rs:995:4
+    |
+995 | fn identity_hints_present(provider: TransferProvider, account: &serde_json::Value) -> bool {
+    |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `cloud_expiry` is never used
+    --> crates\jcode-base\src\auth\transfer.rs:1005:4
+     |
+1005 | fn cloud_expiry(provider: TransferProvider, account: &serde_json::Value) -> Option<i64> {
+     |    ^^^^^^^^^^^^
+
+warning: `jcode-base` (lib) generated 6 warnings (run `cargo fix --lib -p jcode-base` to apply 2 suggestions)
+warning: unused import: `ensure`
+ --> crates\jcode-companion\src\screen.rs:4:31
+  |
+4 | use anyhow::{Context, Result, ensure};
+  |                               ^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `DEBOUNCE` is never used
+  --> crates\jcode-companion\src\screen.rs:10:7
+   |
+10 | const DEBOUNCE: Duration = Duration::from_millis(500);
+   |       ^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `RATE` is never used
+  --> crates\jcode-companion\src\screen.rs:11:7
+   |
+11 | const RATE: Duration = Duration::from_millis(2_050);
+   |       ^^^^
+
+warning: constant `HEARTBEAT` is never used
+  --> crates\jcode-companion\src\screen.rs:12:7
+   |
+12 | const HEARTBEAT: Duration = Duration::from_secs(15);
+   |       ^^^^^^^^^
+
+warning: constant `MAX_IPC_BYTES` is never used
+  --> crates\jcode-companion\src\screen.rs:13:7
+   |
+13 | const MAX_IPC_BYTES: usize = 1024 * 1024;
+   |       ^^^^^^^^^^^^^
+
+warning: function `now_ms` is never used
+  --> crates\jcode-companion\src\screen.rs:15:4
+   |
+15 | fn now_ms() -> u64 {
+   |    ^^^^^^
+
+warning: function `text` is never used
+  --> crates\jcode-companion\src\screen.rs:22:4
+   |
+22 | fn text(value: &Value, max: usize) -> Option<String> {
+   |    ^^^^
+
+warning: function `geometry` is never used
+  --> crates\jcode-companion\src\screen.rs:32:4
+   |
+32 | fn geometry(value: &Value, fields: &[&str]) -> Option<Value> {
+   |    ^^^^^^^^
+
+warning: function `snapshot` is never used
+  --> crates\jcode-companion\src\screen.rs:55:4
+   |
+55 | fn snapshot(
+   |    ^^^^^^^^
+
+warning: struct `Schedule` is never constructed
+   --> crates\jcode-companion\src\screen.rs:146:8
+    |
+146 | struct Schedule {
+    |        ^^^^^^^^
+
+warning: methods `event`, `deadline`, and `published` are never used
+   --> crates\jcode-companion\src\screen.rs:152:8
+    |
+151 | impl Schedule {
+    | ------------- methods in this implementation
+152 |     fn event(&mut self, now: Instant) {
+    |        ^^^^^
+...
+156 |     fn deadline(&self, now: Instant) -> Instant {
+    |        ^^^^^^^^
+...
+167 |     fn published(&mut self, now: Instant) {
+    |        ^^^^^^^^^
+
+warning: function `relevant` is never used
+   --> crates\jcode-companion\src\screen.rs:173:4
+    |
+173 | fn relevant(event: &Value) -> bool {
+    |    ^^^^^^^^
+
+warning: function `same_metadata` is never used
+   --> crates\jcode-companion\src\screen.rs:192:4
+    |
+192 | fn same_metadata(a: &ScreenSnapshot, b: &ScreenSnapshot) -> bool {
+    |    ^^^^^^^^^^^^^
+
+warning: `jcode-companion` (lib) generated 13 warnings (run `cargo fix --lib -p jcode-companion` to apply 1 suggestion)
+warning: variable does not need to be mutable
+  --> crates\jcode-app-core\src\tool\bash_destructive_gate.rs:18:9
+   |
+18 |     let mut risk_ctx = jcode_command_risk::RiskContext::from_env(working_dir);
+   |         ----^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `checkpoint_idle_runtime_upgrade` is never used
+ --> crates\jcode-app-core\src\agent\compaction.rs:6:19
+  |
+3 | impl Agent {
+  | ---------- method in this implementation
+...
+6 |     pub(crate) fn checkpoint_idle_runtime_upgrade(&mut self) -> Result<()> {
+  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `drain_session_saves_before_exit` is never used
+  --> crates\jcode-app-core\src\server\lifecycle.rs:17:21
+   |
+17 | pub(crate) async fn drain_session_saves_before_exit() {
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `PROBE_TIMEOUT` is never used
+  --> crates\jcode-app-core\src\server\runtime_upgrade.rs:12:7
+   |
+12 | const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+   |       ^^^^^^^^^^^^^
+
+warning: constant `MAX_REPORT_BYTES` is never used
+  --> crates\jcode-app-core\src\server\runtime_upgrade.rs:13:7
+   |
+13 | const MAX_REPORT_BYTES: u64 = 64 * 1024;
+   |       ^^^^^^^^^^^^^^^^
+
+warning: struct `FileIdentity` is never constructed
+  --> crates\jcode-app-core\src\server\runtime_upgrade.rs:16:8
+   |
+16 | struct FileIdentity {
+   |        ^^^^^^^^^^^^
+
+warning: function `identity` is never used
+  --> crates\jcode-app-core\src\server\runtime_upgrade.rs:23:4
+   |
+23 | fn identity(path: &Path) -> Result<FileIdentity> {
+   |    ^^^^^^^^
+
+warning: function `validate_path` is never used
+  --> crates\jcode-app-core\src\server\runtime_upgrade.rs:52:4
+   |
+52 | fn validate_path(candidate: &Path) -> Result<(PathBuf, FileIdentity)> {
+   |    ^^^^^^^^^^^^^
+
+warning: function `strict_version` is never used
+  --> crates\jcode-app-core\src\server\runtime_upgrade.rs:79:4
+   |
+79 | fn strict_version(value: &str) -> Result<(u64, u64, u64)> {
+   |    ^^^^^^^^^^^^^^
+
+warning: function `remove_runtime_identity` is never used
+  --> crates\jcode-app-core\src\server\runtime_upgrade.rs:88:4
+   |
+88 | fn remove_runtime_identity(command: &mut std::process::Command) {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `probe_version` is never used
+   --> crates\jcode-app-core\src\server\runtime_upgrade.rs:100:10
+    |
+100 | async fn probe_version(path: &Path) -> Result<String> {
+    |          ^^^^^^^^^^^^^
+
+warning: struct `PreparedUpgrade` is never constructed
+   --> crates\jcode-app-core\src\server\runtime_upgrade.rs:154:8
+    |
+154 | struct PreparedUpgrade {
+    |        ^^^^^^^^^^^^^^^
+
+warning: enum `UpgradeDecision` is never used
+   --> crates\jcode-app-core\src\server\runtime_upgrade.rs:160:6
+    |
+160 | enum UpgradeDecision {
+    |      ^^^^^^^^^^^^^^^
+
+warning: function `reserve_upgrade` is never used
+   --> crates\jcode-app-core\src\server\runtime_upgrade.rs:166:4
+    |
+166 | fn reserve_upgrade(
+    |    ^^^^^^^^^^^^^^^
+
+warning: function `prepare_upgrade` is never used
+   --> crates\jcode-app-core\src\server\runtime_upgrade.rs:190:10
+    |
+190 | async fn prepare_upgrade(candidate: &Path) -> Result<UpgradeDecision> {
+    |          ^^^^^^^^^^^^^^^
+
+warning: type alias `SessionIndex` is never used
+   --> crates\jcode-app-core\src\server\runtime_upgrade.rs:356:6
+    |
+356 | type SessionIndex = std::collections::HashMap<String, Arc<Mutex<crate::agent::Agent>>>;
+    |      ^^^^^^^^^^^^
+
+warning: function `checkpoint_sessions` is never used
+   --> crates\jcode-app-core\src\server\runtime_upgrade.rs:358:4
+    |
+358 | fn checkpoint_sessions(
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: constant `NON_INTERACTIVE_ENV` is never used
+   --> crates\jcode-app-core\src\tool\bash.rs:638:7
+    |
+638 | const NON_INTERACTIVE_ENV: &[(&str, &str)] = &[
+    |       ^^^^^^^^^^^^^^^^^^^
+
+warning: function `host_profile` is never used
+   --> crates\jcode-app-core\src\tool\desktop_selfdev.rs:362:4
+    |
+362 | fn host_profile(root: &Path, exe: &Path) -> Result<String> {
+    |    ^^^^^^^^^^^^
+
+warning: field `0` is never read
+   --> crates\jcode-app-core\src\tool\desktop_selfdev.rs:439:21
+    |
+439 | struct ProcessGroup(u32);
+    |        ------------ ^^^
+    |        |
+    |        field in this struct
+    |
+    = help: consider removing this field
+
+warning: function `has_runtime_overlays` is never used
+   --> crates\jcode-app-core\src\tool\sdk.rs:190:15
+    |
+190 | pub(crate) fn has_runtime_overlays() -> bool {
+    |               ^^^^^^^^^^^^^^^^^^^^
+
+warning: `jcode-app-core` (lib) generated 21 warnings (run `cargo fix --lib -p jcode-app-core` to apply 1 suggestion)
+warning: unused import: `OpenOptions`
+ --> crates\jcode-tui\src\tui\app\jarvis_status.rs:6:22
+  |
+6 |     fs::{self, File, OpenOptions},
+  |                      ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `directory`
+  --> crates\jcode-tui\src\tui\app\jarvis_status.rs:42:21
+   |
+42 |     fn in_directory(directory: &Path) -> Result<Self> {
+   |                     ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_directory`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `value`
+   --> crates\jcode-tui\src\tui\app\jarvis_status.rs:163:13
+    |
+163 | ...   let value = json!({"pid":std::process::id(),"capturing":capturing,"state":state,"levels":self.levels,"counters":counters,"seq...
+    |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_value`
+
+warning: field `0` is never read
+  --> crates\jcode-tui\src\tui\cloud_git_stderr.rs:78:32
+   |
+78 | pub(super) struct ProcessGroup(pub(super) Option<u32>);
+   |                   ------------ ^^^^^^^^^^^^^^^^^^^^^^
+   |                   |
+   |                   field in this struct
+   |
+   = help: consider removing this field
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: constant `PROBE_IO_TIMEOUT` is never used
+  --> crates\jcode-tui\src\tui\window_visibility.rs:93:7
+   |
+93 | const PROBE_IO_TIMEOUT: Duration = Duration::from_millis(400);
+   |       ^^^^^^^^^^^^^^^^
+
+   Compiling jcode-tui v0.1.0 (C:\Users\koosh\agents\worktrees\jcode\paste-rebase2\crates\jcode-tui)
+warning: `jcode-tui` (lib) generated 5 warnings (run `cargo fix --lib -p jcode-tui` to apply 3 suggestions)
+warning: unused imports: `detected_resume_terminal` and `shell_command`
+ --> crates\jcode-tui\src\tui\app\helpers_tests.rs:8:30
+  |
+8 | use crate::terminal_launch::{detected_resume_terminal, shell_command};
+  |                              ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `OpenOptions`
+ --> crates\jcode-tui\src\tui\app\jarvis_status.rs:6:22
+  |
+6 |     fs::{self, File, OpenOptions},
+  |                      ^^^^^^^^^^^
+
+warning: unused import: `pi_sessions::load_pi_preview_from_path`
+    --> crates\jcode-tui\src\tui\session_picker\loading.rs:2477:16
+     |
+2477 | pub(super) use pi_sessions::load_pi_preview_from_path;
+     |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0599]: no method named `readable` found for reference `&jcode_app_core::transport::Stream` in the current scope
+   --> crates\jcode-tui\src\tui\backend_tests.rs:91:10
+    |
+ 91 |     peer.readable().await.unwrap();
+    |          ^^^^^^^^
+    |
+help: there is a method `read` with a similar name, but with different arguments
+   --> C:\Users\koosh\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.51.6\src\io\util\async_read_ext.rs:177:9
+    |
+177 | /         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Read<'a, Self>
+178 | |         where
+179 | |             Self: Unpin,
+    | |________________________^
+
+error[E0599]: no method named `try_read` found for reference `&jcode_app_core::transport::Stream` in the current scope
+  --> crates\jcode-tui\src\tui\backend_tests.rs:93:22
+   |
+93 |     let count = peer.try_read(&mut bytes).unwrap();
+   |                      ^^^^^^^^
+   |
+help: there is a method `read` with a similar name
+   |
+93 -     let count = peer.try_read(&mut bytes).unwrap();
+93 +     let count = peer.read(&mut bytes).unwrap();
+   |
+
+error[E0599]: no method named `readable` found for reference `&jcode_app_core::transport::Stream` in the current scope
+   --> crates\jcode-tui\src\tui\backend_tests.rs:119:14
+    |
+119 |         peer.readable().await.unwrap();
+    |              ^^^^^^^^
+    |
+help: there is a method `read` with a similar name, but with different arguments
+   --> C:\Users\koosh\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tokio-1.51.6\src\io\util\async_read_ext.rs:177:9
+    |
+177 | /         fn read<'a>(&'a mut self, buf: &'a mut [u8]) -> Read<'a, Self>
+178 | |         where
+179 | |             Self: Unpin,
+    | |________________________^
+
+error[E0599]: no method named `try_read` found for reference `&jcode_app_core::transport::Stream` in the current scope
+   --> crates\jcode-tui\src\tui\backend_tests.rs:120:26
+    |
+120 |         let count = peer.try_read(&mut bytes).unwrap();
+    |                          ^^^^^^^^
+    |
+help: there is a method `read` with a similar name
+    |
+120 -         let count = peer.try_read(&mut bytes).unwrap();
+120 +         let count = peer.read(&mut bytes).unwrap();
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:436:13
+    |
+436 |             parse_niri(&all, &workspaces(&[1]), &ancestors),
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+436 -             parse_niri(&all, &workspaces(&[1]), &ancestors),
+436 +             probe_niri(&all, &workspaces(&[1]), &ancestors),
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:440:13
+    |
+440 |             parse_niri(&all, &workspaces(&[1, 2]), &ancestors),
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+440 -             parse_niri(&all, &workspaces(&[1, 2]), &ancestors),
+440 +             probe_niri(&all, &workspaces(&[1, 2]), &ancestors),
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:445:13
+    |
+445 |             parse_niri(&windows(&[(500, 1, false)]), &workspaces(&[]), &ancestors),
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+445 -             parse_niri(&windows(&[(500, 1, false)]), &workspaces(&[]), &ancestors),
+445 +             probe_niri(&windows(&[(500, 1, false)]), &workspaces(&[]), &ancestors),
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:454:13
+    |
+454 |             parse_niri(
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+454 -             parse_niri(
+454 +             probe_niri(
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:462:13
+    |
+462 |             parse_niri(
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+462 -             parse_niri(
+462 +             probe_niri(
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:477:13
+    |
+477 |             parse_niri(&windows(&[(777, 2, false)]), &shown, &[900, 500]),
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+477 -             parse_niri(&windows(&[(777, 2, false)]), &shown, &[900, 500]),
+477 +             probe_niri(&windows(&[(777, 2, false)]), &shown, &[900, 500]),
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:482:13
+    |
+482 |             parse_niri(&windows(&[(500, 9, false)]), &shown, &[500]),
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+482 -             parse_niri(&windows(&[(500, 9, false)]), &shown, &[500]),
+482 +             probe_niri(&windows(&[(500, 9, false)]), &shown, &[500]),
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:486:13
+    |
+486 |             parse_niri(&json!({"Err": "nope"}), &shown, &[500]),
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+486 -             parse_niri(&json!({"Err": "nope"}), &shown, &[500]),
+486 +             probe_niri(&json!({"Err": "nope"}), &shown, &[500]),
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:490:13
+    |
+490 |             parse_niri(&json!({"Ok": {"Windows": [{"pid": 500}]}}), &shown, &[500]),
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+490 -             parse_niri(&json!({"Ok": {"Windows": [{"pid": 500}]}}), &shown, &[500]),
+490 +             probe_niri(&json!({"Ok": {"Windows": [{"pid": 500}]}}), &shown, &[500]),
+    |
+
+error[E0425]: cannot find function `parse_niri` in this scope
+   --> crates\jcode-tui\src\tui\window_visibility.rs:495:13
+    |
+495 |             parse_niri(
+    |             ^^^^^^^^^^ not found in this scope
+    |
+note: similarly named function `probe_niri` defined here
+   --> crates\jcode-tui\src\tui\window_visibility.rs:253:1
+    |
+253 | fn probe_niri() -> Visibility {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: a function with a similar name exists
+    |
+495 -             parse_niri(
+495 +             probe_niri(
+    |
+
+Some errors have detailed explanations: E0425, E0599.
+For more information about an error, try `rustc --explain E0425`.
+warning: `jcode-tui` (lib test) generated 5 warnings (2 duplicates)
+error: could not compile `jcode-tui` (lib test) due to 14 previous errors; 5 warnings emitted

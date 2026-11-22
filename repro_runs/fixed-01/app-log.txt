@@ -1,0 +1,4 @@
+### C:\Users\koosh\agents\worktrees\jcode\paste-rebase2\repro_runs\fixed-01\home\logs\jcode-2026-11-18.log
+[2026-11-18 20:04:11.007] [INFO] jcode starting (version=v1.0.2-dev (9a8045d18), exe=C:\Users\koosh\Agents\worktrees\jcode\paste-rebase2\target\debug\jcode.exe)
+[2026-11-18 20:04:11.013] [INFO] perf: tier=full terminal=herdr ssh=false wsl=false glyph_safe=false load=? cpus=16 mem_avail=35433MB mem_total=65432MB
+[2026-11-18 20:04:11.634] [INFO] Changed working directory to: C:\Users\koosh\agents\worktrees\jcode\paste-rebase2\repro_runs\fixed-01\cwd

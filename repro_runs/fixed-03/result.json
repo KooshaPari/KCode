@@ -1,0 +1,40 @@
+{
+  "label": "fixed-03",
+  "binary": "C:\\Users\\koosh\\Agents\\worktrees\\jcode\\paste-rebase2\\target\\debug\\jcode.exe",
+  "argv": [
+    "--no-update",
+    "--socket",
+    "C:\\Users\\koosh\\agents\\worktrees\\jcode\\paste-rebase2\\repro_runs\\fixed-03\\home\\iso.sock",
+    "-C",
+    "C:\\Users\\koosh\\agents\\worktrees\\jcode\\paste-rebase2\\repro_runs\\fixed-03\\cwd",
+    "--resume",
+    "probe_1735689600000_0123456789abcdef"
+  ],
+  "fixture": "session_probe_1735689600000_0123456789abcdef.json",
+  "fixture_sha256": "469e828761a64d4e581e57324c3f9544fe3a55a3a208920ad8f04ec986284723",
+  "gap_ms_target": 15.0,
+  "inject_mode": "atomic",
+  "checks": {
+    "session_loaded": false,
+    "injection_within_burst_window": false,
+    "leak_absent_after_injection": true,
+    "leak_absent_at_end": true,
+    "positive_control_present": false,
+    "log_skipped_kitty_reporting": false,
+    "scrub_logged_report_as_text": false,
+    "stream_emits_stack_neutral_clear": false,
+    "stream_decoded_losslessly": true
+  },
+  "notes": [
+    "terminal never settled with the session up",
+    "terminal was already gone before the report was sent",
+    "terminal exited while injecting the report"
+  ],
+  "ready_quiescent": true,
+  "ready_alive": false,
+  "gaps_ms": [],
+  "gap_max_ms": null,
+  "screen_head": "                                                                                                                        \n  jcode collects anonymous usage statistics (install count, version, OS,                                                \n  session activity, tool counts, and crash/exit reasons). No code, filenames,                                           \n  prompts, or personal data is sent.                                                                                    \n  To opt out: export JCODE_NO_TELEMETRY=1                                                                               \n  Details: https://github.com/1jehuang/jcode/blob/master/TELEMETRY.md                                                   \n                                                                          ",
+  "pty_closed_early": true,
+  "verdict": "RED"
+}

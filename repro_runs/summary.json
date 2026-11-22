@@ -1,0 +1,38 @@
+{
+  "binary": "C:\\Users\\koosh\\Agents\\worktrees\\jcode\\paste-rebase2\\target\\debug\\jcode.exe",
+  "control_binary": "C:\\Users\\koosh\\agents\\worktrees\\jcode\\paste-rebase2\\scripts\\repro\\bin\\prefix-20261115-182121.exe",
+  "fixture": "C:\\Users\\koosh\\agents\\worktrees\\jcode\\paste-rebase2\\scripts\\repro\\windows_keyboard_leak\\fixture\\session_probe_1735689600000_0123456789abcdef.json",
+  "fixture_master_sha256": "469e828761a64d4e581e57324c3f9544fe3a55a3a208920ad8f04ec986284723",
+  "runs_requested": 5,
+  "runs_green": 0,
+  "runs_red": 5,
+  "controls_expected": 0,
+  "controls_reproduced": 0,
+  "distinct_fixture_hashes_across_runs": [
+    "469e828761a64d4e581e57324c3f9544fe3a55a3a208920ad8f04ec986284723"
+  ],
+  "failure_histogram": {
+    "session_loaded": 4,
+    "injection_within_burst_window": 4,
+    "positive_control_present": 5,
+    "log_skipped_kitty_reporting": 5,
+    "scrub_logged_report_as_text": 5,
+    "stream_emits_stack_neutral_clear": 5
+  },
+  "gap_max_ms_per_run": [
+    null,
+    null,
+    null,
+    null,
+    0.0
+  ],
+  "inject_mode": "atomic",
+  "verdicts": {
+    "fixed-01": "RED",
+    "fixed-02": "RED",
+    "fixed-03": "RED",
+    "fixed-04": "RED",
+    "fixed-05": "RED"
+  },
+  "passed": false
+}
