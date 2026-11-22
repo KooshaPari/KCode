@@ -13,6 +13,8 @@ pub use jcode_config_types::{
     NotificationsConfig, PowerConfig, ProviderConfig, ReasoningDisplayMode, ResumeOpenElsewhere,
     ResumeTimeMode, SafetyConfig, SessionConfig, SessionPickerResumeAction, SponsorsConfig,
     SwarmSpawnMode, TerminalConfig, UpdateChannel, WebSearchConfig, WebSearchEngine,
+    SWARM_MODEL_ALLOWLIST_KEY, SWARM_MODEL_DEFAULT_KEY, SWARM_MODEL_POLICY_COMMAND,
+    SWARM_PREMIUM_MODELS_KEY, SWARM_PREMIUM_OPT_IN_FIELD,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
