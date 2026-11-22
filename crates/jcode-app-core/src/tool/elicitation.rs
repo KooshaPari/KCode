@@ -15,19 +15,31 @@ use serde_json::{Value, json};
 mod tests {
     use super::*;
 
-    fn assert_const_typed(v: &Value, path: &str) {
+    /// Reject the constructs OpenAI's function-schema validator refuses:
+    /// `const`, union `type` arrays, root-level `propertyNames`, and
+    /// `oneOf`/`anyOf`/`allOf`/`$ref` siblings.
+    fn assert_openai_compatible(v: &Value, path: &str) {
         match v {
             Value::Object(m) => {
-                if m.contains_key("const") && !m.contains_key("type") {
-                    panic!("const without type at {path}");
+                for banned in ["const", "propertyNames", "oneOf", "anyOf", "allOf", "$ref"] {
+                    assert!(
+                        !m.contains_key(banned),
+                        "`{banned}` is not accepted by OpenAI at {path}"
+                    );
+                }
+                if let Some(ty) = m.get("type") {
+                    assert!(
+                        ty.is_string(),
+                        "union type array is not accepted by OpenAI at {path}"
+                    );
                 }
                 for (k, c) in m {
-                    assert_const_typed(c, &format!("{path}/{k}"));
+                    assert_openai_compatible(c, &format!("{path}/{k}"));
                 }
             }
             Value::Array(a) => {
                 for (i, c) in a.iter().enumerate() {
-                    assert_const_typed(c, &format!("{path}/{i}"));
+                    assert_openai_compatible(c, &format!("{path}/{i}"));
                 }
             }
             _ => {}
@@ -35,8 +47,49 @@ mod tests {
     }
 
     #[test]
-    fn parameters_schema_const_always_typed() {
-        assert_const_typed(&ElicitateMcpTool::new().parameters_schema(), "");
+    fn parameters_schema_is_openai_compatible() {
+        assert_openai_compatible(&ElicitateMcpTool::new().parameters_schema(), "");
+    }
+
+    #[test]
+    fn parameters_schema_field_is_flattened_object() {
+        let schema = ElicitateMcpTool::new().parameters_schema();
+        assert_eq!(schema["type"], json!("object"));
+        assert!(schema.get("propertyNames").is_none());
+
+        let field = &schema["properties"]["field"];
+        assert_eq!(field["type"], json!("object"));
+        assert_eq!(field["required"], json!(["kind", "label"]));
+        assert!(field.get("oneOf").is_none());
+        assert!(field.get("const").is_none());
+
+        let props = field["properties"]
+            .as_object()
+            .expect("field.properties is an object");
+        for name in [
+            "kind",
+            "label",
+            "default",
+            "placeholder",
+            "max_length",
+            "secret",
+            "min",
+            "max",
+            "options",
+            "default_index",
+            "picker_kind",
+        ] {
+            assert!(props.contains_key(name), "field.{name} is missing");
+        }
+    }
+
+    #[test]
+    fn parameters_schema_field_kind_lists_all_variants() {
+        let schema = ElicitateMcpTool::new().parameters_schema();
+        assert_eq!(
+            schema["properties"]["field"]["properties"]["kind"]["enum"],
+            json!(["text", "long_text", "integer", "choice", "boolean", "date_time"])
+        );
     }
 }
 
@@ -87,7 +140,7 @@ impl Tool for ElicitateMcpTool {
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
-            "required": ["field", "title", "intent"],
+            "required": ["field", "title"],
             "properties": {
                 "intent": super::intent_schema_property(),
                 "title": {
@@ -100,15 +153,74 @@ impl Tool for ElicitateMcpTool {
                     "default": ""
                 },
                 "field": {
-                    "description": "The input field configuration.",
-                    "oneOf": [
-                        {"type": "object", "properties": {"kind": {"type": "string", "const": "text"}, "label": {"type": "string"}, "default": {"type": "string"}, "placeholder": {"type": "string"}, "max_length": {"type": "integer"}, "secret": {"type": "boolean"}}, "required": ["kind", "label"]},
-                        {"type": "object", "properties": {"kind": {"type": "string", "const": "long_text"}, "label": {"type": "string"}, "default": {"type": "string"}, "max_length": {"type": "integer"}}, "required": ["kind", "label"]},
-                        {"type": "object", "properties": {"kind": {"type": "string", "const": "integer"}, "label": {"type": "string"}, "default": {"type": "integer"}, "min": {"type": "integer"}, "max": {"type": "integer"}}, "required": ["kind", "label"]},
-                        {"type": "object", "properties": {"kind": {"type": "string", "const": "choice"}, "label": {"type": "string"}, "options": {"type": "array", "items": {"type": "object", "properties": {"label": {"type": "string"}, "value": {"type": "string"}, "description": {"type": "string"}}, "required": ["label", "value"]}}, "default_index": {"type": "integer"}}, "required": ["kind", "label", "options"]},
-                        {"type": "object", "properties": {"kind": {"type": "string", "const": "boolean"}, "label": {"type": "string"}, "default": {"type": "boolean"}}, "required": ["kind", "label"]},
-                        {"type": "object", "properties": {"kind": {"type": "string", "const": "date_time"}, "label": {"type": "string"}, "default": {"type": "string"}, "picker_kind": {"type": "string", "enum": ["date", "time", "datetime"]}}, "required": ["kind", "label"]}
-                    ]
+                    "type": "object",
+                    "description": "The input field configuration. `kind` selects the variant, and only the properties listed for that variant apply. \
+                        text: label, default (string), placeholder, max_length, secret. \
+                        long_text: label, default (string), max_length. \
+                        integer: label, default (integer), min, max. \
+                        choice: label, options (required array of {label, value, description?}), default_index. \
+                        boolean: label, default (boolean). \
+                        date_time: label, default (string), picker_kind (date | time | datetime). \
+                        `label` is required for every variant and `options` is required for `choice`.",
+                    "required": ["kind", "label"],
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "enum": ["text", "long_text", "integer", "choice", "boolean", "date_time"],
+                            "description": "Which input field variant to render."
+                        },
+                        "label": {
+                            "type": "string",
+                            "description": "Human-readable label for the input."
+                        },
+                        "default": {
+                            "description": "Per-variant default value: string for text, long_text and date_time; integer for integer; boolean for boolean. Unused by choice."
+                        },
+                        "placeholder": {
+                            "type": "string",
+                            "description": "text only: placeholder shown when empty."
+                        },
+                        "max_length": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "text and long_text only: maximum input length."
+                        },
+                        "secret": {
+                            "type": "boolean",
+                            "description": "text only: mask the typed value."
+                        },
+                        "min": {
+                            "type": "integer",
+                            "description": "integer only: minimum allowed value."
+                        },
+                        "max": {
+                            "type": "integer",
+                            "description": "integer only: maximum allowed value."
+                        },
+                        "options": {
+                            "type": "array",
+                            "description": "choice only (required): selectable options.",
+                            "items": {
+                                "type": "object",
+                                "required": ["label", "value"],
+                                "properties": {
+                                    "label": {"type": "string"},
+                                    "value": {"type": "string"},
+                                    "description": {"type": "string"}
+                                }
+                            }
+                        },
+                        "default_index": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "choice only: index of the option selected by default."
+                        },
+                        "picker_kind": {
+                            "type": "string",
+                            "enum": ["date", "time", "datetime"],
+                            "description": "date_time only: which picker to show."
+                        }
+                    }
                 },
                 "notes": {
                     "description": "The optional notes / free-text box.",
@@ -156,6 +268,8 @@ impl Tool for ElicitateMcpTool {
             .field
             .ok_or_else(|| anyhow::anyhow!("field parameter is required"))?;
 
+        validate_field(&field)?;
+
         let request = ElicitRequest {
             title: params.title.unwrap_or_default(),
             intent: params.intent.unwrap_or_default(),
@@ -200,4 +314,49 @@ impl Tool for ElicitateMcpTool {
             images: vec![],
         })
     }
+}
+
+/// Enforce the per-variant requirements that used to live in the schema's
+/// `oneOf` branches, now that `field` is advertised as a single object schema.
+fn validate_field(field: &Value) -> Result<()> {
+    const KINDS: [&str; 6] = [
+        "text",
+        "long_text",
+        "integer",
+        "choice",
+        "boolean",
+        "date_time",
+    ];
+
+    let obj = field
+        .as_object()
+        .ok_or_else(|| anyhow::anyhow!("field must be an object"))?;
+
+    let kind = obj
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow::anyhow!("field.kind is required and must be a string"))?;
+    if !KINDS.contains(&kind) {
+        return Err(anyhow::anyhow!(
+            "field.kind must be one of {}",
+            KINDS.join(", ")
+        ));
+    }
+
+    if obj.get("label").and_then(Value::as_str).is_none() {
+        return Err(anyhow::anyhow!("field.label is required and must be a string"));
+    }
+
+    if kind == "choice" {
+        match obj.get("options") {
+            Some(Value::Array(options)) if !options.is_empty() => {}
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "field.options is required and must be a non-empty array for kind \"choice\""
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
