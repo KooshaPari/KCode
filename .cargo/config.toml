@@ -17,7 +17,6 @@
 # scripts/install.ps1). Set JCODE_PARALLEL_FRONTEND=0 to keep the wrapper but
 # skip the extra threads. An explicit RUSTC_WRAPPER (for example sccache)
 # replaces it.
-rustc-wrapper = "scripts/rustc-parallel-frontend"
 #
 # Linux CI overwrites this file, so it builds without the wrapper.
 # Local fast-linker selection is handled by scripts/dev_cargo.sh so we don't
