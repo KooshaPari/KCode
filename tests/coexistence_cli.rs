@@ -79,3 +79,33 @@ fn coexistence_does_not_initialize_user_state() {
         assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
     }
 }
+
+#[test]
+fn coexistence_reports_a_matching_file_without_executing_it() {
+    let root = tempfile::tempdir().unwrap();
+    let home = root.path().join("home");
+    let path = root.path().join("path");
+    std::fs::create_dir(&home).unwrap();
+    std::fs::create_dir(&path).unwrap();
+    let name = if cfg!(windows) { "jcode.exe" } else { "jcode" };
+    std::fs::write(path.join(name), b"not an executable").unwrap();
+    let mut command = Command::new(env!("CARGO_BIN_EXE_kcode"));
+    command
+        .env_clear()
+        .env("HOME", &home)
+        .env("USERPROFILE", &home)
+        .env("LOCALAPPDATA", &home)
+        .env("APPDATA", &home)
+        .env("PATH", &path)
+        .args(["coexistence", "--json"]);
+    if let Some(system_root) = std::env::var_os("SystemRoot") {
+        command.env("SystemRoot", system_root);
+    }
+    let output = command.output().unwrap();
+    assert!(output.status.success());
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["sources"][0]["source"], "jcode");
+    assert_eq!(value["sources"][0]["command_discovery"], "found_on_path");
+    assert_eq!(value["sources"][0]["authentication"], "unknown");
+    assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
+}
