@@ -47,11 +47,13 @@ pub fn is_inside_git_work_tree(dir: &Path) -> bool {
 
 /// Get git branch and status summary
 pub(crate) fn get_git_info(working_dir: Option<&Path>) -> Option<String> {
-    let dir = match working_dir {
-        Some(dir) => dir.to_path_buf(),
-        None => std::env::current_dir().ok()?,
+    if let Some(dir) = working_dir {
+        return get_git_info_cached(dir, GIT_INFO_TTL, get_git_info_uncached);
+    }
+    let Ok(current_dir) = std::env::current_dir() else {
+        return None;
     };
-    get_git_info_cached(&dir, GIT_INFO_TTL, get_git_info_uncached)
+    get_git_info_cached(&current_dir, GIT_INFO_TTL, get_git_info_uncached)
 }
 
 /// Per-directory TTL cache around the git probe.
