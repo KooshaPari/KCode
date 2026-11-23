@@ -1599,3 +1599,9 @@ impl BashTool {
 #[cfg(all(test, not(windows)))]
 #[path = "bash_tests.rs"]
 mod tests;
+
+// Most of `bash_tests.rs` drives unix shells, so it is gated `not(windows)`. Windows-only
+// coverage of the batch/cmd.exe process tree lives in its own module.
+#[cfg(all(test, windows))]
+#[path = "bash_windows_tests.rs"]
+mod windows_tests;
