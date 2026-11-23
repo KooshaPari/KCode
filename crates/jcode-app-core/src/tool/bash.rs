@@ -1453,25 +1453,9 @@ impl BashTool {
 	                                        let _ = child.start_kill();
 	                                    }
 	                                }
-	                                #[cfg(windows)]
+	                                #[cfg(not(unix))]
 	                                {
-	                                    // Killing only the direct child (cmd.exe or
-	                                    // PowerShell) leaves compilers, test runners and
-	                                    // other descendants alive. Use the same tree-kill
-	                                    // primitive as the unix arm and the background
-	                                    // cancel path, falling back to a direct kill if the
-	                                    // leader id is already gone.
-	                                    let tree_killed = child.id().is_some_and(|pid| {
-	                                        crate::platform::signal_detached_process_group(pid, 0)
-	                                            .is_ok()
-	                                    });
-	                                    if !tree_killed {
-	                                        let _ = child.start_kill();
-	                                    }
-	                                }
-	                                #[cfg(not(any(unix, windows)))]
-	                                {
-	                                    let _ = child.start_kill();
+	                                    crate::background_command_kill::kill_timed_out_command(&mut child);
 	                                }
 	                                break;
 	                            }
@@ -1599,9 +1583,3 @@ impl BashTool {
 #[cfg(all(test, not(windows)))]
 #[path = "bash_tests.rs"]
 mod tests;
-
-// Most of `bash_tests.rs` drives unix shells, so it is gated `not(windows)`. Windows-only
-// coverage of the batch/cmd.exe process tree lives in its own module.
-#[cfg(all(test, windows))]
-#[path = "bash_windows_tests.rs"]
-mod windows_tests;

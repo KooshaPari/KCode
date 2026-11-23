@@ -28,6 +28,7 @@ pub mod agent;
 pub mod ambient;
 pub mod ambient_runner;
 pub mod ambient_scheduler;
+pub(crate) mod background_command_kill;
 pub mod build;
 pub mod catchup;
 pub mod channel;

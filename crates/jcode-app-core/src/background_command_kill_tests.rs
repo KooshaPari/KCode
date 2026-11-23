@@ -1,13 +1,13 @@
 //! Windows-only regression tests for background-command termination.
 //!
-//! `bash_tests.rs` is gated `#[cfg(all(test, not(windows)))]` because most of its fixtures are unix
-//! shells, so Windows coverage has to live in its own module. Anything added here must stay valid
-//! on Windows only: it will not be compiled or run on unix.
+//! These live beside [`super::kill_timed_out_command`], not in `tool/bash_tests.rs`, because that
+//! file is gated `#[cfg(all(test, not(windows)))]` (most of its fixtures are unix shells) and so is
+//! never compiled on Windows. Anything added here must stay valid on Windows only.
 
 #![allow(clippy::await_holding_lock)]
 
-use super::*;
 use crate::bus::BackgroundTaskStatus;
+use crate::tool::ToolContext;
 use crate::tool::bash::BashTool;
 use serde_json::json;
 
