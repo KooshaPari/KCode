@@ -75,6 +75,10 @@ fn test_prompt_entry_bg_color_pulses_then_fades() {
 
 #[test]
 fn test_prompt_entry_shimmer_color_moves_across_positions() {
+    // The shimmer asserts distinct RGB per frame, which a 256-colour host
+    // quantizes back to one value. Pin the capability instead of inheriting
+    // the host's `COLORTERM`/`TERM` (see `pin_truecolor_for_tests`).
+    jcode_tui_style::color::pin_truecolor_for_tests();
     let base = user_text();
     let left_early = prompt_entry_shimmer_color(base, 0.1, 0.1);
     let right_early = prompt_entry_shimmer_color(base, 0.9, 0.1);

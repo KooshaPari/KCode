@@ -1,8 +1,8 @@
 {
-  "total": 3846,
+  "total": 3847,
   "totals_by_pattern": {
     "dot_ok": 1459,
-    "let_underscore": 1439,
+    "let_underscore": 1440,
     "unwrap_or_default": 948
   },
   "tracked_files": {
@@ -100,6 +100,11 @@
       "dot_ok": 0,
       "let_underscore": 0,
       "unwrap_or_default": 3
+    },
+    "crates/jcode-app-core/src/background_command_kill.rs": {
+      "dot_ok": 0,
+      "let_underscore": 1,
+      "unwrap_or_default": 0
     },
     "crates/jcode-app-core/src/catchup.rs": {
       "dot_ok": 2,

@@ -27,11 +27,17 @@
 //! ```
 
 use crate::env::{HerdrEnv, RuntimeKind};
+use crate::osc::{self, HcState, Record};
 use crate::socket;
 use crate::state::AgentState;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
+
+/// Default heartbeat for re-sending an unchanged state. HERDR ages out a report
+/// it has not heard again, so 20s keeps a long turn visibly alive.
+const DEFAULT_HEARTBEAT_MS: u64 = 20_000;
 
 /// Parse a duration from an environment variable, falling back to default.
 fn parse_duration_env(name: &str, fallback: u64) -> u64 {
@@ -67,6 +73,31 @@ fn next_seq() -> i64 {
     }
 }
 
+/// Map an agent state onto herdr-core's own status vocabulary.
+///
+/// The two vocabularies are the same words for the states both know. `Error` is
+/// deliberately not reachable from [`AgentState`]: a failed turn is reported by
+/// [`HerdrReporter::report_error`], which is the only caller that knows a turn
+/// failed rather than that a decision is wanted.
+fn hc_state(state: AgentState) -> HcState {
+    match state {
+        AgentState::Working => HcState::Working,
+        AgentState::Idle => HcState::Idle,
+        AgentState::Blocked => HcState::Blocked,
+    }
+}
+
+/// The inverse of [`hc_state`], for keeping the shared `current` field in the
+/// vocabulary the legacy channel understands. A reported error holds the pane
+/// the same way a blocked state does, so it reads back as `Blocked`.
+fn agent_state(state: HcState) -> AgentState {
+    match state {
+        HcState::Working => AgentState::Working,
+        HcState::Idle => AgentState::Idle,
+        HcState::Done | HcState::Blocked | HcState::Error => AgentState::Blocked,
+    }
+}
+
 /// HERDR lifecycle reporter. Manages state reporting, debouncing,
 /// session identity, and cleanup.
 pub struct HerdrReporter {
@@ -74,7 +105,7 @@ pub struct HerdrReporter {
     agent_label: String,
     source: String,
     state: Arc<Mutex<AgentStateInner>>,
-    _idle_debounce_ms: u64,
+    heartbeat: Duration,
     retry_grace_ms: u64,
 }
 
@@ -87,6 +118,15 @@ struct AgentStateInner {
     retry_hold_active: bool,
     failure_blocked: bool,
     failure_message: Option<String>,
+    /// When the last state frame was sent, so an unchanged state can still be
+    /// re-sent as a heartbeat. HERDR treats a stale report as a dead agent, so a
+    /// turn, child agent or background task that outlives the heartbeat window
+    /// must keep reporting.
+    last_sent_at: Option<Instant>,
+    /// Last record printed for herdr-core, so an unchanged state is not printed
+    /// again until the heartbeat elapses. The core keeps the last record it
+    /// saw, so repeating it buys nothing.
+    osc_last: Option<(HcState, Option<String>)>,
 }
 
 impl HerdrReporter {
@@ -104,22 +144,23 @@ impl HerdrReporter {
     /// process environment to get one.
     pub fn from_env(agent_label: &str, env: HerdrEnv) -> Self {
         if env.kind() == RuntimeKind::Hc {
-            // herdr-core has no `pane.report_agent` / `pane.report_agent_session`
-            // / `pane.release_agent` verb and infers working state from the
-            // terminal itself. Pushing state here would emit frames nothing
-            // consumes, so this reporter stays a no-op under HC.
+            // herdr-core has no `pane.report_agent` verb, so state reaches it the
+            // only way it accepts: an OSC 7501 record printed on this terminal.
             tracing::debug!(
-                "herdr-core detected: agent state is inferred by the core, reporter will not push frames"
+                "herdr-core detected: reporting state as OSC 7501 on the terminal instead of socket frames"
             );
         }
         let source = format!("jcode:{agent_label}");
-        let idle_debounce_ms = parse_duration_env("HERDR_KCODE_IDLE_DEBOUNCE_MS", 250);
+        let heartbeat = Duration::from_millis(parse_duration_env(
+            "HERDR_KCODE_HEARTBEAT_MS",
+            DEFAULT_HEARTBEAT_MS,
+        ));
         let retry_grace_ms = parse_duration_env("HERDR_KCODE_RETRY_GRACE_MS", 2500);
         Self {
             env,
             agent_label: agent_label.to_string(),
             source,
-            _idle_debounce_ms: idle_debounce_ms,
+            heartbeat,
             retry_grace_ms,
             state: Arc::new(Mutex::new(AgentStateInner {
                 current: AgentState::Idle,
@@ -130,6 +171,8 @@ impl HerdrReporter {
                 retry_hold_active: false,
                 failure_blocked: false,
                 failure_message: None,
+                last_sent_at: None,
+                osc_last: None,
             })),
         }
     }
@@ -148,6 +191,76 @@ impl HerdrReporter {
         self.env.kind() == RuntimeKind::LegacyHerdr && self.env.is_valid()
     }
 
+    /// Returns `true` when state reaches herdr-core by printing an OSC 7501
+    /// record on this terminal. That is the only channel the core reads, so it
+    /// is the HC counterpart of [`Self::is_push_capable`].
+    pub fn is_osc_capable(&self) -> bool {
+        self.env.kind() == RuntimeKind::Hc && self.env.is_valid()
+    }
+
+    /// The OSC 7501 record this reporter prints for a state. Pure: the mapping
+    /// from an agent state to the core's own vocabulary is testable without a
+    /// terminal.
+    pub fn osc_record(&self, state: AgentState, message: Option<&str>) -> String {
+        let mut record = Record::new().app(self.agent_label.as_str());
+        if let Some(message) = message {
+            record = record.msg(message);
+        }
+        osc::encode(hc_state(state), None, &record)
+    }
+
+    /// Print one record, suppressing an unchanged state until the heartbeat
+    /// elapses.
+    async fn emit_osc(&self, state: AgentState, message: Option<String>) {
+        self.emit_osc_state(hc_state(state), message).await;
+    }
+
+    /// Print one record for a state the core knows but [`AgentState`] does not,
+    /// such as `error`.
+    async fn emit_osc_state(&self, state: HcState, message: Option<String>) {
+        Self::emit_osc_with(
+            &self.state,
+            &self.agent_label,
+            self.heartbeat,
+            state,
+            message,
+        )
+        .await;
+    }
+
+    /// Print one record from a detached task's owned state.
+    async fn emit_osc_with(
+        state_handle: &Arc<Mutex<AgentStateInner>>,
+        agent_label: &str,
+        heartbeat: Duration,
+        word: HcState,
+        message: Option<String>,
+    ) {
+        {
+            let mut inner = state_handle.lock().await;
+            if inner.released {
+                return;
+            }
+            let unchanged = inner.osc_last.as_ref() == Some(&(word, message.clone()));
+            let due = inner
+                .last_sent_at
+                .is_none_or(|sent_at| sent_at.elapsed() >= heartbeat);
+            if unchanged && !due {
+                return;
+            }
+            inner.osc_last = Some((word, message.clone()));
+            inner.current = agent_state(word);
+            inner.message = message.clone();
+            inner.last_sent_at = Some(Instant::now());
+        }
+
+        let mut record = Record::new().app(agent_label);
+        if let Some(message) = message {
+            record = record.msg(message);
+        }
+        osc::write_record(&osc::encode(word, None, &record));
+    }
+
     /// Report a state transition to HERDR.
     pub async fn set_state(&self, state: AgentState) {
         self.set_state_with_message(state, None).await;
@@ -155,6 +268,10 @@ impl HerdrReporter {
 
     /// Report a state transition with an optional message.
     pub async fn set_state_with_message(&self, state: AgentState, message: Option<String>) {
+        if self.is_osc_capable() {
+            self.emit_osc(state, message).await;
+            return;
+        }
         if !self.is_push_capable() {
             return;
         }
@@ -165,7 +282,13 @@ impl HerdrReporter {
         }
 
         if inner.current == state && inner.message == message {
-            return;
+            // Unchanged state is suppressed only until the heartbeat elapses.
+            let due = inner
+                .last_sent_at
+                .is_none_or(|sent_at| sent_at.elapsed() >= self.heartbeat);
+            if !due {
+                return;
+            }
         }
 
         inner.current = state;
@@ -183,6 +306,9 @@ impl HerdrReporter {
 
         {
             let mut inner = self.state.lock().await;
+            if inner.released || inner.session_id.as_deref() == Some(session_id.as_str()) {
+                return;
+            }
             inner.session_id = Some(session_id.clone());
         }
 
@@ -235,6 +361,20 @@ impl HerdrReporter {
     /// Called automatically on drop, but can be called explicitly
     /// for deterministic cleanup.
     pub async fn release(&self) {
+        if self.is_osc_capable() {
+            let mut inner = self.state.lock().await;
+            if inner.released {
+                return;
+            }
+            inner.released = true;
+            inner.osc_last = None;
+            drop(inner);
+            // The core clears a terminal's status itself when the shell takes
+            // the foreground back, but a program that knows it is leaving can
+            // say so immediately instead of waiting for that.
+            osc::write_record(&osc::clear(None));
+            return;
+        }
         if !self.is_push_capable() {
             return;
         }
@@ -262,6 +402,10 @@ impl HerdrReporter {
 
     /// Send the initial idle report on session start.
     pub async fn on_session_start(&self) {
+        if self.is_osc_capable() {
+            self.emit_osc(AgentState::Idle, None).await;
+            return;
+        }
         if !self.is_push_capable() {
             return;
         }
@@ -269,9 +413,29 @@ impl HerdrReporter {
     }
 
     /// Report a provider error. Holds the pane in working state for
-    /// `retry_grace_ms` (default 2.5s) to allow auto-retry, then
-    /// marks as blocked with the error message.
+    /// `retry_grace_ms` (default 2.5s) to allow auto-retry, then marks the
+    /// failure: `error` on the OSC channel, `blocked` with the message on the
+    /// legacy one.
     pub async fn report_error(&self, error_message: String) {
+        if self.is_osc_capable() {
+            self.emit_osc(AgentState::Working, None).await;
+            let state = self.state.clone();
+            let agent_label = self.agent_label.clone();
+            let heartbeat = self.heartbeat;
+            let grace = self.retry_grace_ms;
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(grace)).await;
+                Self::emit_osc_with(
+                    &state,
+                    &agent_label,
+                    heartbeat,
+                    HcState::Error,
+                    Some(error_message),
+                )
+                .await;
+            });
+            return;
+        }
         if !self.is_push_capable() {
             return;
         }
@@ -334,13 +498,14 @@ impl HerdrReporter {
         }
 
         {
-            let inner = self.state.lock().await;
+            let mut inner = self.state.lock().await;
             if let Some(sid) = &inner.session_id {
                 params["agent_session_id"] = serde_json::Value::String(sid.clone());
             }
             if let Some(spath) = &inner.session_path {
                 params["agent_session_path"] = serde_json::Value::String(spath.clone());
             }
+            inner.last_sent_at = Some(Instant::now());
         }
 
         let request = serde_json::json!({
@@ -355,6 +520,12 @@ impl HerdrReporter {
 
 impl Drop for HerdrReporter {
     fn drop(&mut self) {
+        if self.is_osc_capable() {
+            // Synchronous, because a drop cannot await: one write of the clear
+            // record on the terminal this process owns.
+            osc::write_record(&osc::clear(None));
+            return;
+        }
         if !self.is_push_capable() {
             return;
         }
@@ -542,6 +713,16 @@ mod tests {
         }
     }
 
+    /// Set one additional environment variable for the duration of a test.
+    fn set_env(key: &str, value: Option<&str>) -> EnvGuard {
+        let vars = vec![(key.to_string(), std::env::var(key).ok())];
+        match value {
+            Some(value) => unsafe { std::env::set_var(key, value) },
+            None => unsafe { std::env::remove_var(key) },
+        }
+        EnvGuard { vars }
+    }
+
     #[test]
     fn reporter_source_format() {
         let _env_lock = crate::env::test_support::lock_test_env();
@@ -681,7 +862,78 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hc_runtime_emits_no_frames() {
+    async fn unchanged_state_is_resent_only_after_the_heartbeat() {
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let _guard = set_herdr_env(&sock);
+        let _heartbeat = set_env("HERDR_KCODE_HEARTBEAT_MS", Some("20"));
+
+        let reporter = HerdrReporter::new("jcode");
+        reporter.set_state(AgentState::Working).await;
+        reporter.set_state(AgentState::Working).await;
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("first state frame should arrive")
+            .expect("frame channel open");
+        assert_eq!(first["params"]["state"], "working");
+        assert!(
+            rx.try_recv().is_err(),
+            "an unchanged state must not buy a second frame before the heartbeat"
+        );
+
+        // Past the heartbeat: the same state must be re-sent so a long turn does
+        // not read as a dead agent.
+        tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+        reporter.set_state(AgentState::Working).await;
+
+        let heartbeat = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("heartbeat frame should arrive")
+            .expect("frame channel open");
+        assert_eq!(heartbeat["params"]["state"], "working");
+        assert_ne!(heartbeat["params"]["seq"], first["params"]["seq"]);
+
+        reporter.release().await;
+    }
+
+    /// An unchanged session id must not produce a frame per UI tick. The TUI
+    /// calls the reporter from both a state sync and a session sync on every
+    /// tick, so this is the guard that keeps that cheap.
+    #[tokio::test]
+    async fn repeated_session_id_is_sent_once() {
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let _guard = set_herdr_env(&sock);
+
+        let reporter = HerdrReporter::new("jcode");
+        reporter.set_session_id("sess_same".to_string()).await;
+        reporter.set_session_id("sess_same".to_string()).await;
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("session frame should arrive")
+            .expect("frame channel open");
+        assert_eq!(first["method"], "pane.report_agent_session");
+        assert_eq!(first["params"]["agent_session_id"], "sess_same");
+        assert!(
+            rx.try_recv().is_err(),
+            "the same session id must not be reported twice"
+        );
+
+        // A different session is news and must be sent.
+        reporter.set_session_id("sess_other".to_string()).await;
+        let second = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("changed session frame should arrive")
+            .expect("frame channel open");
+        assert_eq!(second["params"]["agent_session_id"], "sess_other");
+
+        reporter.release().await;
+    }
+
+    #[tokio::test]
+    async fn hc_runtime_emits_osc_instead_of_frames() {
         let (sock, mut rx, _dir) = start_mock_server().await;
         let _env_lock = crate::env::test_support::lock_test_env();
         let _guard = set_hc_env(&sock);
@@ -691,6 +943,10 @@ mod tests {
         assert!(
             !reporter.is_push_capable(),
             "HC exposes no report verb, so pushing must be disabled"
+        );
+        assert!(
+            reporter.is_osc_capable(),
+            "HC reads status from OSC 7501, so printing must be enabled"
         );
 
         reporter.on_session_start().await;
@@ -708,10 +964,36 @@ mod tests {
             "herdr-core must receive zero state frames"
         );
 
-        // Dropping must also stay silent under HC.
+        // Dropping must also stay silent on the socket under HC.
         drop(reporter);
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         assert!(rx.try_recv().is_err(), "drop must not emit frames under HC");
+    }
+
+    #[tokio::test]
+    async fn hc_record_speaks_the_cores_vocabulary() {
+        let (sock, _rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let _guard = set_hc_env(&sock);
+        let reporter = HerdrReporter::new("kcode");
+
+        assert_eq!(
+            reporter.osc_record(AgentState::Working, None),
+            "\u{1b}]7501;state=working:app=kcode\u{1b}\\"
+        );
+        assert_eq!(
+            reporter.osc_record(AgentState::Idle, None),
+            "\u{1b}]7501;state=idle:app=kcode\u{1b}\\"
+        );
+        assert_eq!(
+            reporter.osc_record(AgentState::Blocked, None),
+            "\u{1b}]7501;state=blocked:app=kcode\u{1b}\\"
+        );
+        // A message rides base64, so a newline cannot end the record early.
+        assert_eq!(
+            reporter.osc_record(AgentState::Blocked, Some("hi\n")),
+            "\u{1b}]7501;state=blocked:app=kcode:msg=aGkK\u{1b}\\"
+        );
     }
 
     #[tokio::test]

@@ -74,8 +74,9 @@ Write screen detection manifests:
 
 > **Legacy-only.** These manifests are read by the legacy HERDR bridge, which is
 > deprecated. herdr-core (HC) is the supported runtime (`hc`, alias
-> `herdr-core`); it infers agent state itself and never reads
-> `~/.config/herdr/agent-detection`, so under HC these files have no effect.
+> `herdr-core`); it reads status from the program's own OSC 7501 reports and
+> never reads `~/.config/herdr/agent-detection`, so under HC these files have no
+> effect.
 
 ```bash
 $ kcode herdr-install
@@ -251,9 +252,12 @@ What exists in KCode today:
   (protocol generation 1) plus `terminal.get` / `terminal.send` request types.
   Unix-only; on Windows the transport returns an explicit unsupported-platform
   error so the workspace builds.
-- **No state reporting.** HC infers agent state from the terminal, so the
-  `HerdrReporter` state path is inert under HC. Do not add a `pane.report_*`
-  call for HC: the verb does not exist.
+- **State reporting via OSC 7501.** HC has no report verb; a program tells it
+  what it is doing by printing an OSC 7501 record on its own terminal output.
+  `crates/jcode-herdr/src/osc.rs` encodes those records and `HerdrReporter`
+  prints them under HC (`is_osc_capable()`), so state reaches the core without
+  any socket call. Do not add a `pane.report_*` call for HC: the verb does not
+  exist.
 - **No HC launch integration.** Pane splitting in
   `crates/jcode-terminal-launch` still keys off the legacy `HERDR_ENV` +
   `HERDR_PANE_ID` contract and does not fire under HC.
