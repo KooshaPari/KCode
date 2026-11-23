@@ -1453,7 +1453,23 @@ impl BashTool {
 	                                        let _ = child.start_kill();
 	                                    }
 	                                }
-	                                #[cfg(not(unix))]
+	                                #[cfg(windows)]
+	                                {
+	                                    // Killing only the direct child (cmd.exe or
+	                                    // PowerShell) leaves compilers, test runners and
+	                                    // other descendants alive. Use the same tree-kill
+	                                    // primitive as the unix arm and the background
+	                                    // cancel path, falling back to a direct kill if the
+	                                    // leader id is already gone.
+	                                    let tree_killed = child.id().is_some_and(|pid| {
+	                                        crate::platform::signal_detached_process_group(pid, 0)
+	                                            .is_ok()
+	                                    });
+	                                    if !tree_killed {
+	                                        let _ = child.start_kill();
+	                                    }
+	                                }
+	                                #[cfg(not(any(unix, windows)))]
 	                                {
 	                                    let _ = child.start_kill();
 	                                }
