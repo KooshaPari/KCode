@@ -897,3 +897,67 @@ fn prompt_guidance_missing_or_unreadable_project_keeps_global_content() {
         }
     });
 }
+
+#[test]
+fn is_inside_git_work_tree_detects_dir_file_and_ancestors_without_forking() {
+    let root = tempfile::TempDir::new().unwrap();
+
+    // No `.git` anywhere up the temp tree -> not a repo.
+    assert!(!is_inside_git_work_tree(root.path()));
+
+    // A normal checkout stores `.git` as a directory.
+    std::fs::create_dir(root.path().join(".git")).unwrap();
+    let nested = root.path().join("a/b/c");
+    std::fs::create_dir_all(&nested).unwrap();
+    assert!(is_inside_git_work_tree(root.path()));
+    assert!(is_inside_git_work_tree(&nested));
+
+    // A worktree/submodule stores `.git` as a file.
+    let wt = tempfile::TempDir::new().unwrap();
+    std::fs::write(wt.path().join(".git"), "gitdir: /elsewhere\n").unwrap();
+    assert!(is_inside_git_work_tree(wt.path()));
+}
+
+#[test]
+fn get_git_info_cached_does_not_reprobe_within_ttl() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    let root = tempfile::TempDir::new().unwrap();
+    let key = root.path().to_path_buf();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let probe = {
+        let calls = Arc::clone(&calls);
+        move |_dir: &Path| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            Some("Git:\n  Branch: test".to_string())
+        }
+    };
+
+    // Three reads inside a one-minute TTL must fork the probe exactly once.
+    for _ in 0..3 {
+        let _ = get_git_info_cached(&key, Duration::from_secs(60), probe.clone());
+    }
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "git probe must run once per TTL window"
+    );
+
+    // A zero TTL is always expired, so each read probes again.
+    let fresh = tempfile::TempDir::new().unwrap();
+    let key2 = fresh.path().to_path_buf();
+    let calls2 = Arc::new(AtomicUsize::new(0));
+    let probe2 = {
+        let calls2 = Arc::clone(&calls2);
+        move |_dir: &Path| {
+            calls2.fetch_add(1, Ordering::SeqCst);
+            Some("Git:\n  Branch: test".to_string())
+        }
+    };
+    for _ in 0..2 {
+        let _ = get_git_info_cached(&key2, Duration::ZERO, probe2.clone());
+    }
+    assert_eq!(calls2.load(Ordering::SeqCst), 2);
+}
