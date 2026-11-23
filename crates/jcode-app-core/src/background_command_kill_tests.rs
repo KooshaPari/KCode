@@ -112,6 +112,57 @@ where
     None
 }
 
+/// Returns the PIDs of live processes whose command line contains `needle`.
+///
+/// `needle` is the fixture's own `child.cmd` path, which is unique per test, so this cannot match an
+/// unrelated process. Only the nested shell's command line carries that path; its `PING.EXE` child
+/// does not.
+fn find_processes_by_command_line(needle: &str) -> Vec<u32> {
+    let script = format!(
+        "Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -and \
+         $_.CommandLine.Contains('{needle}') }} | ForEach-Object {{ $_.ProcessId }}"
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .expect("query processes by command line");
+    assert!(
+        output.status.success(),
+        "process query failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().parse::<u32>().ok())
+        .collect()
+}
+
+/// Waits on the kernel handle for `pid` to exit, rather than sleeping a fixed guess.
+///
+/// `Ok(true)` means the process is gone: it exited inside the budget, or the handle could not be
+/// opened because it had already exited. `Ok(false)` means it is still running.
+fn wait_for_process_exit(pid: u32, budget: std::time::Duration) -> std::io::Result<bool> {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0, WAIT_TIMEOUT};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject,
+    };
+
+    let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+    if handle.is_null() {
+        return Ok(true);
+    }
+    let budget_ms = budget.as_millis().min(u128::from(u32::MAX)) as u32;
+    let result = unsafe { WaitForSingleObject(handle, budget_ms) };
+    unsafe { CloseHandle(handle) };
+    match result {
+        WAIT_OBJECT_0 => Ok(true),
+        WAIT_TIMEOUT => Ok(false),
+        other => Err(std::io::Error::other(format!(
+            "WaitForSingleObject returned {other}"
+        ))),
+    }
+}
+
 /// Proves the kill policy itself, without going through the tool's timeout plumbing.
 ///
 /// The leader's descendant is confirmed alive through `ready` before the kill, so a pass cannot be
@@ -122,6 +173,7 @@ async fn test_kill_timed_out_command_tears_down_descendant_tree() {
     let dir = tempfile::tempdir().expect("temp dir");
     let ready = dir.path().join("ready.txt");
     let sentinel = dir.path().join("leaked.txt");
+    let child_batch = dir.path().join("child.cmd");
     let leader_batch = write_descendant_tree_fixture(dir.path(), &ready, &sentinel, 30);
     eprintln!("[policy] fixture dir {}", dir.path().display());
 
@@ -145,13 +197,29 @@ async fn test_kill_timed_out_command_tears_down_descendant_tree() {
         !sentinel.exists(),
         "sentinel already present {started_after:?} after the descendant started"
     );
+    let descendant_pids = find_processes_by_command_line(&child_batch.to_string_lossy());
+    assert!(
+        !descendant_pids.is_empty(),
+        "the descendant announced itself after {started_after:?} but no process matches {}, so its \
+         exit cannot be observed",
+        child_batch.display()
+    );
     eprintln!("[policy] descendant started after {started_after:?}");
 
     super::kill_timed_out_command(&mut child);
     let _ = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await;
 
-    // Long enough for the orphaned descendant's remaining ping to finish and write the sentinel.
-    tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+    for pid in &descendant_pids {
+        let exited = wait_for_process_exit(*pid, std::time::Duration::from_secs(15))
+            .expect("query descendant process exit");
+        eprintln!("[policy] descendant PID {pid} exited={exited}");
+        assert!(
+            exited,
+            "descendant PID {pid} was still running 15s after kill_timed_out_command"
+        );
+    }
+    // The descendant writes the sentinel before it exits, so checking it after its exit is
+    // conclusive and needs no fixed delay.
     assert!(
         !sentinel.exists(),
         "descendant survived kill_timed_out_command: {}",
@@ -167,6 +235,7 @@ async fn test_background_timeout_kills_descendant_tree() {
     let dir = tempfile::tempdir().expect("temp dir");
     let ready = dir.path().join("ready.txt");
     let sentinel = dir.path().join("leaked.txt");
+    let child_batch = dir.path().join("child.cmd");
     let leader_batch = write_descendant_tree_fixture(dir.path(), &ready, &sentinel, 30);
     eprintln!("[treekill] fixture dir {}", dir.path().display());
 
@@ -179,6 +248,21 @@ async fn test_background_timeout_kills_descendant_tree() {
         Some(2000),
     )
     .await;
+
+    let started_after = poll_for(std::time::Duration::from_secs(20), || async {
+        ready.exists()
+    })
+    .await
+    .unwrap_or_else(|| {
+        panic!("the descendant never started, so the timeout below cannot prove a tree kill")
+    });
+    let descendant_pids = find_processes_by_command_line(&child_batch.to_string_lossy());
+    assert!(
+        !descendant_pids.is_empty(),
+        "the descendant announced itself after {started_after:?} but no process matches {}, so its \
+         exit cannot be observed",
+        child_batch.display()
+    );
 
     let failed_after = poll_for(std::time::Duration::from_secs(30), || {
         let task_id = task_id.clone();
@@ -193,17 +277,23 @@ async fn test_background_timeout_kills_descendant_tree() {
     .await
     .expect("background task should fail after its timeout");
     eprintln!(
-        "[treekill] task reported Failed after {failed_after:?}; sentinel present={}",
+        "[treekill] task reported Failed after {failed_after:?}; descendant PIDs {descendant_pids:?}; \
+         sentinel present={}",
         sentinel.exists()
     );
-    assert!(
-        ready.exists(),
-        "the descendant had not started when the timeout fired (task failed after {failed_after:?}), \
-         so the timeout killed nothing and this test would pass even without the tree kill"
-    );
 
-    // Long enough for an orphaned nested shell (5s ping) to write the sentinel.
-    tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+    for pid in &descendant_pids {
+        let exited = wait_for_process_exit(*pid, std::time::Duration::from_secs(15))
+            .expect("query descendant process exit");
+        eprintln!("[treekill] descendant PID {pid} exited={exited}");
+        assert!(
+            exited,
+            "descendant PID {pid} survived the background timeout tree kill (task failed after \
+             {failed_after:?}): only the direct child was terminated"
+        );
+    }
+    // The descendant writes the sentinel before it exits, so checking it after its exit is
+    // conclusive and needs no fixed delay.
     assert!(
         !sentinel.exists(),
         "descendant survived the background timeout tree kill: {}",
