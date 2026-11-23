@@ -25,8 +25,17 @@ fn make_ctx() -> ToolContext {
 
 /// Writes a leader batch file that starts a nested `cmd.exe` and then waits.
 ///
-/// The nested shell pings for ~5s before writing `sentinel`. If the timeout kills only the leader,
-/// the nested shell keeps running and the sentinel appears a few seconds later.
+/// The nested shell waits ~5s before writing `sentinel`. If the timeout kills only the leader, the
+/// nested shell keeps running and the sentinel appears a few seconds later.
+///
+/// Two details keep the fixture honest on a developer machine:
+///
+/// * The nested shell is launched as an explicit `cmd.exe`, matching how `cmd` itself starts
+///   `start /b` children. Handing `start` a bare `.cmd` path goes through shell association and can
+///   re-parent the process, which would test something other than the leader's own tree.
+/// * `ping` is invoked by absolute path. `C:\Program Files\Git\usr\bin` often precedes
+///   `%SystemRoot%\System32` on `PATH`, and Git's `ping.exe` does not honour `-n`, so it returns
+///   instantly and the wait collapses to nothing.
 fn write_descendant_tree_fixture(
     dir: &std::path::Path,
     sentinel: &std::path::Path,
@@ -37,7 +46,7 @@ fn write_descendant_tree_fixture(
     std::fs::write(
         &child_batch,
         format!(
-            "@echo off\r\nping -n 6 127.0.0.1 >nul\r\necho leaked>\"{}\"\r\n",
+            "@echo off\r\n%SystemRoot%\\System32\\PING.EXE -n 6 127.0.0.1 >nul\r\necho leaked>\"{}\"\r\n",
             sentinel.display()
         ),
     )
@@ -45,7 +54,7 @@ fn write_descendant_tree_fixture(
     std::fs::write(
         &leader_batch,
         format!(
-            "@echo off\r\nstart \"\" /b \"{}\"\r\nping -n {leader_pings} 127.0.0.1 >nul\r\n",
+            "@echo off\r\nstart \"\" /b cmd.exe /d /c \"\"{}\"\"\r\n%SystemRoot%\\System32\\PING.EXE -n {leader_pings} 127.0.0.1 >nul\r\n",
             child_batch.display()
         ),
     )
