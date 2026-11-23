@@ -152,14 +152,17 @@ THIRD_PARTY = {
     "COMPOSIO_GMAIL_CONNECTED_ACCOUNT_ID": "Composio connected account for Gmail",
     "COMPOSIO_GMAIL_USER_ID": "Composio Gmail user ID",
     "COMTEGRA_API_KEY": "Comtegra API key (Comtegra provider)",
-    "HERDR_BIN_PATH": "Path to the `herdr` binary",
-    "HERDR_ENV": "Reserved for herdr environment tagging",
-    "HERDR_PANE_ID": "Identifier of the herdr pane hosting jcode",
-    "HERDR_TAB_ID": "Tab ID within herdr",
-    "HERDR_SOCKET_PATH": "herdr IPC socket path",
-    "HERDR_WORKSPACE_ID": "herdr workspace identifier",
-    "HERDR_JCODE_IDLE_DEBOUNCE_MS": "Debounce window for herdr->jcode idle events (ms)",
-    "HERDR_JCODE_RETRY_GRACE_MS": "Retry grace window after disconnects (ms)",
+    "HERDR_BIN_PATH": "Path to the legacy `herdr` binary",
+    "HERDR_ENV": "Legacy herdr environment tagging (1 = active)",
+    "HERDR_PANE_ID": "Legacy herdr pane identifier hosting kcode",
+    "HERDR_TAB_ID": "Tab ID within legacy herdr",
+    "HERDR_SOCKET_PATH": "Legacy herdr IPC socket path",
+    "HERDR_WORKSPACE_ID": "Legacy herdr workspace identifier",
+    "HERDR_KCODE_IDLE_DEBOUNCE_MS": "Debounce window for herdr->kcode idle events (ms)",
+    "HERDR_KCODE_RETRY_GRACE_MS": "Retry grace window after disconnects (ms)",
+    "HC_TERMINAL_ID": "herdr-core terminal address (presence selects HC)",
+    "HC_SOCKET": "herdr-core IPC socket path",
+    "HC_SESSION": "herdr-core session namespace",
 }
 
 
@@ -327,7 +330,7 @@ def build_thirdparty_table() -> str:
             used = "jcode-build scripts"
         elif name.startswith("RUST"):
             used = "jcode-base telemetry"
-        elif name.startswith("HERDR_"):
+        elif name.startswith("HERDR_") or name.startswith("HC_"):
             used = "jcode-herdr"
         elif name.startswith("SSH_"):
             used = "jcode-base"
