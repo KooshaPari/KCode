@@ -1439,6 +1439,22 @@ pub(crate) fn gather_git_info_inner() -> Option<GitInfo> {
     gather_git_info_in(None)
 }
 
+/// True when `dir` (or any ancestor) holds a `.git` entry.
+///
+/// A worktree or submodule stores `.git` as a file, so `exists()` covers both
+/// shapes. A pure filesystem walk, so the 5s poll tick never forks `git
+/// rev-parse` just to learn whether the directory is a repo.
+fn is_inside_git_work_tree(dir: &std::path::Path) -> bool {
+    let mut current = Some(dir);
+    while let Some(path) = current {
+        if path.join(".git").exists() {
+            return true;
+        }
+        current = path.parent();
+    }
+    false
+}
+
 /// Git status for `dir` (or the process working directory when `None`).
 pub(crate) fn gather_git_info_in(dir: Option<&std::path::Path>) -> Option<GitInfo> {
     let git = || {
@@ -1449,17 +1465,18 @@ pub(crate) fn gather_git_info_in(dir: Option<&std::path::Path>) -> Option<GitInf
         cmd
     };
 
-    let in_repo = git()
-        .args(["rev-parse", "--is-inside-work-tree"])
-        .output()
-        .ok()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-
-    if !in_repo {
+    // Fork-free repo detection: a `.git` entry in `dir` or any ancestor holds
+    // for both normal checkouts (directory) and worktrees/submodules (file).
+    // This replaces a `git rev-parse --is-inside-work-tree` fork on every poll
+    // tick, which Defender scanned on Windows and which burned ~12 logical
+    // cores across idle sessions.
+    let probe_dir = match dir {
+        Some(dir) => dir.to_path_buf(),
+        None => std::env::current_dir().ok()?,
+    };
+    if !is_inside_git_work_tree(&probe_dir) {
         return None;
     }
-
     let branch = git()
         .args(["branch", "--show-current"])
         .output()
