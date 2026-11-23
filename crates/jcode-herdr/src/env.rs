@@ -8,10 +8,15 @@
 //! - `HERDR_WORKSPACE_ID` — workspace identifier
 //! - `HERDR_TAB_ID` — tab identifier
 //!
-//! herdr-core (HC) is a separate runtime that injects its own variables:
+//! herdr-core (HC) is a separate runtime that injects its own variables into
+//! every terminal it runs (measured on herdr-core 0.1.22, 2026-11-23):
 //! - `HC_TERMINAL_ID` — this terminal's address (presence means HC is active)
-//! - `HC_SOCKET` — path to the HC socket
-//! - `HC_SESSION` — session namespace
+//! - `HC_TERMINAL_SOCKET` — path to the core socket that owns this terminal
+//! - `HC_SCOPE` — the scope the terminal belongs to
+//!
+//! `HC_SOCKET` and `HC_SESSION` also exist, but they are the *client* side:
+//! they address a core from outside it, and a terminal does not get them. They
+//! are accepted as fallbacks so an older launcher still resolves an endpoint.
 //!
 //! `HC_INSTALL_DIR` and `HC_DRAFT_MS` exist too, but a client does not need
 //! them, so they are deliberately not captured.
@@ -47,10 +52,13 @@ pub struct HerdrEnv {
     pub tab_id: Option<String>,
     /// HC terminal address (`HC_TERMINAL_ID`). Present only under HC.
     pub hc_terminal_id: Option<String>,
-    /// HC socket path (`HC_SOCKET`). Present only under HC.
+    /// HC socket for this terminal (`HC_TERMINAL_SOCKET`, else `HC_SOCKET`).
+    /// Present only under HC.
     pub hc_socket: Option<PathBuf>,
     /// HC session namespace (`HC_SESSION`).
     pub hc_session: Option<String>,
+    /// HC scope (`HC_SCOPE`). Present only under HC.
+    pub hc_scope: Option<String>,
 }
 
 impl HerdrEnv {
@@ -72,8 +80,11 @@ impl HerdrEnv {
             workspace_id: get("HERDR_WORKSPACE_ID"),
             tab_id: get("HERDR_TAB_ID"),
             hc_terminal_id: get("HC_TERMINAL_ID"),
-            hc_socket: get("HC_SOCKET").map(PathBuf::from),
+            hc_socket: get("HC_TERMINAL_SOCKET")
+                .or_else(|| get("HC_SOCKET"))
+                .map(PathBuf::from),
             hc_session: get("HC_SESSION"),
+            hc_scope: get("HC_SCOPE"),
         }
     }
 
@@ -106,9 +117,13 @@ impl HerdrEnv {
 
     /// Returns `true` if running inside a terminal runtime with valid
     /// identity and a usable endpoint. True for both legacy HERDR and HC.
+    ///
+    /// Under HC the identity is the terminal address, not an endpoint: the
+    /// core that owns this terminal is reached by printing on the terminal,
+    /// so a missing socket does not make the runtime invalid.
     pub fn is_valid(&self) -> bool {
         match self.kind() {
-            RuntimeKind::Hc => self.hc_socket.is_some(),
+            RuntimeKind::Hc => self.hc_terminal_id.is_some(),
             RuntimeKind::LegacyHerdr => self.pane_id.is_some() && self.socket_path.is_some(),
             RuntimeKind::None => false,
         }
@@ -268,11 +283,32 @@ mod tests {
     }
 
     #[test]
-    fn hc_without_socket_is_not_valid() {
+    fn hc_is_valid_on_the_terminal_address_alone() {
+        // A terminal under HC is addressed by `HC_TERMINAL_ID`, and it talks to
+        // the core by printing OSC 7501 on itself, so it needs no socket at all.
         let env = HerdrEnv::capture_from(lookup_from(&[("HC_TERMINAL_ID", "t7")]));
         assert_eq!(env.kind(), RuntimeKind::Hc);
-        assert!(!env.is_valid());
+        assert!(env.is_valid());
         assert_eq!(env.endpoint(), None);
+    }
+
+    #[test]
+    fn hc_terminal_socket_is_preferred_over_the_client_socket() {
+        let env = HerdrEnv::capture_from(lookup_from(&[
+            ("HC_TERMINAL_ID", "t7"),
+            ("HC_TERMINAL_SOCKET", "/state/default.sock"),
+            ("HC_SOCKET", "/client/core.sock"),
+        ]));
+        assert_eq!(env.hc_socket(), Some(&PathBuf::from("/state/default.sock")));
+    }
+
+    #[test]
+    fn hc_scope_is_captured() {
+        let env = HerdrEnv::capture_from(lookup_from(&[
+            ("HC_TERMINAL_ID", "t7"),
+            ("HC_SCOPE", "scope-1"),
+        ]));
+        assert_eq!(env.hc_scope.as_deref(), Some("scope-1"));
     }
 
     #[test]

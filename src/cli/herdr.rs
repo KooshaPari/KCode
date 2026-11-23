@@ -59,8 +59,9 @@ fn render_status(env: &HerdrEnv, reporter_active: bool) -> String {
             "HC_TERMINAL_ID",
             value_or_missing(env.hc_terminal_id()),
         );
-        push_row(&mut out, "HC_SOCKET", path_text(env.hc_socket()));
+        push_row(&mut out, "HC_TERMINAL_SOCKET", path_text(env.hc_socket()));
         push_row(&mut out, "HC_SESSION", value_or_missing(env.hc_session()));
+        push_row(&mut out, "HC_SCOPE", value_or_missing(env.hc_scope.as_deref()));
     }
 
     out.push('\n');
@@ -74,14 +75,25 @@ fn render_status(env: &HerdrEnv, reporter_active: bool) -> String {
         "Reporter active",
         if reporter_active { "yes" } else { "no" },
     );
-    // `is_active()` is true whenever a reporter exists, including under HC
-    // where nothing is ever pushed. Push capability is the narrower question
-    // and has one definition: `HerdrReporter::is_push_capable`
-    // (crates/jcode-herdr/src/reporter.rs), i.e. legacy HERDR and valid.
+    // Two delivery channels, two questions. `Push-capable` is socket frames
+    // (`pane.report_agent`), which only legacy HERDR has. `OSC 7501` is the
+    // print-on-the-terminal channel herdr-core reads, and it is the only
+    // channel HC accepts. `Reporter active` says neither: it only says a
+    // reporter exists. Each row has one definition, in
+    // crates/jcode-herdr/src/reporter.rs.
     push_row(
         &mut out,
         "Push-capable",
         if kind == RuntimeKind::LegacyHerdr && env.is_valid() {
+            "yes"
+        } else {
+            "no"
+        },
+    );
+    push_row(
+        &mut out,
+        "OSC 7501",
+        if kind == RuntimeKind::Hc && env.is_valid() {
             "yes"
         } else {
             "no"
@@ -93,7 +105,7 @@ fn render_status(env: &HerdrEnv, reporter_active: bool) -> String {
             out.push('\n');
             out.push_str(
                 "Not running inside a HERDR or herdr-core pane. Launch kcode from a HERDR session, \
-                 or set HC_TERMINAL_ID/HC_SOCKET, to enable integration.\n",
+                 or set HC_TERMINAL_ID, to enable integration.\n",
             );
         }
         RuntimeKind::LegacyHerdr if !env.is_valid() => {
@@ -231,6 +243,7 @@ mod tests {
         assert_eq!(row(&rendered, "Runtime"), "none");
         assert_eq!(row(&rendered, "HERDR pane valid"), "no");
         assert_eq!(row(&rendered, "Push-capable"), "no");
+        assert_eq!(row(&rendered, "OSC 7501"), "no");
         assert!(rendered.contains("Not running inside a HERDR or herdr-core pane"));
         // No HC rows at all when nothing HC-ish is set (the hint below the
         // table does mention the variables, so match the row-prefixed form).
@@ -252,6 +265,7 @@ mod tests {
         assert_eq!(row(&rendered, "HERDR pane valid"), "yes");
         assert_eq!(row(&rendered, "Reporter active"), "yes");
         assert_eq!(row(&rendered, "Push-capable"), "yes");
+        assert_eq!(row(&rendered, "OSC 7501"), "no");
         assert!(!rendered.contains("HC_TERMINAL_ID"));
         assert!(!rendered.contains("Not running inside"));
     }
@@ -266,12 +280,14 @@ mod tests {
         let rendered = render_status(&env, true);
         assert_eq!(row(&rendered, "Runtime"), "herdr-core (HC)");
         assert_eq!(row(&rendered, "HC_TERMINAL_ID"), "t1");
-        assert_eq!(row(&rendered, "HC_SOCKET"), "/tmp/hc.sock");
+        assert_eq!(row(&rendered, "HC_TERMINAL_SOCKET"), "/tmp/hc.sock");
         assert_eq!(row(&rendered, "HC_SESSION"), "desk");
         assert_eq!(row(&rendered, "HERDR pane valid"), "yes");
-        // A reporter exists under HC but nothing is ever pushed.
+        // A reporter exists under HC, nothing is pushed, and state reaches the
+        // core as OSC 7501 on this terminal instead.
         assert_eq!(row(&rendered, "Reporter active"), "yes");
         assert_eq!(row(&rendered, "Push-capable"), "no");
+        assert_eq!(row(&rendered, "OSC 7501"), "yes");
         assert!(!rendered.contains("Not running inside"));
     }
 

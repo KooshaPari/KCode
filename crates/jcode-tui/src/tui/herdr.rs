@@ -155,6 +155,7 @@ mod tests {
             hc_terminal_id: None,
             hc_socket: None,
             hc_session: None,
+            hc_scope: None,
         }
     }
 
