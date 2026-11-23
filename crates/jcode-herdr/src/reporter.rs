@@ -31,7 +31,12 @@ use crate::socket;
 use crate::state::AgentState;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
+
+/// Default heartbeat for re-sending an unchanged state. HERDR ages out a report
+/// it has not heard again, so 20s keeps a long turn visibly alive.
+const DEFAULT_HEARTBEAT_MS: u64 = 20_000;
 
 /// Parse a duration from an environment variable, falling back to default.
 fn parse_duration_env(name: &str, fallback: u64) -> u64 {
@@ -74,7 +79,7 @@ pub struct HerdrReporter {
     agent_label: String,
     source: String,
     state: Arc<Mutex<AgentStateInner>>,
-    _idle_debounce_ms: u64,
+    heartbeat: Duration,
     retry_grace_ms: u64,
 }
 
@@ -87,6 +92,11 @@ struct AgentStateInner {
     retry_hold_active: bool,
     failure_blocked: bool,
     failure_message: Option<String>,
+    /// When the last state frame was sent, so an unchanged state can still be
+    /// re-sent as a heartbeat. HERDR treats a stale report as a dead agent, so a
+    /// turn, child agent or background task that outlives the heartbeat window
+    /// must keep reporting.
+    last_sent_at: Option<Instant>,
 }
 
 impl HerdrReporter {
@@ -113,13 +123,16 @@ impl HerdrReporter {
             );
         }
         let source = format!("jcode:{agent_label}");
-        let idle_debounce_ms = parse_duration_env("HERDR_KCODE_IDLE_DEBOUNCE_MS", 250);
+        let heartbeat = Duration::from_millis(parse_duration_env(
+            "HERDR_KCODE_HEARTBEAT_MS",
+            DEFAULT_HEARTBEAT_MS,
+        ));
         let retry_grace_ms = parse_duration_env("HERDR_KCODE_RETRY_GRACE_MS", 2500);
         Self {
             env,
             agent_label: agent_label.to_string(),
             source,
-            _idle_debounce_ms: idle_debounce_ms,
+            heartbeat,
             retry_grace_ms,
             state: Arc::new(Mutex::new(AgentStateInner {
                 current: AgentState::Idle,
@@ -130,6 +143,7 @@ impl HerdrReporter {
                 retry_hold_active: false,
                 failure_blocked: false,
                 failure_message: None,
+                last_sent_at: None,
             })),
         }
     }
@@ -165,7 +179,13 @@ impl HerdrReporter {
         }
 
         if inner.current == state && inner.message == message {
-            return;
+            // Unchanged state is suppressed only until the heartbeat elapses.
+            let due = inner
+                .last_sent_at
+                .is_none_or(|sent_at| sent_at.elapsed() >= self.heartbeat);
+            if !due {
+                return;
+            }
         }
 
         inner.current = state;
@@ -183,6 +203,9 @@ impl HerdrReporter {
 
         {
             let mut inner = self.state.lock().await;
+            if inner.released || inner.session_id.as_deref() == Some(session_id.as_str()) {
+                return;
+            }
             inner.session_id = Some(session_id.clone());
         }
 
@@ -334,13 +357,14 @@ impl HerdrReporter {
         }
 
         {
-            let inner = self.state.lock().await;
+            let mut inner = self.state.lock().await;
             if let Some(sid) = &inner.session_id {
                 params["agent_session_id"] = serde_json::Value::String(sid.clone());
             }
             if let Some(spath) = &inner.session_path {
                 params["agent_session_path"] = serde_json::Value::String(spath.clone());
             }
+            inner.last_sent_at = Some(Instant::now());
         }
 
         let request = serde_json::json!({
@@ -542,6 +566,16 @@ mod tests {
         }
     }
 
+    /// Set one additional environment variable for the duration of a test.
+    fn set_env(key: &str, value: Option<&str>) -> EnvGuard {
+        let vars = vec![(key.to_string(), std::env::var(key).ok())];
+        match value {
+            Some(value) => unsafe { std::env::set_var(key, value) },
+            None => unsafe { std::env::remove_var(key) },
+        }
+        EnvGuard { vars }
+    }
+
     #[test]
     fn reporter_source_format() {
         let _env_lock = crate::env::test_support::lock_test_env();
@@ -676,6 +710,77 @@ mod tests {
         let seq1 = req1["params"]["seq"].as_i64().unwrap();
         let seq2 = req2["params"]["seq"].as_i64().unwrap();
         assert!(seq2 > seq1, "seq2 ({seq2}) should be > seq1 ({seq1})");
+
+        reporter.release().await;
+    }
+
+    #[tokio::test]
+    async fn unchanged_state_is_resent_only_after_the_heartbeat() {
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let _guard = set_herdr_env(&sock);
+        let _heartbeat = set_env("HERDR_KCODE_HEARTBEAT_MS", Some("20"));
+
+        let reporter = HerdrReporter::new("jcode");
+        reporter.set_state(AgentState::Working).await;
+        reporter.set_state(AgentState::Working).await;
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("first state frame should arrive")
+            .expect("frame channel open");
+        assert_eq!(first["params"]["state"], "working");
+        assert!(
+            rx.try_recv().is_err(),
+            "an unchanged state must not buy a second frame before the heartbeat"
+        );
+
+        // Past the heartbeat: the same state must be re-sent so a long turn does
+        // not read as a dead agent.
+        tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+        reporter.set_state(AgentState::Working).await;
+
+        let heartbeat = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("heartbeat frame should arrive")
+            .expect("frame channel open");
+        assert_eq!(heartbeat["params"]["state"], "working");
+        assert_ne!(heartbeat["params"]["seq"], first["params"]["seq"]);
+
+        reporter.release().await;
+    }
+
+    /// An unchanged session id must not produce a frame per UI tick. The TUI
+    /// calls the reporter from both a state sync and a session sync on every
+    /// tick, so this is the guard that keeps that cheap.
+    #[tokio::test]
+    async fn repeated_session_id_is_sent_once() {
+        let (sock, mut rx, _dir) = start_mock_server().await;
+        let _env_lock = crate::env::test_support::lock_test_env();
+        let _guard = set_herdr_env(&sock);
+
+        let reporter = HerdrReporter::new("jcode");
+        reporter.set_session_id("sess_same".to_string()).await;
+        reporter.set_session_id("sess_same".to_string()).await;
+
+        let first = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("session frame should arrive")
+            .expect("frame channel open");
+        assert_eq!(first["method"], "pane.report_agent_session");
+        assert_eq!(first["params"]["agent_session_id"], "sess_same");
+        assert!(
+            rx.try_recv().is_err(),
+            "the same session id must not be reported twice"
+        );
+
+        // A different session is news and must be sent.
+        reporter.set_session_id("sess_other".to_string()).await;
+        let second = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+            .await
+            .expect("changed session frame should arrive")
+            .expect("frame channel open");
+        assert_eq!(second["params"]["agent_session_id"], "sess_other");
 
         reporter.release().await;
     }
