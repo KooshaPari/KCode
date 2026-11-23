@@ -7,8 +7,8 @@
 #![allow(clippy::await_holding_lock)]
 
 use crate::bus::BackgroundTaskStatus;
-use crate::tool::ToolContext;
 use crate::tool::bash::BashTool;
+use crate::tool::{Tool, ToolContext};
 use serde_json::json;
 
 fn make_ctx() -> ToolContext {
