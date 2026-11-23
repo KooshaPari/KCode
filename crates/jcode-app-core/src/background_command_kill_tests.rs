@@ -25,8 +25,9 @@ fn make_ctx() -> ToolContext {
 
 /// Writes a leader batch file that starts a nested `cmd.exe` and then waits.
 ///
-/// The nested shell waits ~5s before writing `sentinel`. If the timeout kills only the leader, the
-/// nested shell keeps running and the sentinel appears a few seconds later.
+/// The nested shell writes `ready` immediately, waits ~5s, then writes `sentinel`. `ready` is what
+/// proves the descendant was alive before any timeout could fire: without it a test can pass because
+/// the timeout beat the descendant into existence rather than because the tree was killed.
 ///
 /// Two details keep the fixture honest on a developer machine:
 ///
@@ -38,6 +39,7 @@ fn make_ctx() -> ToolContext {
 ///   instantly and the wait collapses to nothing.
 fn write_descendant_tree_fixture(
     dir: &std::path::Path,
+    ready: &std::path::Path,
     sentinel: &std::path::Path,
     leader_pings: u32,
 ) -> std::path::PathBuf {
@@ -46,8 +48,9 @@ fn write_descendant_tree_fixture(
     std::fs::write(
         &child_batch,
         format!(
-            "@echo off\r\n%SystemRoot%\\System32\\PING.EXE -n 6 127.0.0.1 >nul\r\necho leaked>\"{}\"\r\n",
-            sentinel.display()
+            "@echo off\r\necho started>\"{}\"\r\n%SystemRoot%\\System32\\PING.EXE -n 6 127.0.0.1 >nul\r\necho leaked>\"{}\"\r\n",
+            ready.display(),
+            sentinel.display(),
         ),
     )
     .expect("write child batch");
@@ -60,6 +63,14 @@ fn write_descendant_tree_fixture(
     )
     .expect("write leader batch");
     leader_batch
+}
+
+/// Removes the output and status artifacts the global background manager keeps outside the test's
+/// `TempDir`, so a run does not accumulate records in the shared `kcode-bg-tasks` directory.
+fn cleanup_task_artifacts(task_id: &str) {
+    let manager = crate::background::global();
+    let _ = std::fs::remove_file(manager.output_path_for(task_id));
+    let _ = std::fs::remove_file(manager.status_path_for(task_id));
 }
 
 async fn start_background(tool: &BashTool, command: String, timeout: Option<u64>) -> String {
@@ -101,21 +112,71 @@ where
     None
 }
 
+/// Proves the kill policy itself, without going through the tool's timeout plumbing.
+///
+/// The leader's descendant is confirmed alive through `ready` before the kill, so a pass cannot be
+/// explained by the descendant never having started. The sentinel is written ~5s after `ready`, far
+/// outside any scheduling jitter, so its absence afterwards is caused by the tree kill.
+#[tokio::test]
+async fn test_kill_timed_out_command_tears_down_descendant_tree() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let ready = dir.path().join("ready.txt");
+    let sentinel = dir.path().join("leaked.txt");
+    let leader_batch = write_descendant_tree_fixture(dir.path(), &ready, &sentinel, 30);
+    eprintln!("[policy] fixture dir {}", dir.path().display());
+
+    let mut child = tokio::process::Command::new("cmd.exe")
+        .arg("/d")
+        .arg("/c")
+        .arg("call")
+        .arg(&leader_batch)
+        .current_dir(dir.path())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn leader");
+
+    let started_after = poll_for(std::time::Duration::from_secs(20), || async {
+        ready.exists()
+    })
+    .await
+    .unwrap_or_else(|| panic!("descendant never started; the kill below would prove nothing"));
+    assert!(
+        !sentinel.exists(),
+        "sentinel already present {started_after:?} after the descendant started"
+    );
+    eprintln!("[policy] descendant started after {started_after:?}");
+
+    super::kill_timed_out_command(&mut child);
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await;
+
+    // Long enough for the orphaned descendant's remaining ping to finish and write the sentinel.
+    tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+    assert!(
+        !sentinel.exists(),
+        "descendant survived kill_timed_out_command: {}",
+        sentinel.display()
+    );
+}
+
 // Regression: a timed-out background command must tear down cmd.exe's descendants, not just the
 // direct child. The leader spawns a nested shell that writes a sentinel after ~5s; killing only the
 // leader leaves that shell alive and the sentinel appears.
 #[tokio::test]
 async fn test_background_timeout_kills_descendant_tree() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let ready = dir.path().join("ready.txt");
     let sentinel = dir.path().join("leaked.txt");
-    let leader_batch = write_descendant_tree_fixture(dir.path(), &sentinel, 30);
+    let leader_batch = write_descendant_tree_fixture(dir.path(), &ready, &sentinel, 30);
     eprintln!("[treekill] fixture dir {}", dir.path().display());
 
     let tool = BashTool::new();
     let task_id = start_background(
         &tool,
         format!("call \"{}\"", leader_batch.display()),
-        Some(300),
+        // Long enough that the descendant is certainly running when the timeout fires, short enough
+        // that the sentinel write (~5s after the descendant starts) cannot happen first.
+        Some(2000),
     )
     .await;
 
@@ -135,6 +196,11 @@ async fn test_background_timeout_kills_descendant_tree() {
         "[treekill] task reported Failed after {failed_after:?}; sentinel present={}",
         sentinel.exists()
     );
+    assert!(
+        ready.exists(),
+        "the descendant had not started when the timeout fired (task failed after {failed_after:?}), \
+         so the timeout killed nothing and this test would pass even without the tree kill"
+    );
 
     // Long enough for an orphaned nested shell (5s ping) to write the sentinel.
     tokio::time::sleep(std::time::Duration::from_secs(9)).await;
@@ -143,6 +209,7 @@ async fn test_background_timeout_kills_descendant_tree() {
         "descendant survived the background timeout tree kill: {}",
         sentinel.display()
     );
+    cleanup_task_artifacts(&task_id);
 }
 
 // Negative control for the regression above: the same fixture without a timeout must reach the
@@ -151,8 +218,9 @@ async fn test_background_timeout_kills_descendant_tree() {
 #[tokio::test]
 async fn test_background_descendant_sentinel_negative_control() {
     let dir = tempfile::tempdir().expect("temp dir");
+    let ready = dir.path().join("ready.txt");
     let sentinel = dir.path().join("leaked.txt");
-    let leader_batch = write_descendant_tree_fixture(dir.path(), &sentinel, 10);
+    let leader_batch = write_descendant_tree_fixture(dir.path(), &ready, &sentinel, 10);
     eprintln!("[negctrl] fixture dir {}", dir.path().display());
 
     let tool = BashTool::new();
@@ -164,6 +232,7 @@ async fn test_background_descendant_sentinel_negative_control() {
     })
     .await;
     let _ = crate::background::global().cancel(&task_id).await;
+    cleanup_task_artifacts(&task_id);
 
     let wrote_after = wrote_after.unwrap_or_else(|| {
         panic!(
@@ -172,8 +241,12 @@ async fn test_background_descendant_sentinel_negative_control() {
     });
     eprintln!("[negctrl] sentinel written after {wrote_after:?}");
     assert!(
+        ready.exists(),
+        "control fixture never announced its descendant start"
+    );
+    assert!(
         wrote_after >= std::time::Duration::from_secs(3),
-        "sentinel appeared after only {wrote_after:?}; the fixture is too fast for a 300ms timeout to \
+        "sentinel appeared after only {wrote_after:?}; the fixture is too fast for the 2s timeout to \
          pre-empt it, so the regression test would pass vacuously"
     );
 }
