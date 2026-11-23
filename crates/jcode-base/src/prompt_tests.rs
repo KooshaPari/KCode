@@ -920,8 +920,9 @@ fn is_inside_git_work_tree_detects_dir_file_and_ancestors_without_forking() {
 
 #[test]
 fn get_git_info_cached_does_not_reprobe_within_ttl() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
 
     let root = tempfile::TempDir::new().unwrap();
     let key = root.path().to_path_buf();
