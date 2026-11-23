@@ -61,7 +61,11 @@ fn render_status(env: &HerdrEnv, reporter_active: bool) -> String {
         );
         push_row(&mut out, "HC_TERMINAL_SOCKET", path_text(env.hc_socket()));
         push_row(&mut out, "HC_SESSION", value_or_missing(env.hc_session()));
-        push_row(&mut out, "HC_SCOPE", value_or_missing(env.hc_scope.as_deref()));
+        push_row(
+            &mut out,
+            "HC_SCOPE",
+            value_or_missing(env.hc_scope.as_deref()),
+        );
     }
 
     out.push('\n');
