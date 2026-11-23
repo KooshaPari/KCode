@@ -134,41 +134,50 @@ terminal.put
 ```
 
 HC has **no** `pane.report_agent`, `pane.report_agent_session` or
-`pane.release_agent`. It infers agent state from the terminal itself
-(`terminal.wait` waits until the program is not working;
-`terminal.interrupt` presses esc if the program reports status, else ctrl+c).
+`pane.release_agent`. Status reaches it as an OSC 7501 record the program prints
+on its own terminal (`ESC ] 7501 ; state=...`), and `terminal.wait` waits until
+the program stops reporting working; `terminal.interrupt` presses esc if the
+program reports status, else ctrl+c.
 
 ### What KCode does under HC
 
 - KCode detects HC and exposes `HerdrEnv::kind()`, `hc_terminal_id()`,
-  `hc_socket()` and `hc_session()`.
-- KCode does **not** push lifecycle state into HC. The `HerdrReporter` state
-  path (`pane.report_agent*`) is legacy-only: under HC the legacy pane id and
-  socket path are absent, so the reporter is inert. This is deliberate, because
-  HC has no verb that accepts pushed state.
+  `hc_socket()` (from `HC_TERMINAL_SOCKET`), `hc_session()` and `hc_scope()`.
+- KCode **prints its lifecycle state as OSC 7501** under HC. Every state path
+  in `HerdrReporter` prints a record instead of pushing a frame:
+  `working`/`idle`/`blocked` from `set_state`, `idle` on session start,
+  `working` then `error` from `report_error`, and `state=clear` on release and
+  drop. An unchanged state is reprinted only after the heartbeat. Encoding and
+  field safety live in `crates/jcode-herdr/src/osc.rs`;
+  `HerdrReporter::is_push_capable()` stays `false` under HC while
+  `is_osc_capable()` is `true`, so neither channel claims the other's work.
 - Pane splitting in the terminal launcher still keys off the legacy
   `HERDR_ENV` + `HERDR_PANE_ID` contract (`crates/jcode-terminal-launch`). It
   does not fire under HC, which injects `HC_TERMINAL_ID` instead. HC-driven
   launch is not implemented.
 - `kcode herdr install` writes the TOML screen manifests, which are legacy-only,
   and now says so. Under HC it refuses with a non-zero exit instead of writing
-  files nothing reads: HC infers agent state itself via `terminal.wait`.
+  files nothing reads: HC reads OSC 7501 reports, not screen text.
 
 ### `kcode herdr-status`
 
 `kcode herdr status` starts with a `Runtime` row naming what it actually
 probed: `herdr-core (HC)`, `legacy herdr`, or `none`. The kind comes from
 `HerdrEnv::kind()` over the live environment, so the label and the printed
-values always agree. Under HC it also prints `HC_TERMINAL_ID`, `HC_SOCKET` and
-`HC_SESSION`; under legacy HERDR it prints the `HERDR_*` variables. Where a
-legacy `HERDR_*` row is still shown under HC, treat it as legacy-bridge
-diagnostics, not as an HC view.
+values always agree. Under HC it also prints `HC_TERMINAL_ID`,
+`HC_TERMINAL_SOCKET`, `HC_SESSION` and `HC_SCOPE`; under legacy HERDR it prints
+the `HERDR_*` variables. Where a legacy `HERDR_*` row is still shown under HC,
+treat it as legacy-bridge diagnostics, not as an HC view.
 
-Two rows are easy to misread. `HERDR pane valid` means only that identity and
-an endpoint were detected, for either runtime. `Reporter active` reports
-whether a reporter object exists, which is true under HC too. The row that
-answers "will state actually be delivered" is `Push-capable`, which is
-legacy-HERDR-and-valid, matching `HerdrReporter::is_push_capable`.
+Four rows are easy to misread. `HERDR pane valid` means only that identity and
+an endpoint were detected, for either runtime, and under HC the identity is the
+terminal address rather than a socket. `Reporter active` reports whether a
+reporter object exists, which is true under HC too. The two rows that answer
+"will state actually be delivered" are separate because the channels are
+separate: `Push-capable` is socket frames
+(`HerdrReporter::is_push_capable`, legacy HERDR only) and `OSC 7501` is the
+print-on-the-terminal channel (`HerdrReporter::is_osc_capable`, HC only). One of
+the two is `yes` at most.
 
 Official references (legacy Herdr; HC self-describes through `hc schema` and
 `hc --skill` instead):

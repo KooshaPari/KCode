@@ -197,7 +197,7 @@ pub async fn run_tui_client(
         if let Some(ref session_id) = run_result.session_id {
             print_session_resume_hint(session_id);
         }
-        crate::tui::herdr::release();
+        crate::tui::herdr::release().await;
         return Ok(());
     }
 
@@ -221,7 +221,7 @@ pub async fn run_tui_client(
     if !has_requested_action(&run_result) {
         // The user quit (reload/update exec back into jcode in this pane and
         // keep reporting, so they must not release it).
-        crate::tui::herdr::release();
+        crate::tui::herdr::release().await;
     }
 
     Ok(())
