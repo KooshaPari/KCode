@@ -73,6 +73,25 @@ async fn start_background(tool: &BashTool, command: String, timeout: Option<u64>
         .to_string()
 }
 
+/// Polls until `predicate` returns true, returning the elapsed time when it did.
+async fn poll_for<F, Fut>(
+    budget: std::time::Duration,
+    mut predicate: F,
+) -> Option<std::time::Duration>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let start = std::time::Instant::now();
+    while start.elapsed() < budget {
+        if predicate().await {
+            return Some(start.elapsed());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    None
+}
+
 // Regression: a timed-out background command must tear down cmd.exe's descendants, not just the
 // direct child. The leader spawns a nested shell that writes a sentinel after ~5s; killing only the
 // leader leaves that shell alive and the sentinel appears.
@@ -81,24 +100,29 @@ async fn test_background_timeout_kills_descendant_tree() {
     let dir = tempfile::tempdir().expect("temp dir");
     let sentinel = dir.path().join("leaked.txt");
     let leader_batch = write_descendant_tree_fixture(dir.path(), &sentinel, 30);
+    eprintln!("[treekill] fixture dir {}", dir.path().display());
 
     let tool = BashTool::new();
-    let task_id = start_background(&tool, format!("call \"{}\"", leader_batch.display()), Some(300)).await;
+    let task_id = start_background(
+        &tool,
+        format!("call \"{}\"", leader_batch.display()),
+        Some(300),
+    )
+    .await;
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    let mut timed_out = false;
-    while std::time::Instant::now() < deadline {
-        let status = crate::background::global()
-            .status(&task_id)
-            .await
-            .expect("status should exist");
-        if status.status == BackgroundTaskStatus::Failed {
-            timed_out = true;
-            break;
+    let failed_after = poll_for(std::time::Duration::from_secs(30), || {
+        let task_id = task_id.clone();
+        async move {
+            let status = crate::background::global()
+                .status(&task_id)
+                .await
+                .expect("status should exist");
+            status.status == BackgroundTaskStatus::Failed
         }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    assert!(timed_out, "background task should fail after timeout");
+    })
+    .await
+    .expect("background task should fail after its timeout");
+    eprintln!("[treekill] task reported Failed after {failed_after:?}");
 
     // Long enough for an orphaned nested shell (5s ping) to write the sentinel.
     tokio::time::sleep(std::time::Duration::from_secs(9)).await;
@@ -111,25 +135,33 @@ async fn test_background_timeout_kills_descendant_tree() {
 
 // Negative control for the regression above: the same fixture without a timeout must reach the
 // sentinel write, proving the sentinel is a valid detector rather than an unreachable code path.
+// It also asserts the sentinel arrives late enough that a timeout kill can pre-empt it.
 #[tokio::test]
 async fn test_background_descendant_sentinel_negative_control() {
     let dir = tempfile::tempdir().expect("temp dir");
     let sentinel = dir.path().join("leaked.txt");
     let leader_batch = write_descendant_tree_fixture(dir.path(), &sentinel, 10);
+    eprintln!("[negctrl] fixture dir {}", dir.path().display());
 
     let tool = BashTool::new();
-    let task_id = start_background(&tool, format!("call \"{}\"", leader_batch.display()), None).await;
+    let task_id =
+        start_background(&tool, format!("call \"{}\"", leader_batch.display()), None).await;
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
-    while std::time::Instant::now() < deadline {
-        if sentinel.exists() {
-            let _ = crate::background::global().cancel(&task_id).await;
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    }
+    let wrote_after = poll_for(std::time::Duration::from_secs(25), || async {
+        sentinel.exists()
+    })
+    .await;
     let _ = crate::background::global().cancel(&task_id).await;
-    panic!(
-        "control fixture never wrote its sentinel; the regression test cannot detect orphan survival"
+
+    let wrote_after = wrote_after.unwrap_or_else(|| {
+        panic!(
+            "control fixture never wrote its sentinel; the regression test cannot detect orphan survival"
+        )
+    });
+    eprintln!("[negctrl] sentinel written after {wrote_after:?}");
+    assert!(
+        wrote_after >= std::time::Duration::from_secs(3),
+        "sentinel appeared after only {wrote_after:?}; the fixture is too fast for a 300ms timeout to \
+         pre-empt it, so the regression test would pass vacuously"
     );
 }
