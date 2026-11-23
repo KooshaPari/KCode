@@ -73,6 +73,24 @@ async fn start_background(tool: &BashTool, command: String, timeout: Option<u64>
         .to_string()
 }
 
+/// Prints every process whose command line mentions `dir`, with parent ids.
+///
+/// Temporary diagnostic used to see which processes survive the timeout kill and who owns them.
+fn dump_processes(tag: &str, dir: &std::path::Path) {
+    let script = "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like ('*' + $env:KCODE_DUMP_DIR + '*') } | ForEach-Object { '{0} parent={1} {2}' -f $_.ProcessId, $_.ParentProcessId, $_.Name }";
+    let output = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-Command", script])
+        .env("KCODE_DUMP_DIR", dir)
+        .output();
+    match output {
+        Ok(out) => eprintln!(
+            "[{tag}] processes mentioning fixture dir:\n{}",
+            String::from_utf8_lossy(&out.stdout).trim_end()
+        ),
+        Err(err) => eprintln!("[{tag}] process dump failed: {err}"),
+    }
+}
+
 /// Polls until `predicate` returns true, returning the elapsed time when it did.
 async fn poll_for<F, Fut>(
     budget: std::time::Duration,
@@ -122,10 +140,16 @@ async fn test_background_timeout_kills_descendant_tree() {
     })
     .await
     .expect("background task should fail after its timeout");
-    eprintln!("[treekill] task reported Failed after {failed_after:?}");
+    eprintln!(
+        "[treekill] task reported Failed after {failed_after:?}; sentinel present={}",
+        sentinel.exists()
+    );
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    dump_processes("treekill+1s", dir.path());
 
     // Long enough for an orphaned nested shell (5s ping) to write the sentinel.
-    tokio::time::sleep(std::time::Duration::from_secs(9)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+    dump_processes("treekill+9s", dir.path());
     assert!(
         !sentinel.exists(),
         "descendant survived the background timeout tree kill: {}",
