@@ -152,6 +152,7 @@ mod tests {
             hc_terminal_id: None,
             hc_socket: None,
             hc_session: None,
+            hc_scope: None,
         }
     }
 
@@ -201,6 +202,7 @@ mod tests {
             hc_terminal_id: Some("t1".to_string()),
             hc_socket: Some(sock),
             hc_session: None,
+            hc_scope: None,
         };
         assert_eq!(env.kind(), RuntimeKind::Hc);
 
