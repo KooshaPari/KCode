@@ -494,10 +494,23 @@ fn create_jcode_repo_fixture() -> tempfile::TempDir {
     std::fs::create_dir_all(temp.path().join(".git")).expect("git dir");
     std::fs::write(
         temp.path().join("Cargo.toml"),
-        "[package]\nname = \"jcode\"\nversion = \"0.1.0\"\n",
+        "[package]\nname = \"kcode\"\nversion = \"0.1.0\"\n",
     )
     .expect("cargo toml");
     temp
+}
+
+/// App whose "recent project" always resolves to a real repository.
+///
+/// `onboarding_recent_project_path` falls back to `session.working_dir`, which
+/// otherwise carries the process cwd, so the recent-project review tests used
+/// to require that `cargo test` was launched from a Git checkout. Keep the
+/// returned tempdir alive for as long as the app is used.
+fn recent_project_test_app() -> (tempfile::TempDir, App) {
+    let repo = create_real_git_repo_fixture();
+    let mut app = onboarding_test_app();
+    app.session.working_dir = Some(repo.path().display().to_string());
+    (repo, app)
 }
 
 fn create_real_git_repo_fixture() -> tempfile::TempDir {
