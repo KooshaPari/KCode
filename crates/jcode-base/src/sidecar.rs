@@ -1296,7 +1296,7 @@ mod tests {
     fn test_backend_selection_prefers_openai() {
         // Make backend selection deterministic by isolating credentials.
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::TempDir::new().expect("create temp jcode home");
+        let temp = crate::test_temp::tempdir().expect("create temp jcode home");
         let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         let _openai = EnvVarGuard::unset("OPENAI_API_KEY");
 
@@ -1323,7 +1323,7 @@ mod tests {
     #[test]
     fn test_chatgpt_oauth_uses_luna_with_no_reasoning_when_available() {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::TempDir::new().expect("create temp jcode home");
+        let temp = crate::test_temp::tempdir().expect("create temp jcode home");
         let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         codex::set_active_account_override(Some("openai-1".to_string()));
         crate::provider::clear_all_model_unavailability_for_account();
@@ -1342,7 +1342,7 @@ mod tests {
     #[test]
     fn test_chatgpt_oauth_falls_back_to_gpt_5_4_low_when_luna_unavailable() {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::TempDir::new().expect("create temp jcode home");
+        let temp = crate::test_temp::tempdir().expect("create temp jcode home");
         let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         codex::set_active_account_override(Some("openai-1".to_string()));
         crate::provider::clear_all_model_unavailability_for_account();
@@ -1441,7 +1441,7 @@ mod tests {
     #[test]
     fn sidecar_uses_active_provider_when_no_oauth_creds() {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::TempDir::new().expect("create temp jcode home");
+        let temp = crate::test_temp::tempdir().expect("create temp jcode home");
         let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         let _openai = EnvVarGuard::unset("OPENAI_API_KEY");
 
@@ -1471,7 +1471,7 @@ mod tests {
     #[test]
     fn provider_sidecar_keeps_the_route_selected_at_construction() {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::TempDir::new().expect("create temp jcode home");
+        let temp = crate::test_temp::tempdir().expect("create temp jcode home");
         let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         let _openai = EnvVarGuard::unset("OPENAI_API_KEY");
 
@@ -1507,7 +1507,7 @@ mod tests {
     #[test]
     fn sidecar_provider_path_works_for_all_providers() {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::TempDir::new().expect("create temp jcode home");
+        let temp = crate::test_temp::tempdir().expect("create temp jcode home");
         let _home = EnvVarGuard::set_path("KCODE_HOME", temp.path());
         let _openai = EnvVarGuard::unset("OPENAI_API_KEY");
 

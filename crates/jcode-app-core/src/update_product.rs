@@ -234,7 +234,7 @@ fn current_semver() -> &'static str {
     }
 }
 
-#[allow(dead_code)] // Called only from the gated resolver surface above.
+#[allow(dead_code)] // Internal helper, called from update_repo_for; flagged in non-test builds.
 fn log_disabled(semver: &str) {
     crate::logging::info(&format!(
         "Auto-update disabled: fork build ({}) does not update from upstream {}",

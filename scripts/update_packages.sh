@@ -8,10 +8,10 @@ VERSION_NUM="${VERSION#v}"
 
 echo "Updating packages for $VERSION..."
 
-LINUX_URL="https://github.com/KooshaPari/KCode/releases/download/${VERSION}/jcode-linux-x86_64.tar.gz"
-LINUX_ARM_URL="https://github.com/KooshaPari/KCode/releases/download/${VERSION}/jcode-linux-aarch64.tar.gz"
-MACOS_ARM_URL="https://github.com/KooshaPari/KCode/releases/download/${VERSION}/jcode-macos-aarch64.tar.gz"
-MACOS_INTEL_URL="https://github.com/KooshaPari/KCode/releases/download/${VERSION}/jcode-macos-x86_64.tar.gz"
+LINUX_URL="https://github.com/KooshaPari/KCode/releases/download/${VERSION}/kcode-linux-x86_64.tar.gz"
+LINUX_ARM_URL="https://github.com/KooshaPari/KCode/releases/download/${VERSION}/kcode-linux-aarch64.tar.gz"
+MACOS_ARM_URL="https://github.com/KooshaPari/KCode/releases/download/${VERSION}/kcode-macos-aarch64.tar.gz"
+MACOS_INTEL_URL="https://github.com/KooshaPari/KCode/releases/download/${VERSION}/kcode-macos-x86_64.tar.gz"
 
 tmpdir=$(mktemp -d)
 trap 'rm -rf "$tmpdir"' EXIT
@@ -51,7 +51,7 @@ class Jcode < Formula
       sha256 "$MACOS_ARM_SHA"
 
       def install
-        bin.install "jcode-macos-aarch64" => "jcode"
+        bin.install "kcode-macos-aarch64" => "jcode"
       end
     end
 
@@ -60,7 +60,7 @@ class Jcode < Formula
       sha256 "$MACOS_INTEL_SHA"
 
       def install
-        bin.install "jcode-macos-x86_64" => "jcode"
+        bin.install "kcode-macos-x86_64" => "jcode"
       end
     end
   end
@@ -71,11 +71,11 @@ class Jcode < Formula
       sha256 "$LINUX_SHA"
 
       def install
-        libexec.install "jcode-linux-x86_64", "jcode-linux-x86_64.bin"
+        libexec.install "kcode-linux-x86_64", "kcode-linux-x86_64.bin"
         libexec.install Dir["libssl.so*"], Dir["libcrypto.so*"]
         (bin/"jcode").write <<~SH
           #!/bin/sh
-          exec "#{libexec}/jcode-linux-x86_64" "\$@"
+          exec "#{libexec}/kcode-linux-x86_64" "\$@"
         SH
       end
     end
@@ -85,7 +85,7 @@ class Jcode < Formula
       sha256 "$LINUX_ARM_SHA"
 
       def install
-        bin.install "jcode-linux-aarch64" => "jcode"
+        bin.install "kcode-linux-aarch64" => "jcode"
       end
     end
   end
@@ -120,12 +120,12 @@ source=("$LINUX_URL")
 sha256sums=('$LINUX_SHA')
 
 package() {
-    install -Dm755 "\${srcdir}/jcode-linux-x86_64" "\${pkgdir}/usr/lib/jcode/jcode-linux-x86_64"
-    install -Dm755 "\${srcdir}/jcode-linux-x86_64.bin" "\${pkgdir}/usr/lib/jcode/jcode-linux-x86_64.bin"
+    install -Dm755 "\${srcdir}/kcode-linux-x86_64" "\${pkgdir}/usr/lib/jcode/kcode-linux-x86_64"
+    install -Dm755 "\${srcdir}/kcode-linux-x86_64.bin" "\${pkgdir}/usr/lib/jcode/kcode-linux-x86_64.bin"
     install -Dm644 "\${srcdir}"/libssl.so* "\${pkgdir}/usr/lib/jcode/"
     install -Dm644 "\${srcdir}"/libcrypto.so* "\${pkgdir}/usr/lib/jcode/"
     mkdir -p "\${pkgdir}/usr/bin"
-    ln -s /usr/lib/jcode/jcode-linux-x86_64 "\${pkgdir}/usr/bin/jcode"
+    ln -s /usr/lib/jcode/kcode-linux-x86_64 "\${pkgdir}/usr/bin/jcode"
 }
 EOF
 

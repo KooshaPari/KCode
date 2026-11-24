@@ -28,6 +28,11 @@ pub mod agent;
 pub mod ambient;
 pub mod ambient_runner;
 pub mod ambient_scheduler;
+// Timeout termination for platforms where the direct child is a shell host (Windows). Kept out of
+// `tool/bash.rs`, which is an oversized file under a no-growth ratchet, and gated to the platforms
+// that use it so it does not read as dead code elsewhere.
+#[cfg(not(unix))]
+pub(crate) mod background_command_kill;
 pub mod build;
 pub mod catchup;
 pub mod channel;

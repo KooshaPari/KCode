@@ -940,7 +940,17 @@ fn test_click_on_inline_image_label_line_cycles_level() {
         ImageExpandLevel::Large,
         "first label click should expand Fit -> Large"
     );
-    assert_eq!(app.status_notice(), Some("Image size: large".to_string()));
+    // The status line carries the new size and, when this click also attempts a
+    // clipboard copy, a result suffix ("· Image copied" / "· Could not copy
+    // image" - see navigation.rs). Clipboard availability is environmental: a
+    // headless CI runner has no clipboard at all, so the copy legitimately
+    // fails there. This test's subject is the size cycle, so assert the size it
+    // reports and let the copy outcome vary by host.
+    let notice = app.status_notice().unwrap_or_default();
+    assert!(
+        notice.starts_with("Image size: large"),
+        "expected the size cycle to be reported, got {notice:?}"
+    );
 
     // Large and Full have identical geometry for this landscape image, so the
     // redundant Full state is skipped and the next click returns to Fit.
@@ -1208,7 +1218,14 @@ fn test_real_draw_click_on_body_anchored_image_label_cycles_level() {
         "clicking the rendered image label must cycle Fit -> Large \
          (this is the exact path the user reported as broken)"
     );
-    assert_eq!(app.status_notice(), Some("Image size: large".to_string()));
+    // Size first, copy result optional - same reasoning as the label-click test
+    // above: a headless runner has no clipboard, so the copy this click attempts
+    // fails there and the status carries "· Could not copy image".
+    let notice = app.status_notice().unwrap_or_default();
+    assert!(
+        notice.starts_with("Image size: large"),
+        "expected the size cycle to be reported, got {notice:?}"
+    );
 }
 
 /// The inline-image placeholder marker row must never reach the terminal as

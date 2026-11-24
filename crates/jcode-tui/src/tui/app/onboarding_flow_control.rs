@@ -1681,13 +1681,13 @@ impl App {
         if let Some(path) = onboarding_repair::persist_repair_brief(&brief) {
             brief.push_str(&format!("\nThis brief is saved at: {}\n", path.display()));
         }
-        let copied = super::helpers::copy_to_clipboard(&brief);
+        let copy = super::helpers::copy_to_clipboard(&brief);
         // Show the brief in the transcript so it is visible even if the
         // clipboard is unavailable (SSH, no display server).
         self.push_display_message(DisplayMessage::system(format!(
             "Agent repair brief (paste into your coding agent):\n\n{brief}"
         )));
-        self.set_status_notice(onboarding_repair::repair_brief_status(agent, copied));
+        self.report_repair_brief_copy(copy, agent);
     }
 
     /// Drive auto-advancing phases. Call once per tick/redraw. Returns true if

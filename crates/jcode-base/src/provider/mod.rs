@@ -151,8 +151,8 @@ pub fn active_provider_fork() -> Option<Arc<dyn Provider>> {
 /// [`stream_timeout`] for the base budget and the reasoning-effort scaling that
 /// keeps long silent thinks from looking like dead connections (issue #434).
 pub use stream_timeout::{
-    MAX_STREAM_IDLE_TIMEOUT_MULTIPLIER, max_stream_idle_timeout, stream_idle_timeout,
-    stream_idle_timeout_for_effort, stream_idle_timeout_multiplier_for_effort,
+    MAX_STREAM_IDLE_TIMEOUT_MULTIPLIER, TurnDeadline, max_stream_idle_timeout, stream_idle_timeout,
+    stream_idle_timeout_for_effort, stream_idle_timeout_multiplier_for_effort, turn_deadline,
 };
 
 /// Whether reasoning deltas should be persisted in session history for later
@@ -3096,7 +3096,7 @@ mod bedrock_placeholder_default_tests {
     #[test]
     fn new_bedrock_provider_starts_on_newest_cached_flagship() {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir().expect("tempdir");
+        let temp = crate::test_temp::tempdir().expect("tempdir");
         let keys = [
             "KCODE_HOME",
             "KCODE_BEDROCK_MODEL",

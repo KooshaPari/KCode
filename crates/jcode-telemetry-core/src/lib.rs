@@ -4,6 +4,9 @@ mod concurrency;
 mod delivery;
 mod lifecycle;
 pub use concurrency::{ConcurrencySession, begin_concurrency_session};
+// The live HTTP delivery path is inert under `cfg(test)`: payloads go to
+// `TEST_EMITTED_PAYLOADS` instead of being queued or posted.
+#[cfg(not(test))]
 pub(crate) use delivery::{background_sender, post_payload, transcript_background_sender};
 // Only the test module reaches for these two; re-exporting them unconditionally
 // leaves production builds with unused-import warnings.
@@ -28,25 +31,36 @@ use lifecycle::emit_lifecycle_event;
 use serde_json::Value;
 use state_support::*;
 use std::collections::HashSet;
+use std::sync::Mutex;
+#[cfg(not(test))]
+use std::sync::OnceLock;
+// Only the `#[cfg(not(test))]` delivery paths read these flags.
+#[cfg(not(test))]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(not(test))]
 use std::sync::mpsc::{SyncSender, TrySendError};
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const TELEMETRY_ENDPOINT: &str = "https://telemetry.jcode.sh/v1/event";
 const TRANSCRIPT_ENDPOINT: &str = "https://telemetry.jcode.sh/v1/transcript";
+#[cfg(not(test))]
 const ASYNC_SEND_TIMEOUT: Duration = Duration::from_secs(5);
+#[cfg(not(test))]
 const BACKGROUND_QUEUE_CAPACITY: usize = 2048;
 const BLOCKING_INSTALL_TIMEOUT: Duration = Duration::from_millis(1200);
 const BLOCKING_LIFECYCLE_TIMEOUT: Duration = Duration::from_millis(800);
 const BLOCKING_FIRST_PROMPT_TIMEOUT: Duration = Duration::from_millis(500);
 const TELEMETRY_SCHEMA_VERSION: u32 = 6;
 const DEFAULT_DISCOVERY_ENDPOINT: &str = "https://api.jcode.sh/v1/discovery";
+#[cfg(not(test))]
 static TELEMETRY_PERMANENTLY_REJECTED: AtomicBool = AtomicBool::new(false);
 #[cfg(not(test))]
 static TELEMETRY_QUEUE_OVERFLOW_WARNED: AtomicBool = AtomicBool::new(false);
+#[cfg(not(test))]
 static TELEMETRY_BACKGROUND_SENDER: OnceLock<Option<SyncSender<Value>>> = OnceLock::new();
+#[cfg(not(test))]
 static TRANSCRIPT_BACKGROUND_SENDER: OnceLock<Option<SyncSender<Value>>> = OnceLock::new();
+#[cfg(not(test))]
 static TELEMETRY_HTTP_CLIENT: OnceLock<Option<reqwest::blocking::Client>> = OnceLock::new();
 #[cfg(test)]
 static TEST_EMITTED_PAYLOADS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -162,11 +176,9 @@ impl TodoSessionTelemetry {
     }
 }
 
-// Error/switch counters live inside `SessionTelemetry` (guarded by
-// `SESSION_STATE`) so increments, snapshots, and resets all happen under a
-// single critical section and are naturally scoped to the owning session.
-// Keeping them in a separate lock-free atomic domain previously let trailing
-// `record_*` calls drift across session boundaries (see issue #394).
+// Error/switch counters live in `SessionTelemetry` under `SESSION_STATE`, so
+// a separate lock-free domain cannot let trailing `record_*` calls drift
+// across session boundaries (issue #394).
 static SESSION_STATE: Mutex<Option<SessionTelemetry>> = Mutex::new(None);
 
 #[derive(Debug, Clone)]
@@ -520,8 +532,7 @@ pub fn set_usage_telemetry_enabled(enabled: bool) -> bool {
         }
     } else {
         // Record the explicit in-app choice once, while telemetry is still
-        // enabled. Failure never prevents or delays the opt-out itself, and
-        // environment-forced opt-outs remain completely silent.
+        // unmutated by the background worker.
         if !path.exists() && !opt_out_forced_by_env() {
             emit_telemetry_opt_out();
         }
@@ -1305,7 +1316,8 @@ fn send_transcript_payload(payload: Value) -> bool {
         if let Ok(mut emitted) = TEST_EMITTED_PAYLOADS.lock() {
             emitted.push(payload);
         }
-        return true;
+        // Tail expression, not `return true;`: this is the whole body in a test build.
+        true
     }
     #[cfg(not(test))]
     let Some(sender) = transcript_background_sender() else {
@@ -1675,12 +1687,8 @@ pub fn record_install_if_first_run() {
         clear_install_conversion_id();
         return;
     }
-    // Skip install/onboarding emission under CI. Ephemeral runners start with a
-    // fresh ~/.kcode (so a new telemetry_id) on every job, which would otherwise
-    // look like a brand-new install and user, inflating install/active counts,
-    // the onboarding funnel, and depressing retention. Session/turn/lifecycle
-    // events are still emitted (tagged is_ci) so CI crash/error signal stays
-    // queryable; product dashboards filter is_ci out of the headline metrics.
+    // Skip install/onboarding emission under CI: ephemeral runners start with
+    // a fresh ~/.kcode each job, which would inflate install/active counts.
     if is_ci() {
         logging::debug("skipping telemetry install/onboarding under CI");
         clear_install_conversion_id();
@@ -1694,9 +1702,7 @@ pub fn record_install_if_first_run() {
     };
     let install_conversion_id = read_install_conversion_id();
     // A website-attributed install is a fresh post-install launch even when
-    // this telemetry identity previously recorded an install. This also lets
-    // the first conversion-aware release consume tokens written by the
-    // installer before that release existed.
+    // this identity previously recorded an install.
     if !should_record_install_for_id(&id, install_conversion_id.as_deref()) {
         return;
     }
@@ -2000,11 +2006,7 @@ fn begin_session_with_mode(
         todo: TodoSessionTelemetry::default(),
     };
     // A live session in the slot means the process is switching sessions
-    // without anyone calling end_session (agent create/attach both call
-    // begin_session unconditionally). Overwriting it silently orphaned the
-    // previous session_start, which is why only ~25% of release
-    // session_starts ever saw a matching session_end. Close it out first so
-    // every start has a terminal event.
+    // without end_session, orphaning the previous session_start.
     let superseded = match SESSION_STATE.lock() {
         Ok(guard) => guard.as_ref().map(|prior| {
             (
@@ -2084,9 +2086,8 @@ pub fn record_turn() {
     }
     if let Some(payload) = prompt_event {
         let mode = if first_prompt {
-            // Short `jcode run` invocations can exit before the background
-            // worker starts. Bound the first prompt's delivery so every active
-            // installation has an immediate durable activity anchor.
+            // Short `jcode run` invocations can exit before the background worker
+            // has flushed, so the shutdown path drains it explicitly.
             DeliveryMode::Blocking(BLOCKING_FIRST_PROMPT_TIMEOUT)
         } else {
             DeliveryMode::Background
@@ -2588,10 +2589,8 @@ pub fn current_provider_model() -> Option<(String, String)> {
 
 fn show_first_run_notice() {
     // This can print before any terminal setup enables VT processing. Legacy
-    // Windows consoles (conhost without ENABLE_VIRTUAL_TERMINAL_PROCESSING,
-    // exactly the double-click-the-exe path) render raw escapes as `←[90m`
-    // garbage (issue #498), so only colorize when the console accepts ANSI
-    // (the helper also opportunistically enables VT mode on Windows).
+    // consoles render raw escapes as garbage (issue #498), so only colorize
+    // when the console accepts ANSI.
     let (dim, reset) = if jcode_core::console::stderr_supports_ansi() {
         ("\x1b[90m", "\x1b[0m")
     } else {

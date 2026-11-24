@@ -18,6 +18,9 @@ use std::os::unix::net::UnixStream;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
+#[path = "client_behavior/session_tool_surface.rs"]
+mod session_tool_surface;
+
 /// A socket-pair transport, so the test drives the client over the same code
 /// path a real connection uses.
 struct PairTransport(UnixStream);
@@ -951,190 +954,6 @@ fn run_collects_framed_final_answer_and_retracts_completed_retry_output() {
     assert_eq!(result.messages[0].message_id.as_deref(), Some("narration"));
 }
 
-fn custom_tool() -> jcode_sdk::SessionToolDefinition {
-    jcode_sdk::SessionToolDefinition {
-        name: "greet".into(),
-        description: "Greet a person".into(),
-        parameters: serde_json::from_value(serde_json::json!({
-            "type": "object", "properties": {"name": {"type": "string"}},
-            "required": ["name"]
-        }))
-        .unwrap(),
-    }
-}
-
-#[test]
-fn session_tool_configuration_and_listing_preserve_typed_payloads() {
-    let client = fake_harness(|frame, writer| match &frame.request {
-        ApiRequest::ConfigureTools { session_id, tools } => {
-            assert_eq!(session_id, "s1");
-            assert_eq!(tools.enabled, Some(vec!["read".into(), "greet".into()]));
-            assert_eq!(tools.disabled, vec!["bash"]);
-            assert_eq!(
-                serde_json::to_value(&tools.custom).unwrap(),
-                serde_json::to_value(vec![custom_tool()]).unwrap()
-            );
-            reply(frame, ApiEvent::Ok, writer);
-        }
-        ApiRequest::ListTools { session_id } => {
-            assert_eq!(session_id, "s1");
-            reply(
-                frame,
-                ApiEvent::Tools {
-                    session_id: session_id.clone(),
-                    tools: vec![custom_tool()],
-                },
-                writer,
-            );
-        }
-        other => panic!("unexpected request: {other:?}"),
-    });
-    client
-        .configure_tools(
-            "s1",
-            jcode_sdk::ToolConfiguration {
-                enabled: Some(vec!["read".into(), "greet".into()]),
-                disabled: vec!["bash".into()],
-                custom: vec![custom_tool()],
-            },
-        )
-        .unwrap();
-    let tools = client.list_tools("s1").unwrap();
-    assert_eq!(
-        serde_json::to_value(tools).unwrap(),
-        serde_json::to_value(vec![custom_tool()]).unwrap()
-    );
-}
-
-#[test]
-fn custom_tool_events_are_session_filtered_and_results_preserve_success_and_failure() {
-    let client = fake_harness(|frame, writer| match &frame.request {
-        ApiRequest::SendMessage { session_id, .. } => {
-            for (id, call_id) in [
-                ("other", "ignore"),
-                (session_id.as_str(), "success"),
-                (session_id.as_str(), "failure"),
-            ] {
-                push(
-                    ApiEvent::ToolCall {
-                        session_id: id.into(),
-                        call_id: call_id.into(),
-                        name: "greet".into(),
-                        input: serde_json::json!({"name": "Ada"}),
-                    },
-                    writer,
-                );
-            }
-        }
-        ApiRequest::ToolResult {
-            session_id,
-            call_id,
-            output,
-            error,
-        } => {
-            assert_eq!(session_id, "s1");
-            match call_id.as_str() {
-                "success" => {
-                    assert_eq!(output, "Hello, Ada!");
-                    assert_eq!(error, &None);
-                }
-                "failure" => {
-                    assert_eq!(output, "");
-                    assert_eq!(error.as_deref(), Some("unavailable"));
-                }
-                other => panic!("unexpected call id: {other}"),
-            }
-            reply(frame, ApiEvent::Ok, writer);
-        }
-        other => panic!("unexpected request: {other:?}"),
-    });
-    let events = client.events(Some("s1"));
-    client
-        .send_message("s1", "greet Ada", vec![], None)
-        .unwrap();
-    for expected in ["success", "failure"] {
-        let event = events
-            .next_timeout(Duration::from_secs(2))
-            .expect("custom tool event");
-        let ApiEvent::ToolCall {
-            session_id,
-            call_id,
-            name,
-            input,
-        } = event
-        else {
-            panic!("unexpected event: {event:?}");
-        };
-        assert_eq!(call_id, expected);
-        assert_eq!(name, "greet");
-        assert_eq!(input, serde_json::json!({"name": "Ada"}));
-        let (output, error) = if expected == "success" {
-            ("Hello, Ada!", None)
-        } else {
-            ("", Some("unavailable".into()))
-        };
-        client
-            .submit_tool_result(&session_id, &call_id, output, error)
-            .unwrap();
-    }
-}
-
-#[test]
-fn session_tool_methods_propagate_harness_errors() {
-    let client = fake_harness(|frame, writer| {
-        reply(
-            frame,
-            ApiEvent::Error {
-                code: jcode_sdk::api::ErrorCode::UnknownRequest,
-                message: "session tools unavailable".into(),
-            },
-            writer,
-        );
-    });
-    let errors = [
-        client
-            .configure_tools(
-                "s1",
-                jcode_sdk::ToolConfiguration {
-                    enabled: None,
-                    disabled: vec![],
-                    custom: vec![],
-                },
-            )
-            .unwrap_err(),
-        client.list_tools("s1").unwrap_err(),
-        client
-            .submit_tool_result("s1", "call", "ok", None)
-            .unwrap_err(),
-    ];
-    for error in errors {
-        assert_eq!(
-            error.kind,
-            jcode_sdk::ErrorKind::Harness(jcode_sdk::api::ErrorCode::UnknownRequest)
-        );
-        assert!(error.to_string().contains("session tools unavailable"));
-    }
-}
-
-#[test]
-fn session_tool_methods_reject_unexpected_replies() {
-    let client = fake_harness(|frame, writer| reply(frame, ApiEvent::Pong, writer));
-    assert!(
-        client
-            .configure_tools(
-                "s1",
-                jcode_sdk::ToolConfiguration {
-                    enabled: Some(vec![]),
-                    disabled: vec![],
-                    custom: vec![],
-                }
-            )
-            .is_err()
-    );
-    assert!(client.list_tools("s1").is_err());
-    assert!(client.submit_tool_result("s1", "call", "", None).is_err());
-}
-
 #[test]
 fn create_session_options_preserve_system_prompt_wire_values() {
     use jcode_sdk::CreateSessionOptions;
@@ -1383,4 +1202,64 @@ fn tool_names_arrive_before_any_arguments_and_interleaved_inputs_keep_call_ids()
             matches!(events.next_timeout(Duration::from_secs(5)), Some(ApiEvent::ToolInputDelta { call_id, delta, .. }) if call_id == id && delta == fragment)
         );
     }
+}
+
+/// A16 wiring: `run` is the SDK's live one-shot turn path and it returns the
+/// first `error` unconditionally, so `turn_retry` (a public export with zero
+/// non-test construction sites) never reaches a real turn. A transient
+/// failure must be retried through the same session before `run` gives up.
+#[test]
+fn run_retries_a_transient_failure_before_failing() {
+    let turns = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = std::sync::Arc::clone(&turns);
+    let client = fake_harness(move |frame, writer| {
+        if let ApiRequest::SendMessage { session_id, .. } = &frame.request {
+            let turn = seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if turn == 0 {
+                // First attempt fails transiently.
+                push(
+                    ApiEvent::TurnStopped {
+                        session_id: session_id.clone(),
+                        reason: jcode_harness_api::TurnStopReason::Failure,
+                        message: String::new(),
+                        provider_stop_reason: None,
+                    },
+                    writer,
+                );
+                push(
+                    ApiEvent::Error {
+                        code: jcode_harness_api::ErrorCode::Internal,
+                        message: "error sending request: connection reset by peer".to_string(),
+                    },
+                    writer,
+                );
+                push(
+                    ApiEvent::TurnDone {
+                        session_id: session_id.clone(),
+                    },
+                    writer,
+                );
+            } else {
+                push(
+                    ApiEvent::TextDelta {
+                        message_id: None,
+                        session_id: session_id.clone(),
+                        text: "recovered".to_string(),
+                    },
+                    writer,
+                );
+                push(
+                    ApiEvent::TurnDone {
+                        session_id: session_id.clone(),
+                    },
+                    writer,
+                );
+            }
+        }
+    });
+    let turn = client
+        .run("s1", "hi", Default::default())
+        .expect("a transient failure must be retried, not surfaced");
+    assert_eq!(turn.text, "recovered");
+    assert_eq!(turns.load(std::sync::atomic::Ordering::SeqCst), 2);
 }

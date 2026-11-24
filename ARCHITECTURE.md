@@ -193,14 +193,15 @@ not the whole app core.
 
 ### Herdr / multi-harness
 
-`HERDR` is the cross-harness terminal multiplexer. The `jcode-herdr` crate is
-both a terminal-integration leaf (it lives in the TUI compile graph) and a
-multi-harness peer (it talks to other harnesses through HERDR panes). It is
-listed here once and not under *Terminal & platform* above.
+**`herdr-core` (HC) is the supported terminal runtime.** The legacy `HERDR`
+multiplexer bridge is deprecated and retained only for compatibility; see
+`docs/HERDR.md`. The `jcode-herdr` crate is both a terminal-integration leaf (it
+lives in the TUI compile graph) and a multi-harness peer. It is listed here once
+and not under *Terminal & platform* above.
 
 | Crate | Path | Holds |
 |---|---|---|
-| `jcode-herdr` | `crates/jcode-herdr` | Lifecycle state reporting, session identity, screen management, and HERDR pane integration (lives in the TUI compile graph and is the jcode end of the HERDR cross-harness protocol). |
+| `jcode-herdr` | `crates/jcode-herdr` | Runtime detection (`RuntimeKind::{None, LegacyHerdr, Hc}`), the HC JSON-RPC transport (`hello` + `terminal.get`/`terminal.send`), legacy lifecycle state reporting and screen manifests (deprecated path), session identity, and HERDR pane integration (lives in the TUI compile graph). |
 
 ### Build, logging, runtime support
 

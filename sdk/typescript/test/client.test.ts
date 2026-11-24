@@ -569,24 +569,41 @@ test("globalEvents fails loudly when its bounded event queue overflows", async (
           ev: "attached",
           session: { session_id: "s1", status: "attached" },
         });
-        setTimeout(() => {
-          for (const text of ["one", "two"]) {
-            send({ v: 1, ev: "text_delta", session_id: "s1", text });
+        // Overflow only happens while NO consumer is awaiting: enqueue()
+        // hands a frame straight to a pending waiter and skips the buffer
+        // entirely. So emit a burst with no next() in flight. Two delayed
+        // frames were not enough - on a loaded runner they can miss a fixed
+        // settle window and the assertion then sees a resolved next().
+        setImmediate(() => {
+          for (let i = 0; i < 16; i += 1) {
+            send({ v: 1, ev: "text_delta", session_id: "s1", text: `chunk-${i}` });
           }
-        }, 10);
+        });
       }
     },
   });
   const client = await JcodeClient.connect({ socketPath: server.socketPath });
-  const stream = client.globalEvents({ discoveryIntervalMs: 0, maxBufferedEvents: 1 });
   try {
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    await assert.rejects(
-      () => stream.next(),
-      (error: HarnessError) => error.code === "event_buffer_overflow",
-    );
+    // Any fixed settle time is a guess about scheduler latency, so retry with
+    // a fresh stream instead of asserting on a single timing sample. Overflow
+    // is permanent once it happens (finish() clears the queue and records the
+    // terminal error), so one observation is conclusive. If it never happens
+    // the loop exhausts and the test still fails.
+    let overflowError: HarnessError | undefined;
+    for (let attempt = 0; attempt < 20 && !overflowError; attempt += 1) {
+      const stream = client.globalEvents({ discoveryIntervalMs: 0, maxBufferedEvents: 1 });
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        await stream.next();
+      } catch (error) {
+        overflowError = error as HarnessError;
+      } finally {
+        await stream.return();
+      }
+    }
+    assert.ok(overflowError, "expected the bounded event queue to overflow");
+    assert.equal(overflowError.code, "event_buffer_overflow");
   } finally {
-    await stream.return();
     await client.close();
     await server.close();
   }

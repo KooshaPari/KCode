@@ -45,6 +45,14 @@ fn identify_emulator() -> TerminalEmulator {
             return TerminalEmulator::MacTerminal;
         }
     }
+    // 6b. herdr-core (HC) injects HC_TERMINAL_ID into every pane it runs and
+    // renders the Kitty graphics protocol. Checked before the TERM fallbacks so
+    // an HC pane is not misreported as Unknown; any emulator recognised above
+    // still wins, and HC's own TERM_PROGRAM=ghostty shim deliberately does not
+    // reach the Ghostty branch because that requires GHOSTTY_RESOURCES_DIR.
+    if env("HC_TERMINAL_ID").is_some() || env("HC_TERMINAL_SOCKET").is_some() {
+        return TerminalEmulator::HerdrCore;
+    }
     // 7. TERM-based fallbacks
     if let Some(ref term) = env("TERM") {
         if term.contains("ghostty") {
@@ -239,6 +247,24 @@ fn features_for(em: &TerminalEmulator) -> FeatureSet {
                 false,
                 ShellIntegrationLevel::None,
             ),
+            // herdr-core (HC). Verified true: Kitty graphics including Unicode
+            // placeholders and scroll-following placements (herdr-app AGENTS.md),
+            // the negotiated Kitty keyboard mode, and 24-bit colour. Everything
+            // unverified stays false rather than being borrowed from Ghostty:
+            // sixel, OSC 8, OSC 133, synchronized update, OSC 52 and light/dark
+            // reporting have never been demonstrated on HC.
+            TerminalEmulator::HerdrCore => (
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                ShellIntegrationLevel::None,
+            ),
             TerminalEmulator::Unknown(_) => (
                 false,
                 false,
@@ -389,6 +415,33 @@ mod tests {
         unsafe {
             env::remove_var("RIO_CONFIG_PATH");
         }
+    }
+
+    #[test]
+    fn herdr_core_detected_from_hc_terminal_id() {
+        unsafe {
+            env::set_var("HC_TERMINAL_ID", "t56");
+        }
+        let fs = detect();
+        assert_eq!(fs.emulator, TerminalEmulator::HerdrCore);
+        assert_eq!(fs.emulator.display_name(), "herdr-core");
+        assert!(fs.emulator.is_known());
+        unsafe {
+            env::remove_var("HC_TERMINAL_ID");
+        }
+    }
+
+    #[test]
+    fn herdr_core_features_claim_only_verified_capabilities() {
+        let fs = features_for(&TerminalEmulator::HerdrCore);
+        assert!(fs.kitty_graphics, "HC renders Kitty graphics");
+        assert!(fs.kitty_keyboard, "HC negotiates the Kitty keyboard mode");
+        assert!(fs.truecolor, "HC reports COLORTERM=truecolor");
+        assert!(fs.has_image_support());
+        assert!(!fs.sixel, "sixel unverified on HC");
+        assert!(!fs.osc52_clipboard, "OSC 52 unverified on HC");
+        assert!(!fs.light_dark_mode, "light/dark unverified on HC");
+        assert_eq!(fs.shell_integration, ShellIntegrationLevel::None);
     }
 
     #[test]
