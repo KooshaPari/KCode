@@ -267,8 +267,42 @@ pub(super) fn is_jcode_repo_dir(dir: &Path) -> bool {
     }
 
     std::fs::read_to_string(cargo_toml)
-        .map(|content| content.contains("name = \"jcode\""))
+        .map(|content| declares_this_repo(&content))
         .unwrap_or(false)
+}
+
+/// Whether a manifest's `[package]` name is this repository.
+///
+/// A substring match over the whole file is not the same question: the root
+/// manifest also declares `[lib] name = "jcode"`, so the old check stayed true
+/// for a reason unrelated to the package identity. Read the package name and
+/// accept both the current name and the legacy one, so a checkout made before
+/// the rename is still recognised.
+fn declares_this_repo(manifest: &str) -> bool {
+    let mut in_package = false;
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+            continue;
+        }
+        if !in_package {
+            continue;
+        }
+        if let Some(name) = package_name(line) {
+            return name == "kcode" || name == "jcode";
+        }
+    }
+    false
+}
+
+fn package_name(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("name")?.trim_start();
+    rest.strip_prefix('=')?
+        .trim()
+        .strip_prefix('"')?
+        .split('"')
+        .next()
 }
 
 fn find_jcode_repo_in_ancestors(start: &Path) -> Option<PathBuf> {
@@ -422,4 +456,31 @@ pub(super) fn current_session_id() -> Option<String> {
         .map(|state| state.as_ref().map(|s| s.session_id.clone()))
         .ok()
         .flatten()
+}
+
+#[cfg(test)]
+mod repo_detection_tests {
+    use super::declares_this_repo;
+
+    #[test]
+    fn package_name_decides_and_the_lib_target_does_not() {
+        assert!(declares_this_repo(
+            "[package]\nname = \"kcode\"\n\n[lib]\nname = \"jcode\"\n"
+        ));
+        assert!(declares_this_repo(
+            "[package]\nname = \"jcode\"\n\n[lib]\nname = \"jcode\"\n"
+        ));
+        assert!(
+            !declares_this_repo("[lib]\nname = \"jcode\"\n"),
+            "a lib target name alone must not identify the package"
+        );
+        assert!(!declares_this_repo(
+            "[package]\nname = \"some-other-crate\"\n\n[lib]\nname = \"jcode\"\n"
+        ));
+    }
+
+    #[test]
+    fn accepts_a_manifest_without_spaces_around_equals() {
+        assert!(declares_this_repo("[package]\nname=\"kcode\"\n"));
+    }
 }
