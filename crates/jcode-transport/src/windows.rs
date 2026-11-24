@@ -484,7 +484,7 @@ mod tests {
     fn pipe_name_falls_back_when_stem_is_empty() {
         let name = path_to_pipe_name(Path::new("..."));
         assert!(
-            name.starts_with(r"\\.\pipe\jcode-"),
+            name.starts_with(r"\\.\pipe\kcode-"),
             "unexpected pipe name: {}",
             name
         );
