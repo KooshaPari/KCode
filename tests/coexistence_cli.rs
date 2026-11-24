@@ -44,7 +44,8 @@ fn coexistence_does_not_initialize_user_state() {
         if args.contains(&"--json") {
             let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
             let sources = value["sources"].as_array().unwrap();
-            assert_eq!(sources.len(), 3);
+            assert_eq!(sources.len(), 4);
+            assert_eq!(sources[3]["source"], "helioscli");
             for source in sources {
                 assert_eq!(source["command_discovery"], "not_found_on_path");
                 for field in ["authentication", "provider", "model", "sessions"] {
