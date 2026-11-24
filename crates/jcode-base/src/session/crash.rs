@@ -331,21 +331,22 @@ fn find_crashed_via_pid_files() -> Option<Vec<(String, String)>> {
             None => continue,
         };
 
-        let pid_str = match std::fs::read_to_string(entry.path()) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        let pid: u32 = match pid_str.trim().parse() {
-            Ok(p) => p,
-            Err(_) => {
+        let marker = match storage::read_pid_marker(&entry.path()) {
+            Some(marker) => marker,
+            None => {
                 let _ = std::fs::remove_file(entry.path());
                 continue;
             }
         };
 
-        if is_pid_running(pid) {
+        // A live PID only proves ownership within the boot that recorded the
+        // marker. After a reboot the PID can belong to an unrelated process, and
+        // treating that as "still running" left the crashed session labelled
+        // Active forever: never recovered, never offered as a resume hint.
+        if marker.is_live() {
             continue;
         }
+        let pid = marker.pid;
 
         match Session::load(&session_id) {
             Ok(mut session) => {

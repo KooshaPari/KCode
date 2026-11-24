@@ -1151,6 +1151,20 @@ request in this new forked session, using the inherited conversation only as con
             return false;
         }
 
+        // Prefer the ownership marker: unlike `last_pid` it records the boot the
+        // owner was seen in, so a PID inherited by an unrelated process after a
+        // reboot is still recognised as a crash.
+        if let Some(marker) = crate::storage::read_active_pid(&self.id) {
+            if !marker.is_live() {
+                self.mark_crashed(Some(format!(
+                    "Process {} exited unexpectedly (no shutdown signal captured)",
+                    marker.pid
+                )));
+                return true;
+            }
+            return false;
+        }
+
         if let Some(pid) = self.last_pid {
             if !crash::is_pid_running(pid) {
                 self.mark_crashed(Some(format!(

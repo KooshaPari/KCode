@@ -56,11 +56,147 @@ pub fn session_is_internal(session_id: &str) -> bool {
     internal_pids_dir().is_some_and(|dir| dir.join(session_id).exists())
 }
 
+/// Two readings of [`boot_epoch_secs`] count as the same boot when they agree
+/// within this window. Boot time derived from uptime jitters by a second or so
+/// between processes; a real reboot moves it by far more.
+pub const BOOT_EPOCH_TOLERANCE_SECS: i64 = 120;
+
+/// Machine boot time as Unix epoch seconds, when the platform reports it.
+///
+/// Used to tell "my recorded owner is still running" from "my owner died and an
+/// unrelated process inherited its PID after a reboot": a PID is only evidence
+/// of ownership within the boot that recorded it. Returns `None` when the
+/// platform cannot report it, and callers then fall back to plain PID liveness.
+pub fn boot_epoch_secs() -> Option<i64> {
+    #[cfg(target_os = "macos")]
+    {
+        // `kern.boottime` is a `struct timeval` that is stable for the whole boot.
+        let mut boottime: libc::timeval = unsafe { std::mem::zeroed() };
+        let mut len = std::mem::size_of::<libc::timeval>();
+        let name = std::ffi::CStr::from_bytes_with_nul(b"kern.boottime\0").ok()?;
+        let rc = unsafe {
+            libc::sysctlbyname(
+                name.as_ptr(),
+                (&raw mut boottime).cast(),
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        if rc != 0 || boottime.tv_sec <= 0 {
+            return None;
+        }
+        Some(boottime.tv_sec as i64)
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        // `/proc/uptime`'s first field is seconds since boot: boot = now - uptime.
+        let raw = std::fs::read_to_string("/proc/uptime").ok()?;
+        let uptime: f64 = raw.split_whitespace().next()?.parse().ok()?;
+        if !uptime.is_finite() || uptime < 0.0 {
+            return None;
+        }
+        Some(epoch_now_secs() - uptime.round() as i64)
+    }
+    #[cfg(windows)]
+    {
+        // `GetTickCount64` counts milliseconds since boot.
+        let ticks = unsafe { windows_sys::Win32::System::SystemInformation::GetTickCount64() };
+        Some(epoch_now_secs() - (ticks / 1000) as i64)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        None
+    }
+}
+
+#[cfg(any(all(unix, not(target_os = "macos")), windows))]
+fn epoch_now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Whether a marker's recorded boot still matches the running machine.
+///
+/// `None` on either side means "unknown", which keeps the pre-existing
+/// PID-only behaviour instead of inventing a crash.
+pub fn boot_matches(recorded: Option<i64>) -> bool {
+    match (recorded, boot_epoch_secs()) {
+        (Some(recorded), Some(current)) => (recorded - current).abs() <= BOOT_EPOCH_TOLERANCE_SECS,
+        _ => true,
+    }
+}
+
+/// Contents of one ownership marker: the owning PID plus the boot it was
+/// written in. Markers written by older builds hold a bare PID, which parses
+/// with an unknown boot and keeps plain PID-liveness semantics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActivePidMarker {
+    /// PID of the process that owns the session.
+    pub pid: u32,
+    /// Boot epoch second the writing process observed, when it could report one.
+    pub boot_epoch_secs: Option<i64>,
+}
+
+impl ActivePidMarker {
+    /// Marker for the current process in the current boot.
+    pub fn new(pid: u32) -> Self {
+        Self {
+            pid,
+            boot_epoch_secs: boot_epoch_secs(),
+        }
+    }
+
+    /// Parse marker contents: PID on the first non-empty line, boot epoch on the
+    /// optional second line.
+    pub fn parse(raw: &str) -> Option<Self> {
+        let mut lines = raw.lines().map(str::trim).filter(|line| !line.is_empty());
+        let pid = lines.next()?.parse::<u32>().ok()?;
+        let boot_epoch_secs = lines.next().and_then(|line| line.parse::<i64>().ok());
+        Some(Self {
+            pid,
+            boot_epoch_secs,
+        })
+    }
+
+    /// Marker file contents.
+    pub fn render(&self) -> String {
+        match self.boot_epoch_secs {
+            Some(boot) => format!("{}\n{}\n", self.pid, boot),
+            None => format!("{}\n", self.pid),
+        }
+    }
+
+    /// Whether the recorded owner can still own this session: the PID is alive
+    /// *and* it lives in the boot that recorded the marker.
+    pub fn is_live(&self) -> bool {
+        self.is_alive_pid() && boot_matches(self.boot_epoch_secs)
+    }
+
+    /// PID liveness alone, ignoring boot identity.
+    pub fn is_alive_pid(&self) -> bool {
+        process_is_running(self.pid)
+    }
+}
+
+/// Read the ownership marker for `session_id`, if one exists and parses.
+pub fn read_active_pid(session_id: &str) -> Option<ActivePidMarker> {
+    let dir = active_pids_dir()?;
+    read_pid_marker(&dir.join(session_id))
+}
+
+/// Read one marker file (active or streaming), if it exists and parses.
+pub fn read_pid_marker(path: &std::path::Path) -> Option<ActivePidMarker> {
+    ActivePidMarker::parse(&std::fs::read_to_string(path).ok()?)
+}
+
 /// Record that `session_id` is owned by process `pid`.
 pub fn register_active_pid(session_id: &str, pid: u32) {
     if let Some(dir) = active_pids_dir() {
         let _ = std::fs::create_dir_all(&dir);
-        let _ = std::fs::write(dir.join(session_id), pid.to_string());
+        let _ = std::fs::write(dir.join(session_id), ActivePidMarker::new(pid).render());
     }
 }
 
@@ -96,12 +232,7 @@ pub fn prune_active_pids_owned_by(pid: u32) -> (usize, usize) {
 
     let owned: Vec<String> = entries
         .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            std::fs::read_to_string(entry.path())
-                .ok()
-                .and_then(|raw| raw.trim().parse::<u32>().ok())
-                == Some(pid)
-        })
+        .filter(|entry| read_pid_marker(&entry.path()).map(|marker| marker.pid) == Some(pid))
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
         .collect();
 
@@ -125,7 +256,10 @@ pub fn prune_active_pids_owned_by(pid: u32) -> (usize, usize) {
 pub fn mark_streaming(session_id: &str) {
     if let Some(dir) = streaming_pids_dir() {
         let _ = std::fs::create_dir_all(&dir);
-        let _ = std::fs::write(dir.join(session_id), std::process::id().to_string());
+        let _ = std::fs::write(
+            dir.join(session_id),
+            ActivePidMarker::new(std::process::id()).render(),
+        );
     }
 }
 
@@ -151,12 +285,7 @@ pub fn streaming_session_ids() -> Vec<String> {
     };
     entries
         .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            std::fs::read_to_string(entry.path())
-                .ok()
-                .and_then(|raw| raw.trim().parse::<u32>().ok())
-                .is_some_and(process_is_running)
-        })
+        .filter(|entry| read_pid_marker(&entry.path()).is_some_and(|marker| marker.is_live()))
         .map(|entry| entry.file_name().to_string_lossy().to_string())
         .collect()
 }
@@ -247,8 +376,8 @@ pub fn find_active_session_id_by_pid(pid: u32) -> Option<String> {
     for entry in std::fs::read_dir(dir).ok()? {
         let entry = entry.ok()?;
         let session_id = entry.file_name().to_string_lossy().to_string();
-        let stored = std::fs::read_to_string(entry.path()).ok()?;
-        if stored.trim().parse::<u32>().ok()? == pid {
+        let stored = read_pid_marker(&entry.path())?;
+        if stored.pid == pid {
             return Some(session_id);
         }
     }
@@ -338,22 +467,16 @@ pub fn session_presence() -> Vec<SessionPresence> {
     for entry in entries.filter_map(|entry| entry.ok()) {
         let path = entry.path();
         let session_id = entry.file_name().to_string_lossy().to_string();
-        let Some(pid) = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|raw| raw.trim().parse::<u32>().ok())
-        else {
+        let Some(marker) = read_pid_marker(&path) else {
             continue;
         };
-        if !process_is_running(pid) {
+        if !marker.is_live() {
             continue;
         }
 
         let marker_path = streaming_dir.as_ref().map(|dir| dir.join(&session_id));
         let streaming = marker_path.as_ref().is_some_and(|marker| {
-            std::fs::read_to_string(marker)
-                .ok()
-                .and_then(|raw| raw.trim().parse::<u32>().ok())
-                .is_some_and(process_is_running)
+            read_pid_marker(marker).is_some_and(|streaming| streaming.is_live())
         });
         let streaming_since = if streaming {
             marker_path
@@ -369,7 +492,7 @@ pub fn session_presence() -> Vec<SessionPresence> {
                 .as_ref()
                 .is_some_and(|dir| dir.join(&session_id).exists()),
             session_id,
-            pid,
+            pid: marker.pid,
             streaming,
             streaming_since,
         });
@@ -666,5 +789,62 @@ mod tests {
             .expect("unlinkat");
         assert!(!moved.join("session").exists());
         assert_eq!(std::fs::read(&sentinel).unwrap(), b"STABLE");
+    }
+
+    #[test]
+    fn active_pid_marker_parses_legacy_pid_only_files() {
+        let marker = ActivePidMarker::parse("4242\n").expect("legacy marker parses");
+        assert_eq!(marker.pid, 4242);
+        assert_eq!(marker.boot_epoch_secs, None, "legacy marker has no boot");
+        // A bare PID with no trailing newline (older writes) parses the same.
+        assert_eq!(ActivePidMarker::parse("4242"), Some(marker));
+    }
+
+    #[test]
+    fn active_pid_marker_round_trips_boot_epoch() {
+        let marker = ActivePidMarker {
+            pid: 4242,
+            boot_epoch_secs: Some(1_700_000_000),
+        };
+        assert_eq!(ActivePidMarker::parse(&marker.render()), Some(marker));
+        assert_eq!(marker.render(), "4242\n1700000000\n");
+        assert!(ActivePidMarker::parse("not-a-pid").is_none());
+    }
+
+    #[test]
+    fn boot_matches_only_accepts_the_same_boot() {
+        let current = boot_epoch_secs();
+        assert!(boot_matches(None), "unknown boot keeps PID-only semantics");
+        if let Some(current) = current {
+            assert!(boot_matches(Some(current)));
+            assert!(boot_matches(Some(current - BOOT_EPOCH_TOLERANCE_SECS)));
+            assert!(
+                !boot_matches(Some(current - BOOT_EPOCH_TOLERANCE_SECS - 1)),
+                "an earlier boot must not look like this one"
+            );
+        }
+    }
+
+    #[test]
+    fn marker_recorded_in_an_earlier_boot_is_not_live() {
+        let Some(current) = boot_epoch_secs() else {
+            return;
+        };
+        // Our own PID is alive, but the marker claims it belongs to an old boot.
+        let marker = ActivePidMarker {
+            pid: std::process::id(),
+            boot_epoch_secs: Some(current - 86_400),
+        };
+        assert!(marker.is_alive_pid(), "the PID itself is running");
+        assert!(
+            !marker.is_live(),
+            "but it cannot own a marker from an earlier boot"
+        );
+
+        let same_boot = ActivePidMarker {
+            pid: std::process::id(),
+            boot_epoch_secs: Some(current),
+        };
+        assert!(same_boot.is_live());
     }
 }
