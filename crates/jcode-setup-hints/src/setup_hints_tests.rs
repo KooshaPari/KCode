@@ -634,6 +634,8 @@ fn kde_detection_recognises_the_service_section_the_installer_writes() {
     assert!(kde_launch_slot_present(
         "[services][jcode-launch-0.desktop]\n_launch=SUPER+;"
     ));
-    assert!(!kde_launch_slot_present("[services][other.desktop]\n_launch=X"));
+    assert!(!kde_launch_slot_present(
+        "[services][other.desktop]\n_launch=X"
+    ));
     assert!(!kde_launch_slot_present(""));
 }
