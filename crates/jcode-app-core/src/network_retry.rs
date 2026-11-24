@@ -1,4 +1,5 @@
 use std::time::Duration;
+use std::time::Instant;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use tokio::process::Command;
 use tokio::time::sleep;
@@ -62,6 +63,12 @@ fn classify_text(text: &str) -> Option<String> {
         "connection closed before message completed",
         "unexpected eof",
         "end of file before message completed",
+        // Body-level transport faults reported by reqwest/hyper while decoding
+        // or streaming a response. Mirrors the markers in
+        // crates/jcode-provider-core/src/transport.rs.
+        "error decoding response body",
+        "error reading a body from connection",
+        "stream error received",
     ];
     if network_markers.iter().any(|marker| text.contains(marker)) {
         return Some("the network connection appears to have dropped".to_string());
@@ -105,6 +112,78 @@ pub async fn wait_until_probably_online() {
         }
         wait_for_platform_change_or_delay(delay).await;
         delay = (delay * 2).min(Duration::from_secs(30));
+    }
+}
+
+/// Bounded variant of [`wait_until_probably_online`]. Returns false when the
+/// retry budget is exhausted; callers must then fail the turn instead of
+/// continuing to wait for connectivity.
+pub async fn wait_until_probably_online_bounded(mut budget: RetryBudget) -> bool {
+    let mut delay = Duration::from_secs(1);
+    while !budget.exhausted() {
+        if probe_connectivity().await {
+            return true;
+        }
+        wait_for_platform_change_or_delay(delay).await;
+        budget.record_attempt();
+        delay = (delay * 2).min(Duration::from_secs(30));
+    }
+    false
+}
+
+/// Bounded retry budget shared by the network wait loop and the TUI turn
+/// loops. Both a maximum attempt count and a maximum total elapsed time are
+/// enforced, so neither a fast-failing endpoint nor a slow one can retry
+/// forever.
+#[derive(Clone, Copy, Debug)]
+pub struct RetryBudget {
+    max_attempts: u32,
+    max_elapsed: Duration,
+    attempts: u32,
+    started: Instant,
+}
+
+impl RetryBudget {
+    /// Build a budget with an explicit count and per-attempt time cap. The
+    /// total time budget is the count multiplied by the cap, which bounds the
+    /// wait even when each attempt stalls for the full cap.
+    pub fn new(max_attempts: u32, per_attempt_cap_secs: u64) -> Self {
+        let max_elapsed =
+            Duration::from_secs(u64::from(max_attempts.max(1)) * per_attempt_cap_secs.max(1));
+        Self {
+            max_attempts: max_attempts.max(1),
+            max_elapsed,
+            attempts: 0,
+            started: Instant::now(),
+        }
+    }
+
+    /// Build a budget with an explicit total elapsed-time cap, independent
+    /// of the attempt count. Used where a caller already knows the wall-clock
+    /// budget (for example, derived from the total turn deadline).
+    pub fn with_total_budget(max_attempts: u32, max_elapsed: Duration) -> Self {
+        Self {
+            max_attempts: max_attempts.max(1),
+            max_elapsed,
+            attempts: 0,
+            started: Instant::now(),
+        }
+    }
+
+    /// Number of attempts that have been recorded.
+    pub fn attempts(&self) -> u32 {
+        self.attempts
+    }
+
+    /// Record one attempt. Returns true while further attempts are allowed.
+    pub fn record_attempt(&mut self) -> bool {
+        self.attempts = self.attempts.saturating_add(1);
+        self.attempts < self.max_attempts && self.started.elapsed() < self.max_elapsed
+    }
+
+    /// Whether the budget is exhausted before starting another attempt.
+    pub fn exhausted(&self) -> bool {
+        self.attempts >= self.max_attempts || self.started.elapsed() >= self.max_elapsed
     }
 }
 
@@ -184,6 +263,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn retry_budget_stops_after_bounded_count() {
+        let mut budget = RetryBudget::new(3, 30);
+        let mut attempts = 0u32;
+        while !budget.exhausted() {
+            budget.record_attempt();
+            attempts += 1;
+        }
+        assert_eq!(attempts, 3, "network retry must stop at the bounded count");
+        assert_eq!(budget.attempts(), 3);
+    }
+
+    #[test]
+    fn retry_budget_stops_after_total_time_budget() {
+        // High attempt count but a 50ms total window: the time arm must stop
+        // retries long before the count arm is reached.
+        let mut budget = RetryBudget::with_total_budget(1000, Duration::from_millis(50));
+        let mut attempts = 0u32;
+        while !budget.exhausted() {
+            std::thread::sleep(Duration::from_millis(10));
+            budget.record_attempt();
+            attempts += 1;
+        }
+        assert!(
+            attempts < 1000,
+            "elapsed-time arm must stop retries before the count arm"
+        );
+        assert!(attempts >= 3, "unexpectedly early stop: {attempts}");
+    }
+
+    #[test]
     fn classifies_common_network_errors() {
         assert!(classify_message("connection reset by peer").is_some());
         assert!(classify_message("temporary failure in name resolution").is_some());
@@ -232,6 +341,15 @@ mod tests {
                 "should classify as network interruption: {error}"
             );
         }
+    }
+
+    #[test]
+    fn classifies_body_decode_failures_without_a_timeout_marker() {
+        assert!(classify_message("error decoding response body: invalid gzip header").is_some());
+        assert!(
+            classify_message("error decoding response body: error reading a body from connection")
+                .is_some()
+        );
     }
 
     /// Deterministic failures must NOT trigger the wait-for-network path,

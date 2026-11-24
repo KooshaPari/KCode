@@ -512,3 +512,7 @@ pub fn replace_process(cmd: &mut std::process::Command) -> std::io::Error {
 #[cfg(test)]
 #[path = "platform_tests.rs"]
 mod platform_tests;
+
+#[cfg(all(test, windows))]
+#[path = "platform_windows_console_tests.rs"]
+mod windows_console_tests;

@@ -1,4 +1,5 @@
 use super::*;
+use crate::session_tool_config::{SessionToolConfig, SessionToolDefinition};
 
 /// Serde default for boolean fields that should default to `true` when absent,
 /// so older clients that omit the field keep their previous (unconditional)
@@ -30,25 +31,6 @@ fn is_zero_u8(value: &u8) -> bool {
 
 fn is_false(value: &bool) -> bool {
     !*value
-}
-
-/// SDK-owned session tool declaration. Parameters is a JSON schema object.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub parameters: serde_json::Value,
-}
-
-/// Replaces the session SDK overlay. None inherits normal selection.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct SessionToolConfig {
-    #[serde(default)]
-    pub enabled: Option<Vec<String>>,
-    #[serde(default)]
-    pub disabled: Vec<String>,
-    #[serde(default)]
-    pub custom: Vec<SessionToolDefinition>,
 }
 
 /// Client request to server
@@ -254,6 +236,19 @@ pub enum Request {
         session_id: String,
         message: String,
     },
+
+    /// Submit or inspect an idempotent wake for an existing session.
+    #[serde(rename = "notify_session_receipt")]
+    NotifySessionReceipt {
+        id: u64,
+        session_id: String,
+        message: String,
+        receipt_id: String,
+    },
+
+    /// Inspect a previously submitted wake without resending its message.
+    #[serde(rename = "get_wake_receipt")]
+    GetWakeReceipt { id: u64, receipt_id: String },
 
     /// The user pressed something in an agent-mounted applet instance. The
     /// server stores `state`, then wakes the agent (or resolves a waiting
@@ -898,6 +893,16 @@ pub enum ServerEvent {
     /// Acknowledgment of request
     #[serde(rename = "ack")]
     Ack { id: u64 },
+
+    /// Durable acceptance state of an explicit native wake receipt.
+    #[serde(rename = "wake_receipt")]
+    WakeReceipt {
+        id: u64,
+        receipt_id: String,
+        session_id: String,
+        /// `queued` is durable acceptance; `awakened` requires turn-entry proof.
+        status: String,
+    },
 
     /// Streaming text delta
     #[serde(rename = "text_delta")]

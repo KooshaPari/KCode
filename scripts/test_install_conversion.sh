@@ -47,12 +47,12 @@ case "$url" in
     fi
     checksum='8d57abb57a0dae3ff23c8f0df1f51951b7772822e0d560e860d6f68c24ef6d3d'
     [ "${BAD_CHECKSUM:-0}" != "1" ] || checksum='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-    printf '%s  %s\n' "$checksum" "${TEST_CHECKSUM_ASSET:-jcode-linux-x86_64.tar.gz}"
+    printf '%s  %s\n' "$checksum" "${TEST_CHECKSUM_ASSET:-kcode-linux-x86_64.tar.gz}"
     ;;
   *github.com*/releases/download/v1.2.3/SHA256SUMS)
     checksum='8d57abb57a0dae3ff23c8f0df1f51951b7772822e0d560e860d6f68c24ef6d3d'
     [ "${BAD_CHECKSUM:-0}" != "1" ] || checksum='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-    printf '%s  %s\n' "$checksum" "${TEST_CHECKSUM_ASSET:-jcode-linux-x86_64.tar.gz}"
+    printf '%s  %s\n' "$checksum" "${TEST_CHECKSUM_ASSET:-kcode-linux-x86_64.tar.gz}"
     ;;
   *github.com*/releases/latest)
     [ "${FAIL_RELEASE:-0}" != "1" ] || exit 22
@@ -77,7 +77,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-artifact="${TEST_ARCHIVE_ARTIFACT:-jcode-linux-x86_64}"
+artifact="${TEST_ARCHIVE_ARTIFACT:-kcode-linux-x86_64}"
 cat > "$dest/$artifact" <<'BIN'
 #!/usr/bin/env bash
 if [ "${1:-}" = "--version" ]; then printf 'jcode 1.2.3\n'; fi
@@ -145,11 +145,11 @@ TEST_UNAME_S=MINGW64_NT-10.0 \
 TEST_UNAME_M=x86_64 \
 PROCESSOR_ARCHITECTURE=AMD64 \
 PROCESSOR_ARCHITEW6432=ARM64 \
-TEST_ARCHIVE_ARTIFACT=jcode-windows-aarch64.exe \
-TEST_CHECKSUM_ASSET=jcode-windows-aarch64.tar.gz \
+TEST_ARCHIVE_ARTIFACT=kcode-windows-aarch64.exe \
+TEST_CHECKSUM_ASSET=kcode-windows-aarch64.tar.gz \
 DOWNLOAD_URL_LOG="$windows_url_log" \
 bash "$repo_dir/scripts/install.sh" >/dev/null
-grep -q '/jcode-windows-aarch64.tar.gz$' "$windows_url_log"
+grep -q '/kcode-windows-aarch64.tar.gz$' "$windows_url_log"
 test -x "$tmp/install-windows-arm64/jcode.exe"
 
 failure_log="$tmp/failure.jsonl"

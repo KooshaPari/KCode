@@ -1,6 +1,21 @@
 # Herdr integration contract
 
-Jcode has built-in terminal routing for Herdr. When a headed session launch is requested from a client with `HERDR_ENV=1` and `HERDR_PANE_ID`, Jcode splits the calling pane to the right, focuses the new pane, and starts the resumed Jcode session there. `HERDR_BIN_PATH` is honored when present.
+> **Runtime status: `herdr-core` (HC) is the supported terminal runtime.**
+>
+> The legacy Herdr bridge documented on this page, the
+> `HERDR_ENV` / `HERDR_PANE_ID` environment contract, the
+> `pane.report_agent*` socket verbs and the TOML screen manifests, is
+> **deprecated**. It is retained only for compatibility with a host that has
+> not yet migrated, and it is not the target of new work.
+>
+> See [herdr-core (HC)](#herdr-core-hc) below for what the supported runtime
+> actually is, and for what KCode does and does not do under it.
+
+## Legacy bridge (deprecated)
+
+When a headed session launch is requested from a client with `HERDR_ENV=1` and `HERDR_PANE_ID`, KCode splits the calling pane to the right, focuses the new pane, and starts the resumed session there. `HERDR_BIN_PATH` is honored when present.
+
+Everything below this section describes the legacy bridge.
 
 This covers visible swarm spawns, resume-in-new-terminal, self-development launches, and restart restores because they all use the shared terminal launcher. A configured `[terminal].spawn_hook` still takes precedence.
 
@@ -8,7 +23,7 @@ This covers visible swarm spawns, resume-in-new-terminal, self-development launc
 
 Inside a Herdr pane, the TUI also reports `idle`/`working`, the session id, and its `jcode --resume` command through `"$HERDR_BIN_PATH" pane report-agent`, and releases the pane on quit (`crates/jcode-tui/src/tui/herdr.rs`). Herdr older than 0.9.2 rejects the `--` resume separator as a usage error (exit 2) and drops the whole report. On that specific error Jcode retries once without the resume command and keeps reporting state only for the rest of the process.
 
-## Current compatibility
+## Legacy compatibility
 
 Jcode already:
 
@@ -52,7 +67,7 @@ jcode --resume <agent_session_id>
 
 Jcode session IDs are opaque strings and fit Herdr's ID-based session reference model. No transcript path is needed.
 
-## Required Herdr-side work
+## Required Herdr-side work (legacy Herdr upstream, deprecated)
 
 A first-class integration cannot be shipped only as a remote detection manifest. Herdr currently hard-codes known agent kinds, official session sources, restore commands, and install targets. The upstream implementation needs:
 
@@ -73,11 +88,99 @@ Relevant upstream files as of Herdr commit `eacea2daf0b72973173b728936b27478374f
 - `src/detect/mod.rs`
 - `src/terminal/state.rs`
 
-## Future full lifecycle authority
+## herdr-core (HC)
 
-A later Jcode/Herdr protocol can report `working`, `idle`, `blocked`, and `unknown` through `pane.report_agent`, then call `pane.release_agent` on process exit. Do not enable this authority from turn hooks alone. It needs explicit Jcode events for permission/question blocking, approval resolution, cancellation/interrupt, reconnect/reload transfer, and abnormal termination so Herdr never displays a stale working or idle state.
+HC is a different product from legacy Herdr and speaks a different protocol. Its
+binary is `hc` (alias `herdr-core`); the legacy multiplexer is `herdr`.
 
-Official references:
+### Detection
+
+`crates/jcode-herdr/src/env.rs` classifies the environment into
+`RuntimeKind::{None, LegacyHerdr, Hc}`:
+
+- `HC_TERMINAL_ID` set -> `Hc`. HC wins when both contracts are present, so a
+  stale legacy variable cannot shadow it.
+- Otherwise `HERDR_ENV=1` -> `LegacyHerdr`.
+
+HC's own variables are `HC_TERMINAL_ID` (the terminal's address),
+`HC_SOCKET` (the transport), and `HC_SESSION` (the core instance namespace).
+
+### Transport
+
+`crates/jcode-herdr/src/socket.rs` implements the HC transport: JSON-RPC 2.0,
+one message per line, with a mandatory `hello` handshake that advertises the
+protocol generation, core identity, and method list. This client speaks
+protocol generation 1; `hello` rejects any other generation with
+`error.data.kind = unsupported_generation`. Errors carry a stable
+`error.data.kind`.
+
+The HC endpoint is Unix-only. On Windows the transport returns an explicit
+"unsupported on this platform" error so the workspace still builds.
+
+### Method surface (measured, HC 0.1.21)
+
+`hc schema` advertises 32 methods:
+
+```
+hello  rpc.discover  server.status  server.stop  server.restart
+events.subscribe  templates.list  doc.get  doc.set
+file.read  file.write  file.edit
+machine.add  machine.list  machine.connect  machine.exec
+machine.rename  machine.rm
+terminal.run  terminal.list  terminal.get  terminal.kill  terminal.rm
+terminal.keep  terminal.label  terminal.read  terminal.attach
+terminal.send  terminal.wait  terminal.keys  terminal.interrupt
+terminal.put
+```
+
+HC has **no** `pane.report_agent`, `pane.report_agent_session` or
+`pane.release_agent`. Status reaches it as an OSC 7501 record the program prints
+on its own terminal (`ESC ] 7501 ; state=...`), and `terminal.wait` waits until
+the program stops reporting working; `terminal.interrupt` presses esc if the
+program reports status, else ctrl+c.
+
+### What KCode does under HC
+
+- KCode detects HC and exposes `HerdrEnv::kind()`, `hc_terminal_id()`,
+  `hc_socket()` (from `HC_TERMINAL_SOCKET`), `hc_session()` and `hc_scope()`.
+- KCode **prints its lifecycle state as OSC 7501** under HC. Every state path
+  in `HerdrReporter` prints a record instead of pushing a frame:
+  `working`/`idle`/`blocked` from `set_state`, `idle` on session start,
+  `working` then `error` from `report_error`, and `state=clear` on release and
+  drop. An unchanged state is reprinted only after the heartbeat. Encoding and
+  field safety live in `crates/jcode-herdr/src/osc.rs`;
+  `HerdrReporter::is_push_capable()` stays `false` under HC while
+  `is_osc_capable()` is `true`, so neither channel claims the other's work.
+- Pane splitting in the terminal launcher still keys off the legacy
+  `HERDR_ENV` + `HERDR_PANE_ID` contract (`crates/jcode-terminal-launch`). It
+  does not fire under HC, which injects `HC_TERMINAL_ID` instead. HC-driven
+  launch is not implemented.
+- `kcode herdr install` writes the TOML screen manifests, which are legacy-only,
+  and now says so. Under HC it refuses with a non-zero exit instead of writing
+  files nothing reads: HC reads OSC 7501 reports, not screen text.
+
+### `kcode herdr-status`
+
+`kcode herdr status` starts with a `Runtime` row naming what it actually
+probed: `herdr-core (HC)`, `legacy herdr`, or `none`. The kind comes from
+`HerdrEnv::kind()` over the live environment, so the label and the printed
+values always agree. Under HC it also prints `HC_TERMINAL_ID`,
+`HC_TERMINAL_SOCKET`, `HC_SESSION` and `HC_SCOPE`; under legacy HERDR it prints
+the `HERDR_*` variables. Where a legacy `HERDR_*` row is still shown under HC,
+treat it as legacy-bridge diagnostics, not as an HC view.
+
+Four rows are easy to misread. `HERDR pane valid` means only that identity and
+an endpoint were detected, for either runtime, and under HC the identity is the
+terminal address rather than a socket. `Reporter active` reports whether a
+reporter object exists, which is true under HC too. The two rows that answer
+"will state actually be delivered" are separate because the channels are
+separate: `Push-capable` is socket frames
+(`HerdrReporter::is_push_capable`, legacy HERDR only) and `OSC 7501` is the
+print-on-the-terminal channel (`HerdrReporter::is_osc_capable`, HC only). One of
+the two is `yes` at most.
+
+Official references (legacy Herdr; HC self-describes through `hc schema` and
+`hc --skill` instead):
 
 - <https://herdr.dev/docs/integrations/>
 - <https://herdr.dev/docs/socket-api/>

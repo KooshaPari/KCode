@@ -209,6 +209,7 @@ mod colors {
 
     #[test]
     fn colors_lists_every_role_with_its_hex_value() {
+        let _lock = lock_shared_state();
         let mut app = create_test_app();
         assert!(
             dispatch_local_command(&mut app, "/colors"),
@@ -230,6 +231,7 @@ mod colors {
 
     #[test]
     fn colors_harmony_reports_a_score_and_named_criteria() {
+        let _lock = lock_shared_state();
         let mut app = create_test_app();
         assert!(dispatch_local_command(&mut app, "/colors harmony"));
         let output = last_message(&app);
@@ -349,6 +351,7 @@ mod colors {
     fn unrelated_commands_are_not_swallowed() {
         // `/colors` shares a prefix with nothing today, but a future `/color*`
         // command must not be silently captured by this handler.
+        let _lock = lock_shared_state();
         let mut app = create_test_app();
         assert!(
             !dispatch_local_command(&mut app, "/colorscheme dracula"),

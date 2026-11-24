@@ -14,6 +14,21 @@ use std::{collections::HashMap, path::Path, time::Duration};
 type RouteKey = (String, String, String);
 type EnrichRow = (RouteKey, u64, Option<u64>);
 
+// SQLite integers are signed 64-bit. rusqlite dropped the `u64` ToSql/FromSql impls,
+// so every unsigned column crosses the boundary through these helpers.
+fn sql_u64(value: u64) -> i64 {
+    i64::try_from(value).unwrap_or(i64::MAX)
+}
+
+fn read_u64(row: &rusqlite::Row<'_>, idx: usize) -> rusqlite::Result<u64> {
+    row.get::<_, i64>(idx).map(|value| value.max(0) as u64)
+}
+
+fn read_opt_u64(row: &rusqlite::Row<'_>, idx: usize) -> rusqlite::Result<Option<u64>> {
+    row.get::<_, Option<i64>>(idx)
+        .map(|value| value.map(|value| value.max(0) as u64))
+}
+
 fn key(model: &str, provider: &str, api_method: &str) -> RouteKey {
     let provider = jcode_provider_core::normalize_model_route_provider_label(provider);
     let provider = match provider.as_str() {
@@ -49,7 +64,7 @@ fn open(path: &Path, now: u64) -> Result<Connection> {
         CREATE INDEX IF NOT EXISTS turns_route ON turns(model, provider, api_method);")?;
     db.execute(
         "INSERT OR IGNORE INTO tracking(id, started) VALUES(1, ?1)",
-        [now],
+        [sql_u64(now)],
     )?;
     Ok(db)
 }
@@ -74,14 +89,14 @@ fn record_at(
         VALUES(?1, ?2, ?3, ?4, ?5)
         ON CONFLICT(turn_id, model, provider, api_method)
         DO UPDATE SET last_used = MAX(last_used, excluded.last_used)",
-        params![turn_id, model, provider, method, timestamp],
+        params![turn_id, model, provider, method, sql_u64(timestamp)],
     )?;
     let started = db.query_row("SELECT started FROM tracking WHERE id=1", [], |row| {
-        row.get(0)
+        read_u64(row, 0)
     })?;
     Ok(db.query_row("SELECT COUNT(*), MAX(last_used) FROM turns WHERE model=?1 AND provider=?2 AND api_method=?3",
         params![model, provider, method], |row| Ok(ModelUsage {
-            count: row.get(0)?, last_used_unix_secs: row.get(1)?,
+            count: read_u64(row, 0)?, last_used_unix_secs: read_opt_u64(row, 1)?,
             tracking_started_unix_secs: Some(started), ..Default::default()
         }))?)
 }
@@ -140,7 +155,7 @@ fn method_usage_counts_at(path: &Path) -> Result<HashMap<String, u64>> {
     let mut query =
         db.prepare("SELECT api_method, COUNT(DISTINCT turn_id) FROM turns GROUP BY api_method")?;
     Ok(query
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .query_map([], |row| Ok((row.get(0)?, read_u64(row, 1)?)))?
         .collect::<rusqlite::Result<HashMap<String, u64>>>()?)
 }
 
@@ -153,15 +168,15 @@ pub fn enrich_routes(routes: &mut [ModelRoute]) {
         let db = Connection::open_with_flags(path()?, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         db.busy_timeout(Duration::from_secs(2))?;
         let started = db.query_row("SELECT started FROM tracking WHERE id=1", [], |row| {
-            row.get(0)
+            read_u64(row, 0)
         })?;
         let mut query = db.prepare("SELECT model, provider, api_method, COUNT(*), MAX(last_used) FROM turns GROUP BY model, provider, api_method")?;
         let rows = query
             .query_map([], |row| {
                 Ok((
                     (row.get(0)?, row.get(1)?, row.get(2)?),
-                    row.get(3)?,
-                    row.get(4)?,
+                    read_u64(row, 3)?,
+                    read_opt_u64(row, 4)?,
                 ))
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;

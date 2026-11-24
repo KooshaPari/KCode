@@ -75,6 +75,7 @@ pub(super) fn handle_tick(app: &mut App) -> bool {
     // happen to trigger (~4fps in practice).
     let mut needs_redraw = reset_redraw | crate::tui::periodic_redraw_required(app);
     needs_redraw |= app.retire_expired_status_notice();
+    needs_redraw |= app.poll_clipboard_outcome();
     needs_redraw |= app.flush_pending_resize_redraw();
     app.maybe_capture_runtime_memory_heartbeat();
     app.maybe_release_idle_heap();
@@ -495,7 +496,7 @@ fn handle_background_task_completed(app: &mut App, task: BackgroundTaskCompleted
             app.visible_turn_started = Some(std::time::Instant::now());
             // Report HERDR: agent is now working
             if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                handle.spawn(crate::herdr::report_state(AgentState::Working));
+                handle.spawn(jcode_herdr::global::report_state(AgentState::Working));
             }
         }
     }
@@ -620,7 +621,7 @@ pub(super) fn finish_turn(app: &mut App) {
     app.status = ProcessingStatus::Idle;
     // Report HERDR: agent is now idle
     if let Ok(handle) = tokio::runtime::Handle::try_current() {
-        handle.spawn(crate::herdr::report_state(AgentState::Idle));
+        handle.spawn(jcode_herdr::global::report_state(AgentState::Idle));
     }
     app.stream_message_ended = false;
     app.processing_started = None;

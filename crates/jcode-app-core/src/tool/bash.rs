@@ -1455,7 +1455,7 @@ impl BashTool {
 	                                }
 	                                #[cfg(not(unix))]
 	                                {
-	                                    let _ = child.start_kill();
+	                                    crate::background_command_kill::kill_timed_out_command(&mut child);
 	                                }
 	                                break;
 	                            }

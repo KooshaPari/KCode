@@ -43,6 +43,7 @@ pub mod env;
 pub mod external_auth;
 pub mod gateway;
 pub mod generated_image;
+mod git_status;
 pub mod github;
 pub mod gmail;
 pub mod goal;
@@ -101,6 +102,7 @@ pub mod subscription_api;
 pub mod subscription_catalog;
 pub mod subscription_notice;
 pub mod telegram;
+pub mod test_temp;
 pub mod telemetry {
     pub use jcode_telemetry_core::*;
 }

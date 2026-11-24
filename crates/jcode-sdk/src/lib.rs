@@ -84,6 +84,7 @@
 //!             "required": ["name"], "additionalProperties": false
 //!         }))?,
 //!     }],
+//!     allowed_mcp_tools: vec![],
 //! })?;
 //! println!("Available tools: {:?}", client.list_tools(id)?);
 //! let events = client.events(Some(id));
@@ -139,6 +140,7 @@
 
 mod auth;
 mod client;
+mod client_retry;
 mod diagnostics;
 mod errors;
 mod launch;

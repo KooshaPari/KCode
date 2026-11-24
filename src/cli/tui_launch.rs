@@ -25,7 +25,7 @@ pub async fn run_client() -> Result<()> {
         anyhow::bail!("Failed to ping server");
     }
 
-    println!("Connected to J-Code server");
+    println!("Connected to kcode server");
     println!("Type your message, or 'quit' to exit.\n");
 
     loop {
@@ -33,7 +33,11 @@ pub async fn run_client() -> Result<()> {
         io::stdout().flush()?;
 
         let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
+        if io::stdin().read_line(&mut input)? == 0 {
+            // EOF (Ctrl-D, closed pipe, /dev/null): break instead of re-prompting forever.
+            println!();
+            break;
+        }
 
         let input = input.trim();
         if input.is_empty() {
@@ -193,7 +197,7 @@ pub async fn run_tui_client(
         if let Some(ref session_id) = run_result.session_id {
             print_session_resume_hint(session_id);
         }
-        crate::tui::herdr::release();
+        crate::tui::herdr::release().await;
         return Ok(());
     }
 
@@ -217,7 +221,7 @@ pub async fn run_tui_client(
     if !has_requested_action(&run_result) {
         // The user quit (reload/update exec back into jcode in this pane and
         // keep reporting, so they must not release it).
-        crate::tui::herdr::release();
+        crate::tui::herdr::release().await;
     }
 
     Ok(())
@@ -775,7 +779,7 @@ pub fn list_sessions() -> Result<()> {
                             );
                             warned_no_terminal = true;
                         }
-                        eprintln!("  jcode --resume {}", session_id);
+                        eprintln!("  {}", crate::cli::terminal::resume_hint(&session_id));
                     }
                     Err(e) => {
                         eprintln!("Failed to spawn session {}: {}", session_id, e);

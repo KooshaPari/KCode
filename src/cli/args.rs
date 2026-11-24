@@ -3,9 +3,11 @@ use clap::{Parser, Subcommand, ValueEnum};
 use super::provider_init::ProviderChoice;
 
 mod google;
+mod provider_auth;
 mod session;
 #[allow(unused_imports)]
 pub(crate) use google::{GoogleAccessTierArg, GoogleLoginArgs};
+pub(crate) use provider_auth::ProviderAuthArg;
 pub(crate) use session::SessionCommand;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
@@ -16,20 +18,10 @@ pub(crate) enum TranscriptModeArg {
     Send,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, ValueEnum)]
-pub(crate) enum ProviderAuthArg {
-    /// Send the API key as Authorization: Bearer <key> (OpenAI-compatible default)
-    Bearer,
-    /// Send the API key in an API-key header (defaults to api-key)
-    ApiKey,
-    /// Do not send authentication, useful for localhost model servers
-    None,
-}
-
 #[derive(Parser, Debug)]
 #[command(name = "kcode")]
 #[command(version = jcode_build_meta::version())]
-#[command(about = "J-Code: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
+#[command(about = "kcode: A coding agent using Claude Max or ChatGPT Pro subscriptions")]
 pub(crate) struct Args {
     /// Initial provider to use (jcode, claude, openai, openai-api, openrouter, azure, opencode, opencode-go, zai, 302ai, baseten, conifer, cortecs, comtegra, deepseek, fpt, firmware, huggingface, moonshotai, nebius, scaleway, stackit, groq, mistral, perplexity, togetherai, deepinfra, xai, grok-build, nvidia-nim, lmstudio, ollama, chutes, cerebras, alibaba-coding-plan, openai-compatible, cursor, copilot, gemini, antigravity, google, or auto-detect). Interactive sessions can switch providers with /model.
     #[arg(short, long, default_value = "auto", global = true)]
@@ -156,6 +148,12 @@ pub(crate) struct Args {
 
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
+    /// Show local legacy command discovery and unobserved continuity state
+    Coexistence {
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Start the agent server (background daemon)
     Serve {
         /// Internal: mark this server as temporary so it can self-clean when its owner exits.
@@ -181,7 +179,7 @@ pub(crate) enum Command {
     /// Run as an Agent Client Protocol (ACP) adapter backed by the Jcode daemon
     Acp,
 
-    /// Manage the background server daemon (e.g. `jcode server stop`).
+    /// Manage the background server daemon (e.g. `kcode server stop --force`).
     Server {
         #[command(subcommand)]
         action: ServerCommand,
@@ -670,7 +668,7 @@ pub(crate) enum ServerCommand {
     /// Pin the shared server channel to an installed version.
     ///
     /// Defaults to the active `current` version. This only selects the daemon's
-    /// binary; run `jcode server reload` separately to apply it.
+    /// binary; run `kcode server reload` separately to apply it.
     Promote {
         /// Installed version to promote (defaults to the current channel)
         version: Option<String>,

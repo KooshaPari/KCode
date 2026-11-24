@@ -7,3 +7,6 @@ publish = false
 [dependencies]
 anyhow = "1"
 dirs = "5"
+# The HERDR/HC classification rule belongs to one crate; duplicated here it
+# drifted once already (#317).
+jcode-herdr = { path = "../jcode-herdr" }
