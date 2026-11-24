@@ -43,22 +43,27 @@ fn command_names(name: &'static str) -> Vec<String> {
 }
 
 fn report(path: Option<&OsStr>, now: Option<u64>) -> Report {
-    let sources = ["jcode", "forge", "codex"]
-        .into_iter()
-        .map(|source| {
-            let names = command_names(source);
-            let names: Vec<&str> = names.iter().map(String::as_str).collect();
-            SourceStatus {
-                source,
-                host: "local",
-                command_discovery: discover(path, &names),
-                authentication: "unknown",
-                provider: "unknown",
-                model: "unknown",
-                sessions: "unknown",
-            }
-        })
-        .collect();
+    let sources = [
+        ("jcode", "jcode"),
+        ("forge", "forge"),
+        ("codex", "codex"),
+        ("helioscli", "helios"),
+    ]
+    .into_iter()
+    .map(|(source, command)| {
+        let names = command_names(command);
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        SourceStatus {
+            source,
+            host: "local",
+            command_discovery: discover(path, &names),
+            authentication: "unknown",
+            provider: "unknown",
+            model: "unknown",
+            sessions: "unknown",
+        }
+    })
+    .collect();
     Report {
         schema_version: 1,
         path_observed_at_unix_seconds: now,
@@ -119,12 +124,13 @@ mod tests {
     #[test]
     fn reports_each_continuity_domain_unknown() {
         let report = report(None, Some(7));
-        assert_eq!(report.sources.len(), 3);
+        assert_eq!(report.sources.len(), 4);
         let serialized = serde_json::to_value(&report).unwrap();
         assert_eq!(serialized["schema_version"], 1);
         assert_eq!(serialized["path_observed_at_unix_seconds"], 7);
         assert_eq!(serialized["sources"][0]["source"], "jcode");
         assert_eq!(serialized["sources"][0]["command_discovery"], "unknown");
+        assert_eq!(serialized["sources"][3]["source"], "helioscli");
         for source in report.sources {
             assert_eq!(source.command_discovery, Discovery::Unknown);
             assert_eq!(
@@ -137,5 +143,22 @@ mod tests {
                 ["unknown"; 4]
             );
         }
+    }
+
+    #[test]
+    fn helios_command_is_only_a_discovery_lead() {
+        let dir = tempfile::tempdir().unwrap();
+        let name = if cfg!(windows) {
+            "helios.exe"
+        } else {
+            "helios"
+        };
+        std::fs::write(dir.path().join(name), b"").unwrap();
+        let report = report(Some(dir.path().as_os_str()), Some(7));
+        let helios = &report.sources[3];
+        assert_eq!(helios.source, "helioscli");
+        assert_eq!(helios.command_discovery, Discovery::FoundOnPath);
+        assert_eq!(helios.sessions, "unknown");
+        assert_eq!(helios.authentication, "unknown");
     }
 }
