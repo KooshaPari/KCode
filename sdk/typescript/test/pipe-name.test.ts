@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 /** The derivation under test, with the platform's path parser injected. */
 function derivePipeName(socketPath: string, parser: path.PlatformPath): string {
   const stem =
-    (parser.parse(socketPath).name.match(/[A-Za-z0-9\-_]/g) ?? []).join("").slice(0, 32) || "jcode";
+    (parser.parse(socketPath).name.match(/[A-Za-z0-9\-_]/g) ?? []).join("").slice(0, 32) || "kcode";
   const normalized = socketPath.replace(/\\/g, "/").toLowerCase();
   const hash = createHash("sha256").update(normalized).digest("hex").slice(0, 16);
   return `\\\\.\\pipe\\${stem}-${hash}`;
@@ -50,5 +50,5 @@ test("case and separators normalize the same way", () => {
 
 test("a path with no usable characters still yields a name", () => {
   const derived = derivePipeName("/tmp/!!!.sock", path.posix);
-  assert.match(derived, /^\\\\\.\\pipe\\jcode-[0-9a-f]{16}$/);
+  assert.match(derived, /^\\\\\.\\pipe\\kcode-[0-9a-f]{16}$/);
 });

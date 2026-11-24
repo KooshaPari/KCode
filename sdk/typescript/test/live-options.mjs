@@ -7,7 +7,7 @@
  * with nothing behind it. Neither shows up in a suite that only ever launches
  * a fresh instance.
  *
- * Usage: node test/live-options.mjs [path-to-jcode-binary]
+ * Usage: node test/live-options.mjs [path-to-kcode-binary]
  */
 
 import { JcodeClient } from "../dist/index.js";
@@ -15,7 +15,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const binary = process.argv[2] ?? "jcode";
+// The default must be a name `assertKcodePath` accepts: a bare `jcode` resolves
+// to a path segment the guard rejects, so the script would throw
+// `cross_product_path` before it documented a single option.
+const binary = process.argv[2] ?? "kcode";
 // A binary that ignores its arguments and never opens a socket, for the
 // startup-timeout check.
 const slowBinary = path.join(os.tmpdir(), `kcode-slow-${process.pid}.sh`);
@@ -69,7 +72,7 @@ await step("env reaches the instance", async () => {
   const c = await JcodeClient.launch({
     binary,
     workingDir: process.cwd(),
-    env: { JCODE_NO_TELEMETRY: "1" },
+    env: { KCODE_NO_TELEMETRY: "1" },
   });
   await c.close();
 });
