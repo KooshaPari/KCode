@@ -484,6 +484,7 @@ fn test_multiple_pastes() {
 fn test_restore_session_adds_reload_message() {
     use crate::session::Session;
 
+    let _guard = crate::storage::lock_test_env();
     let mut app = create_test_app();
 
     // Create and save a session with a fake provider_session_id
@@ -531,6 +532,7 @@ fn test_restore_session_adds_reload_message() {
 fn test_restore_session_with_selfdev_reload_tool_result_queues_continuation() {
     use crate::session::Session;
 
+    let _guard = crate::storage::lock_test_env();
     let mut app = create_test_app();
 
     let mut session = Session::create(None, None);
