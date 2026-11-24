@@ -607,6 +607,10 @@ fn session_to_display_messages(session: &Session, max_messages: usize) -> Vec<Di
                 out.push(DisplayMessage::background_task(text));
                 continue;
             }
+            Some(StoredDisplayRole::FileActivity | StoredDisplayRole::Other(_)) => {
+                out.push(DisplayMessage::system(text));
+                continue;
+            }
             None => {}
         }
         match message.role {
