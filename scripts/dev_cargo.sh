@@ -639,6 +639,19 @@ configure_parallel_frontend() {
       ;;
   esac
 
+  # The parallel front-end is a POSIX shell script. Native Windows Cargo cannot
+  # execute a shebang script: it fails before compiling with
+  # "%1 is not a valid Win32 application. (os error 193)". Git-Bash and MSYS do
+  # not change that, because Cargo still launches the wrapper through
+  # CreateProcess. Skip the wrapper on Windows by platform, not by asking the
+  # caller for an override.
+  case "$(uname -s 2>/dev/null || echo unknown)" in
+    MINGW*|MSYS*|CYGWIN*)
+      parallel_frontend_status="skipped-platform:windows"
+      return 0
+      ;;
+  esac
+
   if [[ -n "${RUSTC_WRAPPER:-}" ]]; then
     parallel_frontend_status="skipped-external-rustc-wrapper:${RUSTC_WRAPPER}"
     return 0
