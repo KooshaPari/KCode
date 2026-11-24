@@ -12,7 +12,7 @@ From inside jcode, `/remote` does all of this:
 
 ```
 /remote on        # enable the gateway
-                  # then restart the server: jcode server reload
+                  # then restart the server: kcode server reload
 /remote pair      # pairing code + QR
 /remote           # status, dial address, paired devices
 /remote revoke <device>
@@ -34,7 +34,7 @@ The equivalent by hand:
 2. Restart the server so it picks up the config:
 
    ```sh
-   jcode server reload      # or: jcode server stop --force && jcode server start
+   kcode server reload      # or: kcode server stop --force && kcode server start
    ```
 
    Confirm it bound: `curl -s http://127.0.0.1:7643/health`
@@ -42,7 +42,7 @@ The equivalent by hand:
 3. Generate a pairing code (valid 5 minutes):
 
    ```sh
-   jcode pair
+   kcode pair
    ```
 
 ## Setup on the client
@@ -58,20 +58,30 @@ so later runs omit `--code`.
 ## Gotchas found in practice
 
 - **Windows Firewall silently wins.** Auto-created inbound *block* rules for
-  `jcode.exe` (created when someone dismisses the Windows network prompt)
+  `kcode.exe` (created when someone dismisses the Windows network prompt)
   override any allow rule you add. `/health` will answer on the host itself and
-  time out from outside. Find and remove them:
+  time out from outside. List the block rules first and confirm which one
+  covers the gateway:
 
   ```powershell
   Get-NetFirewallRule -Direction Inbound -Action Block -Enabled True |
-    Where-Object { ($_ | Get-NetFirewallApplicationFilter).Program -like '*jcode*' } |
-    Remove-NetFirewallRule
+    Where-Object { ($_ | Get-NetFirewallApplicationFilter).Program -match 'kcode|jcode' } |
+    Select-Object DisplayName, @{n='Program';e={($_ | Get-NetFirewallApplicationFilter).Program}}
   ```
+
+  Then remove only the confirmed rule, by name:
+
+  ```powershell
+  Remove-NetFirewallRule -DisplayName '<confirmed rule name>'
+  ```
+
+  Removing every matching rule at once would also drop unrelated block rules
+  for other programs whose path happens to contain "kcode" or "jcode".
 
   Then allow the port, scoped to the Tailscale CGNAT range rather than the world:
 
   ```powershell
-  netsh advfirewall firewall add rule name="jcode-gateway-tailscale" `
+  netsh advfirewall firewall add rule name="kcode-gateway-tailscale" `
     dir=in action=allow protocol=TCP localport=7643 remoteip=100.64.0.0/10
   ```
 
@@ -85,5 +95,5 @@ so later runs omit `--code`.
 - **The server pings.** A client that never sends a pong frame will appear to
   hang with zero events. `gateway_client.py` answers pings for you.
 
-- **`jcode server reload` can fail** with "Client must Subscribe with a
+- **`kcode server reload` can fail** with "Client must Subscribe with a
   working_dir" on older builds. Fall back to `stop --force` + `start`.

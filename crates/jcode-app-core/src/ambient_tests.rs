@@ -223,7 +223,7 @@ fn test_take_ready_direct_items_only_removes_direct_targets() {
         recurrence: Recurrence::Once,
     });
 
-    let ready_direct = queue.take_ready_direct_items();
+    let ready_direct = queue.take_ready_direct_items(false);
     assert_eq!(ready_direct.len(), 2);
     assert_eq!(ready_direct[0].id, "spawn_due");
     assert_eq!(ready_direct[1].id, "session_due");

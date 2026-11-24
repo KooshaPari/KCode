@@ -10,55 +10,6 @@ fn allow_runtime_identity_mismatch() -> bool {
     std::env::var_os("KCODE_ALLOW_SERVER_VERSION_MISMATCH").is_some()
 }
 
-/// Parse a jcode version string into an orderable `(major, minor, patch)`, but
-/// only for *clean release* builds.
-///
-/// Dev/dirty builds share a base semver and cannot be ordered against each other
-/// or against releases (issue #277/#291: a self-dev / branched daemon must never
-/// be force-downgraded just because its version string differs). So we refuse to
-/// classify anything carrying a `-dev` or `dirty` marker as an orderable version
-/// and return `None`, leaving such daemons to the existing `server_has_update`
-/// (mtime-directional) path.
-fn parse_release_semver(version: &str) -> Option<(u32, u32, u32)> {
-    let lower = version.trim().to_ascii_lowercase();
-    if lower.contains("-dev") || lower.contains("dirty") {
-        return None;
-    }
-    // Take the leading token, e.g. "v0.17.0 (d741696f)" -> "0.17.0".
-    let token = lower
-        .split([' ', '(', ')', ','])
-        .next()
-        .unwrap_or(&lower)
-        .trim();
-    let token = token.strip_prefix('v').unwrap_or(token);
-    let mut parts = token.split('.');
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next()?.parse().ok()?;
-    let patch = parts.next().unwrap_or("0").parse().ok()?;
-    Some((major, minor, patch))
-}
-
-/// True when the connected server reports a clean release version strictly older
-/// than this client's own clean release version.
-///
-/// This is the missing client-side staleness signal behind issue #295: a server
-/// old enough to predate the self-reported staleness machinery reports
-/// `server_has_update: None`, so it can never tell us it is stale and the client
-/// happily attaches to it (then a `set_route`-shaped request explodes against the
-/// ancient protocol). We detect that case independently here.
-///
-/// Gated on clean release semvers on BOTH sides, so dev/dirty/self-dev daemons
-/// (which cannot be ordered) are never affected.
-fn server_release_is_older_than_client(server_version: Option<&str>, client_version: &str) -> bool {
-    let Some(server) = server_version.and_then(parse_release_semver) else {
-        return false;
-    };
-    let Some(client) = parse_release_semver(client_version) else {
-        return false;
-    };
-    server < client
-}
-
 /// Decide whether to defer applying remote session state because the server we
 /// attached to is not running the binary we expect.
 ///
@@ -121,7 +72,10 @@ fn should_defer_history_for_runtime_identity(
     server_version: Option<&str>,
 ) -> bool {
     let client_detected_stale =
-        server_release_is_older_than_client(server_version, &client_release_version());
+        crate::tui::app::remote::version_ordering::server_release_is_older_than_client(
+            server_version,
+            &client_release_version(),
+        );
     should_defer_history_for_runtime_identity_with_allow(
         server_has_update,
         client_detected_stale,
@@ -131,10 +85,7 @@ fn should_defer_history_for_runtime_identity(
 
 #[cfg(test)]
 mod runtime_identity_tests {
-    use super::{
-        parse_release_semver, server_release_is_older_than_client,
-        should_defer_history_for_runtime_identity_with_allow,
-    };
+    use super::should_defer_history_for_runtime_identity_with_allow;
 
     #[test]
     fn runtime_identity_gate_defers_stale_server_history_by_default() {
@@ -191,45 +142,6 @@ mod runtime_identity_tests {
             false,
             false
         ));
-    }
-
-    #[test]
-    fn parse_release_semver_refuses_unorderable_dev_builds() {
-        assert_eq!(parse_release_semver("v0.17.0 (d741696f)"), Some((0, 17, 0)));
-        assert_eq!(parse_release_semver("0.14.2"), Some((0, 14, 2)));
-        // Dev/dirty builds share a base semver and must not be ordered.
-        assert_eq!(parse_release_semver("v0.18.4-dev (102e9750, dirty)"), None);
-        assert_eq!(parse_release_semver("v0.14.2-dev (38452185, dirty)"), None);
-        assert_eq!(parse_release_semver("unknown"), None);
-    }
-
-    #[test]
-    fn server_release_older_than_client_is_selfdev_safe() {
-        // Clean release older than clean client -> stale.
-        assert!(server_release_is_older_than_client(
-            Some("v0.14.2 (38452185)"),
-            "v0.17.0 (d741696f)"
-        ));
-        // Equal or newer -> not stale.
-        assert!(!server_release_is_older_than_client(
-            Some("v0.17.0"),
-            "v0.17.0"
-        ));
-        assert!(!server_release_is_older_than_client(
-            Some("v0.18.0"),
-            "v0.17.0"
-        ));
-        // Either side dev/dirty/unparseable -> never claim staleness (protects
-        // self-dev and branched daemons from a forced downgrade).
-        assert!(!server_release_is_older_than_client(
-            Some("v0.14.2-dev (abc, dirty)"),
-            "v0.17.0"
-        ));
-        assert!(!server_release_is_older_than_client(
-            Some("v0.14.2"),
-            "v0.17.0-dev (abc, dirty)"
-        ));
-        assert!(!server_release_is_older_than_client(None, "v0.17.0"));
     }
 }
 
@@ -1593,10 +1505,11 @@ pub(in crate::tui::app) fn handle_server_event(
                     server_version.as_deref(),
                 )
             {
-                let client_detected_stale = server_release_is_older_than_client(
-                    server_version.as_deref(),
-                    &client_release_version(),
-                );
+                let client_detected_stale =
+                    crate::tui::app::remote::version_ordering::server_release_is_older_than_client(
+                        server_version.as_deref(),
+                        &client_release_version(),
+                    );
                 app.remote_server_version = server_version;
                 app.remote_server_short_name = server_name.clone();
                 app.remote_server_icon = server_icon.clone();
@@ -1642,7 +1555,7 @@ pub(in crate::tui::app) fn handle_server_event(
                         "Connected server is an older release; reloading it before attach",
                     );
                     app.push_display_message(DisplayMessage::system(format!(
-                        "ℹ Connected server is running an older release ({}) than this client ({}). Reloading it before applying session state. If reload does not take, run `jcode server stop` and relaunch. Set KCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing.",
+                        "ℹ Connected server is running an older release ({}) than this client ({}). Reloading it before applying session state. If reload does not take, run `kcode server stop --force` and relaunch. Set KCODE_ALLOW_SERVER_VERSION_MISMATCH=1 only for intentional compatibility testing.",
                         app.remote_server_version.as_deref().unwrap_or("unknown"),
                         jcode_build_meta::version(),
                     )));

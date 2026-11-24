@@ -4,12 +4,6 @@ fn test_openai_supports_codex_models() {
     jcode_base::auth::codex::set_active_account_override(Some(
         "openai-supports-codex-models".to_string(),
     ));
-    jcode_base::provider::populate_account_models(vec![
-        "gpt-5.6-sol".to_string(),
-        "gpt-5.1-codex".to_string(),
-        "gpt-5.1-codex-mini".to_string(),
-        "gpt-5.2-codex".to_string(),
-    ]);
 
     let creds = CodexCredentials {
         access_token: "test".to_string(),
@@ -20,6 +14,26 @@ fn test_openai_supports_codex_models() {
     };
 
     let provider = OpenAIProvider::new(creds);
+    // Populate the scope this credential actually reads.
+    //
+    // `populate_account_models` writes the *account* scope, but these
+    // credentials are API-key shaped (empty refresh token, no id token), so
+    // `is_chatgpt_mode` is false and `set_model` resolves
+    // `api-key::<fingerprint>` instead. That left this test depending on no
+    // entry existing for that scope so it would fall back to the static list:
+    // another test in this binary
+    // (`test_set_model_clears_persistent_ws_state`) installs a restricted
+    // catalog on the same scope, which made this pass or fail purely on test
+    // ordering.
+    jcode_base::provider::populate_account_models_for_scope(
+        &provider.catalog_scope(),
+        vec![
+            "gpt-5.6-sol".to_string(),
+            "gpt-5.1-codex".to_string(),
+            "gpt-5.1-codex-mini".to_string(),
+            "gpt-5.2-codex".to_string(),
+        ],
+    );
     assert!(provider.available_models().contains(&"gpt-5.2-codex"));
     assert!(provider.available_models().contains(&"gpt-5.1-codex-mini"));
     assert!(provider.available_models().contains(&"gpt-5.6-sol"));

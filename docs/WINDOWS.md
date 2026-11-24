@@ -1,80 +1,84 @@
-# Windows Support
+# KCode on Windows
 
-Jcode supports Windows as a first-class platform. The Windows implementation uses native named pipes, Windows process management, PowerShell installation, and platform-specific launch-hotkey integration.
+KCode is a separate application from stock jcode. Use `kcode.exe`, KCode
+storage, and this checkout's installer. The upstream `jcode.sh` installer,
+Homebrew tap, and `jcode-install` package install stock jcode.
 
-## Support status
+## Current support and installation
 
-| Area | Status |
-|---|---|
-| Windows 11 x64 | Supported and manually verified |
-| Windows 11 ARM64 | Release builds and automated install checks |
-| PowerShell installer | Tested on Windows CI |
-| Native IPC and process lifecycle | Covered by targeted and end-to-end Windows tests |
-| `jcode update` | Supported with SHA-256 verification |
-| Release assets | x64 and ARM64 `.exe` and `.tar.gz` assets |
-| Authenticode signing | Release pipeline ready; requires the one-time Azure configuration below |
+At the 2026-10-21 hosted-source audit, the root package is
+`0.93.0-k0.1.0`. A complete Windows release, native ConPTY behavior, and
+installation on the operator's device remain unverified. Fork downloads and
+self-update are deliberately disabled until a maintained channel passes the
+[KCode isolation and delivery gates](KCODE_ISOLATION.md#forward-delivery-work-breakdown).
 
-PowerShell 5.1 or later is required by the installer. The x64 build is the default for Intel and AMD Windows computers. The ARM64 build is selected automatically on ARM64 Windows.
+On a default Windows configuration, running a downloaded `.ps1` can be blocked
+by the PowerShell execution policy. Invoke PowerShell with
+`-ExecutionPolicy RemoteSigned` and a local artifact, because this branch's
+installer rejects downloads and requires an explicit artifact and version (for
+example
+`powershell -ExecutionPolicy RemoteSigned -File .\scripts\install.ps1 -ArtifactExePath .\target\release\kcode.exe -Version <version>`).
+The `irm https://kcode.sh/install.ps1 | iex` one-liner does not work on this
+branch: `scripts/install.ps1` throws "KCode release downloads are disabled"
+before it downloads anything.
 
-## Install
-
-Open PowerShell and run:
-
-```powershell
-irm https://jcode.sh/install.ps1 | iex
-```
-
-The installer:
-
-1. Detects x64 or ARM64.
-2. Downloads the matching asset from the official GitHub release.
-3. Verifies it against the release's `SHA256SUMS` file.
-4. Installs immutable, stable, and launcher copies under `%LOCALAPPDATA%\jcode`.
-5. Adds `%LOCALAPPDATA%\jcode\bin` to the user `PATH`.
-
-Alacritty installation and the global launch hotkey are optional and are no longer installed automatically. To request both explicitly:
+Build an explicitly trusted checkout with Git, Rust, and Visual Studio 2022
+Build Tools with the **Desktop development with C++** workload:
 
 ```powershell
-$script = [scriptblock]::Create((irm https://jcode.sh/install.ps1))
-& $script -ConfigureAlacritty -ConfigureHotkey
+cargo build --release --locked --bin kcode
+if ($LASTEXITCODE -ne 0) { throw "KCode build failed" }
+$artifactVersion = ((& .\target\release\kcode.exe --version) -split '\s+')[1]
+powershell -ExecutionPolicy RemoteSigned -File .\scripts\install.ps1 -ArtifactExePath .\target\release\kcode.exe -Version $artifactVersion
 ```
 
-Jcode can also offer these options interactively after launch.
+The local-artifact installer uses these independent destinations:
 
-If a release does not contain a matching prebuilt Windows asset, the installer
-fails with an actionable message rather than silently starting a long build.
-To explicitly allow a source build:
+| Resource | Destination |
+| --- | --- |
+| Launcher | `%LOCALAPPDATA%\kcode\bin\kcode.exe` |
+| Stable binary | `%LOCALAPPDATA%\kcode\builds\stable\kcode.exe` |
+| Versioned binary (replaced on reinstall) | `%LOCALAPPDATA%\kcode\builds\versions\<version>\kcode.exe` |
+| User configuration and sessions | `%USERPROFILE%\.kcode` |
+
+The installer adds only its KCode bin directory to the user and current-process
+PATH. Open a new PowerShell session to verify persistent command resolution.
+Alacritty and global launch-hotkey setup are opt-in; standard Windows Terminal
+does not require them.
 
 ```powershell
-$script = [scriptblock]::Create((irm https://jcode.sh/install.ps1))
-& $script -BuildFromSource
+Get-Command kcode -All
+kcode --version
+Get-FileHash (Get-Command kcode).Source -Algorithm SHA256
+Get-AuthenticodeSignature (Get-Command kcode).Source |
+    Format-List Status,StatusMessage,SignerCertificate
 ```
 
-Source builds require Git, Rust, and Visual Studio 2022 Build Tools with the
-**Desktop development with C++** workload.
+Record the resolved client executable and the separately running server's
+executable, version, and IPC address. Changing PATH alone does not prove the
+long-lived server has changed. Preserve existing jcode data and processes.
 
-### Install paths
+## Required remote topology
 
-- Launcher: `%LOCALAPPDATA%\jcode\bin\jcode.exe`
-- Stable binary: `%LOCALAPPDATA%\jcode\builds\stable\jcode.exe`
-- Versioned binary: `%LOCALAPPDATA%\jcode\builds\versions\<version>\jcode.exe`
-- User data and configuration: `%USERPROFILE%\.jcode`
+The Mac is the remote client viewing or controlling the Windows HERDR host:
 
-### Verify an installation
-
-```powershell
-jcode --version
-Get-Command jcode
-Get-FileHash (Get-Command jcode).Source -Algorithm SHA256
+```text
+Mac client --> remote transport --> Windows HERDR host --> Windows KCode server
 ```
 
-Compare the hash with `SHA256SUMS` on the matching [GitHub release](https://github.com/1jehuang/jcode/releases/latest).
+Standard Windows Terminal and local Windows HERDR behavior are independent
+controls. Remote acceptance must verify Windows server transport and HERDR
+integration from the Mac, including input, paste, resize, reconnect and session
+continuity. Record client and host server identities separately. Native Unix
+SSH-client support is not the primary blocker for this deployment. A
+Windows-to-Mac test does not satisfy this acceptance route.
 
-After Authenticode signing is enabled, this must report `Valid`:
+## Inherited upstream security and release reference
 
-```powershell
-Get-AuthenticodeSignature (Get-Command jcode).Source | Format-List Status,StatusMessage,SignerCertificate
-```
+The sections below describe upstream capabilities and acceptance requirements.
+They do not establish that KCode has published signed Windows assets, enabled
+updates, or passed Windows CI. Apply the fork-specific gates linked above before
+claiming release readiness.
 
 ## Microsoft Defender and SmartScreen
 

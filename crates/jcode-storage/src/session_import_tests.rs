@@ -4,6 +4,47 @@ use std::time::SystemTime;
 
 type Snapshot = BTreeMap<PathBuf, (Vec<u8>, SystemTime, bool)>;
 
+#[test]
+fn preview_then_import_preserves_source_and_reports_conflict() {
+    let temp = tempfile::tempdir().unwrap();
+    let source = temp.path().join(".jcode");
+    let destination = temp.path().join(".kcode");
+    fs::create_dir_all(source.join("sessions")).unwrap();
+    for (suffix, data) in [
+        ("json", b"snapshot".as_slice()),
+        ("bak", b"backup"),
+        ("journal.jsonl", b"journal"),
+    ] {
+        fs::write(source.join("sessions").join(format!("fox.{suffix}")), data).unwrap();
+    }
+    let before = snapshot(&source);
+    let preview = preview_session(&source, &destination, "fox").unwrap();
+    assert_eq!(preview.len(), 3);
+    assert!(preview.iter().all(|file| !file.conflict));
+    assert!(!destination.exists());
+    assert_eq!(before, snapshot(&source));
+    let imported = import_session(&source, &destination, "fox").unwrap();
+    assert_eq!(imported.len(), 3);
+    for file in &imported {
+        assert_eq!(
+            fs::read(file).unwrap(),
+            fs::read(source.join("sessions").join(file.file_name().unwrap())).unwrap()
+        );
+    }
+    let copied = snapshot(&destination);
+    assert!(
+        preview_session(&source, &destination, "fox")
+            .unwrap()
+            .iter()
+            .all(|file| file.conflict)
+    );
+    assert!(import_session(&source, &destination, "fox").is_err());
+    assert_eq!(copied, snapshot(&destination));
+    assert_eq!(before, snapshot(&source));
+    assert!(preview_session(&source, &destination, "missing").is_err());
+    assert!(preview_session(&source, &destination, "../fox").is_err());
+}
+
 fn snapshot(root: &Path) -> Snapshot {
     fn visit(path: &Path, root: &Path, state: &mut Snapshot) {
         let metadata = fs::metadata(path).unwrap();
@@ -110,5 +151,6 @@ fn symlinked_source_is_rejected() {
         source.join("sessions/fox.json"),
     )
     .unwrap();
+    assert!(preview_session(&source, &temp.path().join(".kcode"), "fox").is_err());
     assert!(import_session(&source, &temp.path().join(".kcode"), "fox").is_err());
 }

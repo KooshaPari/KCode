@@ -61,18 +61,39 @@ fn title_with_metrics(
 }
 
 impl App {
+    /// Single authority for the state this pane reports to herdr.
+    ///
+    /// A turn ending is not the end of the work: subagent sessions this
+    /// session spawned and background shell tasks can outlive it. Reporting
+    /// `idle` on turn end made running work look stalled, so the pane stays
+    /// `working` while any of those are still live.
+    pub(crate) fn herdr_agent_state(&self) -> crate::tui::herdr::AgentState {
+        crate::tui::herdr::resolve_agent_state(
+            self.is_processing(),
+            self.has_running_background_task(),
+            self.has_working_child_agent(),
+        )
+    }
+
+    /// True while any background task row is still `Running`.
+    fn has_running_background_task(&self) -> bool {
+        self.background_task_rows
+            .iter()
+            .any(|row| row.status == crate::tui::BackgroundTaskRowStatus::Running)
+    }
+
     /// Tell herdr (when running in a herdr pane) whether this client is
     /// working or idle and which session to resume. Tick-safe: unchanged
-    /// state is a cheap comparison and reports are sent off-thread.
+    /// state is a cheap comparison (with a heartbeat so long work cannot go
+    /// stale) and reports are sent off-thread.
     pub(super) fn sync_herdr_agent_state(&self) {
-        if self.suppress_terminal_title_updates || !self.is_remote_client() {
+        // The real product is always a RemoteClient, so the old
+        // `!is_remote_client()` guard was a no-op there; gate on replay instead
+        // so every live pane reports, not just ones classified as remote.
+        if self.suppress_terminal_title_updates || self.is_replay_runtime() {
             return;
         }
-        let state = if self.is_processing() {
-            crate::tui::herdr::AgentState::Working
-        } else {
-            crate::tui::herdr::AgentState::Idle
-        };
+        let state = self.herdr_agent_state();
         crate::tui::herdr::sync(state, self.active_client_session_id());
     }
 
@@ -199,6 +220,55 @@ mod tests {
             title_with_metrics(base, (0, 0), None, true),
             "🦊 Improve session tabs · working"
         );
+    }
+
+    fn background_row(
+        status: crate::tui::BackgroundTaskRowStatus,
+    ) -> crate::tui::BackgroundTaskRow {
+        crate::tui::BackgroundTaskRow {
+            task_id: "task-1".into(),
+            label: "sleep 5".into(),
+            percent: None,
+            status,
+            completed_at: None,
+        }
+    }
+
+    #[test]
+    fn herdr_state_is_working_while_processing() {
+        let mut app = super::super::tests::create_test_app();
+        app.suppress_terminal_title_updates = true;
+        app.is_processing = true;
+        assert_eq!(
+            app.herdr_agent_state(),
+            crate::tui::herdr::AgentState::Working
+        );
+    }
+
+    #[test]
+    fn herdr_state_is_working_while_a_background_task_runs() {
+        let mut app = super::super::tests::create_test_app();
+        app.suppress_terminal_title_updates = true;
+        app.is_processing = false;
+        app.background_task_rows
+            .push(background_row(crate::tui::BackgroundTaskRowStatus::Running));
+        assert_eq!(
+            app.herdr_agent_state(),
+            crate::tui::herdr::AgentState::Working
+        );
+    }
+
+    #[test]
+    fn herdr_state_is_idle_once_background_tasks_settle() {
+        let mut app = super::super::tests::create_test_app();
+        app.suppress_terminal_title_updates = true;
+        app.is_processing = false;
+        app.background_task_rows.push(background_row(
+            crate::tui::BackgroundTaskRowStatus::Completed,
+        ));
+        app.background_task_rows
+            .push(background_row(crate::tui::BackgroundTaskRowStatus::Failed));
+        assert_eq!(app.herdr_agent_state(), crate::tui::herdr::AgentState::Idle);
     }
 
     #[test]

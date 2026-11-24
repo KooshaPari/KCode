@@ -24,26 +24,32 @@ fn launches_after_third_do_not_show_generic_alignment_tip() {
     assert!(startup_hints_for_launch(&state).is_none());
 }
 
-// Asserts the macOS-specific spawn notice text (`Cmd+;` etc.), so it only makes
-// sense on macOS. On other platforms the notice uses different chords/wording.
+// The macOS launch-hotkey spawn notice was retired by PR #128 (commit
+// 081c1cf6, "refactor(setup-hints): remove unreachable startup spawn notice"):
+// nothing in the crate ever wrote `startup_spawn_hint_dismissed = false`, so
+// the prior `if !hotkey_configured || dismissed` gate always evaluated to None
+// in practice. The function now returns `None` unconditionally. This test
+// stays as a regression guard against the gate being re-introduced with the
+// wrong default, and to keep the macOS-only cfg symmetric with the other
+// launch-hotkey notice tests in this file.
 #[cfg(target_os = "macos")]
 #[test]
 fn first_three_launches_can_include_hotkey_notice_too() {
     let state = SetupHintsState {
         launch_count: 2,
         hotkey_configured: true,
+        // Even when the user has dismissed the (now-retired) notice, the
+        // function must still return None — the spawn notice was retired,
+        // not gated. Re-introducing a hotkey-notice gate here would require
+        // also fixing this assertion.
+        startup_spawn_hint_dismissed: true,
         ..SetupHintsState::default()
     };
 
-    let hints = startup_hints_for_launch(&state).expect("expected startup hint");
-    let (_, message) = hints.display_message.expect("expected display message");
-    assert!(!message.contains("Alt+C"));
-    assert!(message.contains("Cmd+;"));
-    // The notice should make clear the hotkey works globally, not just inside jcode.
-    assert!(message.contains("system-wide"));
-    // All three launch hotkeys should be mentioned.
-    assert!(message.contains("Cmd+'"));
-    assert!(message.contains("Cmd+Shift+'"));
+    assert!(
+        startup_hints_for_launch(&state).is_none(),
+        "spawn notice was retired in PR #128; startup_hints_for_launch must always return None",
+    );
 }
 
 #[test]

@@ -54,6 +54,7 @@ impl RunStructuredOptions {
             images: self.images.clone(),
             on_event,
             auto_approve: self.auto_approve,
+            retry: crate::turn_retry::RetryPolicy::default(),
         }
     }
 }

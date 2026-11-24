@@ -1578,7 +1578,7 @@ fn recent_project_review_prompt_is_bounded_read_only_and_requires_approval() {
 
 #[test]
 fn preparing_recent_project_review_finishes_onboarding_and_seeds_the_first_turn() {
-    let mut app = onboarding_test_app();
+    let (_repo, mut app) = recent_project_test_app();
     let repository = app
         .onboarding_recent_project_path()
         .expect("test session should start in a Git repository");
@@ -1593,7 +1593,7 @@ fn preparing_recent_project_review_finishes_onboarding_and_seeds_the_first_turn(
 
 #[test]
 fn starting_recent_project_review_runs_as_a_visible_local_turn() {
-    let mut app = onboarding_test_app();
+    let (_repo, mut app) = recent_project_test_app();
     let repository = app
         .onboarding_recent_project_path()
         .expect("test session should start in a Git repository");

@@ -1,4 +1,10 @@
 use anyhow::Result;
+#[cfg(unix)]
+mod herdr_runtime;
+#[cfg(unix)]
+use herdr_runtime::herdr_runtime_kind;
+#[cfg(unix)]
+use jcode_herdr::env::RuntimeKind;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -222,7 +228,9 @@ fn detected_resume_terminal_with_client_env(
     // Herdr is a terminal multiplexer, so headed sessions should remain in the
     // workspace that requested them instead of escaping into the underlying
     // emulator. Prefer it even when the pane also advertises kitty/wezterm.
-    if is_set("HERDR_ENV") && is_set("HERDR_PANE_ID") {
+    // HC qualifies as well: it sets no legacy variable, so asking for
+    // `HERDR_ENV` here used to miss it.
+    if !matches!(herdr_runtime_kind(client_terminal_env), RuntimeKind::None) {
         return Some("herdr".to_string());
     }
     if is_set("HANDTERM_SESSION") || is_set("HANDTERM_PID") {
@@ -375,8 +383,7 @@ fn resume_terminal_candidates_with_client_env(
     // A tmux client already owns the user's terminal layout. Prefer a pane in
     // that exact client over opening another emulator window. Explicit
     // KCODE_TERMINAL and configured spawn hooks still take precedence.
-    let in_herdr = terminal_env_value(client_terminal_env, "HERDR_ENV").is_some()
-        && terminal_env_value(client_terminal_env, "HERDR_PANE_ID").is_some();
+    let in_herdr = !matches!(herdr_runtime_kind(client_terminal_env), RuntimeKind::None);
     let in_inner_multiplexer = in_herdr
         || terminal_env_value(client_terminal_env, "ZELLIJ").is_some()
         || terminal_env_value(client_terminal_env, "STY").is_some();
@@ -660,37 +667,11 @@ fn build_spawn_command(term: &str, command: &TerminalCommand, cwd: &Path) -> Opt
     match term {
         #[cfg(unix)]
         "herdr" => {
-            // `pane split` deliberately creates a shell and returns its pane id;
-            // `pane run` is the atomic, bracketed-paste-aware way to start a
-            // command in that shell. Keep the small composition here rather
-            // than requiring every user to configure an equivalent spawn hook.
-            let herdr = terminal_env_value(&command.client_terminal_env, "HERDR_BIN_PATH")
-                .unwrap_or_else(|| "herdr".to_string());
-            // Unlike tmux/zellij, herdr runs the command inside an interactive
-            // shell, which would outlive jcode and leave an empty pane behind
-            // (e.g. after `swarm stop`). Exit that shell when jcode exits
-            // cleanly so the pane closes, but keep it open after a failure so
-            // the error stays readable.
-            let shell = format!("{} && exit", shell_command(&command_parts(command)));
-            let script = concat!(
-                "set -eu; ",
-                "response=\"$(\"$1\" pane split --current --direction right --cwd \"$2\" --focus)\"; ",
-                "pane_id=\"$(printf '%s\\n' \"$response\" | sed -n '",
-                "s/.*\\\"pane_id\\\"[[:space:]]*:[[:space:]]*\\\"\\([^\\\"]*\\)\\\".*/\\1/p' | head -n 1)\"; ",
-                "test -n \"$pane_id\"; ",
-                "exec \"$1\" pane run \"$pane_id\" \"$3\""
-            );
-            cmd = Command::new("sh");
-            cmd.current_dir(cwd)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .args(["-c", script, "kcode-herdr-spawn", &herdr])
-                .arg(cwd)
-                .arg(shell);
-            if command.fresh_spawn {
-                cmd.env("KCODE_FRESH_SPAWN", "1");
+            let program_line = shell_command(&command_parts(command));
+            if let Some(hc) = herdr_runtime::hc_run_command(command, cwd) {
+                return Some(hc);
             }
+            cmd = herdr_runtime::legacy_herdr_spawn(command, cwd, &program_line);
         }
         #[cfg(unix)]
         "tmux" => {

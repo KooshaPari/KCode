@@ -159,7 +159,7 @@ fn normalize_session_short_name_strips_wrapping_punctuation() {
 fn remember_and_read_last_focused_session() {
     let _guard = crate::storage::lock_test_env();
     let prev = std::env::var_os("KCODE_HOME");
-    let temp = tempfile::TempDir::new().expect("tempdir");
+    let temp = crate::test_temp::tempdir().expect("tempdir");
     crate::env::set_var("KCODE_HOME", temp.path());
 
     let active_dir = temp.path().join("active_pids");
@@ -183,7 +183,7 @@ fn remember_and_read_last_focused_session() {
 #[test]
 fn focused_jcode_session_uses_niri_window_title_when_process_name_is_generic() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().expect("tempdir");
+    let temp = crate::test_temp::tempdir().expect("tempdir");
     let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
 
     let active_dir = temp.path().join("active_pids");
@@ -214,7 +214,7 @@ fn focused_jcode_session_uses_niri_window_title_when_process_name_is_generic() {
 #[test]
 fn focused_cli_session_uses_client_registry_for_task_titled_windows() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().expect("tempdir");
+    let temp = crate::test_temp::tempdir().expect("tempdir");
     let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
 
     let focused_process = ChildGuard::spawn_named("kitty");
@@ -248,7 +248,7 @@ fn focused_cli_session_uses_client_registry_for_task_titled_windows() {
 #[test]
 fn focused_cli_session_ignores_unrelated_windows() {
     let _guard = crate::storage::lock_test_env();
-    let temp = tempfile::TempDir::new().expect("tempdir");
+    let temp = crate::test_temp::tempdir().expect("tempdir");
     let _home = EnvVarGuard::set("KCODE_HOME", temp.path());
     std::fs::create_dir_all(temp.path().join("active_pids")).expect("active_pids");
     std::fs::write(temp.path().join("active_pids/session_fox_1"), "1").expect("pid");

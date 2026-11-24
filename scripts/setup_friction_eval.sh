@@ -95,7 +95,7 @@ case "$url" in
     # Checksum of the deterministic fake archive written by the tar mock's
     # sibling below (the literal bytes "fake archive").
     printf '8d57abb57a0dae3ff23c8f0df1f51951b7772822e0d560e860d6f68c24ef6d3d  %s\n' \
-      "${EVAL_CHECKSUM_ASSET:-jcode-linux-x86_64.tar.gz}"
+      "${EVAL_CHECKSUM_ASSET:-kcode-linux-x86_64.tar.gz}"
     ;;
   *github.com*/releases/latest)
     printf 'https://github.com/KooshaPari/KCode/releases/tag/v%s' "${EVAL_VERSION:-1.2.3}"
@@ -117,7 +117,7 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
-artifact="${EVAL_ARCHIVE_ARTIFACT:-jcode-linux-x86_64}"
+artifact="${EVAL_ARCHIVE_ARTIFACT:-kcode-linux-x86_64}"
 cat > "$dest/$artifact" <<BIN
 #!/usr/bin/env bash
 if [ "\${1:-}" = "--version" ]; then printf 'jcode ${EVAL_VERSION:-1.2.3}\n'; fi
@@ -351,8 +351,8 @@ chmod +x "$work/bin/powershell.exe"
 
 EVAL_VERSION="1.2.3" \
 EVAL_UNAME_S="MINGW64_NT-10.0" \
-EVAL_ARCHIVE_ARTIFACT="jcode-windows-x86_64.exe" \
-EVAL_CHECKSUM_ASSET="jcode-windows-x86_64.tar.gz" \
+EVAL_ARCHIVE_ARTIFACT="kcode-windows-x86_64.exe" \
+EVAL_CHECKSUM_ASSET="kcode-windows-x86_64.tar.gz" \
 EVAL_WIN_STATE="$win_state" \
 PATH="$work/bin:/usr/bin:/bin" \
 HOME="$home_w" \

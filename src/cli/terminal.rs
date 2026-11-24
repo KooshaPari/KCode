@@ -220,11 +220,7 @@ pub fn install_panic_hook() {
         //    the panic propagates to std::process::exit (issue #214 / report
         //    §4.4). Errors here are silently swallowed because the panic
         //    handler must not panic itself.
-        let _ = crossterm::terminal::disable_raw_mode();
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableFocusChange);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::event::DisableBracketedPaste);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::terminal::LeaveAlternateScreen);
-        let _ = crossterm::execute!(std::io::stderr(), crossterm::cursor::Show);
+        panic_cleanup_terminal();
 
         // 2. Persist the panic details to a sibling log file so the next
         //    process can diagnose even when stderr was swallowed by a parent
@@ -317,6 +313,35 @@ pub fn show_crash_resume_hint() {
     eprintln!();
 }
 
+/// Invocation name used in user-facing resume hints.
+///
+/// The installed binary is `kcode`. A hint that says `jcode --resume <id>` sends
+/// the operator to *upstream* jcode, which reads `~/.jcode` instead of
+/// `~/.kcode`, so the session they were told to resume is not in that store -
+/// part of the "sessions on reload have issues" report. Matches
+/// `ssh::resume_hint`, which already names the kcode binary.
+pub(crate) fn resume_binary_stem() -> &'static str {
+    "kcode"
+}
+
+/// `<bin> --resume <id>` - the exact command that resumes `session_id`.
+///
+/// Callers that print a resume instruction should render it through this helper
+/// so the binary name is never hand-written (see `resume_binary_stem`).
+pub(crate) fn resume_hint(session_id: &str) -> String {
+    format!("{} --resume {session_id}", resume_binary_stem())
+}
+
+/// Hint (leading newline included) that bare `--resume` opens the picker.
+///
+/// Rendered through `resume_binary_stem` so it never names the wrong binary.
+pub(crate) fn resume_picker_hint() -> String {
+    format!(
+        "\nUse `{} --resume` to list available sessions.",
+        resume_binary_stem()
+    )
+}
+
 /// Build the crash-resume hint lines for `crashed`, newest first.
 ///
 /// Pure so the wording is testable: the lines are printed to stderr outside the
@@ -334,16 +359,17 @@ fn crash_resume_hint_lines(
         return Vec::new();
     };
     let session_label = id::extract_session_name(id).unwrap_or(name.as_str());
+    let bin = resume_binary_stem();
 
     if crashed.len() == 1 {
         vec![
             format!(
-                "{yellow}💥 Session {bold}{session_label}{reset}{yellow} crashed. Resume with:{reset}  jcode --resume {id}"
+                "{yellow}💥 Session {bold}{session_label}{reset}{yellow} crashed. Resume with:{reset}  {bin} --resume {id}"
             ),
             // Always mention the picker. Showing only the ID form reads as
             // "write this down or lose the session", when bare
             // `jcode --resume` opens a searchable list (issue #690).
-            format!("{yellow}   Or browse all:{reset} jcode --resume"),
+            format!("{yellow}   Or browse all:{reset} {bin} --resume"),
         ]
     } else {
         vec![
@@ -351,15 +377,15 @@ fn crash_resume_hint_lines(
                 "{yellow}💥 {} sessions crashed recently. Most recent: {bold}{session_label}{reset}",
                 crashed.len()
             ),
-            format!("{yellow}   Resume with:{reset}  jcode --resume {id}"),
-            format!("{yellow}   List all:{reset}     jcode --resume"),
+            format!("{yellow}   Resume with:{reset}  {bin} --resume {id}"),
+            format!("{yellow}   List all:{reset}     {bin} --resume"),
         ]
     }
 }
 
 #[cfg(test)]
 mod crash_resume_hint_tests {
-    use super::crash_resume_hint_lines;
+    use super::{crash_resume_hint_lines, resume_binary_stem};
 
     fn session(id: &str, name: &str) -> (String, String) {
         (id.to_string(), name.to_string())
@@ -381,10 +407,9 @@ mod crash_resume_hint_tests {
             joined.contains("kcode --resume ses_koala_123"),
             "the direct resume command must still be offered: {joined}"
         );
+        let picker = format!("Or browse all: {} --resume", resume_binary_stem());
         assert!(
-            lines
-                .iter()
-                .any(|line| line.contains("Or browse all: jcode --resume")),
+            lines.iter().any(|line| line.contains(&picker)),
             "the picker form (bare --resume) must be mentioned too: {joined}"
         );
     }
@@ -465,9 +490,15 @@ pub fn init_tui_runtime() -> Result<(ratatui::DefaultTerminal, TuiRuntimeGuard)>
         // The previous process intentionally preserved these modes across exec.
         // Reassert idempotent modes because terminals, multiplexers, or an older
         // process may have cleared them during the handoff. Do not push Kitty's
-        // stack-based keyboard enhancement flags again. A later normal exit must
-        // still disable every inherited mode, so retain them in the guard.
+        // stack-based keyboard enhancement flags again: the exec handoff left the
+        // previous process's entry on the stack, so record that this process
+        // now owns it and a later normal exit must pop it. Without adopting,
+        // every cleanup gate would skip the pop and leave the shell in CSI u
+        // mode after the restarted process exits.
         let modes = inherited_modes.unwrap_or(fallback_modes);
+        if modes.keyboard_enhanced {
+            tui::adopt_keyboard_enhancement_ownership();
+        }
         crossterm::execute!(std::io::stdout(), crossterm::event::EnableBracketedPaste)?;
         if modes.focus_change {
             crossterm::execute!(std::io::stdout(), crossterm::event::EnableFocusChange)?;
@@ -618,7 +649,7 @@ fn write_session_resume_hint(mut writer: impl Write, session_id: &str) -> io::Re
     if let Some(command) = super::ssh::resume_hint(session_id) {
         writeln!(writer, "  {command}")?;
     } else {
-        writeln!(writer, "  jcode --resume {}", session_id)?;
+        writeln!(writer, "  {}", resume_hint(session_id))?;
     }
     writeln!(writer)?;
     Ok(())
@@ -678,18 +709,174 @@ fn signal_crash_reason(sig: i32) -> String {
 fn handle_termination_signal(sig: i32) -> ! {
     mark_current_session_crashed(signal_crash_reason(sig));
 
-    let _ = crossterm::terminal::disable_raw_mode();
-    let _ = crossterm::execute!(
-        std::io::stderr(),
-        crossterm::terminal::LeaveAlternateScreen,
-        crossterm::cursor::Show
-    );
+    // Record termination before the terminal cleanup runs. The cleanup may
+    // skip its restore while an editor owns the terminal and then release the
+    // kitty state lock while this process is still alive: an editor reclaim
+    // racing into that gap must observe the flag and refuse to re-arm modes,
+    // or the shell inherits escape sequences once jcode exits (greptile
+    // #4232838288). Recording first also keeps the normal path intact: a
+    // reclaim that slips in before the cleanup still leaves ownership clear,
+    // so the cleanup runs its full restore.
+    crate::tui::record_termination_started();
+
+    if signal_cleanup_terminal_modes_to(signal_cleanup_stream()) {
+        // The signal handler can fire at any point of the TUI lifetime, including
+        // while the kitty keyboard protocol is active (Ctrl+C races the cleanup
+        // below). Pop only when this process still owns an unbalanced kitty entry:
+        // the pop is a no-op on terminals with no kitty stack, and skipping it when
+        // a suspended editor already popped ours (or pushed its own) avoids
+        // removing someone else's keyboard settings. Leaving jcode's own entry
+        // unpopped would leave the terminal in CSI u mode so the following shell
+        // echoes raw key sequences like `e1;1:3u` after jcode exits (issue #898).
+        crate::tui::disable_keyboard_enhancement();
+    }
 
     if let Some(session_id) = get_current_session() {
         print_session_resume_hint(&session_id);
     }
 
     std::process::exit(128 + sig);
+}
+
+/// Bytes that turn off every mode `init_tui_runtime` enables.
+///
+/// Shared by the termination-signal cleanup and the panic hook so the two
+/// cannot drift: a disable set that omits one mode (mouse capture was the
+/// missing one) leaves the shell in it after the process dies.
+fn write_terminal_disable_sequence(mut writer: impl Write) {
+    let _ = crossterm::execute!(
+        writer,
+        crossterm::event::DisableBracketedPaste,
+        crossterm::event::DisableFocusChange,
+        crossterm::event::DisableMouseCapture,
+        crossterm::terminal::LeaveAlternateScreen,
+        crossterm::cursor::Show
+    );
+}
+
+/// Restore the terminal from a panic hook using the same complete disable set
+/// as the signal cleanup.
+///
+/// Targets stdout: that is the interactive terminal `init_tui_runtime` armed
+/// every mode on, while stderr may be redirected to a file or pipe. The kitty
+/// pop is guarded by the same ownership check the signal path uses so a
+/// suspended editor's entry on the stack is not stolen.
+fn panic_cleanup_terminal() {
+    let _ = crossterm::terminal::disable_raw_mode();
+    let restored = crate::tui::with_kitty_state_lock(|| {
+        if crate::tui::editor_owns_terminal() {
+            return false;
+        }
+        write_terminal_disable_sequence(std::io::stdout());
+        true
+    });
+    if restored {
+        // Takes the kitty state lock itself, so it must run after the guard
+        // above has been released.
+        crate::tui::disable_keyboard_enhancement();
+    }
+}
+
+fn signal_cleanup_terminal_modes_to(mut writer: impl Write) -> bool {
+    // The ownership check and the restore writes run under the kitty state
+    // lock so an in-flight editor handoff cannot split them: the handoff
+    // publishes ownership under the same lock after its restores finished
+    // (greptile #4230626960). Without the lock, a signal could observe
+    // ownership set while jcode's modes were still armed, skip the cleanup,
+    // and exit leaving the shell in raw mode.
+    crate::tui::with_kitty_state_lock(|| {
+        if crate::tui::editor_owns_terminal() {
+            return false;
+        }
+
+        let _ = crossterm::terminal::disable_raw_mode();
+        write_terminal_disable_sequence(&mut writer);
+        true
+    })
+}
+
+/// Stream the signal cleanup must target: stdout, the interactive terminal
+/// the TUI requires, where `setup_terminal` enabled every mode this cleanup
+/// disables. Writing to stderr would miss the terminal whenever stderr is
+/// redirected and leave the modes armed after jcode exits.
+#[cfg(unix)]
+fn signal_cleanup_stream() -> std::io::Stdout {
+    std::io::stdout()
+}
+
+#[cfg(unix)]
+#[cfg(test)]
+mod signal_cleanup_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// Serializes tests that flip the shared editor ownership flag so one
+    /// test's clear cannot interleave with another's check.
+    static SIGNAL_CLEANUP_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EditorOwnershipGuard;
+
+    impl EditorOwnershipGuard {
+        fn new(owns_terminal: bool) -> Self {
+            crate::tui::set_editor_terminal_ownership(owns_terminal);
+            Self
+        }
+    }
+
+    impl Drop for EditorOwnershipGuard {
+        fn drop(&mut self) {
+            crate::tui::set_editor_terminal_ownership(false);
+        }
+    }
+
+    #[test]
+    fn signal_cleanup_skips_terminal_modes_while_editor_owns_terminal() {
+        let _test_lock = SIGNAL_CLEANUP_TEST_LOCK.lock().unwrap();
+        let _ownership = EditorOwnershipGuard::new(true);
+        let mut output = Vec::new();
+
+        assert!(!signal_cleanup_terminal_modes_to(&mut output));
+        assert!(output.is_empty());
+    }
+
+    #[test]
+    fn signal_cleanup_waits_for_in_flight_editor_handoff() {
+        // Greptile #4230626960: the cleanup must not observe a half-applied
+        // handoff (flag published while jcode's modes are still armed). The
+        // publication and reclaim hold the kitty state lock, so the cleanup
+        // waits for them instead of racing the flag.
+        let _test_lock = SIGNAL_CLEANUP_TEST_LOCK.lock().unwrap();
+        let _ownership = EditorOwnershipGuard::new(false);
+
+        let cleanup = crate::tui::with_kitty_state_lock(|| {
+            let cleanup = std::thread::spawn(|| {
+                let mut sink = Vec::new();
+                let ran = signal_cleanup_terminal_modes_to(&mut sink);
+                (ran, sink.is_empty())
+            });
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            assert!(
+                !cleanup.is_finished(),
+                "cleanup ran without waiting for the handoff lock"
+            );
+            // Mark the editor as owning the terminal so the released cleanup
+            // takes the early-return path and writes nothing to the terminal.
+            crate::tui::set_editor_terminal_ownership(true);
+            cleanup
+        });
+
+        let (ran, sink_empty) = cleanup.join().expect("cleanup thread");
+        assert!(!ran);
+        assert!(sink_empty);
+    }
+
+    #[test]
+    fn signal_cleanup_targets_stdout_not_stderr() {
+        // Same stream object as setup_terminal enables modes on. A write via
+        // this handle lands on the interactive terminal even when stderr is
+        // redirected to a file or pipe.
+        let _stream = signal_cleanup_stream();
+    }
 }
 
 #[cfg(unix)]
