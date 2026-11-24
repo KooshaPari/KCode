@@ -107,9 +107,8 @@ fn text_block(text: &str) -> ContentBlock {
 /// revive does. Every completed tool call must survive exactly once.
 #[test]
 fn test_midstream_sigkill_preserves_completed_tool_calls_without_duplicates() -> Result<()> {
-    let temp_home =
-        crate::test_temp::tempdir_with_prefix("kcode-session-midstream-sigkill-")
-            .map_err(|e| anyhow!(e))?;
+    let temp_home = crate::test_temp::tempdir_with_prefix("kcode-session-midstream-sigkill-")
+        .map_err(|e| anyhow!(e))?;
     let session_id = "session_midstream_sigkill_test";
     let ready_path = temp_home.path().join("child-ready");
 
@@ -230,7 +229,9 @@ fn negative_control_recovery_checker_rejects_broken_transcripts() -> Result<()> 
     session.messages.push(duplicate);
     let duplicated = recovery_invariant_violations(&session.messages);
     assert!(
-        duplicated.iter().any(|v| v.contains("duplicate tool_use id")),
+        duplicated
+            .iter()
+            .any(|v| v.contains("duplicate tool_use id")),
         "checker missed a duplicated tool_use: {duplicated:?}"
     );
     Ok(())
