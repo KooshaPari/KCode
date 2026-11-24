@@ -601,3 +601,39 @@ fn disabled_config_wins_over_install_and_migrate() {
         MacHotkeyAction::Install
     );
 }
+
+/// Detection and installation must agree on the slot marker.
+///
+/// The installer writes `kcode-launch-` paths and `[services][kcode-launch-*]`
+/// sections, while detection was still looking for the pre-rename
+/// `jcode-launch-` spelling, so `linux_hotkeys_installed` reported "not
+/// installed" on GNOME and KDE no matter how many times the hotkeys had been
+/// installed. These cases pin both halves against the same predicate.
+#[test]
+fn gnome_detection_recognises_the_slot_the_installer_writes() {
+    let list = format!(
+        "['foreign-slot', '{}']",
+        linux_env::gnome_keybinding_path(0)
+    );
+    assert!(gnome_launch_slot_present(&list));
+    assert!(gnome_launch_slot_present(
+        "['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/jcode-launch-0/']"
+    ));
+    assert!(!gnome_launch_slot_present("['foreign-slot']"));
+    assert!(!gnome_launch_slot_present("@as []"));
+    // A marker without the leading slash is not a gsettings path.
+    assert!(!gnome_launch_slot_present("kcode-launch-0"));
+}
+
+#[test]
+fn kde_detection_recognises_the_service_section_the_installer_writes() {
+    let wanted = format!("[services][{}]", linux_env::kde_desktop_file_name(0));
+    assert!(kde_launch_slot_present(&format!(
+        "[services][kcode-launch-9.desktop]\n_launch=none\n{wanted}\n_launch=SUPER+;"
+    )));
+    assert!(kde_launch_slot_present(
+        "[services][jcode-launch-0.desktop]\n_launch=SUPER+;"
+    ));
+    assert!(!kde_launch_slot_present("[services][other.desktop]\n_launch=X"));
+    assert!(!kde_launch_slot_present(""));
+}

@@ -1529,12 +1529,35 @@ fn linux_hotkey_sentinel(comp: linux_env::LinuxCompositor) -> &'static str {
     }
 }
 
+/// Spellings of one of our keybinding slots. The installer writes
+/// `kcode-launch-`; `jcode-launch-` is the pre-rename spelling and is still
+/// accepted, because `merge_gnome_keybinding_list` also matches both and a slot
+/// installed before the rename must not be reported missing.
+#[cfg(any(target_os = "linux", test))]
+const LAUNCH_SLOT_MARKERS: [&str; 2] = ["kcode-launch-", "jcode-launch-"];
+
+/// Whether a gsettings/dconf keybinding-list string holds one of our slots.
+#[cfg(any(target_os = "linux", test))]
+fn gnome_launch_slot_present(list: &str) -> bool {
+    LAUNCH_SLOT_MARKERS
+        .iter()
+        .any(|marker| list.contains(&format!("/{marker}")))
+}
+
+/// Whether `kglobalshortcutsrc` text holds one of our `[services]` sections.
+#[cfg(any(target_os = "linux", test))]
+fn kde_launch_slot_present(text: &str) -> bool {
+    LAUNCH_SLOT_MARKERS
+        .iter()
+        .any(|marker| text.contains(&format!("[services][{marker}")))
+}
+
 /// Whether jcode's launch hotkeys are already installed for `comp`.
 #[cfg(target_os = "linux")]
 fn linux_hotkeys_installed(comp: linux_env::LinuxCompositor) -> bool {
     use linux_env::LinuxCompositor;
     match comp {
-        LinuxCompositor::Gnome => gnome_keybinding_list().contains("/jcode-launch-"),
+        LinuxCompositor::Gnome => gnome_launch_slot_present(&gnome_keybinding_list()),
         LinuxCompositor::Cinnamon => {
             dconf_read("/org/cinnamon/desktop/keybindings/custom-list").contains("kcode-launch-")
         }
@@ -1544,7 +1567,7 @@ fn linux_hotkeys_installed(comp: linux_env::LinuxCompositor) -> bool {
         LinuxCompositor::Xfce => xfce_shortcut_commands_text().contains("/launch_jcode_"),
         LinuxCompositor::Kde => kde_globalshortcutsrc_path()
             .and_then(|p| std::fs::read_to_string(p).ok())
-            .map(|text| text.contains("[services][jcode-launch-"))
+            .map(|text| kde_launch_slot_present(&text))
             .unwrap_or(false),
         other => linux_hotkey_config_path(other)
             .and_then(|p| std::fs::read_to_string(p).ok())
