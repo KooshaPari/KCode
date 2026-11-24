@@ -36,3 +36,6 @@ impl Drop for EnvVarGuard {
 
 #[path = "cases.rs"]
 mod cases;
+
+#[path = "display_role_cases.rs"]
+mod display_role_cases;

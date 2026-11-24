@@ -23,6 +23,13 @@ fn display_message_from_stored_message(
     match message.display_role {
         Some(crate::session::StoredDisplayRole::System) => Some(DisplayMessage::system(text)),
         Some(crate::session::StoredDisplayRole::BackgroundTask) => None,
+        // JCode-authored file-change markers are informational, and any display
+        // role from a newer client degrades to the same plain system look rather
+        // than dropping the message or failing to compile.
+        Some(
+            crate::session::StoredDisplayRole::FileActivity
+            | crate::session::StoredDisplayRole::Other(_),
+        ) => Some(DisplayMessage::system(text)),
         None => match message.role {
             Role::User => {
                 if crate::session::is_scheduled_task_message(message) {
