@@ -1,6 +1,13 @@
 [build]
-# Set RUSTC_WRAPPER=sccache in your shell env; no hardcoded path needed.
-# CI overrides this file, so leaving rustc-wrapper unset here is safe.
+# `build.rustc-wrapper` is deliberately NOT set here. The parallel front-end
+# wrapper (scripts/rustc-parallel-frontend) is a POSIX shell script, and native
+# Windows Cargo cannot execute a shebang script: it dies before compiling with
+# "%1 is not a valid Win32 application. (os error 193)". Unix builds opt in
+# through scripts/dev_cargo.sh, which sets RUSTC_WRAPPER for dev/selfdev/test
+# only and skips the wrapper on Windows and MSYS. An empty-string environment
+# override is not a substitute for this: on cargo 1.100.0, an empty
+# CARGO_BUILD_RUSTC_WRAPPER makes Cargo execute a blank program and fail with
+# "program not found" (exit 101).
 # Local fast-linker selection is handled by scripts/dev_cargo.sh so we don't
 # hard-force a linker mode that may be broken on a contributor machine.
 #

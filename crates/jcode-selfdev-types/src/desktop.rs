@@ -27,7 +27,7 @@ mod tests {
         std::fs::create_dir_all(root.path().join("crates/jcode-desktop-ui/src")).unwrap();
         std::fs::write(
             root.path().join("Cargo.toml"),
-            "[workspace]\nmembers = ['crates/jcode-desktop-ui']\n[package]\nname = 'jcode-desktop' # actual package\nversion = '0.1.0'\n",
+            "[workspace]\nmembers = ['crates/jcode-desktop-ui']\n[package]\nname = 'kcode-desktop' # actual package\nversion = '0.1.0'\n",
         ).unwrap();
         root
     }

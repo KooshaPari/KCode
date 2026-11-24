@@ -5,10 +5,27 @@ on:
     branches: [main, master]
   pull_request:
     branches: [main, master]
+  # Needed for two real cases, both observed on this fork:
+  #   1. Re-running CI for a commit that was pushed while the self-hosted
+  #      runners were offline. No run is created, so `gh run rerun` has nothing
+  #      to target, and pushing an empty commit to nudge CI is not acceptable.
+  #   2. Validating a long job (Build & Test is ~45 min) without adding a
+  #      throwaway commit to the branch under review.
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Only a pull request may cancel an in-flight run. A push to master must always
+  # finish. With one shared group plus `cancel-in-progress: true`, every new
+  # master push killed the verification already running, so healthy commits
+  # reported `cancelled` (2026-11-12: run 43318753096's jobs were cancelled at
+  # 22:19:28, one second after run 43318791123 started at 22:19:27) and the
+  # gate had no verdict to read. Cancelled is not a code failure.
+  #
+  # The sha is folded into the group for pushes as well: even with
+  # `cancel-in-progress: false`, GitHub cancels a *pending* run in the same
+  # group, so a distinct group per commit is what makes "always completes" true.
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pr' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   JCODE_CI: "1"
@@ -18,12 +35,35 @@ env:
 jobs:
   quality:
     name: Quality Guardrails
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, and each restart cancels the job in
+    # flight. This repo is public, so hosted runners cost nothing.
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Measured on the shared desk-linux runner (run 41163955888, job
+    # 125095678225, 2026-11-02): the 20 substantive steps took 43m29s
+    # (04:30:49 -> 05:14:18), so the old 45m cap killed the job during the
+    # rust-cache post step and reported the whole job as cancelled. The
+    # individual steps are not the problem - "Check all targets and all
+    # features" took 7m37s, clippy 15m18s, "Enforce Cargo.lock is up to
+    # date" 8m13s and "Enforce warning budget" 9m21s, because this runner
+    # shares 16 cores with the Build & Test job. 90 minutes leaves room for
+    # a slower day and for the post-job cleanup steps to finish.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          # The shell-lint gate diffs HEAD~1..HEAD. A fresh hosted runner
+          # checks out depth 1 by default, so HEAD~1 does not exist and the
+          # gate silently lints nothing at all. Depth 2 gives the merge
+          # commit's first parent, which on a PR checkout is the base tip.
+          fetch-depth: 2
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -31,14 +71,118 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: quality-ubuntu
+          # The ~881 MB `quality-ubuntu` blob hung for 26+ minutes in CI job
+          # 121317250103 (2026-10-26), blocking the self-hosted runner the
+          # whole time. The `-notarget` key + `cache-targets: "false"` make the
+          # restore miss fast; PR #183 already applies this to the Build job.
+          key: quality-ubuntu-notarget
           cache-all-crates: "true"
+          cache-targets: "false"
 
       - name: Check module declarations resolve
         # A `mod x;` with no file makes rustfmt fail with "Error writing files:
         # failed to resolve mod", which reads like a formatting problem and hides
         # every gate behind it. Naming the real cause first (221159294).
         run: python3 scripts/check_module_files.py
+
+      - name: Lint changed shell scripts (errors only)
+        # scripts/ holds 73 bash files and no CI job has ever linted them, so
+        # shellcheck findings could only ever arrive from review bots.
+        #
+        # Only CHANGED scripts are linted. A full scan costs ~5s per file, which
+        # is minutes on the single self-hosted runner that already serialises
+        # every job, and would also fail today on a pre-existing warning
+        # backlog. Gating the diff keeps it fast and green while still catching
+        # regressions in anything this change touches.
+        #
+        # Error severity only, for the same reason: the tree has 0 error-level
+        # findings and 50 pre-existing warning-level ones. Warnings are reported
+        # but not enforced; raise to `-S warning` once the backlog is cleared.
+        #
+        # shellcheck is not guaranteed on the self-hosted runner. The runner is
+        # a Linux box WITHOUT apt-get (verified 2026-10-28: the first version of
+        # this step tried `apt-get`, found no apt-get, and degraded to a warning,
+        # so the gate silently never enforced anything). Install a pinned static
+        # binary instead, verifying the SHA256, with apt as a fallback for
+        # runners that do have a package manager. If neither works, degrade to a
+        # warning annotation rather than blocking every PR on runner
+        # provisioning.
+        shell: bash
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            # Pinned static x86_64 build. sha256 verified below; a mismatch
+            # aborts the install and falls through to the warning path.
+            SHELLCHECK_VERSION=v0.10.0
+            SHELLCHECK_SHA256=6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+            SHELLCHECK_URL="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+            tmpdir="$(mktemp -d)"
+            fetched=0
+            # curl only. The release URL above 302-redirects to
+            # release-assets.githubusercontent.com, so a fetch tool must follow
+            # redirects while still refusing a redirect to plain http. wget's
+            # --https-only constrains only the initial URL and GNU wget has no
+            # redirect-protocol flag, so the wget fallback could not express
+            # that restriction (static analysis S6506 flagged it correctly).
+            # --max-redirect=0 would be worse than useless here: it refuses the
+            # required redirect and the fetch always fails. curl carries both
+            # constraints in --proto and --proto-redir, so it is the only
+            # supported path; ubuntu-latest always ships curl.
+            if command -v curl >/dev/null 2>&1; then
+              curl -sSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 --max-time 120 -o "${tmpdir}/sc.tar.xz" "${SHELLCHECK_URL}" && fetched=1
+            fi
+            if [ "${fetched}" = "1" ]; then
+              actual="$(sha256sum "${tmpdir}/sc.tar.xz" | cut -d' ' -f1)"
+              if [ "${actual}" = "${SHELLCHECK_SHA256}" ]; then
+                tar -xJf "${tmpdir}/sc.tar.xz" -C "${tmpdir}"
+                mkdir -p "${HOME}/.local/bin"
+                if ! install -m 0755 "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck 2>/dev/null; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                if [ ! -x /usr/local/bin/shellcheck ]; then
+                  cp "${tmpdir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+                fi
+                chmod +x "${HOME}/.local/bin/shellcheck" 2>/dev/null || true
+                export PATH="${HOME}/.local/bin:${PATH}"
+                echo "installed shellcheck ${SHELLCHECK_VERSION} (sha256 verified)"
+              else
+                echo "::warning::shellcheck download failed checksum (got ${actual}); not installing."
+              fi
+            fi
+            rm -rf "${tmpdir}"
+          fi
+          if ! command -v shellcheck >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y shellcheck || true
+          fi
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            echo "::warning::shellcheck is unavailable on this runner; shell lint skipped. Install shellcheck on desk-kcode-1/2 to enforce it."
+            exit 0
+          fi
+
+          # Determine a base to diff against. On a PR checkout HEAD is a merge
+          # commit, so HEAD~1 is the base tip and the diff is exactly this
+          # change set. Fall back to skipping when no base can be established
+          # rather than linting the whole tree.
+          files=()
+          if git rev-parse --verify 'HEAD~1' >/dev/null 2>&1; then
+            echo "lint base: $(git rev-parse --short HEAD~1) .. $(git rev-parse --short HEAD)"
+            while IFS= read -r f; do
+              [ -n "$f" ] && [ -f "$f" ] && files+=("$f")
+            done < <(git diff --name-only --diff-filter=ACMR HEAD~1 HEAD -- '*.sh')
+          else
+            echo "::warning::no diff base (HEAD~1 is missing), so this gate covers nothing; the checkout needs fetch-depth: 2"
+          fi
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no shell scripts changed in this change set; nothing to lint"
+            exit 0
+          fi
+
+          shellcheck --version | head -2
+          printf 'linting %d changed script(s):\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+          shellcheck -S error -f gcc "${files[@]}"
+          warnings=$(shellcheck -S warning -f gcc "${files[@]}" 2>/dev/null | wc -l || true)
+          echo "warning-level findings in changed files (informational): $warnings"
 
       - name: Check formatting
         # `continue-on-error: true` so a fmt diff does not blind the rest of
@@ -54,12 +198,6 @@ jobs:
         # fmt from the budget/ratchet gates) is the fix for #1796 / #1803.
         continue-on-error: true
         run: cargo fmt --all -- --check
-
-      - name: Check all targets and all features
-        run: cargo check --all-targets --all-features
-
-      - name: Run clippy with warnings denied
-        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Enforce Cargo.lock is up to date
         shell: bash
@@ -82,6 +220,23 @@ jobs:
         shell: bash
         run: python3 scripts/check_code_size_budget.py
 
+      - name: Enforce no pre-rename symbols in build paths
+        shell: bash
+        # A build-config file is not compiled, so nothing type-checks the target
+        # names and environment variables it sets. Three real defects shipped
+        # this way: CI ran `cargo build -p jcode --bin jcode` and referenced
+        # `jcode.exe` (no such package, no such binary); release.yml set
+        # JCODE_RELEASE_BUILD / JCODE_CI_BUILD / JCODE_BUILD_SEMVER, which
+        # crates/jcode-build-meta/build.rs never reads, so every release was a
+        # dev-mode build whose own installer rejected it; and
+        # .github/scripts/verify_windows_install.ps1 verified a `.jcode` install
+        # the fork never performs. The gate scans .github/workflows/,
+        # .github/scripts/, scripts/, install.sh, install.ps1, Cargo.toml and
+        # .cargo/; crates/, src/ and tests/ keep `jcode` crate, library and
+        # ~/.jcode data names legitimately. Known pre-existing occurrences are
+        # enumerated in the gate's ratchet register and printed each run.
+        run: bash scripts/check_symbol_drift.sh
+
       - name: Enforce oversized-test ratchet
         shell: bash
         run: python3 scripts/check_test_size_budget.py
@@ -98,13 +253,65 @@ jobs:
         shell: bash
         run: python3 scripts/check_dependency_boundaries.py
 
-      - name: Enforce Rust and TypeScript SDK surface parity
-        shell: bash
-        run: cargo test -p jcode-sdk parity -- --nocapture
-
       - name: Enforce wildcard re-export ratchet
         shell: bash
         run: python3 scripts/check_wildcard_reexport_budget.py
+
+  cargo-check:
+    name: Cargo Check & Parity
+    # Split out of `Quality Guardrails` for the same reason `clippy` was
+    # (#1796, #1803) and `fmt` before that: `cargo check --all-targets
+    # --all-features` compiles the entire workspace and pushed the quality
+    # job past its 45-minute limit at run 41416765384, cancelling it at
+    # step 8 before the seventeen cheap ratchet gates above could run. Those
+    # gates take seconds and must never be blinded by a compile. Cargo check,
+    # the parity test and cargo-machete get their own 90-minute budget so
+    # their cost is their own signal.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    # GitHub-hosted Linux, not the shared desk-linux runner: the desk runner
+    # stack is being restarted every few minutes by the scale-set work, and
+    # each restart cancels whatever job is in flight. The symptom is a job
+    # that reports `failure` with a null step conclusion and no log blob at
+    # all, which reads like a product failure but is pure infrastructure.
+    # This repo is public, so hosted Linux runners cost nothing, and the
+    # fork-PR guard above is unchanged. Build & Test stays on desk-linux
+    # because it exercises the desk's persistent cargo target setup.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Native build deps: the desk-linux host carries these already, a hosted
+      # runner does not. `alsa-sys` aborts the build without libasound2-dev
+      # ("The system library `alsa` required by crate `alsa-sys` was not
+      # found"), and the crate is reached by --all-targets --all-features.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: quality-ubuntu-notarget
+          cache-all-crates: "true"
+          cache-targets: "false"
+
+      - name: Check all targets and all features
+        run: cargo check --all-targets --all-features
+
+      - name: Enforce Rust and TypeScript SDK surface parity
+        shell: bash
+        run: cargo test -p jcode-sdk parity -- --nocapture
 
       - name: Enforce no unused dependencies
         shell: bash
@@ -112,8 +319,69 @@ jobs:
           cargo install cargo-machete --locked
           cargo machete
 
+  clippy:
+    name: Clippy
+    # Decoupled from `Quality Guardrails` for the same reason `fmt` was
+    # (#1796, #1803): clippy compiles the whole workspace and took the quality
+    # job past its 45-minute limit at run 41021250873, cancelling the job at
+    # step 9 before seventeen cheap budget/ratchet gates could run. Those gates
+    # need seconds, not an hour, and must never be blinded by a compile.
+    # Clippy gets its own budget here so its cost is its own signal.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    # GitHub-hosted Linux, not the shared desk-linux runner: the desk runner
+    # stack is being restarted every few minutes by the scale-set work, and
+    # each restart cancels whatever job is in flight. The symptom is a job
+    # that reports `failure` with a null step conclusion and no log blob at
+    # all, which reads like a product failure but is pure infrastructure.
+    # This repo is public, so hosted Linux runners cost nothing, and the
+    # fork-PR guard above is unchanged. Build & Test stays on desk-linux
+    # because it exercises the desk's persistent cargo target setup.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Native build deps: the desk-linux host carries these already, a hosted
+      # runner does not. `alsa-sys` aborts the build without libasound2-dev
+      # ("The system library `alsa` required by crate `alsa-sys` was not
+      # found"), and the crate is reached by --all-targets --all-features.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          # Same `-notarget` eviction as the quality and build jobs: the old
+          # ~881 MB `quality-ubuntu` blob hung the runner for 26+ minutes
+          # (job 121317250103).
+          key: quality-ubuntu-notarget
+          cache-all-crates: "true"
+          cache-targets: "false"
+
+      - name: Run clippy with warnings denied
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
   release-automation:
     name: Release Automation
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -126,7 +394,13 @@ jobs:
         run: python3 -m py_compile scripts/post_discord_release.py scripts/test_post_discord_release.py
 
   build:
-    name: Build & Test (${{ matrix.os }})
+    # Name is fixed rather than interpolated from `matrix.os`: the required
+    # status check must stay stable if the runner image is ever repointed.
+    name: Build & Test (linux)
+    # Fork PRs never run here: the hosted runner now has isolation, but this
+    # guard is unchanged so fork pull requests still need a maintainer-run
+    # check. Only same-repository pull requests get automatic CI.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ matrix.os }}
     # 35 minutes covers a normal push (~12 min with a warm Swatinem cache) but
     # not a *rerun*, where the cache is cold: three consecutive reruns of a
@@ -134,7 +408,20 @@ jobs:
     # the same green steps (#693). A rerun is exactly what you reach for after a
     # concurrency cancellation, so the old cap made healthy commits look red.
     # 75 still bounds a genuinely hung job well under the windows job's 150.
-    timeout-minutes: 75
+    #
+    # 240 because this job now runs intentionally cold (see the `cache-targets:
+    # "false"` note below). Measured on this runner: Build cold = 2453s,
+    # `cargo test --lib --bins --no-run` cold ~= 2990s. That pair alone is 5443s,
+    # so the previous 120-minute (7200s) cap left under 30 minutes for checkout,
+    # toolchain, mold, and the nine cohort/e2e steps after the compile -- and the
+    # retention-readiness cohort alone now carries a 1800s cold-compile budget.
+    #
+    # A GitHub-hosted runner has no durable per-runner disk, so every hosted
+    # run is a cold run of exactly that size. 240 minutes stays the bound:
+    # comfortably above the ~91-minute cold compile pair plus the cohort and
+    # e2e steps, and far below the 6-hour hosted ceiling, so a hung job
+    # fails visibly instead of holding a runner for hours.
+    timeout-minutes: 240
     # Some dependencies (e.g. convert_case 0.10.0 via derive_more/crossterm, and
     # proc-macro2/quote) accidentally ship a `rust-toolchain.toml` *inside their
     # published crate*. When cargo builds such a crate its CWD is that crate dir,
@@ -146,20 +433,85 @@ jobs:
     # pinning it here makes every step use this job's installed stable toolchain.
     env:
       RUSTUP_TOOLCHAIN: stable
+      CARGO_BUILD_JOBS: "4"
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # macos-latest leg removed: hosted Actions minutes are capped at $0
+        # (never pay for GH CI). macOS builds run manually when needed.
+        #
+        # Moved off the desk's self-hosted runner: its reconcilers reload the
+        # runner stack on a 5-15 minute cadence, which is shorter than this
+        # job's duration, so every attempt received a shutdown signal part way
+        # through and was reported as cancelled. Hosted Linux is free for this
+        # public repo. No step, threshold or test was removed to allow it.
+        os: [ubuntu-latest]
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-latest
-            target: aarch64-apple-darwin
 
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      # Native build deps: the desk host carries these already, a hosted runner
+      # does not. `alsa-sys` aborts the build without libasound2-dev ("The
+      # system library `alsa` required by crate `alsa-sys` was not found"), and
+      # the crate is reached by the --all-targets --all-features steps.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config \
+            mold
+
+      # Desk-only: this asserts the desk runner's persistent target directory
+      # convention. It cannot run on a hosted runner, which has no durable
+      # per-runner disk, but the desk remains a legitimate local build host.
+      - name: Test persistent cargo target setup
+        if: runner.environment != 'github-hosted'
+        run: python3 scripts/test_ci_persistent_target.py
+
+      # Persistent, per-runner cargo target dir.
+      #
+      # Self-hosted runner with durable disk, so caching `target/` via
+      # actions/cache is unnecessary and - at a 2GB blob that aborts restore at
+      # the ~600s cap (#167) - actively harmful: every run went in cold, then
+      # died on the compile cap.
+      #
+      # Set here rather than in the job-level `env:` because the `runner`
+      # context is not available there (actionlint: "context runner is not
+      # allowed here"). RUNNER_NAME is a default environment variable in every
+      # step, so it is legal here and still gives each runner its own dir.
+      #
+      # Per-runner (not shared) on purpose: concurrent cargo builds take an
+      # exclusive lock on one target dir and would serialise against each other.
+      #
+      # Desk-only, for the same reason as the test above: `$HOME` on a hosted
+      # runner is ephemeral, so a persistent target dir buys nothing there.
+      # Skipping it leaves CARGO_TARGET_DIR at its default `target/`.
+      - name: Configure persistent cargo target dir
+        if: runner.environment != 'github-hosted'
+        run: |
+          set -euo pipefail
+          # RUNNER_NAME becomes a path component, so a value containing a
+          # separator or `..` could point the target dir outside $HOME.
+          # Runner names are admin-controlled, but a rejected build with a
+          # clear error beats silently writing outside the home directory.
+          case "${RUNNER_NAME:-}" in
+            "") printf 'error: RUNNER_NAME is unset\n' >&2; exit 1 ;;
+            */*|*\\*|*..*)
+              printf 'error: refusing unsafe RUNNER_NAME: %s\n' "$RUNNER_NAME" >&2
+              exit 1
+              ;;
+          esac
+          T="$HOME/kcode-target-${RUNNER_NAME}"
+          mkdir -p "$T"
+          echo "CARGO_TARGET_DIR=$T" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -174,26 +526,124 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          # Key suffix `-notarget` is load-bearing: it changes the
+          # PRIMARY key and the SINGLE restore-key prefix simultaneously
+          # (Swatinem/rust-cache@v2 src/config.ts reads `core.getInput("key")`
+          # at the top of key construction -- before `cache-targets` is read
+          # at line 274 -- and propagates the suffix into both).
+          #
+          # Why the suffix has to be HERE, not just `cache-targets: "false"`:
+          #
+          # 1. `cache-targets` does NOT participate in the key. Per
+          #    Swatinem/rust-cache@v2 src/config.ts: `self.cacheKey = key` at
+          #    line 263 seals the key from any later input, and
+          #    `cache-targets` is only read at line 274 where it merely mutates
+          #    `cachePaths`. So PR #168's `cache-targets: "false"` does not
+          #    produce a new key.
+          #
+          # 2. Without the suffix, actions/cache's "fall back to base branch"
+          #    restores master's `v0-rust-desk-linux-stablepin-build-...` blob
+          #    (~2.02 GB). The download is bounded at ~600s by the step and
+          #    aborts at 37-44%, then falls through to "No cache found" -- so
+          #    the job is cold anyway. (CodeRabbit independently flagged this:
+          #    inline on this file at the cache-targets line, "Provision a new
+          #    master-branch build cache using cache-targets: \"false\" before
+          #    relying on pull-request cache restores...")
+          #
+          # 3. GitHub caches are IMMUTABLE per (key, ref) once written. The
+          #    post-step `save` step is SKIPPED when the key already exists for
+          #    that ref. So even after `cache-targets: "false"` flips the path
+          #    set, the master's key continues to pin the 2 GB blob forever,
+          #    and every fresh PR build still pays the doomed download.
+          #
+          # 4. The new primary key is
+          #    `v0-rust-desk-linux-stablepin-notarget-build-Linux-x64-62b60f75-212eda4f`
+          #    and the new restore prefix is
+          #    `v0-rust-desk-linux-stablepin-notarget-build-Linux-x64-62b60f75`.
+          #    Neither matches any legacy entry (verified against the live
+          #    cache inventory), so (a) the broken 2 GB blob is never even
+          #    attempted for restore, and (b) the post-step `save` finds no
+          #    conflict in any ref and writes a fresh, registry-only entry.
+          #
           # Suffix bumped to evict caches that held 1.83.0 / <unknown rustc>
           # artifacts produced before RUSTUP_TOOLCHAIN=stable pinned the job.
-          key: ${{ matrix.os }}-stablepin
+          key: ${{ matrix.os }}-stablepin-notarget
+          # `cache-targets: "false"` keeps $CARGO_HOME (registry + git + bin) in
+          # the cache and drops the workspace `target/` directory from it.
+          # (Swatinem/rust-cache action.yml: "Determines whether workspace
+          # targets are cached. If `false`, only the cargo registry will be
+          # cached." src/config.ts pushes `workspaces.map(ws => ws.target)` onto
+          # cachePaths only when this input is true.)
+          #
+          # Why this job and not the others: this is the only job that runs a
+          # full `cargo build --release` AND `cargo test --lib --bins --no-run`
+          # AND eight integration/e2e compiles into the same target dir, so its
+          # third-party dependency rlibs for *both* profiles dominate the blob.
+          # The measured blob was 2,029,470,155 bytes; the restore step aborts
+          # at a ~600s cap after 37-44% and falls through to "No cache found",
+          # which makes the job cold anyway -- so caching target/ buys this job
+          # nothing it actually gets, and costs 641s of doomed download on every
+          # attempt. Registry-only is also provably restorable: it is a strict
+          # subset of this repo's other jobs' blobs, and job 119062133759
+          # restored a 687,972,881-byte blob successfully inside the same window.
+          cache-targets: "false"
 
       - name: Install mold linker (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq mold
+          # mold is an optimisation, not a requirement to reach this point. The
+          # desk-linux runner image ships neither mold nor sudo, so an
+          # unconditional `sudo apt-get` aborted the job with exit 127
+          # ("sudo: command not found") before the build started. Install it when
+          # the runner allows it; otherwise warn and let the Build step fall back
+          # to the default linker.
+          if command -v mold >/dev/null 2>&1; then
+            echo "mold already present: $(mold --version | head -1)"
+            exit 0
+          fi
+          SUDO=""
+          if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+          if command -v apt-get >/dev/null 2>&1; then
+            $SUDO apt-get update -qq || true
+            $SUDO apt-get install -y -qq mold || true
+          elif command -v dnf >/dev/null 2>&1; then
+            $SUDO dnf install -y mold || true
+          elif command -v apk >/dev/null 2>&1; then
+            $SUDO apk add --no-cache mold || true
+          fi
+          if command -v mold >/dev/null 2>&1; then
+            echo "mold installed: $(mold --version | head -1)"
+          else
+            echo "::warning::mold is unavailable on this runner; the build will use the default linker"
+          fi
 
       - name: Build
         shell: bash
         run: |
           mkdir -p .cargo
           if [ "$RUNNER_OS" = "Linux" ]; then
-            cat > .cargo/config.toml << 'EOF'
-          [target.x86_64-unknown-linux-gnu]
-          linker = "clang"
-          rustflags = ["-C", "link-arg=-fuse-ld=mold"]
-          EOF
+            # Both mold and clang are optional here. A config that names a linker the
+            # runner does not have fails the very first build script:
+            #   error: linker `clang` not found
+            #   error: could not compile `proc-macro2` (build script)
+            # The desk-linux image carries whatever the image recipe bakes in, so only
+            # advertise the tools actually present on this runner.
+            LINKER_LINE=""
+            if command -v clang >/dev/null 2>&1; then
+              LINKER_LINE='linker = "clang"'
+            fi
+            RUSTFLAGS_LINE=""
+            if command -v mold >/dev/null 2>&1; then
+              RUSTFLAGS_LINE='rustflags = ["-C", "link-arg=-fuse-ld=mold"]'
+            fi
+            if [ -n "$LINKER_LINE" ] || [ -n "$RUSTFLAGS_LINE" ]; then
+              echo "[target.x86_64-unknown-linux-gnu]" > .cargo/config.toml
+              if [ -n "$LINKER_LINE" ]; then echo "$LINKER_LINE" >> .cargo/config.toml; fi
+              if [ -n "$RUSTFLAGS_LINE" ]; then echo "$RUSTFLAGS_LINE" >> .cargo/config.toml; fi
+              cat .cargo/config.toml
+            else
+              echo "::warning::neither clang nor mold is available on this runner; using cargo's default linker"
+            fi
           fi
           # NOTE: intentionally NOT exporting RUSTC_WRAPPER=sccache here. Only this
           # step used sccache while the later `cargo test --no-run` steps did not,
@@ -209,16 +659,21 @@ jobs:
       - name: Compile library and binary tests
         shell: bash
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          python3 .github/scripts/run_with_timeout.py 3300 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} --lib --bins --no-run
 
       - name: Run deterministic retention-readiness cohort
         shell: bash
         run: |
-          # A cold jcode-app-core test harness compiles heavy optional provider
-          # dependencies and can exceed three minutes on hosted runners. The
-          # cohort itself runs in under a second once the lib test is built.
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: the jcode-app-core lib-test harness is a *cold*
+          # compile that exceeded 600s on this runner (run 39672218586, job
+          # 119472777140, exit 124). It stays cold here because the workspace
+          # declares no `default-members`, so `cargo test --lib --bins --no-run`
+          # builds only the default member `kcode` and never pre-builds this
+          # crate's harness. The cohort itself still runs in under a second
+          # once the harness is built, so 1800s covers that one-time cold
+          # compile and nothing more.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-app-core --lib retention_readiness -- --nocapture
 
@@ -237,7 +692,12 @@ jobs:
         # jcode-base lib test harness, which exceeded 300s on a hosted macOS
         # runner (run 30591536707) while the cohort itself runs in a second.
         run: |
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: this step cold-compiles the `jcode-base` lib-test
+          # target (provider runtimes aws-sdk, azure, bedrock, openrouter); no
+          # `default-members`, so `cargo test --lib --bins --no-run` never
+          # pre-builds it. Killed at exactly 600s, exit 124, while compiling
+          # (CI job 122656506857, 2026-10-28); 1800s covers that cold compile.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-base --lib secret_input -- --nocapture
 
@@ -254,18 +714,28 @@ jobs:
         # tests are not otherwise run here at all, so without this step it would
         # never execute. Fetch the model first (~87MB) so the cohort is real
         # rather than a silent skip.
+        #
+        # 1800s, not 600s, for the same reason as the retention-readiness cohort
+        # above: the workspace declares no `default-members`, so the 3300s
+        # "Compile library and binary tests" step builds only the default member
+        # `kcode` and never pre-builds the jcode-embedding harness. This cohort
+        # therefore absorbs a cold compile of tract-data/tract-core/tract-
+        # nnef/tract-hir. It hit exactly 600s and failed with exit 124 on run
+        # 42002567377 (a warm run of the same step takes 215s), so 600s was
+        # measuring the compile, not the test. 1800s covers the one-time cold
+        # compile and nothing more; the test itself is sub-second once built.
         run: |
           set -euo pipefail
           model_dir="$HOME/.jcode/models/all-MiniLM-L6-v2"
           mkdir -p "$model_dir"
           base="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main"
-          curl -sSfL --retry 3 -o "$model_dir/model.onnx" "$base/onnx/model.onnx"
-          curl -sSfL --retry 3 -o "$model_dir/tokenizer.json" "$base/tokenizer.json"
+          curl -sSfL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 -o "$model_dir/model.onnx" "$base/onnx/model.onnx"
+          curl -sSfL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 -o "$model_dir/tokenizer.json" "$base/tokenizer.json"
           # Fail loudly if the fetch produced something unusable, so this cannot
           # degrade back into a silent skip.
           test -s "$model_dir/model.onnx"
           test -s "$model_dir/tokenizer.json"
-          python3 .github/scripts/run_with_timeout.py 600 \
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-embedding --lib -- --nocapture \
             | tee /tmp/embedding-cohort.log
@@ -333,7 +803,12 @@ jobs:
         env:
           COLORTERM: truecolor
         run: |
-          python3 .github/scripts/run_with_timeout.py 600 \
+          # 1800s, not 600s: on a cold cargo build this step spends most of its
+          # budget compiling the `jcode-tui` lib-test binary; the suite itself
+          # costs ~30s once built (see the note above). Killed at exactly 600s
+          # with exit 124 in CI job 121349210430 on 2026-10-26 while compiling;
+          # 1800s covers that one-time cold compile plus the serial suite.
+          python3 .github/scripts/run_with_timeout.py 1800 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             -p jcode-tui --lib -- --test-threads=1 \
             --skip test_prompt_entry_shimmer_color_moves_across_positions \
@@ -388,7 +863,11 @@ jobs:
         # (burst-spawn concurrency), and folding compilation into its 900s run
         # budget was pushing slower hosted ubuntu/macos runners over the limit.
         run: |
-          python3 .github/scripts/run_with_timeout.py 900 \
+          # 2400s, not 900s: covers the one-time cold compile of the kcode
+          # integration-test binary, which links the full binary and every
+          # provider runtime. Observed: killed at exactly 900s (exit 124) while
+          # compiling (CI job 122084008601, 2026-10-27), zero binaries built.
+          python3 .github/scripts/run_with_timeout.py 2400 \
             "$(rustup which cargo)" test --target ${{ matrix.target }} \
             --test provider_matrix --test e2e --no-run
 
@@ -421,15 +900,11 @@ jobs:
         run: |
           scripts/check_warning_budget.sh
 
-      - name: Security preflight (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          cargo install cargo-audit --locked
-          scripts/security_preflight.sh --strict
-
   windows-build-test:
     name: Build & Test (windows-latest)
+    # Hosted Windows CI is disabled while hosted Actions minutes are capped at $0;
+    # Windows verification runs locally on the desk (cargo test + herdr-pane input check).
+    if: false
     runs-on: windows-latest
     timeout-minutes: 150
     steps:
@@ -451,8 +926,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: windows-latest
+          # The old blob's restore hung for 26+ minutes in CI job 121317250103
+          # (2026-10-26), blocking the self-hosted runner the whole time. The
+          # `-notarget` key + `cache-targets: "false"` make the restore miss
+          # fast; PR #183 already applies this to the Build job.
+          key: windows-latest-notarget
           cache-all-crates: "true"
+          cache-targets: "false"
 
       - name: Build release binary
         shell: pwsh
@@ -564,7 +1044,7 @@ jobs:
       - name: Verify built binary launches
         shell: pwsh
         run: |
-          & "target/x86_64-pc-windows-msvc/release/jcode.exe" --version
+          & "target/x86_64-pc-windows-msvc/release/kcode.exe" --version
           if ($LASTEXITCODE -ne 0) {
             throw 'Built Windows binary failed to run --version'
           }
@@ -587,13 +1067,26 @@ jobs:
           # this identity from the root package version and appends `-dev`.
           $version = 'v' + $cargoVersion.Matches[0].Groups[1].Value + '-dev'
           & ./.github/scripts/verify_windows_install.ps1 `
-            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/jcode.exe' `
+            -ArtifactExePath 'target/x86_64-pc-windows-msvc/release/kcode.exe' `
             -Version $version
 
   fmt:
     name: Format
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # `cargo fmt --all -- --check` needs no compilation, so 10 minutes looked
+    # generous. It is not enough on this runner when the host is oversubscribed:
+    # observed 2026-11-02 in run 41425751987, job 125211820283, Format exceeded
+    # its cap and was cancelled while a second Rust build ran concurrently and
+    # the host load average was 52 on 16 cores. A formatting gate that dies from
+    # starvation reports failure for a tree that is correctly formatted, which is
+    # worse than a slow gate. 30 minutes costs nothing when the host is idle.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -612,8 +1105,16 @@ jobs:
 
   typescript-sdk:
     name: TypeScript SDK
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 10 min is not enough when the desk runner shares CPU with cargo builds;
+    # npm run check alone has crossed the limit three runs in a row.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -627,7 +1128,10 @@ jobs:
       # only guard that runs on a change is the Rust-side variant check, and a
       # typo in the TypeScript itself (or a broken client) reaches consumers.
       - name: Install
-        run: npm ci --no-audit --no-fund
+        # `--ignore-scripts`: the SDK's dependency tree (ajv, fast-uri,
+        # typescript) has no lifecycle scripts, and SonarCloud rule
+        # githubactions:S6505 requires install scripts to be off.
+        run: npm ci --no-audit --no-fund --ignore-scripts
         working-directory: sdk/typescript
 
       - name: Typecheck, build, and test
@@ -644,22 +1148,55 @@ jobs:
 
   setup-friction:
     name: Setup Friction Eval (Linux installer)
+    # Runs on ubuntu-latest, not on the desk: it needs nothing host-specific
+    # (bash, fish, zsh, and a POSIX `/usr/bin:/bin`; both scripts mock
+    # curl/uname/tar into a temp PATH), and `[self-hosted, desk-linux]` is the
+    # label that queued every job behind one 71-minute compile on
+    # 2026-11-12T19:28:45Z and took `ssh desk` down with it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
       - name: Install probe shells
-        run: sudo apt-get update && sudo apt-get install -y fish zsh
+        run: |
+          if ! command -v fish >/dev/null 2>&1 || ! command -v zsh >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              sudo apt-get update && sudo apt-get install -y fish zsh
+            else
+              sudo dnf install -y fish zsh
+            fi
+          fi
+
+      - name: Installer is enabled?
+        id: gate
+        run: |
+          # scripts/install.sh currently exits 1 by design ("release downloads
+          # are disabled"), so the conversion test and the friction scorecard
+          # have nothing real to measure. The job itself now runs on every PR
+          # and master push and reports a verdict; the moment the installer
+          # path is restored these two steps start executing without anyone
+          # having to remember this job exists.
+          if grep -q 'release downloads are disabled' scripts/install.sh; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Setup friction::scripts/install.sh is intentionally disabled; nothing to evaluate."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Installer conversion telemetry tests
+        if: steps.gate.outputs.enabled == 'true'
         run: bash scripts/test_install_conversion.sh
 
       - name: Setup friction scorecard
+        if: steps.gate.outputs.enabled == 'true'
         run: bash scripts/setup_friction_eval.sh
 
   powershell-syntax:
     name: PowerShell Syntax
+    # Disabled with windows-build-test; PowerShell syntax is checked locally on the desk.
+    if: false
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -677,6 +1214,13 @@ jobs:
 
   windows-cross-check:
     name: Windows Cross-Target Check (Linux)
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight. cargo-xwin
+    # fetches the MSVC SDK itself, so this job needs nothing from the desk.
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -690,13 +1234,36 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: windows-cross-check
+          # The ~688 MB `windows-cross-check` blob hung for 26+ minutes in CI
+          # job 121317250103 (2026-10-26), blocking the self-hosted runner the
+          # whole time. The `-notarget` key + `cache-targets: "false"` make the
+          # restore miss fast; PR #183 already applies this to the Build job.
+          key: windows-cross-check-notarget-nobin
           cache-all-crates: "true"
+          cache-targets: "false"
+          cache-bin: "false"
 
       - name: Install LLVM toolchain for cargo-xwin
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq clang lld llvm ninja-build
+          # A hosted runner already has clang, so gating the whole install on
+          # `command -v clang` skipped llvm-lib and nasm. Both are needed:
+          # ring's build script asks cc-rs for "llvm-lib", and aws-lc-sys
+          # assembles with NASM. On the desk-linux host both were already
+          # present, which is why this only surfaced after the move.
+          if command -v apt-get >/dev/null 2>&1; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq clang lld llvm ninja-build nasm
+          else
+            sudo dnf install -y clang lld llvm ninja-build nasm
+          fi
+          # llvm-lib lives in /usr/lib/llvm-*/bin, which is not on PATH.
+          LLVM_BIN="$(dirname "$(find /usr/lib /usr/local -maxdepth 4 -name llvm-lib -type f 2>/dev/null | head -1)")"
+          if [ -n "$LLVM_BIN" ] && [ -d "$LLVM_BIN" ]; then
+            echo "LLVM_BIN=$LLVM_BIN" >> "$GITHUB_ENV"
+            echo "$LLVM_BIN" >> "$GITHUB_PATH"
+          fi
+          command -v nasm
+          command -v llvm-lib
 
       - name: Install cargo-xwin
         run: cargo install --git https://github.com/rust-cross/cargo-xwin cargo-xwin
@@ -711,3 +1278,105 @@ jobs:
       - name: Check Windows ARM64 target (advisory)
         continue-on-error: true
         run: cargo xwin check --locked --target aarch64-pc-windows-msvc --no-default-features --features pdf
+
+  # Standalone so a build abort cannot mask the security gate. Previously this
+  # step ran last inside the 12-minute `build` job, where a runner-level abort
+  # left it PENDING and the gate produced no verdict at all (run 41145617775:
+  # steps 6-22 all PENDING, job failed, no log). It needs only checkout plus
+  # cargo-audit, so it belongs in its own cheap job.
+  security-preflight:
+    name: Security preflight (Linux)
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # GitHub-hosted Linux: the desk-linux runner stack is restarted every few
+    # minutes by the scale-set work, cancelling the job in flight.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Prebuilt binary, not `cargo install`. Compiling cargo-audit from source
+      # takes many minutes on this host (a cold cache built ~200 crates), which
+      # leaves little room to finish inside the gate's 20-minute budget while
+      # competing for a saturated desk runner. The action fetches a release
+      # binary in seconds, so the gate completes in the short windows where a
+      # runner is actually free.
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Run security preflight
+        shell: bash
+        run: scripts/security_preflight.sh --strict
+
+  # Single merge gate. Every job above that can actually fail a change is
+  # listed in `needs:`; the aggregate fails unless every one of them reports
+  # `success`. Without this, a job that is `cancelled` (a runner restart) or
+  # that never ran is indistinguishable from a job that passed, and a branch
+  # can merge green while a gate produced no verdict.
+  #
+  # Deliberately NOT in `needs:`, because they are `if: false` and therefore
+  # always `skipped`: `windows-build-test`, `setup-friction`,
+  # `powershell-syntax`. They stay skipped on purpose (hosted Windows minutes
+  # are capped at $0 / the fork disables the installer), so gating on them
+  # would fail every run; the loop below is written to fail on `skipped`
+  # instead of silently accepting it precisely so a real gate cannot join that
+  # list by accident.
+  test:
+    name: Aggregate gate
+    # Fork PRs never run here: this is a persistent self-hosted runner with
+    # no isolation guarantees, so only same-repository pull requests get
+    # automatic CI. External contributions need a maintainer-run check.
+    #
+    # `always()` is required so the gate still runs (and still reports a
+    # verdict) when an upstream job failed or was cancelled; without it a
+    # failure would skip the gate and the workflow would show no gate result
+    # at all, which is the exact failure mode this job exists to remove.
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs:
+      - quality
+      - cargo-check
+      - clippy
+      - release-automation
+      - build
+      - fmt
+      - typescript-sdk
+      - windows-cross-check
+      - security-preflight
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check every gated job succeeded
+        shell: bash
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          # Only `success` counts as a pass. `failure` and `cancelled` fail the
+          # aggregate, and so does `skipped`: a gate that did not run produced
+          # no verdict and must never read as a pass. A job that is genuinely
+          # allowed to stay skipped is left OUT of `needs:` above, so it never
+          # reaches this loop; that is the only sanctioned form of exemption.
+          fail=0
+          jobs=$(printf '%s' "$NEEDS_JSON" | jq -r 'keys[]')
+          for job in $jobs; do
+            result=$(printf '%s' "$NEEDS_JSON" | jq -r --arg j "$job" '.[$j].result')
+            if [ "$result" = "success" ]; then
+              echo "PASS  $job: $result"
+            else
+              echo "::error::$job finished as '$result'; only 'success' gates a merge"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "Aggregate gate FAILED"
+            exit 1
+          fi
+          count=$(printf '%s' "$NEEDS_JSON" | jq -r 'keys | length')
+          echo "Aggregate gate PASSED: all $count gated jobs succeeded"

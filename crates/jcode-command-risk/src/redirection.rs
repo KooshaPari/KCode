@@ -32,7 +32,7 @@ fn empty_regex() -> Regex {
     // match at every position and mangle the command.
     match Regex::new(r"[^\s\S]") {
         Ok(re) => re,
-        Err(_) => loop {},
+        Err(_) => unreachable!("static regex patterns must compile"),
     }
 }
 

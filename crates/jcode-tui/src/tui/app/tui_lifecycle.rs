@@ -329,8 +329,7 @@ impl App {
         };
         self.overnight_auto_poke = None;
 
-        // Surface the streak as an explicit auth_failed telemetry event to
-        // distinguish "breaker tripped on a dead credential" from blips.
+        // Emit auth_failed to distinguish a tripped breaker from blips.
         let reason = crate::auth::login_diagnostics::classify_auth_failure_message(message);
         let provider = self.provider_name().to_string();
         crate::telemetry::record_auth_failed_reason(&provider, "session", reason.label());
@@ -709,6 +708,7 @@ impl App {
             input_typing_undo: None,
             history_draft: None,
             status_notice: None,
+            clipboard: ClipboardState::default(),
             learn_hint: None,
             learn_hint_shown_this_session: false,
             terminal_setup_hint_shown_this_session: false,
@@ -1181,6 +1181,7 @@ impl App {
             input_typing_undo: None,
             history_draft: None,
             status_notice: None,
+            clipboard: ClipboardState::default(),
             learn_hint: None,
             learn_hint_shown_this_session: false,
             terminal_setup_hint_shown_this_session: false,
@@ -1417,8 +1418,7 @@ impl App {
         // SSH clients above must use only the remote server's skill metadata.
         app.refresh_skills_snapshot();
         app.apply_remote_header_hint();
-        // Start the background git probe now so the git widgets are ready by
-        // the first frame or two instead of popping in later.
+        // Start the git probe now so the widgets are ready by the first frames.
         let _ = super::helpers::gather_git_info();
 
         let reload_fast_start = std::env::var("KCODE_RELOAD_FAST_START")

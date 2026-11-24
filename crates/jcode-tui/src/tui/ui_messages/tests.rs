@@ -1927,7 +1927,7 @@ fn render_system_message_uses_minimal_inline_style_for_reload_title() {
 #[test]
 fn render_system_message_uses_connection_card_for_reconnect_status() {
     let msg = DisplayMessage::system(
-        "⚡ Connection lost - retrying (attempt 2, 7s) - connection reset by server · resume: jcode --resume koala",
+        "⚡ Connection lost - retrying (attempt 2, 7s) - connection reset by server · resume: kcode --resume koala",
     )
     .with_title("Connection");
 

@@ -13,6 +13,7 @@
 use crate::errors::{Error, ErrorKind, Result};
 use crate::launch::{LaunchOptions, LaunchedInstance, ensure_runtime, launch_instance};
 use crate::ssh::{SshConnectOptions, SshProcess, SshTransport};
+use crate::turn_retry::RetryPolicy;
 use jcode_harness_api::{
     API_VERSION_MAJOR, ApiEvent, ApiRequest, ClientFrame, HistoryMessage, ModelRouteInfo,
     PermissionDecision, ServerFrame, SessionInfo, SessionToolDefinition, TextMatch,
@@ -326,9 +327,6 @@ fn stop_global_stream(control: &GlobalEventControl, error: Option<Error>) {
     drop(children);
 }
 
-/// A live subscription: (id, session filter, sink).
-type Subscriber = (u64, Option<String>, Sender<ApiEvent>);
-
 struct Inner {
     writer: Mutex<Box<dyn Write + Send>>,
     /// Requests waiting for their `reply_to` frame.
@@ -637,7 +635,7 @@ impl JcodeClient {
         })
     }
 
-    fn disconnect_error(&self) -> Error {
+    pub(crate) fn disconnect_error(&self) -> Error {
         match &self.inner.ssh_process {
             Some(process) => Error::new(ErrorKind::Disconnected, process.diagnostic()),
             None => closed_error(),
@@ -1367,83 +1365,13 @@ impl JcodeClient {
     ///
     /// The convenience path for scripts: one call in, the text and tool calls
     /// of one turn out. Streaming consumers should use `events()` instead.
+    ///
+    /// A transient turn failure is retried in the same session (see
+    /// `options.retry` for the budget), matching how the interactive clients
+    /// recover. Deterministic failures surface at once. The driving loop lives
+    /// in [`crate::client_retry`].
     pub fn run(&self, session_id: &str, content: &str, options: RunOptions) -> Result<TurnResult> {
-        let stream = self.events(Some(session_id));
-        self.send_message(
-            session_id,
-            content,
-            options.images.clone(),
-            Some(Duration::from_secs(10)),
-        )?;
-        let mut result = TurnResult::default();
-        let mut text_stream = TextCollector::default();
-        while let Some(event) = stream.next() {
-            if let Some(on_event) = &options.on_event {
-                on_event(&event);
-            }
-            match event {
-                ApiEvent::TextDelta {
-                    text, message_id, ..
-                } => {
-                    text_stream.message(message_id).0.text.push_str(&text);
-                }
-                ApiEvent::TextReplace {
-                    text, message_id, ..
-                } => {
-                    text_stream.message(message_id).0.text = text;
-                }
-                ApiEvent::TextDone { message_id, .. } => {
-                    if let Some(index) = text_stream.index(&message_id) {
-                        text_stream.parts[index].1 = true;
-                    }
-                }
-                ApiEvent::ReasoningDelta { text, .. } => result.reasoning.push_str(&text),
-                ApiEvent::ToolDone {
-                    call_id,
-                    name,
-                    output,
-                    error,
-                    ..
-                } => result.tool_calls.push(ToolCall {
-                    call_id,
-                    name,
-                    output,
-                    error,
-                }),
-                ApiEvent::TokenUsage {
-                    input,
-                    output,
-                    cache_read_input,
-                    cache_creation_input,
-                    ..
-                } => {
-                    result.usage = Some(Usage {
-                        input,
-                        output,
-                        cache_read_input,
-                        cache_creation_input,
-                    })
-                }
-                ApiEvent::PermissionRequest { request_id, .. } if options.auto_approve => {
-                    self.respond_to_permission(session_id, &request_id, PermissionDecision::Allow)?;
-                }
-                ApiEvent::TurnStopped {
-                    reason, message, ..
-                } => {
-                    result.stop_reason = Some(reason);
-                    result.stop_message = Some(message);
-                }
-                ApiEvent::TurnDone { .. } => {
-                    text_stream.finish(&mut result);
-                    return Ok(result);
-                }
-                ApiEvent::Error { code, message } => {
-                    return Err(Error::new(ErrorKind::Harness(code), message));
-                }
-                _ => {}
-            }
-        }
-        Err(self.disconnect_error())
+        self.run_turn(session_id, content, options)
     }
 
     /// Whether the connection has been closed or lost.
@@ -1462,6 +1390,9 @@ pub struct RunOptions {
     /// Auto-answer permission prompts. Only meaningful when the server
     /// advertises the `permissions` capability.
     pub auto_approve: bool,
+    /// Automatic retries for a turn that fails transiently. Zero disables
+    /// retrying and surfaces the first failure.
+    pub retry: RetryPolicy,
 }
 
 /// Runtime identity and protocol metadata returned by [`JcodeClient::get_runtime_info`].
@@ -1535,51 +1466,6 @@ pub struct AssistantTextMessage {
     /// Stream-local correlator, not a persisted history message id.
     pub message_id: Option<String>,
     pub text: String,
-}
-
-#[derive(Default)]
-struct TextCollector {
-    parts: Vec<(AssistantTextMessage, bool)>,
-}
-
-impl TextCollector {
-    fn index(&self, id: &Option<String>) -> Option<usize> {
-        self.parts
-            .iter()
-            .rposition(|(part, done)| &part.message_id == id && (id.is_some() || !done))
-    }
-
-    fn message(&mut self, id: Option<String>) -> &mut (AssistantTextMessage, bool) {
-        let index = self.index(&id).unwrap_or_else(|| {
-            self.parts.push((
-                AssistantTextMessage {
-                    message_id: id,
-                    text: String::new(),
-                },
-                false,
-            ));
-            self.parts.len() - 1
-        });
-        &mut self.parts[index]
-    }
-
-    fn finish(self, result: &mut TurnResult) {
-        result.text = self
-            .parts
-            .iter()
-            .map(|(part, _)| part.text.as_str())
-            .collect();
-        result.messages = self
-            .parts
-            .into_iter()
-            .filter_map(|(part, done)| (done && !part.text.is_empty()).then_some(part))
-            .collect();
-        result.final_text = result
-            .messages
-            .last()
-            .map(|part| part.text.clone())
-            .unwrap_or_else(|| result.text.clone());
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -51,6 +51,7 @@ mod info_widget_overview;
 mod info_widget_settle;
 pub mod info_widget_stability;
 pub mod keybind;
+mod keyboard_protocol;
 mod layout_utils;
 pub mod login_picker;
 pub mod markdown;
@@ -118,248 +119,8 @@ pub use jcode_tui_core::{
 };
 pub use jcode_tui_messages::DisplayMessage;
 
-fn keyboard_enhancement_flags() -> crossterm::event::KeyboardEnhancementFlags {
-    use crossterm::event::KeyboardEnhancementFlags;
-
-    if std::env::var_os("KCODE_DISABLE_KITTY_KEYBOARD").is_some() {
-        return KeyboardEnhancementFlags::empty();
-    }
-    // Only disambiguate escape codes. REPORT_EVENT_TYPES makes terminals emit
-    // press AND release events; hosts that half-support the kitty protocol
-    // (herdr/conpty panes) leak releases into the prompt as "[<code>;1:3u".
-    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-}
-
-/// Request Kitty keyboard reporting and tmux's extended-key mode.
-///
-/// Avoids REPORT_ALL_KEYS_AS_ESCAPE_CODES: with it, kitty/Alacritty/Warp report
-/// printable keys as base key plus modifiers instead of the text the active
-/// layout produces, and crossterm cannot reconstruct shifted symbols for every
-/// layout. Prefer the terminal-delivered character and only synthesize ASCII
-/// letter casing in the input fallback.
-///
-/// Returns whether the requests were written, not whether the terminal supports them.
-pub fn enable_keyboard_enhancement() -> bool {
-    let result = enable_keyboard_enhancement_to(&mut std::io::stdout(), inside_tmux()).is_ok();
-    crate::logging::info(&format!(
-        "Keyboard enhancement request: {}",
-        if result { "sent" } else { "FAILED" }
-    ));
-    result
-}
-
-fn inside_tmux() -> bool {
-    std::env::var_os("TMUX").is_some_and(|value| !value.is_empty())
-}
-
-fn enable_keyboard_enhancement_to(
-    writer: &mut impl std::io::Write,
-    inside_tmux: bool,
-) -> std::io::Result<()> {
-    use crossterm::event::PushKeyboardEnhancementFlags;
-    request_tmux_extended_keys_to(writer, inside_tmux)?;
-    crossterm::execute!(
-        writer,
-        PushKeyboardEnhancementFlags(keyboard_enhancement_flags())
-    )
-}
-
-/// Reset tmux extended keys and pop Kitty keyboard reporting.
-pub fn disable_keyboard_enhancement() {
-    let _ = disable_keyboard_enhancement_to(&mut std::io::stdout(), inside_tmux());
-}
-
-fn disable_keyboard_enhancement_to(
-    writer: &mut impl std::io::Write,
-    inside_tmux: bool,
-) -> std::io::Result<()> {
-    if inside_tmux {
-        writer.write_all(b"\x1b[>4;0m")?;
-    }
-    crossterm::execute!(writer, crossterm::event::PopKeyboardEnhancementFlags)
-}
-
-fn request_tmux_extended_keys_to(
-    writer: &mut impl std::io::Write,
-    inside_tmux: bool,
-) -> std::io::Result<()> {
-    if inside_tmux {
-        // `extended-keys on` needs modifyOtherKeys opt-in, not a Kitty push.
-        writer.write_all(b"\x1b[>4;2m")?;
-    }
-    Ok(())
-}
-
-fn reapply_keyboard_enhancement_to(
-    writer: &mut impl std::io::Write,
-    inside_tmux: bool,
-) -> std::io::Result<()> {
-    request_tmux_extended_keys_to(writer, inside_tmux)?;
-    write!(writer, "\x1b[={}u", keyboard_enhancement_flags().bits())
-}
-
-/// Reassert terminal modes that terminals may clear while the TUI remains alive.
-///
-/// Kitty keyboard enhancement uses its `set` form rather than the stack-based
-/// `push`, keeping the shutdown pop balanced. Enabling focus reporting may itself
-/// produce a focus event, so focus-event handlers must pass `focus_change = false`.
-pub(crate) fn reapply_terminal_modes_to(
-    writer: &mut impl std::io::Write,
-    mouse_capture: bool,
-    keyboard_enhanced: bool,
-    focus_change: bool,
-) -> std::io::Result<()> {
-    use crossterm::QueueableCommand;
-    use crossterm::event::{EnableBracketedPaste, EnableFocusChange, EnableMouseCapture};
-
-    writer.queue(EnableBracketedPaste)?;
-    if focus_change {
-        writer.queue(EnableFocusChange)?;
-    }
-    if mouse_capture {
-        writer.queue(EnableMouseCapture)?;
-        // Crossterm toggles Win32 console mouse input on Windows, but ConPTY
-        // hosts such as VS Code also need the VT tracking modes reasserted.
-        #[cfg(windows)]
-        writer.write_all(b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1015h\x1b[?1006h")?;
-    }
-    if keyboard_enhanced {
-        reapply_keyboard_enhancement_to(writer, inside_tmux())?;
-    }
-    writer.flush()
-}
-
-pub(crate) fn reapply_configured_terminal_modes_after_focus() {
-    let policy = crate::perf::tui_policy();
-    if let Err(error) = reapply_terminal_modes_after_focus_to(
-        &mut std::io::stdout(),
-        policy.enable_mouse_capture,
-        policy.enable_keyboard_enhancement,
-    ) {
-        crate::logging::warn(&format!("failed to reapply terminal modes: {error}"));
-    }
-}
-
-fn reapply_terminal_modes_after_focus_to(
-    writer: &mut impl std::io::Write,
-    mouse_capture: bool,
-    keyboard_enhanced: bool,
-) -> std::io::Result<()> {
-    reapply_terminal_modes_to(
-        writer,
-        mouse_capture,
-        keyboard_enhanced,
-        // Ghostty reports its current focus when mode 1004 is enabled. Re-arming
-        // it from FocusGained would feed that reply back into this handler forever.
-        // Startup and resume-after-editor still enable focus reporting normally.
-        false,
-    )
-}
-
-#[cfg(test)]
-mod terminal_mode_tests {
-    use super::{
-        disable_keyboard_enhancement_to, enable_keyboard_enhancement_to,
-        reapply_keyboard_enhancement_to, reapply_terminal_modes_after_focus_to,
-        reapply_terminal_modes_to,
-    };
-
-    #[test]
-    fn tmux_keyboard_lifecycle_requests_and_resets_extended_keys() {
-        let mut output = Vec::new();
-        enable_keyboard_enhancement_to(&mut output, true).unwrap();
-        assert_eq!(output, b"\x1b[>4;2m\x1b[>7u");
-
-        output.clear();
-        reapply_keyboard_enhancement_to(&mut output, true).unwrap();
-        assert_eq!(output, b"\x1b[>4;2m\x1b[=7u");
-
-        output.clear();
-        disable_keyboard_enhancement_to(&mut output, true).unwrap();
-        assert_eq!(output, b"\x1b[>4;0m\x1b[<1u");
-    }
-
-    #[test]
-    fn outside_tmux_keyboard_lifecycle_keeps_kitty_protocol_only() {
-        let mut output = Vec::new();
-        enable_keyboard_enhancement_to(&mut output, false).unwrap();
-        assert_eq!(output, b"\x1b[>7u");
-
-        output.clear();
-        reapply_keyboard_enhancement_to(&mut output, false).unwrap();
-        assert_eq!(output, b"\x1b[=7u");
-
-        output.clear();
-        disable_keyboard_enhancement_to(&mut output, false).unwrap();
-        assert_eq!(output, b"\x1b[<1u");
-    }
-
-    #[test]
-    fn reapply_omits_keyboard_protocols_when_disabled() {
-        let mut output = Vec::new();
-        reapply_terminal_modes_to(&mut output, false, false, false).unwrap();
-        assert_eq!(output, b"\x1b[?2004h");
-    }
-
-    #[test]
-    fn reapply_omits_mouse_sequences_when_capture_is_disabled() {
-        let mut output = Vec::new();
-        reapply_terminal_modes_to(&mut output, false, true, true).unwrap();
-
-        let output = String::from_utf8(output).unwrap();
-        assert!(output.starts_with("\x1b[?2004h\x1b[?1004h"));
-        assert!(!output.contains("\x1b[?1000h"));
-        assert!(output.contains("\x1b[="));
-    }
-
-    #[test]
-    fn reapply_emits_configured_idempotent_modes_without_keyboard_push() {
-        let mut output = Vec::new();
-        reapply_terminal_modes_to(&mut output, true, true, true).unwrap();
-
-        let output = String::from_utf8(output).unwrap();
-        assert!(output.contains("\x1b[?2004h"));
-        assert!(output.contains("\x1b[?1004h"));
-        assert!(output.contains("\x1b[?1000h"));
-        assert!(output.contains("\x1b[="), "must set Kitty keyboard flags");
-        assert!(
-            !output.contains("\x1b[>7u"),
-            "must not push the Kitty keyboard stack"
-        );
-    }
-
-    #[test]
-    fn focus_reapply_preserves_other_modes_without_rearming_focus_reporting() {
-        for mouse_capture in [false, true] {
-            for keyboard_enhanced in [false, true] {
-                let mut output = Vec::new();
-                reapply_terminal_modes_after_focus_to(
-                    &mut output,
-                    mouse_capture,
-                    keyboard_enhanced,
-                )
-                .unwrap();
-
-                let output = String::from_utf8(output).unwrap();
-                assert!(output.starts_with("\x1b[?2004h"));
-                assert!(
-                    !output.contains("\x1b[?1004h"),
-                    "must not trigger a focus reply"
-                );
-                assert!(
-                    !output.contains("\x1b[?1004l"),
-                    "must keep focus reporting enabled"
-                );
-                assert_eq!(output.contains("\x1b[?1000h"), mouse_capture);
-                assert_eq!(output.contains("\x1b[=7u"), keyboard_enhanced);
-                assert!(
-                    !output.contains("\x1b[>7u"),
-                    "must not push the Kitty keyboard stack (tmux modifyOtherKeys is allowed)"
-                );
-            }
-        }
-    }
-}
+mod terminal_modes;
+pub use terminal_modes::*;
 
 /// Hash a rendered image's transcript anchor into `hasher`. Shared by the
 /// default and `App` implementations of `side_pane_images_signature` so both
@@ -1067,9 +828,10 @@ impl CacheTtlInfo {
 pub use crate::provider::{cache_ttl_for_provider, cache_ttl_for_provider_model};
 
 mod kv_cache_problem;
-pub(crate) use kv_cache_problem::cache_expected_warm;
 #[cfg(test)]
 pub(crate) use kv_cache_problem::KvCacheProblemKind;
+#[cfg(test)]
+pub(crate) use kv_cache_problem::cache_expected_warm;
 pub(crate) use kv_cache_problem::detect_kv_cache_problem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1847,9 +1609,8 @@ pub fn prewarm_focused_side_panel(
 #[cfg(test)]
 mod tests {
     use super::{
-        CacheTtlInfo, KvCacheProblemKind, cache_expected_warm, connection_type_icon,
-        detect_kv_cache_problem, keyboard_enhancement_flags, resolve_subscribe_metadata,
-        scheduled_notification_text,
+        CacheTtlInfo, KvCacheProblemKind, connection_type_icon, detect_kv_cache_problem,
+        keyboard_enhancement_flags, resolve_subscribe_metadata, scheduled_notification_text,
     };
     use crate::ambient::AmbientStatus;
     use crate::tui::info_widget::AmbientWidgetData;
@@ -2108,9 +1869,10 @@ mod tests {
     fn keyboard_enhancement_flags_avoid_report_all_keys_escape_mode() {
         let flags = keyboard_enhancement_flags();
 
-        assert!(flags.contains(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES));
-        assert!(flags.contains(KeyboardEnhancementFlags::REPORT_EVENT_TYPES));
-        assert!(flags.contains(KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS));
+        // Deliberately DISAMBIGUATE-only: REPORT_EVENT_TYPES leaks key releases
+        // as stray input on hosts that half-support the kitty protocol
+        // (herdr/ConPTY panes); ALTERNATE/ALL_KEYS stay off as well.
+        assert_eq!(flags, KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES);
         assert!(!flags.contains(KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES));
     }
 }

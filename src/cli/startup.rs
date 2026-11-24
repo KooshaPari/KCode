@@ -15,10 +15,25 @@ fn sync_output_style_from_config() {
     crate::output_style::set_emoji_enabled(crate::config::config().display.emoji);
 }
 
+/// Avoid startup mutations even when a coexistence invocation requests help or is invalid.
+pub fn is_coexistence_invocation() -> bool {
+    is_coexistence_args(std::env::args_os().collect())
+}
+
+fn is_coexistence_args(args: Vec<std::ffi::OsString>) -> bool {
+    match Args::try_parse_from(&args) {
+        Ok(args) => matches!(args.command, Some(Command::Coexistence { .. })),
+        Err(_) => args.iter().skip(1).any(|arg| arg == "coexistence"),
+    }
+}
+
 pub async fn run() -> Result<()> {
     // Parse once, before startup side effects. Invalid arguments and --help
     // must not harden credential files or create configuration/telemetry state.
     let args = Args::parse();
+    if matches!(&args.command, Some(Command::Coexistence { .. })) {
+        return dispatch::run_main(args).await;
+    }
     // Explicit session import has no startup hardening, migrations, provider
     // bootstrap, backup pruning, or daemon side effects in either product.
     if matches!(
@@ -547,7 +562,7 @@ fn report_main_error(error: &anyhow::Error) {
     if let Some(session_id) = terminal::get_current_session() {
         output::stderr_blank_line();
         output::stderr_info("\x1b[33mTo restore this session, run:\x1b[0m");
-        output::stderr_info(format!("  jcode --resume {}", session_id));
+        output::stderr_info(format!("  {}", terminal::resume_hint(&session_id)));
         output::stderr_blank_line();
     }
 }
@@ -828,5 +843,25 @@ mod tests {
         assert!(crate::provider::external::external_provider_registered(
             crate::provider::external::COPILOT_RUNTIME
         ));
+    }
+}
+
+#[cfg(test)]
+mod coexistence_startup_tests {
+    use super::is_coexistence_args;
+    use std::ffi::OsString;
+
+    fn check(args: &[&str]) -> bool {
+        is_coexistence_args(args.iter().map(OsString::from).collect())
+    }
+
+    #[test]
+    fn identifies_read_only_intent_for_valid_help_and_errors() {
+        assert!(check(&["kcode", "coexistence"]));
+        assert!(check(&["kcode", "coexistence", "--json"]));
+        assert!(check(&["kcode", "coexistence", "--help"]));
+        assert!(check(&["kcode", "coexistence", "--bad-option"]));
+        assert!(check(&["kcode", "--ssh", "host", "coexistence"]));
+        assert!(!check(&["kcode", "run", "coexistence"]));
     }
 }

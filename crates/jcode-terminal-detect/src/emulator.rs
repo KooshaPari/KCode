@@ -19,6 +19,9 @@ pub enum TerminalEmulator {
     Foot,
     LinuxConsole,
     MacTerminal,
+    /// herdr-core (HC): the herdr terminal runtime. Injects `HC_TERMINAL_ID`
+    /// into its panes and renders the Kitty graphics protocol.
+    HerdrCore,
     Unknown(String),
 }
 
@@ -44,6 +47,7 @@ impl TerminalEmulator {
             Self::Foot => "Foot",
             Self::LinuxConsole => "Linux Console",
             Self::MacTerminal => "Terminal.app",
+            Self::HerdrCore => "herdr-core",
             Self::Unknown(name) => name,
         }
     }

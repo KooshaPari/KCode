@@ -682,14 +682,17 @@ the upstream documentation for the canonical reference.
 | `GROK_API_KEY` | (unset) | jcode-provider-grok | xAI Grok API key |
 | `GROK_CLI_PATH` | (unset) | jcode-provider-grok | Override grok CLI binary path |
 | `GROK_DEPLOYMENT_KEY` | (unset) | jcode-provider-grok | Grok deployment key |
-| `HERDR_BIN_PATH` | (unset) | jcode-herdr | Path to the `herdr` binary |
-| `HERDR_ENV` | (unset) | jcode-herdr | Reserved for herdr environment tagging |
-| `HERDR_JCODE_IDLE_DEBOUNCE_MS` | (unset) | jcode-herdr | Debounce window for herdr->jcode idle events (ms) |
-| `HERDR_JCODE_RETRY_GRACE_MS` | (unset) | jcode-herdr | Retry grace window after disconnects (ms) |
-| `HERDR_PANE_ID` | (unset) | jcode-herdr | Identifier of the herdr pane hosting jcode |
-| `HERDR_SOCKET_PATH` | (unset) | jcode-herdr | herdr IPC socket path |
-| `HERDR_TAB_ID` | (unset) | jcode-herdr | Tab ID within herdr |
-| `HERDR_WORKSPACE_ID` | (unset) | jcode-herdr | herdr workspace identifier |
+| `HERDR_BIN_PATH` | (unset) | jcode-herdr | Path to the legacy `herdr` binary |
+| `HERDR_ENV` | (unset) | jcode-herdr | Legacy herdr environment tagging (`1` = active) |
+| `HERDR_KCODE_IDLE_DEBOUNCE_MS` | (unset) | jcode-herdr | Debounce window for herdr->kcode idle events (ms) |
+| `HERDR_KCODE_RETRY_GRACE_MS` | (unset) | jcode-herdr | Retry grace window after disconnects (ms) |
+| `HERDR_PANE_ID` | (unset) | jcode-herdr | Legacy herdr pane identifier hosting kcode |
+| `HERDR_SOCKET_PATH` | (unset) | jcode-herdr | Legacy herdr IPC socket path |
+| `HERDR_TAB_ID` | (unset) | jcode-herdr | Tab ID within legacy herdr |
+| `HERDR_WORKSPACE_ID` | (unset) | jcode-herdr | Legacy herdr workspace identifier |
+| `HC_SESSION` | (unset) | jcode-herdr | herdr-core session namespace |
+| `HC_SOCKET` | (unset) | jcode-herdr | herdr-core IPC socket path |
+| `HC_TERMINAL_ID` | (unset) | jcode-herdr | herdr-core terminal address (presence selects HC) |
 | `HOME` | (unset) | various | User home directory |
 | `HOSTNAME` | (unset) | various | Hostname |
 | `HOSTTYPE` | (unset) | various | CPU arch string |

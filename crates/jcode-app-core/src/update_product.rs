@@ -20,6 +20,7 @@
 /// GitHub repo slug for **upstream** builds.
 ///
 /// A fork build never updates from this slug; see [`update_repo`].
+#[allow(dead_code)] // Public API surface for fork decollision; not all builds call it.
 pub const GITHUB_REPO: &str = "1jehuang/jcode";
 
 /// Resolve the GitHub repo slug this build is allowed to update itself from.
@@ -27,12 +28,14 @@ pub const GITHUB_REPO: &str = "1jehuang/jcode";
 /// Returns `None` for a fork build. `None` is the fail-closed answer and every
 /// caller must treat it as "auto-update is unavailable", never as "fall back to
 /// upstream".
+#[allow(dead_code)] // Public API surface for fork decollision; not all builds call it.
 pub fn update_repo() -> Option<&'static str> {
     update_repo_for(current_semver())
 }
 
 /// Pure form of [`update_repo`], so the product-identity decision is directly
 /// testable without depending on process-global build metadata.
+#[allow(dead_code)] // Public API surface for fork decollision; not all builds call it.
 pub fn update_repo_for(semver: &str) -> Option<&'static str> {
     if is_fork_build_for(semver) {
         log_disabled(semver);
@@ -109,6 +112,7 @@ fn is_known_fork_prefix(channel: &str) -> bool {
 /// Error surfaced when an update is explicitly requested on a build that must
 /// not self-update, so `/update` reports a clear reason instead of silently
 /// claiming success or an opaque network failure.
+#[allow(dead_code)] // Public API surface for fork decollision; not all builds call it.
 pub fn fork_update_disallowed_error() -> anyhow::Error {
     anyhow::anyhow!(
         "Auto-update is disabled for this build. It is a fork build ({}) and never updates \
@@ -148,6 +152,7 @@ pub(super) fn require_update_channel() -> anyhow::Result<()> {
 /// Keeping this here means the call sites in [`super::update`] do not each
 /// repeat the resolve-or-bail boilerplate, which keeps that already oversized
 /// module from growing.
+#[allow(dead_code)] // Public API surface for fork decollision; not all builds call it.
 pub fn resolve_update_repo() -> anyhow::Result<&'static str> {
     update_repo().ok_or_else(fork_update_disallowed_error)
 }
@@ -157,6 +162,7 @@ pub fn resolve_update_repo() -> anyhow::Result<&'static str> {
 /// The updater refuses to run from a developer checkout; that check happens
 /// on the hot path in [`super::update`], so the walk lives here to keep the
 /// oversized updater module from carrying it.
+#[allow(dead_code)] // Public API surface for fork decollision; not all builds call it.
 pub fn is_inside_git_repo(path: &std::path::Path) -> bool {
     let mut dir = if path.is_dir() {
         Some(path)
@@ -228,6 +234,7 @@ fn current_semver() -> &'static str {
     }
 }
 
+#[allow(dead_code)] // Internal helper, called from update_repo_for; flagged in non-test builds.
 fn log_disabled(semver: &str) {
     crate::logging::info(&format!(
         "Auto-update disabled: fork build ({}) does not update from upstream {}",

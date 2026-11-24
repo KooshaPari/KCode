@@ -15,8 +15,44 @@ class ProductIdentityTests(unittest.TestCase):
         bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
         if not bash:
             self.skipTest("Bash unavailable")
+        # Use a symlink-free absolute base. On macOS /tmp is a symlink to
+        # /private/tmp, so a literal /tmp path trips the symlink guard in
+        # scripts/product_paths.sh before the jcode-component guard this test
+        # is actually asserting, and the expected stderr never appears.
+        forbidden_base = pathlib.Path(tempfile.gettempdir()).resolve()
+        # On Windows, tempfile.gettempdir() yields a drive-letter path
+        # (e.g. C:\Users\...\Temp) that Git Bash / MSYS2 cannot consume
+        # directly as a bash argument; convert it to a POSIX path using
+        # `cygpath -u`. If cygpath is unavailable (non-Windows host, or a
+        # Git Bash build without it), skip instead of asserting vacuously.
+        forbidden_base_str = str(forbidden_base)
+        is_windows_path = (
+            __import__("os").name == "nt"
+            or "\\" in forbidden_base_str
+            or (len(forbidden_base_str) >= 2 and forbidden_base_str[1] == ":")
+        )
+        if is_windows_path:
+            cygpath = shutil.which("cygpath")
+            if not cygpath:
+                self.skipTest("cygpath unavailable; cannot convert Windows path for bash")
+            converted = subprocess.run(
+                [cygpath, "-u", forbidden_base_str],
+                capture_output=True, text=True, timeout=30,
+            )
+            if converted.returncode != 0 or not converted.stdout.strip():
+                self.skipTest(
+                    "cygpath conversion failed: "
+                    + (converted.stderr.strip() or "no output")
+                )
+            # Keep the POSIX path from `cygpath -u` as a string. Wrapping it
+            # in pathlib.Path on Windows re-interprets `/c/Users/...` as
+            # `\c\Users\...`, which bash no longer treats as absolute and the
+            # guard's "cannot use jcode" branch is never reached.
+            forbidden_base = converted.stdout.strip()
         rejected = subprocess.run(
-            [bash, "-c", "source scripts/product_paths.sh; require_kcode_owned_path /tmp/.jcode/forbidden"],
+            [bash, "-c",
+             'source scripts/product_paths.sh; require_kcode_owned_path "$1"/.jcode/forbidden',
+             "bash", str(forbidden_base)],
             cwd=ROOT, capture_output=True, text=True, timeout=30,
         )
         self.assertNotEqual(rejected.returncode, 0)

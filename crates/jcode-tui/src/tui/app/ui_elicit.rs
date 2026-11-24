@@ -118,7 +118,7 @@ impl App {
         });
 
         // Report HERDR: permission/elicitation prompt is blocking the agent.
-        tokio::spawn(crate::herdr::report_state(AgentState::Blocked));
+        tokio::spawn(jcode_herdr::global::report_state(AgentState::Blocked));
     }
     /// Handle a key press while the elicitation overlay is active.
     ///
@@ -350,7 +350,7 @@ impl App {
         } else {
             AgentState::Idle
         };
-        tokio::spawn(crate::herdr::report_state(state));
+        tokio::spawn(jcode_herdr::global::report_state(state));
     }
 }
 

@@ -701,7 +701,7 @@ mod batch_crash_tests {
         // no leftover streaming marker means the session was idle — ordinary
         // close, not crash. Daemon restarts must not stamp idle sessions.
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir().expect("tempdir");
+        let temp = crate::test_temp::tempdir().expect("tempdir");
         crate::env::set_var("KCODE_HOME", temp.path());
 
         let dir = storage::streaming_pids_dir().expect("streaming dir");
@@ -719,7 +719,7 @@ mod batch_crash_tests {
         // A marker file left behind (StreamingGuard clears it on every
         // orderly exit) proves the owner died mid-turn — genuine crash.
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir().expect("tempdir");
+        let temp = crate::test_temp::tempdir().expect("tempdir");
         crate::env::set_var("KCODE_HOME", temp.path());
 
         let dir = storage::streaming_pids_dir().expect("streaming dir");
@@ -740,7 +740,7 @@ mod batch_crash_tests {
     #[test]
     fn find_session_by_name_or_id_matches_custom_title() {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir().expect("tempdir");
+        let temp = crate::test_temp::tempdir().expect("tempdir");
         crate::env::set_var("KCODE_HOME", temp.path());
 
         let session_id = "session_renamecli_1770000000000";
@@ -768,7 +768,7 @@ mod batch_crash_tests {
     #[test]
     fn find_session_by_name_or_id_accepts_imported_session_ids() -> anyhow::Result<()> {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir()?;
+        let temp = crate::test_temp::tempdir()?;
         crate::env::set_var("KCODE_HOME", temp.path());
 
         let imported_id = "imported_codex_test_resume";
@@ -792,7 +792,7 @@ mod batch_crash_tests {
     fn find_session_by_name_or_id_resolves_bare_opencode_id_to_imported_snapshot()
     -> anyhow::Result<()> {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir()?;
+        let temp = crate::test_temp::tempdir()?;
         crate::env::set_var("KCODE_HOME", temp.path());
 
         let provider_id = "ses_2c72f8f4cffee6Qh7GId7D81Se";
@@ -821,7 +821,7 @@ mod batch_crash_tests {
     #[test]
     fn find_session_by_name_or_id_bare_id_without_snapshot_still_errors() -> anyhow::Result<()> {
         let _guard = crate::storage::lock_test_env();
-        let temp = tempfile::tempdir()?;
+        let temp = crate::test_temp::tempdir()?;
         crate::env::set_var("KCODE_HOME", temp.path());
         std::fs::create_dir_all(temp.path().join("sessions"))?;
 

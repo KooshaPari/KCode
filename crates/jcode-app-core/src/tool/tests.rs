@@ -244,47 +244,6 @@ async fn test_tool_definitions_are_sorted() {
 }
 
 #[test]
-fn deferred_mcp_surfaces_follow_umbrella_and_per_tool_filters() {
-    use std::collections::HashSet;
-
-    let umbrella = HashSet::from(["mcp".to_string()]);
-    assert!(super::tool_name_is_allowed(&umbrella, "mcp_search"));
-    assert!(super::tool_name_is_allowed(&umbrella, "mcp_call"));
-    assert!(super::tool_name_is_allowed(&umbrella, "mcp__server__tool"));
-
-    let one_tool = HashSet::from(["mcp__server__allowed".to_string()]);
-    assert!(super::tool_name_is_allowed(&one_tool, "mcp_search"));
-    assert!(super::tool_name_is_allowed(&one_tool, "mcp_call"));
-
-    let disabled = HashSet::from(["mcp".to_string()]);
-    assert!(super::tool_name_is_disabled(&disabled, "mcp_search"));
-    assert!(super::tool_name_is_disabled(&disabled, "mcp_call"));
-    assert!(super::tool_name_is_disabled(&disabled, "mcp__server__tool"));
-
-    super::set_session_tool_policy(
-        "deferred-filter-test",
-        Some(one_tool),
-        HashSet::from(["mcp__server__blocked".to_string()]),
-    );
-    assert!(super::session_mcp_dispatch_is_allowed(
-        "deferred-filter-test",
-        "mcp__server__allowed",
-        "mcp_call"
-    ));
-    assert!(!super::session_mcp_dispatch_is_allowed(
-        "deferred-filter-test",
-        "mcp__server__blocked",
-        "mcp_call"
-    ));
-    assert!(!super::session_mcp_dispatch_is_allowed(
-        "deferred-filter-test",
-        "mcp__server__other",
-        "mcp_call"
-    ));
-    super::clear_session_tool_policy("deferred-filter-test");
-}
-
-#[test]
 fn test_resolve_skill_aliases_to_skill_manage() {
     assert_eq!(Registry::resolve_tool_name("skill"), "skill_manage");
     assert_eq!(Registry::resolve_tool_name("Skill"), "skill_manage");
@@ -1866,7 +1825,7 @@ async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode()
     /// Built-ins that legitimately cannot be strict. Verified against master
     /// before the #711/#713 eligibility changes, so this is pre-existing.
     // applet's view is a recursive, open-ended node tree.
-    const KNOWN_OPEN_WORLD_TOOLS: &[&str] = &["applet", "batch", "browser", "swarm"];
+    const KNOWN_OPEN_WORLD_TOOLS: &[&str] = &["applet", "batch", "browser", "initiative", "swarm"];
 
     let provider: Arc<dyn Provider> = Arc::new(MockProvider);
     let registry = Registry::new(provider).await;
@@ -1893,6 +1852,12 @@ async fn only_the_known_open_world_tools_are_ineligible_for_openai_strict_mode()
          eligibility rule is too aggressive, a missing name means this list is stale"
     );
 }
+
+#[path = "tests/mcp_allow_filters.rs"]
+mod mcp_allow_filters;
+
+#[path = "tests/mcp_grant_enforcement.rs"]
+mod mcp_grant_enforcement;
 
 #[path = "tests/mcp_collision.rs"]
 mod mcp_collision;
@@ -1941,6 +1906,7 @@ async fn post_tool_feedback_hook_appends_stdout_to_tool_result() {
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     let previous = std::env::var_os("KCODE_HOOK_POST_TOOL_FEEDBACK");
     crate::env::set_var("KCODE_HOOK_POST_TOOL_FEEDBACK", &script);
+    jcode_base::config::invalidate_config_cache();
 
     let registry = Registry::new(Arc::new(MockProvider) as Arc<dyn Provider>).await;
     let mut ctx = mcp_test_context(dir.path());
@@ -1953,6 +1919,7 @@ async fn post_tool_feedback_hook_appends_stdout_to_tool_result() {
         Some(value) => crate::env::set_var("KCODE_HOOK_POST_TOOL_FEEDBACK", value),
         None => crate::env::remove_var("KCODE_HOOK_POST_TOOL_FEEDBACK"),
     }
+    jcode_base::config::invalidate_config_cache();
     let output = result.expect("read should succeed").output;
     assert!(output.contains("hello"), "{output}");
     assert!(output.contains("[post_tool_feedback]"), "{output}");

@@ -11,6 +11,16 @@ pub struct SessionToolDefinition {
     pub parameters: serde_json::Map<String, serde_json::Value>,
 }
 
+/// An MCP tool the operator explicitly allowed in a restricted session.
+///
+/// Mirrors the wire grant: one server, one tool, never a prefix and never a
+/// generic surface.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpToolGrant {
+    pub server: String,
+    pub tool: String,
+}
+
 /// Replacement tool configuration for a live session, not a patch.
 /// Reconfigure after daemon restart or loading a persisted session. Custom
 /// tools execute on the configuring client's connection.
@@ -24,6 +34,9 @@ pub struct ToolConfiguration {
     /// Additive custom tools, overriding a built-in/MCP tool with the same name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom: Vec<SessionToolDefinition>,
+    /// MCP tools that survive a blanket MCP deny. See [`McpToolGrant`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_mcp_tools: Vec<McpToolGrant>,
 }
 
 /// Curated request surface. Internally-tagged on `"req"`.

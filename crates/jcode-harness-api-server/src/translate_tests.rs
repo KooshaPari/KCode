@@ -3518,12 +3518,10 @@ fn session_tool_controls_require_attachment_and_negotiated_support() {
             ),
         ] {
             let actions = state.api_request_to_legacy(&request);
-            assert!(
-                matches!(actions.as_slice(), [Outbound::Reply(frame)]
-                    if frame.reply_to == Some(9)
-                        && matches!(&frame.event, ApiEvent::Error { code, .. } if code == code)
-                )
-            );
+            assert!(matches!(actions.as_slice(), [Outbound::Reply(frame)]
+                if frame.reply_to == Some(9)
+                    && matches!(&frame.event, ApiEvent::Error { code, .. } if code == code)
+            ));
             assert!(state.pending_simple.is_empty());
         }
         let mut state = tool_state();
@@ -3597,12 +3595,10 @@ fn tool_controls_validate_pending_attachment_and_required_session() {
     ] {
         let actions = state
             .api_request_to_legacy(&json!({"id":3,"req":"list_tools","session_id":session_id}));
-        assert!(
-            matches!(actions.as_slice(), [Outbound::Reply(frame)]
-                if frame.reply_to == Some(3)
-                    && matches!(&frame.event, ApiEvent::Error { code, .. } if code == code)
-            )
-        );
+        assert!(matches!(actions.as_slice(), [Outbound::Reply(frame)]
+            if frame.reply_to == Some(3)
+                && matches!(&frame.event, ApiEvent::Error { code, .. } if code == code)
+        ));
     }
 }
 

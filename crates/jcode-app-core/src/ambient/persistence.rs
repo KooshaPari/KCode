@@ -115,7 +115,7 @@ impl ScheduledQueue {
 
     /// Remove and return ready items targeted at a specific direct-delivery session,
     /// leaving ambient-targeted queue items intact for the ambient agent to process.
-    pub fn take_ready_direct_items(&mut self) -> Vec<ScheduledItem> {
+    pub fn take_ready_direct_items(&mut self, pause_spawns: bool) -> Vec<ScheduledItem> {
         let now = Utc::now();
         let mut ready_direct = Vec::new();
         let mut remaining = Vec::with_capacity(self.items.len());
@@ -123,7 +123,9 @@ impl ScheduledQueue {
         for item in self.items.drain(..) {
             let is_ready = item.scheduled_for <= now;
             let is_direct_target = item.target.is_direct_delivery();
-            if is_ready && is_direct_target {
+            let spawn_paused =
+                pause_spawns && matches!(item.target, super::ScheduleTarget::Spawn { .. });
+            if is_ready && is_direct_target && !spawn_paused {
                 ready_direct.push(item);
             } else {
                 remaining.push(item);

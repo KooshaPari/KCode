@@ -52,18 +52,40 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           GH_TOKEN: ${{ github.token }}
+          # Passed through the environment, never interpolated into the script.
+          # A `${{ inputs.* }}` expression placed directly inside `run:` lets
+          # whoever triggers the workflow inject shell syntax into the step
+          # (SonarCloud githubactions:S7630).
+          RELEASE_TAG: ${{ inputs.jcode_release_tag }}
+          # Windows ARM64 is published only after the separate ARM64 runtime
+          # qualification, so asking for that asset unconditionally makes
+          # `gh release download` fail on an unqualified release.
+          WINDOWS_ARM64_QUALIFIED: ${{ vars.WINDOWS_ARM64_QUALIFIED }}
         run: |
           mkdir -p sdk-runtime-assets
-          gh release download "${{ inputs.jcode_release_tag }}" --dir sdk-runtime-assets \
-            --pattern 'jcode-linux-x86_64.tar.gz' \
-            --pattern 'jcode-linux-aarch64.tar.gz' \
-            --pattern 'jcode-macos-x86_64.tar.gz' \
-            --pattern 'jcode-macos-aarch64.tar.gz' \
-            --pattern 'jcode-windows-x86_64.tar.gz' \
-            --pattern 'jcode-windows-aarch64.tar.gz'
+          patterns=(
+            'kcode-linux-x86_64.tar.gz'
+            'kcode-linux-aarch64.tar.gz'
+            'kcode-macos-x86_64.tar.gz'
+            'kcode-macos-aarch64.tar.gz'
+            'kcode-windows-x86_64.tar.gz'
+          )
+          if [ "${WINDOWS_ARM64_QUALIFIED:-}" = 'true' ]; then
+            patterns+=('kcode-windows-aarch64.tar.gz')
+          else
+            echo "skipping kcode-windows-aarch64.tar.gz: WINDOWS_ARM64_QUALIFIED is not 'true'"
+          fi
+          args=()
+          for pattern in "${patterns[@]}"; do
+            args+=(--pattern "$pattern")
+          done
+          gh release download "$RELEASE_TAG" \
+            --dir sdk-runtime-assets "${args[@]}"
 
       - name: Prepare platform packages
         working-directory: ${{ github.workspace }}
+        env:
+          WINDOWS_ARM64_QUALIFIED: ${{ vars.WINDOWS_ARM64_QUALIFIED }}
         run: bash scripts/prepare_sdk_runtime_packages.sh sdk-runtime-assets
 
       # These must exist before the main package is published. npm selects only

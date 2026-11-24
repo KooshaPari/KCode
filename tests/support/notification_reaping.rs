@@ -30,7 +30,7 @@ struct Probe {
 impl Probe {
     fn start(notifier_present: bool) -> Self {
         let dir = tempfile::Builder::new()
-            .prefix("jcode-notification-reaping-")
+            .prefix("kcode-notification-reaping-")
             .tempdir()
             .unwrap();
         let bin = dir.path().join("bin");

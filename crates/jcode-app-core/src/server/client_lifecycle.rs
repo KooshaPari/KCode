@@ -25,6 +25,7 @@ use super::client_session::{
 use super::client_state::{
     handle_get_compacted_history, handle_get_history, handle_get_model_catalog, handle_get_state,
 };
+use super::client_subscribe_context::{initial_subscribe_terminal_env, new_session_system_prompt};
 use super::client_writer::write_direct_event;
 use super::comm_await::{CommAwaitMembersContext, handle_comm_await_members};
 use super::comm_control::{
@@ -46,6 +47,7 @@ use super::provider_control::{
     handle_set_service_tier, handle_set_transport, handle_switch_anthropic_account,
     handle_switch_openai_account, try_available_models_updated_event,
 };
+use super::session_mcp_registration::resolve_target_session_mcp;
 use super::{
     AwaitMembersRuntime, ClientConnectionInfo, ClientDebugState, FileTouchService,
     SessionControlHandle, SessionInterruptQueues, SharedContext, SwarmEvent, SwarmMember,
@@ -162,25 +164,6 @@ fn validated_subscribe_working_dir(
         ));
     }
     Ok(working_dir)
-}
-
-fn new_session_system_prompt<'a>(
-    provisional_session: bool,
-    target_session_id: Option<&str>,
-    system_prompt: Option<&'a str>,
-) -> Option<&'a str> {
-    if provisional_session && target_session_id.is_none() {
-        system_prompt
-    } else {
-        None
-    }
-}
-
-fn initial_subscribe_terminal_env(request: &Request) -> Vec<(String, String)> {
-    match request {
-        Request::Subscribe { terminal_env, .. } => terminal_env.clone(),
-        _ => Vec::new(),
-    }
 }
 
 struct ProcessingMessage {
@@ -1677,9 +1660,8 @@ pub(super) async fn handle_client(
                     // session or the target-aware subscribe silently creates a
                     // different session and every subsequent command reports a
                     // wrong-session attachment.
-                    if crate::session::session_exists(&target_session_id)
-                        || sessions.read().await.contains_key(&target_session_id)
-                    {
+                    let target_mcp = resolve_target_session_mcp(&sessions, &target_session_id).await;
+                    if target_mcp.is_existing_session {
                         let pre_resume_session_id = client_session_id.clone();
                         agent = crate::hooks::with_client_terminal_env(
                             active_terminal_env.clone(),
@@ -1733,7 +1715,7 @@ pub(super) async fn handle_client(
                                 id,
                                 subscribe_working_dir,
                                 selfdev,
-                                false,
+                                target_mcp.register_mcp_tools,
                                 &mut client_selfdev,
                                 &client_session_id,
                                 &client_connection_id,
@@ -2332,6 +2314,43 @@ pub(super) async fn handle_client(
                     },
                 )
                 .await;
+            }
+            r @ (Request::NotifySessionReceipt { .. } | Request::GetWakeReceipt { .. }) => {
+                // is_lightweight_control_request routes these before attach, but a
+                // client that has already subscribed can still send one later.
+                // Handle it on the control path rather than aborting the task.
+                if let Err(error) = handle_lightweight_control_request(
+                    r,
+                    Arc::clone(&writer),
+                    LightweightControlContext {
+                        sessions: &sessions,
+                        global_session_id: &global_session_id,
+                        provider_template: &provider_template,
+                        swarm_members: &swarm_members,
+                        swarms_by_id: &swarms_by_id,
+                        shared_context: &shared_context,
+                        swarm_plans: &swarm_plans,
+                        swarm_coordinators: &swarm_coordinators,
+                        file_touch: &file_touch,
+                        channel_subscriptions: &channel_subscriptions,
+                        channel_subscriptions_by_session: &channel_subscriptions_by_session,
+                        client_connections: &client_connections,
+                        event_history: &event_history,
+                        event_counter: &event_counter,
+                        swarm_event_tx: &swarm_event_tx,
+                        mcp_pool: &mcp_pool,
+                        soft_interrupt_queues: &soft_interrupt_queues,
+                        await_members_runtime: &await_members_runtime,
+                        swarm_mutation_runtime: &swarm_mutation_runtime,
+                    },
+                )
+                .await
+                {
+                    super::wake_receipts::send_event(
+                        &client_event_tx,
+                        super::wake_receipts::error_event(request_id, &error.to_string()),
+                    );
+                }
             }
 
             Request::AppletAction {

@@ -280,3 +280,71 @@ fn failed_send_reschedules() {
         Some(now + RetryPolicy::default().base_delay)
     );
 }
+
+// --- A16 red tests: defects proven at turn_retry.rs:159-165, 217-245 ---
+
+#[test]
+fn d1_overflowing_digit_run_does_not_discard_a_valid_later_delay() {
+    // D1: `digits.parse().ok()?` aborts the whole scan on an oversized run.
+    assert_eq!(
+        classify_failure(
+            "429 slow down, retry 123456789012345678901234567890 then 30 seconds",
+            None
+        ),
+        FailureKind::RateLimited {
+            retry_after: Some(Duration::from_secs(30))
+        }
+    );
+    // A header-shaped absurd value saturates instead of vanishing; the policy,
+    // not the decoder, is what rejects an over-long wait.
+    assert_eq!(
+        classify_failure(
+            "429 too many requests; retry after 999999999999999999999999999999999 seconds",
+            None
+        ),
+        FailureKind::RateLimited {
+            retry_after: Some(Duration::from_secs(u64::MAX))
+        }
+    );
+}
+
+#[test]
+fn d2_bare_number_is_not_bound_to_an_unrelated_word() {
+    // D2: the bare number takes whatever word follows, so "2 attempts" wins
+    // over the real 30-second hint.
+    assert_eq!(
+        classify_failure("rate limited, retry in 2 attempts, 30 seconds", None),
+        FailureKind::RateLimited {
+            retry_after: Some(Duration::from_secs(30))
+        }
+    );
+}
+
+#[test]
+fn d3_zero_delay_hints_are_consistently_ignored() {
+    // D3: the "ms" arm returns before the `secs > 0` guard.
+    assert_eq!(parse_retry_after("retry after 0ms"), None);
+    assert_eq!(parse_retry_after("retry after 0 seconds"), None);
+}
+
+#[test]
+fn d4_underscore_request_ids_are_not_mistaken_for_status_codes() {
+    // D4: contains_code treats '_' as a boundary, so a request id reads as 500.
+    assert_eq!(
+        classify_failure("failed (request id req_500)", None),
+        FailureKind::Permanent
+    );
+    assert_eq!(
+        classify_failure("failed (request id req_503_abc)", None),
+        FailureKind::Permanent
+    );
+    // A standalone code still classifies.
+    assert_eq!(
+        classify_failure("upstream returned 502", None),
+        FailureKind::Transient
+    );
+    assert_eq!(
+        classify_failure("HTTP 503 Service Unavailable", None),
+        FailureKind::Transient
+    );
+}

@@ -160,4 +160,4 @@ fi
 # Ensure the launcher dir is on PATH for bash, zsh and fish in future shells.
 # shellcheck source=scripts/lib/configure_path.sh
 . "$(dirname "$0")/lib/configure_path.sh"
-kcode_configure_path "$install_dir"
+jcode_configure_path "$install_dir"
