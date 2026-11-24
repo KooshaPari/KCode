@@ -9,6 +9,48 @@ use std::collections::HashSet;
 
 const RELEVANT_CRASH_GROUP_WINDOW_SECS: i64 = 60;
 
+/// Age after which an active session with no recorded owner at all (older
+/// sessions, before `last_pid` was persisted) is treated as crashed.
+const STALE_ACTIVE_SESSION_SECS: i64 = 120;
+
+fn exited_unexpectedly(pid: u32) -> String {
+    format!("Process {pid} exited unexpectedly (no shutdown signal captured)")
+}
+
+/// Decide whether `session` looks crashed and mark it.
+///
+/// Prefers the on-disk ownership marker: it records the boot its owner was seen
+/// in, so a PID inherited by an unrelated process after a reboot still counts as
+/// a lost owner. Falls back to `last_pid`, then to an age heuristic for sessions
+/// that never recorded a PID.
+pub fn detect_and_mark(session: &mut Session) -> bool {
+    if session.status != SessionStatus::Active {
+        return false;
+    }
+
+    let crash_reason = match storage::read_active_pid(&session.id) {
+        Some(marker) if marker.is_live() => return false,
+        Some(marker) => Some(exited_unexpectedly(marker.pid)),
+        None => match session.last_pid {
+            Some(pid) if !is_pid_running(pid) => Some(exited_unexpectedly(pid)),
+            Some(_) => None,
+            None => {
+                let age = Utc::now().signed_duration_since(session.updated_at);
+                (age.num_seconds() > STALE_ACTIVE_SESSION_SECS)
+                    .then(|| "Stale active session (possible abrupt termination)".to_string())
+            }
+        },
+    };
+
+    match crash_reason {
+        Some(message) => {
+            session.mark_crashed(Some(message));
+            true
+        }
+        None => false,
+    }
+}
+
 /// Recover crashed sessions from the most relevant crash group (text-only).
 /// Returns new recovery session IDs (most recent first).
 pub fn recover_crashed_sessions() -> Result<Vec<String>> {
