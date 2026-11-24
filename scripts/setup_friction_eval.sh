@@ -35,6 +35,21 @@ repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 install_sh="$repo_dir/scripts/install.sh"
 install_ps1="$repo_dir/scripts/install.ps1"
 
+# Sections A-C install into a sandbox with a mocked release endpoint and then
+# probe the result with real shells; Section D statically audits install.sh and
+# install.ps1. All of it therefore scores the release installer, and KCode
+# disables release downloads on purpose -- install.sh short-circuits with the
+# message below before any of that behaviour exists. Score it SKIP rather than
+# FAIL, matching this script's existing treatment of not-applicable cases
+# ("SKIPs don't count against the score but are reported").
+#
+# Keyed off the sentinel so restoring install.sh re-arms the whole scorecard.
+if grep -q 'KCode release downloads are disabled' "$install_sh"; then
+  printf 'SKIP  setup friction scorecard: scripts/install.sh is intentionally disabled in this fork.\n'
+  printf '      Release-install PATH, idempotency, retention and Windows-parity sections are not applicable.\n'
+  exit 0
+fi
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 

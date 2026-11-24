@@ -2,6 +2,23 @@
 set -euo pipefail
 
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+# Every scenario below drives scripts/install.sh through mocked curl/uname/tar
+# and asserts on its telemetry, checksum and download-URL behaviour. KCode
+# disables release downloads on purpose -- install.sh short-circuits to this
+# message before any of that logic runs, so the scenarios cannot observe what
+# they assert. Skip instead of reporting a failure for a capability the fork
+# deliberately does not ship.
+#
+# Keying the skip off the sentinel (rather than an unconditional skip) keeps the
+# gate honest: if install.sh is ever restored, the sentinel disappears and these
+# scenarios run for real again.
+if grep -q 'KCode release downloads are disabled' "$repo_dir/scripts/install.sh"; then
+  echo "SKIP: scripts/install.sh is intentionally disabled in this fork."
+  echo "      Release-download conversion and telemetry scenarios are not applicable."
+  exit 0
+fi
+
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/bin" "$tmp/home" "$tmp/install"
