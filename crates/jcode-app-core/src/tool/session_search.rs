@@ -1824,18 +1824,13 @@ fn is_tool_only_message(msg: &StoredMessage) -> bool {
 }
 
 fn role_label(msg: &StoredMessage) -> &'static str {
-    if let Some(ref display_role) = msg.display_role {
-        return match display_role {
-            crate::session::StoredDisplayRole::System => "system",
-            crate::session::StoredDisplayRole::BackgroundTask => "background",
-            crate::session::StoredDisplayRole::FileActivity
-            | crate::session::StoredDisplayRole::Other(_) => "system",
-        };
-    }
-
-    match msg.role {
-        crate::message::Role::User => "user",
-        crate::message::Role::Assistant => "assistant",
+    match msg.display_role {
+        Some(crate::session::StoredDisplayRole::BackgroundTask) => "background",
+        Some(_) => "system",
+        None => match msg.role {
+            crate::message::Role::User => "user",
+            crate::message::Role::Assistant => "assistant",
+        },
     }
 }
 
