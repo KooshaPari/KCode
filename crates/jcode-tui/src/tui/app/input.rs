@@ -84,7 +84,7 @@ fn merge_turn_reminders(a: Option<String>, b: Option<String>) -> Option<String> 
     }
 }
 
-pub(super) fn extract_input_shell_command(input: &str) -> Option<&str> {
+pub(crate) fn extract_input_shell_command(input: &str) -> Option<&str> {
     input.trim().strip_prefix('!').map(str::trim)
 }
 
