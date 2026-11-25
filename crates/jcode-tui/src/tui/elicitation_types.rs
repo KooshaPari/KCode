@@ -142,6 +142,9 @@ pub enum ElicitAction {
 pub enum ElicitHit {
     /// An option row of a `FieldSpec::Choice`, by index into `options`.
     Option(usize),
+    /// The panel itself, away from any option. The overlay is modal, so the
+    /// click is consumed and nothing changes.
+    Backdrop,
 }
 
 /// Mutable state of the elicitation overlay within the TUI.

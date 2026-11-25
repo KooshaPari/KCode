@@ -152,10 +152,15 @@ impl App {
             mouse.column,
             mouse.row,
         );
-        let Some(ElicitHit::Option(option_idx)) = hit else {
-            return false;
-        };
-        state.selected = option_idx;
-        true
+        match hit {
+            Some(ElicitHit::Option(option_idx)) => {
+                state.selected = option_idx;
+                true
+            }
+            // Landed on the panel but not on an option: the overlay is modal, so
+            // the click is swallowed rather than reaching the chat underneath.
+            Some(ElicitHit::Backdrop) => true,
+            None => false,
+        }
     }
 }
