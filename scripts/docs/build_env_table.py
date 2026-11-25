@@ -2,8 +2,8 @@
 """Generate docs/ENVIRONMENT.md from the jcode/kcode workspace.
 
 Reads the env::var() call sites in `crates/jcode-base/src/config/env_overrides.rs`
-to extract JCODE_-prefixed env vars with their immediate section comment, plus
-all other JCODE_-prefixed env vars found across the workspace, plus a curated
+to extract KCODE_-prefixed env vars with their immediate section comment, plus
+all other KCODE_-prefixed env vars found across the workspace, plus a curated
 list of well-known third-party env vars (HERDR_*, COMPOSIO_*, GHOSTTY_*, etc.)
 seen at runtime.
 
@@ -265,11 +265,11 @@ def build_env_overrides_table(sections: dict[str, list[dict]]) -> str:
     return "\n".join(rows)
 
 
-def build_workspace_jcode_table(names: list[str]) -> str:
+def build_workspace_kcode_table(names: list[str]) -> str:
     rows = [
-        "### Other JCODE_* env vars (workspace-wide)",
+        "### Other KCODE_* env vars (workspace-wide)",
         "",
-        "These JCODE_-prefixed env vars are read by their respective crates but not",
+        "These KCODE_-prefixed env vars are read by their respective crates but not",
         "listed in `crates/jcode-base/src/config/env_overrides.rs`. They are read",
         "directly via `std::env::var(...)` from each crate's `apply_*` helper or",
         "module-level const.",
@@ -347,14 +347,14 @@ def main() -> int:
     sections = parse_env_overrides()
     overrides_section = build_env_overrides_table(sections)
 
-    # Workspace JCODE-prefixed vars minus the ones already in env_overrides
+    # Workspace KCODE-prefixed vars minus the ones already in env_overrides
     overrides_names = set()
     for items in sections.values():
         for it in items:
             overrides_names.add(it["name"])
 
     jcode_workspace: list[str] = []
-    list_file = REPO / "scripts/docs/jcode_env.lst"
+    list_file = REPO / "scripts/docs/kcode_env.lst"
     if not list_file.exists():
         print(f"missing {list_file}; regenerating via rg...", file=sys.stderr)
         # Refresh the list from the workspace via rg
@@ -365,7 +365,7 @@ def main() -> int:
                 "rust",
                 "-N",
                 "-o",
-                '"JCODE_[A-Z0-9_]*"',
+                '"KCODE_[A-Z0-9_]*"',
                 "crates",
                 "src",
             ],
@@ -381,7 +381,7 @@ def main() -> int:
                 continue
             quoted = line[line.index('"'):]
             m = ENV_VAR_RE.search(quoted)
-            if m and m.group(1).startswith("JCODE_"):
+            if m and m.group(1).startswith("KCODE_"):
                 names_set.add(m.group(1))
         list_file.write_text("\n".join(sorted(names_set)) + "\n")
     for raw in list_file.read_text().splitlines():
@@ -390,13 +390,13 @@ def main() -> int:
             continue
         jcode_workspace.append(name)
 
-    workspace_section = build_workspace_jcode_table(jcode_workspace)
+    workspace_section = build_workspace_kcode_table(jcode_workspace)
     thirdparty_section = build_thirdparty_table()
 
     body = f"""# Environment variables
 
-This document catalogues every `JCODE_*` and selected third-party environment
-variable that the workspace reads at runtime. The total count is **{len(overrides_names) + len(jcode_workspace) + len(THIRD_PARTY)}** env vars across the workspace (audit 2026-10-17).
+This document catalogues every `KCODE_*` and selected third-party environment
+variable that the workspace reads at runtime. The total count is **{len(overrides_names) + len(jcode_workspace) + len(THIRD_PARTY)}** env vars across the workspace.
 
 Source of truth: each `std::env::var(...)`, `env::var(...)`, or `env::var_os(...)`
 call site in `crates/` and `src/`. The first table is generated from
@@ -406,13 +406,13 @@ from a workspace-wide `rg` pass.
 If a variable is missing or undocumented, please file a docs issue; this file
 is regenerated on each release cut.
 
-<!-- auto-generated from crates/* source on 2026-10-17 by raven (top5 doc fixes) -->
+<!-- auto-generated from crates/* and src/* source; see Regeneration below -->
 
 ## Quick reference
 
 - Total env vars documented: **{len(overrides_names) + len(jcode_workspace) + len(THIRD_PARTY)}**
-  - `JCODE_*` in env_overrides: **{len(overrides_names)}**
-  - `JCODE_*` read directly elsewhere: **{len(jcode_workspace)}**
+  - `KCODE_*` in env_overrides: **{len(overrides_names)}**
+  - `KCODE_*` read directly elsewhere: **{len(jcode_workspace)}**
   - Third-party: **{len(THIRD_PARTY)}**
 - Run `rg -N 'std::env::var\\(\\\"[A-Z]' crates src` to regenerate this catalog
 - Run `rg -N 'std::env::var\\(' crates src | rg -o '\"[A-Z][A-Z0-9_]*\"' | sort -u`
@@ -440,7 +440,7 @@ rg -N 'env::var\\([^)]+\\)' crates src \\
   | rg -o '"[A-Z][A-Z0-9_]*"' | sort -u > docs/ENVIRONMENT.md.tmp
 
 # Inspect a single var's call sites:
-rg -N 'JCODE_WAKE_MODE' crates src
+rg -N 'KCODE_WAKE_MODE' crates src
 
 # Diff this file against a fresh grep:
 diff <(rg -N 'env::var\\(' crates src | rg -o '"[A-Z][A-Z0-9_]*"' | sort -u) \\
