@@ -115,6 +115,7 @@ impl App {
             selected,
             text_buffer,
             response_tx: Some(bridge_tx),
+            hit_regions: std::cell::RefCell::new(Vec::new()),
         });
 
         // Report HERDR: permission/elicitation prompt is blocking the agent.
