@@ -445,14 +445,6 @@ impl Registry {
                 "elicitate_mcp",
                 elicitation::ElicitateMcpTool::new,
             );
-            // Alias: `ask_user` is the same elicitation tool under a second
-            // registry key, so an agent may call either name.
-            Self::insert_tool_timed(
-                &mut m,
-                &mut timings,
-                "ask_user",
-                elicitation::ElicitateMcpTool::new,
-            );
             Self::insert_tool_timed(
                 &mut m,
                 &mut timings,
