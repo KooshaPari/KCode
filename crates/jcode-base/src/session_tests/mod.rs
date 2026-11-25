@@ -42,3 +42,6 @@ mod crash_marker_cases;
 
 #[path = "display_role_cases.rs"]
 mod display_role_cases;
+
+#[path = "crash_recovery_cases.rs"]
+mod crash_recovery_cases;
