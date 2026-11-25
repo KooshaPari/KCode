@@ -77,7 +77,7 @@ mod output_style;
 mod overlays;
 
 #[path = "ui_elicitation.rs"]
-mod elicit_overlay;
+pub(crate) mod elicit_overlay;
 #[path = "ui_panel_image_preview.rs"]
 pub(crate) mod panel_image_preview;
 #[path = "ui_pinned.rs"]

@@ -1407,6 +1407,23 @@ impl App {
 
     /// Returns true if this was a scroll-only event (safe to defer redraw during streaming)
     pub(super) fn handle_mouse_event(&mut self, mouse: MouseEvent) -> bool {
+        // The elicitation overlay is modal: a click on an option row selects it
+        // and must not reach any surface underneath.
+        if matches!(
+            mouse.kind,
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
+        ) && let Some(state) = self.elicit_overlay.as_mut()
+            && let Some(crate::tui::elicitation_types::ElicitHit::Option(idx)) =
+                crate::tui::ui::elicit_overlay::hit_test(
+                    &state.hit_regions.borrow(),
+                    mouse.column,
+                    mouse.row,
+                )
+        {
+            state.selected = idx;
+            return false;
+        }
+
         let trace_scroll = tui_mouse_scroll_trace_enabled() && is_mouse_scroll_kind(mouse.kind);
         let trace_before = trace_scroll.then(|| MouseScrollTraceState::capture(self));
         macro_rules! finish_mouse_event {

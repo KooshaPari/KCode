@@ -137,6 +137,13 @@ pub enum ElicitAction {
     Cancel,
 }
 
+/// What a click inside the elicitation overlay resolved to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ElicitHit {
+    /// An option row of a `FieldSpec::Choice`, by index into `options`.
+    Option(usize),
+}
+
 /// Mutable state of the elicitation overlay within the TUI.
 ///
 /// Held in `App::elicit_overlay` as `Some(...)` while an elicitation is
@@ -152,4 +159,10 @@ pub struct ElicitOverlayState {
     pub text_buffer: String,
     /// Channel to send the user's response back to the waiting tool call.
     pub response_tx: Option<oneshot::Sender<ElicitResponse>>,
+    /// Clickable regions recorded by the most recent render, in draw order.
+    ///
+    /// Interior mutability because the renderer only ever holds a shared
+    /// reference to this state. Cleared at the start of every render, so a
+    /// click is always tested against what the user can see right now.
+    pub hit_regions: std::cell::RefCell<Vec<(ratatui::layout::Rect, ElicitHit)>>,
 }

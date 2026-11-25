@@ -5,12 +5,15 @@
 //! overlay pattern as the session picker and changelog overlays.
 
 use super::{clear_area, dim_color, rgb};
-use crate::tui::elicitation_types::{ElicitOverlayState, FieldSpec};
+use crate::tui::elicitation_types::{ElicitHit, ElicitOverlayState, FieldSpec};
 use ratatui::prelude::*;
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 /// Render the elicitation overlay as a centered modal panel.
 pub(super) fn draw_elicit_overlay(frame: &mut Frame, area: Rect, state: &ElicitOverlayState) {
+    // Regions from the previous frame describe rows this frame may not draw.
+    let mut hit_regions = state.hit_regions.borrow_mut();
+    hit_regions.clear();
     // Dim the background.
     clear_area(frame, area);
 
@@ -53,6 +56,9 @@ pub(super) fn draw_elicit_overlay(frame: &mut Frame, area: Rect, state: &ElicitO
     }
 
     let mut lines: Vec<Line<'static>> = Vec::new();
+    // (line index, option index) for clickable choice rows, resolved to screen
+    // rects once the paragraph's inner area is known.
+    let mut option_rows: Vec<(usize, usize)> = Vec::new();
 
     // Question / description.
     if let Some(ref question) = request.question {
@@ -83,6 +89,7 @@ pub(super) fn draw_elicit_overlay(frame: &mut Frame, area: Rect, state: &ElicitO
             }
             let selected = state.selected;
             for (i, option) in options.iter().enumerate() {
+                option_rows.push((lines.len(), i));
                 let marker = if i == selected { "●" } else { "○" };
                 let style = if i == selected {
                     Style::default()
@@ -283,6 +290,75 @@ pub(super) fn draw_elicit_overlay(frame: &mut Frame, area: Rect, state: &ElicitO
 
     let paragraph = Paragraph::new(lines).wrap(ratatui::widgets::Wrap { trim: false });
     frame.render_widget(paragraph, inner);
+
+    // Each option occupies exactly one row of the inner area.
+    let bottom = inner.y.saturating_add(inner.height);
+    for (row, option_idx) in option_rows {
+        let Some(y) = inner.y.checked_add(row as u16) else {
+            continue;
+        };
+        if y < bottom {
+            hit_regions.push((
+                Rect::new(inner.x, y, inner.width, 1),
+                ElicitHit::Option(option_idx),
+            ));
+        }
+    }
+}
+
+/// Resolve a screen point to the clickable region containing it.
+///
+/// `regions` comes from the most recent render, so a click can only ever match
+/// a row the user is actually looking at. A point outside every region yields
+/// `None`, letting the caller pass the click on.
+pub(crate) fn hit_test(regions: &[(Rect, ElicitHit)], x: u16, y: u16) -> Option<ElicitHit> {
+    regions.iter().find_map(|(rect, hit)| {
+        let inside_x = x >= rect.x && x < rect.x.saturating_add(rect.width);
+        let inside_y = y >= rect.y && y < rect.y.saturating_add(rect.height);
+        (inside_x && inside_y).then_some(*hit)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn two_rows() -> Vec<(Rect, ElicitHit)> {
+        vec![
+            (Rect::new(0, 0, 10, 1), ElicitHit::Option(0)),
+            (Rect::new(0, 1, 10, 1), ElicitHit::Option(1)),
+        ]
+    }
+
+    #[test]
+    fn point_inside_a_region_resolves_to_that_region() {
+        assert_eq!(hit_test(&two_rows(), 3, 0), Some(ElicitHit::Option(0)));
+        assert_eq!(hit_test(&two_rows(), 3, 1), Some(ElicitHit::Option(1)));
+    }
+
+    #[test]
+    fn point_outside_every_region_is_none() {
+        assert_eq!(hit_test(&two_rows(), 50, 50), None);
+        // One column past the right edge.
+        assert_eq!(hit_test(&two_rows(), 10, 0), None);
+        // One row past the last row.
+        assert_eq!(hit_test(&two_rows(), 3, 2), None);
+    }
+
+    #[test]
+    fn region_bounds_are_half_open() {
+        let regions = vec![(Rect::new(5, 7, 3, 2), ElicitHit::Option(9))];
+        // Top-left corner is inside; the far edges are not.
+        assert_eq!(hit_test(&regions, 5, 7), Some(ElicitHit::Option(9)));
+        assert_eq!(hit_test(&regions, 7, 8), Some(ElicitHit::Option(9)));
+        assert_eq!(hit_test(&regions, 8, 7), None);
+        assert_eq!(hit_test(&regions, 5, 9), None);
+    }
+
+    #[test]
+    fn empty_region_list_is_none() {
+        assert_eq!(hit_test(&[], 0, 0), None);
+    }
 }
 
 /// Compute the panel height based on content.
