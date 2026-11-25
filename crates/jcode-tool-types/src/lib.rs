@@ -99,6 +99,10 @@ pub fn resolve_tool_name(name: &str) -> &str {
         // The integration catalog tool was renamed from `discover_tools`;
         // models trained on or resuming from the old vocabulary still emit it.
         "discover_tools" => "integration_tools",
+        // The elicitation tool is also reachable as `ask_user`: that is the
+        // name an agent naturally reaches for, while the registry key keeps
+        // the MCP-facing `elicitate_mcp` spelling.
+        "ask_user" => "elicitate_mcp",
         "todoread" | "todowrite" | "todo_read" | "todo_write" | "todos" => "todo",
         // The Anthropic OAuth surface advertises PascalCase tool names and
         // reverse-maps them provider-side for top-level calls, but nested
@@ -150,5 +154,14 @@ mod tests {
         assert_eq!(resolve_tool_name("ScheduleWakeup"), "schedule");
         assert_eq!(resolve_tool_name("Skill"), "skill_manage");
         assert_eq!(resolve_tool_name("functions.Read"), "read");
+    }
+
+    #[test]
+    fn resolve_tool_name_maps_ask_user_to_elicitate_mcp() {
+        // The elicitation tool is registered as `elicitate_mcp`; `ask_user`
+        // resolves here rather than existing as a second registry entry, so
+        // both the top-level call and a `batch` subcall land on one tool.
+        assert_eq!(resolve_tool_name("ask_user"), "elicitate_mcp");
+        assert_eq!(resolve_tool_name("functions.ask_user"), "elicitate_mcp");
     }
 }

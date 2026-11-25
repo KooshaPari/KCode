@@ -83,7 +83,7 @@ pub(super) fn draw_elicit_overlay(frame: &mut Frame, area: Rect, state: &ElicitO
             }
             let selected = state.selected;
             for (i, option) in options.iter().enumerate() {
-                let marker = if i == selected { "●" } else { "○" };
+                let marker = if i == selected { "◉" } else { "○" };
                 let style = if i == selected {
                     Style::default()
                         .fg(border_color)
