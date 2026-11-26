@@ -1,4 +1,5 @@
 use super::{handle_comm_list, handle_comm_message};
+#[path = "client_comm_tests/inbox.rs"]
 mod inbox;
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
