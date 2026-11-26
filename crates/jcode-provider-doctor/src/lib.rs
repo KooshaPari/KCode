@@ -18,6 +18,9 @@ pub mod provider_e2e;
 #[cfg(test)]
 mod lifecycle_driver;
 
+#[cfg(test)]
+mod lifecycle_contracts;
+
 pub use provider_e2e::{
     DoctorCheck, DoctorReport, DoctorSpend, DoctorTier, NativeProviderKind,
     native_doctor_supports_provider, run_antigravity_native_e2e, run_claude_native_e2e,
