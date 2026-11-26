@@ -7,13 +7,13 @@
 //! non-streaming and a streaming chat-completion probe against
 //! Cerebras.
 //!
-//! Size: ~220L panic budget; current 218L.
+//! Size: current 177L.
 
 use jcode_base::live_tests::{LiveVerificationStage, checkpoints, concise_model_sample};
 
 use super::lifecycle_tests_live_helpers::{
-    LiveTestApiKey, append_live_event, cost_quota_safety_stage, covered_stage_names, env_truthy,
-    live_cerebras_api_key, live_event,
+    append_live_event, cost_quota_safety_stage, covered_stage_names, env_truthy,
+    live_cerebras_api_key, live_event, push_common_stages,
 };
 use super::{
     AuthLifecycleAuthPath, AuthLifecycleDriver, AuthLifecycleSpec,
@@ -101,7 +101,7 @@ async fn cerebras_live_opt_in_catalog_lifecycle_uses_isolated_sandbox() {
         "{}",
         result.failure_report(&spec)
     );
-    push_common_stages(&mut stages, &api_key, &result, &selected);
+    push_common_stages(&mut stages, &result, &selected);
 
     if spend_smoke {
         match run_live_openai_compatible_smoke(
@@ -174,63 +174,4 @@ async fn cerebras_live_opt_in_catalog_lifecycle_uses_isolated_sandbox() {
     )
     .with_stages(stages);
     append_live_event(&event);
-}
-
-fn push_common_stages(
-    stages: &mut Vec<LiveVerificationStage>,
-    api_key: &LiveTestApiKey,
-    result: &crate::lifecycle_contracts::AuthLifecycleResult,
-    selected: &str,
-) {
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::AUTH_UX_KEY_ENTRY)
-            .with_evidence("auth_path", serde_json::json!("remote_tui_paste_api_key"))
-            .with_evidence("simulated_in_sandbox", serde_json::json!(true))
-            .with_evidence("transcript_order_verified", serde_json::json!(true)),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::CREDENTIAL_PERSISTENCE)
-            .with_evidence(
-                "credential_location",
-                serde_json::json!(result.credential_location.clone()),
-            )
-            .with_evidence("sandboxed", serde_json::json!(true)),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::CATALOG_HOT_RELOAD_CURRENT_SESSION)
-            .with_evidence("transcript_markers_verified", serde_json::json!(true))
-            .with_evidence(
-                "catalog_route_count",
-                serde_json::json!(result.catalog_routes.len()),
-            ),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::PICKER_LIVE_MODELS)
-            .with_evidence("selected_model", serde_json::json!(selected))
-            .with_evidence(
-                "picker_entries",
-                serde_json::json!(result.picker.provider_entries.clone()),
-            ),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::PICKER_FALLBACK_LABELING)
-            .with_evidence("fallback_routes_present", serde_json::json!(false))
-            .with_evidence(
-                "all_picker_entries_from_live_catalog",
-                serde_json::json!(true),
-            ),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::MODEL_SWITCH_ROUTE)
-            .with_evidence(
-                "switch_request",
-                serde_json::json!(result.picker.switch_request.clone()),
-            )
-            .with_evidence(
-                "switch_route_api_method",
-                serde_json::json!(result.picker.switch_route_api_method.clone()),
-            ),
-    );
-    // touch unused-binding sink so the destructuring above is not flagged
-    let _: &LiveTestApiKey = api_key;
 }

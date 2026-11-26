@@ -6,13 +6,13 @@
 //! probe (OpenCode Zen) or a non-streaming smoke completion
 //! (issue-driven).
 //!
-//! Size: ~470L panic budget; current 450L.
+//! Size: current 333L.
 
 use jcode_base::live_tests::{LiveVerificationStage, checkpoints, concise_model_sample};
 
 use super::lifecycle_tests_live_helpers::{
     append_live_event, cost_quota_safety_stage, covered_stage_names, env_truthy, live_event,
-    live_openai_compatible_api_key, live_opencode_zen_api_key,
+    live_openai_compatible_api_key, live_opencode_zen_api_key, push_common_stages,
 };
 use super::{
     AuthLifecycleAuthPath, AuthLifecycleDriver, AuthLifecycleSpec,
@@ -103,7 +103,7 @@ async fn opencode_zen_live_opt_in_tool_call_smoke() {
         .expect("live OpenCode Zen auth lifecycle fixture");
     result.assert_success(&spec);
 
-    push_opencode_zen_stages(&mut stages, &api_key, &result, &model);
+    push_common_stages(&mut stages, &result, &model);
 
     if stream_smoke {
         match run_live_openai_compatible_stream_smoke(
@@ -175,63 +175,6 @@ async fn opencode_zen_live_opt_in_tool_call_smoke() {
     .with_stages(stages)
     .with_metadata("default_model", serde_json::json!("kimi-k2.6"));
     append_live_event(&event);
-}
-
-fn push_opencode_zen_stages(
-    stages: &mut Vec<LiveVerificationStage>,
-    _api_key: &super::lifecycle_tests_live_helpers::LiveTestApiKey,
-    result: &crate::lifecycle_contracts::AuthLifecycleResult,
-    model: &str,
-) {
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::AUTH_UX_KEY_ENTRY)
-            .with_evidence("auth_path", serde_json::json!("remote_tui_paste_api_key"))
-            .with_evidence("simulated_in_sandbox", serde_json::json!(true))
-            .with_evidence("transcript_order_verified", serde_json::json!(true)),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::CREDENTIAL_PERSISTENCE)
-            .with_evidence(
-                "credential_location",
-                serde_json::json!(result.credential_location.clone()),
-            )
-            .with_evidence("sandboxed", serde_json::json!(true)),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::CATALOG_HOT_RELOAD_CURRENT_SESSION)
-            .with_evidence("transcript_markers_verified", serde_json::json!(true))
-            .with_evidence(
-                "catalog_route_count",
-                serde_json::json!(result.catalog_routes.len()),
-            ),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::PICKER_LIVE_MODELS)
-            .with_evidence("selected_model", serde_json::json!(model))
-            .with_evidence(
-                "picker_entries",
-                serde_json::json!(result.picker.provider_entries.clone()),
-            ),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::PICKER_FALLBACK_LABELING)
-            .with_evidence("fallback_routes_present", serde_json::json!(false))
-            .with_evidence(
-                "all_picker_entries_from_live_catalog",
-                serde_json::json!(true),
-            ),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::MODEL_SWITCH_ROUTE)
-            .with_evidence(
-                "switch_request",
-                serde_json::json!(result.picker.switch_request.clone()),
-            )
-            .with_evidence(
-                "switch_route_api_method",
-                serde_json::json!(result.picker.switch_route_api_method.clone()),
-            ),
-    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -325,7 +268,7 @@ async fn issue_driven_openai_compatible_live_target_smoke() {
         .expect("issue-driven live auth lifecycle fixture");
     result.assert_success(&spec);
 
-    push_issue_driven_stages(&mut stages, &result, &selected);
+    push_common_stages(&mut stages, &result, &selected);
 
     if spend_smoke {
         match run_live_openai_compatible_smoke(profile, &api_key.secret, &selected).await {
@@ -387,60 +330,4 @@ async fn issue_driven_openai_compatible_live_target_smoke() {
     .with_stages(stages)
     .with_metadata("issue_driven_provider", serde_json::json!(provider_id));
     append_live_event(&event);
-}
-
-fn push_issue_driven_stages(
-    stages: &mut Vec<LiveVerificationStage>,
-    result: &crate::lifecycle_contracts::AuthLifecycleResult,
-    selected: &str,
-) {
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::AUTH_UX_KEY_ENTRY)
-            .with_evidence("auth_path", serde_json::json!("remote_tui_paste_api_key"))
-            .with_evidence("simulated_in_sandbox", serde_json::json!(true))
-            .with_evidence("transcript_order_verified", serde_json::json!(true)),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::CREDENTIAL_PERSISTENCE)
-            .with_evidence(
-                "credential_location",
-                serde_json::json!(result.credential_location.clone()),
-            )
-            .with_evidence("sandboxed", serde_json::json!(true)),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::CATALOG_HOT_RELOAD_CURRENT_SESSION)
-            .with_evidence("transcript_markers_verified", serde_json::json!(true))
-            .with_evidence(
-                "catalog_route_count",
-                serde_json::json!(result.catalog_routes.len()),
-            ),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::PICKER_LIVE_MODELS)
-            .with_evidence("selected_model", serde_json::json!(selected))
-            .with_evidence(
-                "picker_entries",
-                serde_json::json!(result.picker.provider_entries.clone()),
-            ),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::PICKER_FALLBACK_LABELING)
-            .with_evidence("fallback_routes_present", serde_json::json!(false))
-            .with_evidence(
-                "all_picker_entries_from_live_catalog",
-                serde_json::json!(true),
-            ),
-    );
-    stages.push(
-        LiveVerificationStage::passed(checkpoints::MODEL_SWITCH_ROUTE)
-            .with_evidence(
-                "switch_request",
-                serde_json::json!(result.picker.switch_request.clone()),
-            )
-            .with_evidence(
-                "switch_route_api_method",
-                serde_json::json!(result.picker.switch_route_api_method.clone()),
-            ),
-    );
 }

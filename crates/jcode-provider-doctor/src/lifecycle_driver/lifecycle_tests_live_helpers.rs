@@ -11,7 +11,7 @@
 //! run the suite without live credentials without paying the
 //! network round-trip cost.
 //!
-//! Size: ~180L panic budget; current 178L.
+//! Size: current 240L.
 
 use jcode_base::live_tests::{
     LiveVerificationAuth, LiveVerificationEvent, LiveVerificationResult, LiveVerificationStage,
@@ -160,6 +160,67 @@ pub(crate) fn covered_stage_names(stages: &[LiveVerificationStage]) -> Vec<Strin
         .filter(|stage| stage.status != LiveVerificationStageStatus::NotRun)
         .map(|stage| stage.name.clone())
         .collect()
+}
+
+/// The six checkpoints every live auth-lifecycle test walks through, in order.
+///
+/// Each live test file used to carry its own copy of this builder, which is why
+/// they drifted apart; the only per-test input is the model or provider id the
+/// picker selected.
+pub(crate) fn push_common_stages(
+    stages: &mut Vec<LiveVerificationStage>,
+    result: &crate::lifecycle_contracts::AuthLifecycleResult,
+    selected: &str,
+) {
+    stages.push(
+        LiveVerificationStage::passed(checkpoints::AUTH_UX_KEY_ENTRY)
+            .with_evidence("auth_path", serde_json::json!("remote_tui_paste_api_key"))
+            .with_evidence("simulated_in_sandbox", serde_json::json!(true))
+            .with_evidence("transcript_order_verified", serde_json::json!(true)),
+    );
+    stages.push(
+        LiveVerificationStage::passed(checkpoints::CREDENTIAL_PERSISTENCE)
+            .with_evidence(
+                "credential_location",
+                serde_json::json!(result.credential_location.clone()),
+            )
+            .with_evidence("sandboxed", serde_json::json!(true)),
+    );
+    stages.push(
+        LiveVerificationStage::passed(checkpoints::CATALOG_HOT_RELOAD_CURRENT_SESSION)
+            .with_evidence("transcript_markers_verified", serde_json::json!(true))
+            .with_evidence(
+                "catalog_route_count",
+                serde_json::json!(result.catalog_routes.len()),
+            ),
+    );
+    stages.push(
+        LiveVerificationStage::passed(checkpoints::PICKER_LIVE_MODELS)
+            .with_evidence("selected_model", serde_json::json!(selected))
+            .with_evidence(
+                "picker_entries",
+                serde_json::json!(result.picker.provider_entries.clone()),
+            ),
+    );
+    stages.push(
+        LiveVerificationStage::passed(checkpoints::PICKER_FALLBACK_LABELING)
+            .with_evidence("fallback_routes_present", serde_json::json!(false))
+            .with_evidence(
+                "all_picker_entries_from_live_catalog",
+                serde_json::json!(true),
+            ),
+    );
+    stages.push(
+        LiveVerificationStage::passed(checkpoints::MODEL_SWITCH_ROUTE)
+            .with_evidence(
+                "switch_request",
+                serde_json::json!(result.picker.switch_request.clone()),
+            )
+            .with_evidence(
+                "switch_route_api_method",
+                serde_json::json!(result.picker.switch_route_api_method.clone()),
+            ),
+    );
 }
 
 pub(crate) fn stale_openai_route(model: &str) -> ModelRoute {
