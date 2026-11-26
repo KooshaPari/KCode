@@ -80,7 +80,8 @@ fn hc_headless_child_session_start() -> Result<()> {
     };
     let record_path =
         std::env::var(CHILD_RECORD).map_err(|e| anyhow!("missing {CHILD_RECORD}: {e}"))?;
-    let ready_path = std::env::var(CHILD_READY).map_err(|e| anyhow!("missing {CHILD_READY}: {e}"))?;
+    let ready_path =
+        std::env::var(CHILD_READY).map_err(|e| anyhow!("missing {CHILD_READY}: {e}"))?;
     let cwd = std::env::current_dir().map_err(|e| anyhow!(e))?;
 
     let mut session = Session::create_with_id(session_id.clone(), None, Some("hc-accept".into()));
@@ -99,7 +100,11 @@ fn hc_headless_child_session_start() -> Result<()> {
 
     // The hook is dispatched detached, so wait for its record instead of assuming it.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-    while std::fs::metadata(&record_path).map(|m| m.len()).unwrap_or(0) == 0 {
+    while std::fs::metadata(&record_path)
+        .map(|m| m.len())
+        .unwrap_or(0)
+        == 0
+    {
         if std::time::Instant::now() >= deadline {
             return Err(anyhow!("session_start hook never wrote its record"));
         }
@@ -310,7 +315,10 @@ fn test_headless_hc_acceptance_sigkill_restore_with_real_hooks() -> Result<()> {
 
     // A restored session must accept new work.
     let mut resumed = second;
-    resumed.add_message(Role::Assistant, vec![text_block("resumed after headless kill")]);
+    resumed.add_message(
+        Role::Assistant,
+        vec![text_block("resumed after headless kill")],
+    );
     resumed.save()?;
     let reloaded = Session::load(session_id)?;
     assert!(recovery_invariant_violations(&reloaded.messages).is_empty());
@@ -326,7 +334,8 @@ fn test_headless_hc_acceptance_sigkill_restore_with_real_hooks() -> Result<()> {
 /// owner is still alive, and one whose cwd is a symlink.
 #[test]
 fn test_headless_acceptance_preflight_refuses_live_owner_and_symlinked_cwd() -> Result<()> {
-    let temp = crate::test_temp::tempdir_with_prefix("kcode-hc-preflight-").map_err(|e| anyhow!(e))?;
+    let temp =
+        crate::test_temp::tempdir_with_prefix("kcode-hc-preflight-").map_err(|e| anyhow!(e))?;
     let real_dir = temp.path().join("real");
     std::fs::create_dir_all(&real_dir).map_err(|e| anyhow!(e))?;
     let link_dir = temp.path().join("link");
