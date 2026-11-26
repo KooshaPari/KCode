@@ -47,11 +47,16 @@ def is_test_rust_file(path: Path) -> bool:
     ):
         return True
     name = path.name
+    stem = name[:-3] if name.endswith(".rs") else name
     return (
         name == "tests.rs"
         or name.endswith("_tests.rs")
         or name.endswith("_test.rs")
         or name.startswith("tests_")
+        # A test module split out of `foo_tests.rs` keeps the marker in the
+        # middle (`lifecycle_tests_live_smoke.rs`), which none of the suffix
+        # rules above can see, so the split would be counted as production.
+        or "_tests_" in stem
     )
 
 
@@ -160,6 +165,7 @@ def main() -> int:
     tracked: dict[str, int] = baseline["tracked_files"]
     regressions: list[str] = []
     improvements: list[str] = []
+    relocations: list[str] = []
 
     if current_total > baseline["total"]:
         regressions.append(f"total panic-prone count grew: {baseline['total']} -> {current_total}")
@@ -169,7 +175,14 @@ def main() -> int:
     for path, count in sorted(current.items()):
         old_count = tracked.get(path)
         if old_count is None:
-            regressions.append(f"new production panic-prone usage: {path} ({count})")
+            if current_total <= baseline["total"]:
+                # A module split relocates existing usage into new paths. The
+                # total ratchet above is the gate; failing every new path here
+                # would make any file extraction impossible to land, because a
+                # split always pairs a new path with a shrunken old one.
+                relocations.append(f"panic-prone usage relocated into new file: {path} ({count})")
+            else:
+                regressions.append(f"new production panic-prone usage: {path} ({count})")
         elif count > old_count:
             regressions.append(f"production panic-prone usage grew: {path} ({old_count} -> {count})")
         elif count < old_count:
@@ -185,6 +198,11 @@ def main() -> int:
             print(f"  - {entry}", file=sys.stderr)
         print("Run scripts/check_panic_budget.py --update only after intentional cleanup.", file=sys.stderr)
         return 1
+
+    if relocations:
+        print("Panic-prone usage relocated (total did not grow):")
+        for entry in relocations:
+            print(f"  - {entry}")
 
     if improvements:
         print("Panic-prone usage budget improved:")

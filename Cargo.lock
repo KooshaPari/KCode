@@ -4324,6 +4324,7 @@ dependencies = [
  "jcode-core",
  "jcode-fuzzy",
  "jcode-herdr",
+ "jcode-import-core",
  "jcode-logging",
  "jcode-productivity-core",
  "jcode-provider-core",
