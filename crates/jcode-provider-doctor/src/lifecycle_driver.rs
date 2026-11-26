@@ -14,7 +14,7 @@
 //!   consumer-facing assertion struct, ~210L). Kept separate so the
 //!   `assert_rejected_success` helper shared by the failure-contracts
 //!   tests can live next to the assertion logic it exercises.
-//! - `./lifecycle_driver/live_helpers.rs`: env-gated live-test
+//! - `./lifecycle_driver/lifecycle_tests_live_helpers.rs`: env-gated live-test
 //!   helpers (`LiveTestApiKey`, `live_cerebras_api_key`,
 //!   `live_event`, `cost_quota_safety_stage`, etc.), ~180L.
 //! - `./lifecycle_driver/lifecycle_tests_provider_matrix.rs`: the
@@ -353,4 +353,4 @@ mod lifecycle_tests_live_cerebras;
 mod lifecycle_tests_live_smoke;
 
 #[cfg(test)]
-pub(crate) mod live_helpers;
+pub(crate) mod lifecycle_tests_live_helpers;

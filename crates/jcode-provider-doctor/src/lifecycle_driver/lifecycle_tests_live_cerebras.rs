@@ -11,7 +11,7 @@
 
 use jcode_base::live_tests::{LiveVerificationStage, checkpoints, concise_model_sample};
 
-use super::live_helpers::{
+use super::lifecycle_tests_live_helpers::{
     LiveTestApiKey, append_live_event, cost_quota_safety_stage, covered_stage_names, env_truthy,
     live_cerebras_api_key, live_event,
 };

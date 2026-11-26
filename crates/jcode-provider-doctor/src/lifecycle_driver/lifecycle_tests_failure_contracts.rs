@@ -15,7 +15,7 @@
 
 use jcode_base::auth::lifecycle::validate_catalog_invariants;
 
-use super::live_helpers::stale_openai_route;
+use super::lifecycle_tests_live_helpers::stale_openai_route;
 use super::{AuthLifecycleAuthPath, AuthLifecycleDriver, AuthLifecycleSpec, PickerSnapshot};
 use crate::lifecycle_contracts::assert_rejected_success;
 

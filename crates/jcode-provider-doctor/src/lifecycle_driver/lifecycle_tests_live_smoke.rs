@@ -10,7 +10,7 @@
 
 use jcode_base::live_tests::{LiveVerificationStage, checkpoints, concise_model_sample};
 
-use super::live_helpers::{
+use super::lifecycle_tests_live_helpers::{
     append_live_event, cost_quota_safety_stage, covered_stage_names, env_truthy, live_event,
     live_openai_compatible_api_key, live_opencode_zen_api_key,
 };
@@ -179,7 +179,7 @@ async fn opencode_zen_live_opt_in_tool_call_smoke() {
 
 fn push_opencode_zen_stages(
     stages: &mut Vec<LiveVerificationStage>,
-    _api_key: &super::live_helpers::LiveTestApiKey,
+    _api_key: &super::lifecycle_tests_live_helpers::LiveTestApiKey,
     result: &crate::lifecycle_contracts::AuthLifecycleResult,
     model: &str,
 ) {
