@@ -84,6 +84,7 @@ mod input_help;
 mod local;
 mod misc_ui;
 mod model_context;
+mod mouse_targets;
 mod navigation;
 mod observe;
 pub(crate) mod onboarding_flow;
@@ -133,9 +134,7 @@ mod ui_prefs;
 
 pub(crate) use self::state_ui_storage::compact_display_messages_for_storage;
 
-pub(crate) fn extract_input_shell_command(input: &str) -> Option<&str> {
-    self::input::extract_input_shell_command(input)
-}
+pub(crate) use self::input::extract_input_shell_command;
 
 pub(crate) fn has_safe_slash_command_token(input: &str) -> bool {
     self::slash_command_parser::active_token_before_cursor(input, input.len()).is_some()
