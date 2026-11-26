@@ -15,7 +15,7 @@
 
 use jcode_base::live_tests::{
     LiveVerificationAuth, LiveVerificationEvent, LiveVerificationResult, LiveVerificationStage,
-    LiveVerificationStageStatus, append_event, checkpoints, concise_model_sample,
+    LiveVerificationStageStatus, append_event, checkpoints,
 };
 use jcode_base::provider::ModelRoute;
 use jcode_base::provider_catalog::OpenAiCompatibleProfile;
@@ -114,17 +114,15 @@ where
     S: Into<String>,
 {
     let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(profile);
-    let mut event = LiveVerificationEvent::new(
-        test_name,
-        resolved.id,
-        resolved.display_name,
-        auth,
-        result,
-    )
-    .with_endpoint(resolved.api_base)
-    .with_capabilities(capabilities)
-    .with_standard_end_to_end_checkpoints()
-    .with_metadata("cost_policy", serde_json::json!("env_gated_may_spend_balance"));
+    let mut event =
+        LiveVerificationEvent::new(test_name, resolved.id, resolved.display_name, auth, result)
+            .with_endpoint(resolved.api_base)
+            .with_capabilities(capabilities)
+            .with_standard_end_to_end_checkpoints()
+            .with_metadata(
+                "cost_policy",
+                serde_json::json!("env_gated_may_spend_balance"),
+            );
     if let Some(model) = model {
         event = event.with_model(model);
     }
@@ -150,7 +148,10 @@ pub(crate) fn cost_quota_safety_stage(spend_enabled: bool) -> LiveVerificationSt
         .with_evidence("live_tests_env_gated", serde_json::json!(true))
         .with_evidence("spend_enabled", serde_json::json!(spend_enabled))
         .with_evidence("auth_secret_logged", serde_json::json!(false))
-        .with_evidence("usage_cost_recorded_when_available", serde_json::json!(true))
+        .with_evidence(
+            "usage_cost_recorded_when_available",
+            serde_json::json!(true),
+        )
 }
 
 pub(crate) fn covered_stage_names(stages: &[LiveVerificationStage]) -> Vec<String> {
@@ -171,11 +172,4 @@ pub(crate) fn stale_openai_route(model: &str) -> ModelRoute {
         usage: None,
         cheapness: None,
     }
-}
-
-pub(crate) fn concise_model_sample_for(
-    models: &[String],
-    limit: usize,
-) -> serde_json::Value {
-    serde_json::json!(concise_model_sample(models, limit))
 }

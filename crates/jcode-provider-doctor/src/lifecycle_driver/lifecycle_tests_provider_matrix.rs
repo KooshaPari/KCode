@@ -54,8 +54,7 @@ fn cerebras_remote_tui_paste_key_fixture_covers_catalog_picker_and_switch() {
 #[test]
 fn cerebras_state_space_catches_stale_openai_catalog_after_auth() {
     let driver = AuthLifecycleDriver::new().expect("driver");
-    let mut spec =
-        AuthLifecycleSpec::cerebras_fixture(AuthLifecycleAuthPath::RemoteTuiPasteApiKey);
+    let mut spec = AuthLifecycleSpec::cerebras_fixture(AuthLifecycleAuthPath::RemoteTuiPasteApiKey);
     spec.catalog_models_after_auth.clear();
     spec.selected_model_override = Some("gpt-5.5".to_string());
 
@@ -435,8 +434,7 @@ fn auth_lifecycle_success_rejects_duplicate_or_out_of_order_transcript_markers()
 fn fresh_start_sandbox_is_unconfigured_then_tui_key_lifecycle_configures_provider() {
     let driver = AuthLifecycleDriver::new().expect("driver");
     let spec = AuthLifecycleSpec::cerebras_fixture(AuthLifecycleAuthPath::TuiPasteApiKey);
-    let resolved =
-        jcode_base::provider_catalog::resolve_openai_compatible_profile(spec.profile);
+    let resolved = jcode_base::provider_catalog::resolve_openai_compatible_profile(spec.profile);
     let env_file = driver.sandbox.env_file_path(&resolved.env_file);
     let provider = jcode_base::provider_catalog::resolve_login_provider(spec.provider_id)
         .expect("Cerebras login provider descriptor");
@@ -494,4 +492,3 @@ fn fresh_start_sandbox_is_unconfigured_then_tui_key_lifecycle_configures_provide
         jcode_base::auth::AuthState::Available
     );
 }
-

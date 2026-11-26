@@ -15,8 +15,8 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use crate::sessions::{
-    ExternalMessageRecord, ExternalSessionRecord, ImportCoreResult, extract_external_text_from_json,
-    file_modified_datetime,
+    ExternalMessageRecord, ExternalSessionRecord, ImportCoreResult,
+    extract_external_text_from_json, file_modified_datetime,
 };
 use crate::text_utils::truncate_title_text;
 use crate::truncate_str;

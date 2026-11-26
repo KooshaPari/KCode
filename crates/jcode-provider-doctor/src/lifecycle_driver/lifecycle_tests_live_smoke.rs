@@ -11,8 +11,8 @@
 use jcode_base::live_tests::{LiveVerificationStage, checkpoints, concise_model_sample};
 
 use super::live_helpers::{
-    append_live_event, cost_quota_safety_stage, covered_stage_names, env_truthy,
-    live_event, live_openai_compatible_api_key, live_opencode_zen_api_key,
+    append_live_event, cost_quota_safety_stage, covered_stage_names, env_truthy, live_event,
+    live_openai_compatible_api_key, live_opencode_zen_api_key,
 };
 use super::{
     AuthLifecycleAuthPath, AuthLifecycleDriver, AuthLifecycleSpec,
@@ -41,7 +41,10 @@ async fn opencode_zen_live_opt_in_tool_call_smoke() {
         || env_truthy("KCODE_AUTH_LIFECYCLE_STREAM_SMOKE");
     let mut stages = vec![
         LiveVerificationStage::passed(checkpoints::AUTH_CREDENTIAL_LOADED)
-            .with_evidence("auth_source", serde_json::json!(api_key.auth.source.clone()))
+            .with_evidence(
+                "auth_source",
+                serde_json::json!(api_key.auth.source.clone()),
+            )
             .with_evidence("env_key", serde_json::json!(api_key.auth.env_key.clone())),
         cost_quota_safety_stage(true),
     ];
@@ -262,7 +265,10 @@ async fn issue_driven_openai_compatible_live_target_smoke() {
 
     let mut stages = vec![
         LiveVerificationStage::passed(checkpoints::AUTH_CREDENTIAL_LOADED)
-            .with_evidence("auth_source", serde_json::json!(api_key.auth.source.clone()))
+            .with_evidence(
+                "auth_source",
+                serde_json::json!(api_key.auth.source.clone()),
+            )
             .with_evidence("env_key", serde_json::json!(api_key.auth.env_key.clone())),
         cost_quota_safety_stage(spend_smoke || stream_smoke),
     ];
@@ -290,11 +296,10 @@ async fn issue_driven_openai_compatible_live_target_smoke() {
         }
     };
     stages.push(
-        LiveVerificationStage::passed(checkpoints::MODEL_CATALOG_LIVE_ENDPOINT)
-            .with_evidence(
-                "models",
-                serde_json::json!(concise_model_sample(&models, 16)),
-            ),
+        LiveVerificationStage::passed(checkpoints::MODEL_CATALOG_LIVE_ENDPOINT).with_evidence(
+            "models",
+            serde_json::json!(concise_model_sample(&models, 16)),
+        ),
     );
 
     let selected = requested_model
@@ -347,8 +352,7 @@ async fn issue_driven_openai_compatible_live_target_smoke() {
     }
 
     if stream_smoke {
-        match run_live_openai_compatible_stream_smoke(profile, &api_key.secret, &selected).await
-        {
+        match run_live_openai_compatible_stream_smoke(profile, &api_key.secret, &selected).await {
             Ok(stage) => stages.push(stage),
             Err(error) => {
                 stages.push(LiveVerificationStage::failed(
