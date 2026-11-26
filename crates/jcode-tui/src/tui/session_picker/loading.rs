@@ -4,6 +4,7 @@ use crate::registry::{self, ServerInfo};
 use crate::session::{self, CrashedSessionsInfo, Session, SessionStatus, StoredDisplayRole};
 use crate::storage;
 use anyhow::Result;
+use jcode_import_core::sessions::collect_recent_files_recursive;
 use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
@@ -698,85 +699,13 @@ fn classify_session_source(
     SessionSource::Jcode
 }
 
+/// Every file under `root` with `extension`, newest first and unbounded.
+///
+/// The picker and `kcode import` used to carry byte-identical copies of this
+/// walk; `jcode-import-core` owns it now. Passing `usize::MAX` keeps every
+/// match while preserving the newest-first order callers below rely on.
 fn collect_files_recursive(root: &Path, extension: &str) -> Vec<PathBuf> {
-    fn walk(dir: &Path, extension: &str, out: &mut Vec<PathBuf>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, extension, out);
-            } else if path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.eq_ignore_ascii_case(extension))
-                .unwrap_or(false)
-            {
-                out.push(path);
-            }
-        }
-    }
-
-    let mut files = Vec::new();
-    walk(root, extension, &mut files);
-    files.sort_by(|a, b| {
-        let a_time = std::fs::metadata(a).and_then(|meta| meta.modified()).ok();
-        let b_time = std::fs::metadata(b).and_then(|meta| meta.modified()).ok();
-        b_time.cmp(&a_time).then_with(|| b.cmp(a))
-    });
-    files
-}
-
-fn collect_recent_files_recursive(root: &Path, extension: &str, limit: usize) -> Vec<PathBuf> {
-    fn modified_sort_key(path: &Path) -> u64 {
-        path.metadata()
-            .and_then(|meta| meta.modified())
-            .ok()
-            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|duration| duration.as_secs())
-            .unwrap_or(0)
-    }
-
-    fn walk(
-        dir: &Path,
-        extension: &str,
-        limit: usize,
-        out: &mut BinaryHeap<Reverse<(u64, PathBuf)>>,
-    ) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, extension, limit, out);
-            } else if path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .map(|ext| ext.eq_ignore_ascii_case(extension))
-                .unwrap_or(false)
-            {
-                let key = (modified_sort_key(&path), path);
-                if out.len() < limit {
-                    out.push(Reverse(key));
-                } else if out.peek().map(|smallest| key > smallest.0).unwrap_or(true) {
-                    out.pop();
-                    out.push(Reverse(key));
-                }
-            }
-        }
-    }
-
-    if limit == 0 {
-        return Vec::new();
-    }
-
-    let mut heap: BinaryHeap<Reverse<(u64, PathBuf)>> = BinaryHeap::new();
-    walk(root, extension, limit, &mut heap);
-    let mut files: Vec<(u64, PathBuf)> = heap.into_iter().map(|entry| entry.0).collect();
-    files.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| b.1.cmp(&a.1)));
-    files.into_iter().map(|(_, path)| path).collect()
+    collect_recent_files_recursive(root, extension, usize::MAX)
 }
 
 /// Maximum number of bytes we read from the *tail* of an external transcript

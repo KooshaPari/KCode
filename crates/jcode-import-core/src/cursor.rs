@@ -113,6 +113,51 @@ pub fn cursor_cwd_from_transcript_path(path: &Path) -> Option<String> {
     cursor_cwd_from_project_dir(&project)
 }
 
+/// One decoded Cursor transcript line.
+///
+/// Cursor writes `role` at the top level and keeps the Anthropic-style payload
+/// under `message.content`, but some exporter versions hoist `content` to the
+/// top level instead, hence both fields being optional.
+#[derive(serde::Deserialize)]
+struct CursorTranscriptLine {
+    #[serde(default)]
+    role: Option<String>,
+    #[serde(default)]
+    message: Option<serde_json::Value>,
+    #[serde(default)]
+    content: Option<serde_json::Value>,
+}
+
+const NULL_PAYLOAD: serde_json::Value = serde_json::Value::Null;
+
+impl CursorTranscriptLine {
+    fn parse(line: &str) -> Option<Self> {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        serde_json::from_str(trimmed).ok()
+    }
+
+    /// `"user"` / `"assistant"` for a conversational turn, `None` for anything
+    /// else (tool bookkeeping, malformed exporter output).
+    fn normalised_role(&self) -> Option<&'static str> {
+        match self.role.as_deref().unwrap_or_default() {
+            "user" | "human" => Some("user"),
+            "assistant" | "model" => Some("assistant"),
+            _ => None,
+        }
+    }
+
+    fn payload(&self) -> &serde_json::Value {
+        self.message
+            .as_ref()
+            .and_then(|message| message.get("content"))
+            .or(self.content.as_ref())
+            .unwrap_or(&NULL_PAYLOAD)
+    }
+}
+
 /// Load a Cursor agent transcript into an [`ExternalSessionRecord`].
 ///
 /// Cursor transcripts are JSONL with one object per line; each line has `role`
@@ -132,28 +177,13 @@ pub fn load_cursor_external_session(
     let file = File::open(path)?;
     let mut messages = Vec::new();
     for line in BufReader::new(file).lines().map_while(|line| line.ok()) {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        let Some(record) = CursorTranscriptLine::parse(&line) else {
             continue;
         };
-        let role = match value
-            .get("role")
-            .and_then(|v| v.as_str())
-            .unwrap_or_default()
-        {
-            "user" | "human" => "user",
-            "assistant" | "model" => "assistant",
-            _ => continue,
+        let Some(role) = record.normalised_role() else {
+            continue;
         };
-        let content = value
-            .get("message")
-            .and_then(|message| message.get("content"))
-            .or_else(|| value.get("content"))
-            .unwrap_or(&serde_json::Value::Null);
-        let text = extract_external_text_from_json(content, include_tools);
+        let text = extract_external_text_from_json(record.payload(), include_tools);
         if text.trim().is_empty() {
             continue;
         }

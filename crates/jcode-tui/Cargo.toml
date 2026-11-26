@@ -24,6 +24,11 @@ path = "src/lib.rs"
 jcode-app-core = { path = "../jcode-app-core", default-features = false }
 jcode-herdr = { path = "../jcode-herdr" }
 
+# Session-file scanning for the resume picker. Shares one directory walk and one
+# external-transcript parser with the `kcode import` side, which used to exist
+# as two byte-identical private copies here.
+jcode-import-core = { path = "../jcode-import-core" }
+
 # Pure math kernels for the idle animations (3D samplers, glyph chooser,
 # HSV->RGB). Pinned to opt-level = 3 in all profiles via workspace Cargo.toml so
 # the hot trig loops stay optimized even in debug/selfdev builds.
