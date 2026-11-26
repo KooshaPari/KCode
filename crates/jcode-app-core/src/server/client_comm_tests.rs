@@ -1,4 +1,5 @@
 use super::{handle_comm_list, handle_comm_message};
+mod inbox;
 use crate::agent::Agent;
 use crate::message::{Message, ToolDefinition};
 use crate::protocol::{CommDeliveryMode, NotificationType, ServerEvent};

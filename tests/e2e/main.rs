@@ -9,6 +9,8 @@ mod test_support;
 mod ambient;
 mod binary_integration;
 mod burst_spawn;
+#[cfg(unix)]
+mod comm_inbox;
 mod disconnect;
 mod provider_behavior;
 mod reload_multiclient;
