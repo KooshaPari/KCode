@@ -1,6 +1,13 @@
 //! Routing only: caller-supplied sender identity is explicitly unverified.
 use super::*;
 
+/// Shared event log the fixture hands to the server. Named so the fixture field does not trip
+/// `clippy::type_complexity`.
+type EventHistory = Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>;
+
+/// Channel to subscriber-set map the fixture hands to the server, named for the same reason.
+type ChannelSubscriptions = Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>;
+
 struct CommFixture {
     sender_id: String,
     target_id: String,
@@ -8,8 +15,8 @@ struct CommFixture {
     soft_interrupt_queues: SessionInterruptQueues,
     swarm_members: Arc<RwLock<HashMap<String, SwarmMember>>>,
     swarms_by_id: Arc<RwLock<HashMap<String, HashSet<String>>>>,
-    channel_subscriptions: Arc<RwLock<HashMap<String, HashMap<String, HashSet<String>>>>>,
-    event_history: Arc<RwLock<std::collections::VecDeque<SwarmEvent>>>,
+    channel_subscriptions: ChannelSubscriptions,
+    event_history: EventHistory,
     event_counter: Arc<AtomicU64>,
     swarm_event_tx: broadcast::Sender<SwarmEvent>,
     client_connections: Arc<RwLock<HashMap<String, ClientConnectionInfo>>>,
