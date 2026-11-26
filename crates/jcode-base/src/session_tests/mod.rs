@@ -45,3 +45,6 @@ mod display_role_cases;
 
 #[path = "crash_recovery_cases.rs"]
 mod crash_recovery_cases;
+
+#[path = "hc_headless_acceptance.rs"]
+mod hc_headless_acceptance;

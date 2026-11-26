@@ -12,7 +12,7 @@ use anyhow::{Result, anyhow};
 
 /// Invariants the resumed transcript must satisfy. Returns one message per
 /// violation so the negative control can prove the checker is not vacuous.
-fn recovery_invariant_violations(messages: &[StoredMessage]) -> Vec<String> {
+pub(super) fn recovery_invariant_violations(messages: &[StoredMessage]) -> Vec<String> {
     let mut violations = Vec::new();
     let mut seen_message_ids = std::collections::HashSet::new();
     let mut tool_use_ids = std::collections::HashSet::new();
