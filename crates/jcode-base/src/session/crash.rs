@@ -9,6 +9,48 @@ use std::collections::HashSet;
 
 const RELEVANT_CRASH_GROUP_WINDOW_SECS: i64 = 60;
 
+/// Age after which an active session with no recorded owner at all (older
+/// sessions, before `last_pid` was persisted) is treated as crashed.
+const STALE_ACTIVE_SESSION_SECS: i64 = 120;
+
+fn exited_unexpectedly(pid: u32) -> String {
+    format!("Process {pid} exited unexpectedly (no shutdown signal captured)")
+}
+
+/// Decide whether `session` looks crashed and mark it.
+///
+/// Prefers the on-disk ownership marker: it records the boot its owner was seen
+/// in, so a PID inherited by an unrelated process after a reboot still counts as
+/// a lost owner. Falls back to `last_pid`, then to an age heuristic for sessions
+/// that never recorded a PID.
+pub fn detect_and_mark(session: &mut Session) -> bool {
+    if session.status != SessionStatus::Active {
+        return false;
+    }
+
+    let crash_reason = match storage::read_active_pid(&session.id) {
+        Some(marker) if marker.is_live() => return false,
+        Some(marker) => Some(exited_unexpectedly(marker.pid)),
+        None => match session.last_pid {
+            Some(pid) if !is_pid_running(pid) => Some(exited_unexpectedly(pid)),
+            Some(_) => None,
+            None => {
+                let age = Utc::now().signed_duration_since(session.updated_at);
+                (age.num_seconds() > STALE_ACTIVE_SESSION_SECS)
+                    .then(|| "Stale active session (possible abrupt termination)".to_string())
+            }
+        },
+    };
+
+    match crash_reason {
+        Some(message) => {
+            session.mark_crashed(Some(message));
+            true
+        }
+        None => false,
+    }
+}
+
 /// Recover crashed sessions from the most relevant crash group (text-only).
 /// Returns new recovery session IDs (most recent first).
 pub fn recover_crashed_sessions() -> Result<Vec<String>> {
@@ -331,21 +373,22 @@ fn find_crashed_via_pid_files() -> Option<Vec<(String, String)>> {
             None => continue,
         };
 
-        let pid_str = match std::fs::read_to_string(entry.path()) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-        let pid: u32 = match pid_str.trim().parse() {
-            Ok(p) => p,
-            Err(_) => {
+        let marker = match storage::read_pid_marker(&entry.path()) {
+            Some(marker) => marker,
+            None => {
                 let _ = std::fs::remove_file(entry.path());
                 continue;
             }
         };
 
-        if is_pid_running(pid) {
+        // A live PID only proves ownership within the boot that recorded the
+        // marker. After a reboot the PID can belong to an unrelated process, and
+        // treating that as "still running" left the crashed session labelled
+        // Active forever: never recovered, never offered as a resume hint.
+        if marker.is_live() {
             continue;
         }
+        let pid = marker.pid;
 
         match Session::load(&session_id) {
             Ok(mut session) => {

@@ -136,7 +136,8 @@ mod tests {
         file.write_all(b"{}").expect("write");
 
         let link_dir = tempfile::tempdir().expect("tempdir");
-        let link = link_dir.path().join("jcode-link");
+        // Named so the guard's jcode-name check cannot reject the fixture itself.
+        let link = link_dir.path().join("kcode-link");
         symlink(real_home.path(), &link).expect("symlink");
 
         jcode_core::env::set_var("KCODE_HOME", &link);

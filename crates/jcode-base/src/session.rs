@@ -1147,30 +1147,7 @@ request in this new forked session, using the inherited conversation only as con
     /// Detect if an active session likely crashed (process no longer running)
     /// Returns true if status was updated.
     pub fn detect_crash(&mut self) -> bool {
-        if self.status != SessionStatus::Active {
-            return false;
-        }
-
-        if let Some(pid) = self.last_pid {
-            if !crash::is_pid_running(pid) {
-                self.mark_crashed(Some(format!(
-                    "Process {} exited unexpectedly (no shutdown signal captured)",
-                    pid
-                )));
-                return true;
-            }
-        } else {
-            // No PID info (older sessions): fall back to age heuristic
-            let age = Utc::now().signed_duration_since(self.updated_at);
-            if age.num_seconds() > 120 {
-                self.mark_crashed(Some(
-                    "Stale active session (possible abrupt termination)".to_string(),
-                ));
-                return true;
-            }
-        }
-
-        false
+        crash::detect_and_mark(self)
     }
 
     /// Check if this session is working on the jcode repository
