@@ -8,8 +8,8 @@
 //! requests, so on a healthy desktop the success path usually produces no exit
 //! status at all while the selection is owned. Therefore:
 //!
-//! - observed `exit 0` means the write was accepted. It is not a fresh
-//!   observation of selection ownership.
+//! - observed `exit 0` **is not proof of selection ownership**. It means the
+//!   helper accepted the write and returned.
 //! - observed nonzero exit is a failure.
 //! - still running at the deadline means **nothing is known**. The helper may
 //!   become the owner, or it may be about to fail and simply has not been
@@ -17,8 +17,8 @@
 //!
 //! The last state is reported as [`HelperOutcome::Unconfirmed`] and never as a
 //! copy (issue #231). A background reaper owns the child, waits for it, and
-//! reports the eventual exit through a [`ClipboardWatch`] so the UI can correct
-//! itself on a later tick without ever blocking.
+//! reports the eventual exit through a [`super::ClipboardWatch`] so the UI can
+//! correct itself on a later tick without ever blocking.
 
 #[cfg(not(any(windows, target_os = "macos")))]
 use super::{ClipboardWatch, HelperExit};
@@ -31,11 +31,12 @@ use std::time::{Duration, Instant};
 #[cfg(not(any(windows, target_os = "macos")))]
 pub(crate) const HELPER_FAIL_FAST_WINDOW: Duration = Duration::from_millis(150);
 
-/// What the fail-fast probe observed.
+/// What a failed-fast probe observed.
 #[cfg(not(any(windows, target_os = "macos")))]
 #[derive(Debug)]
 pub(crate) enum HelperOutcome {
-    /// The helper spawned, accepted stdin, and exited zero.
+    /// The helper spawned, accepted stdin, and exited zero. The write was
+    /// accepted; that is not the same as proving the selection now holds it.
     Accepted,
     /// Spawn error, stdin write error, or an observed nonzero exit.
     Failed,
@@ -45,11 +46,11 @@ pub(crate) enum HelperOutcome {
     Unconfirmed(ClipboardWatch),
 }
 
+/// Test-only predicates over the observed outcome. Production matches the
+/// variants directly, so gating these on `test` keeps `cargo check` free of a
+/// dead-code warning.
 #[cfg(all(test, not(any(windows, target_os = "macos"))))]
 impl HelperOutcome {
-    // The production chain matches variants directly; these predicates exist so
-    // the ordering tests read as intent rather than as pattern matches. Keeping
-    // them test-only avoids a dead-code warning in the plain lib build.
     pub(crate) fn accepted(&self) -> bool {
         matches!(self, Self::Accepted)
     }
@@ -100,14 +101,14 @@ pub(crate) fn copy_via_clipboard_helper_within(
     let deadline = Instant::now() + window;
     loop {
         match child.try_wait() {
-            // Exited zero: the write was accepted.
+            // Exited zero: the write was accepted. Not an ownership proof.
             Ok(Some(status)) if status.success() => return HelperOutcome::Accepted,
             // Exited nonzero (e.g. xclip with no DISPLAY): let the next
             // fallback try.
             Ok(Some(_)) => return HelperOutcome::Failed,
             Ok(None) => {
                 if Instant::now() >= deadline {
-                    // Unproven. The reaper owns the child from here, waits for
+                    // Unproven: the reaper owns the child from here, waits for
                     // it, and publishes the real exit status later.
                     let (watch, tx) = ClipboardWatch::channel();
                     std::thread::spawn(move || {
@@ -116,8 +117,8 @@ pub(crate) fn copy_via_clipboard_helper_within(
                             _ => HelperExit::ExitedNonZero,
                         };
                         // Dropping the watch before the exit is observed is
-                        // fine; the send fails and this thread has still
-                        // reaped the child.
+                        // fine; the send fails and the child has still been
+                        // reaped by this thread.
                         let _ = tx.send(exit);
                     });
                     return HelperOutcome::Unconfirmed(watch);
@@ -135,10 +136,8 @@ pub(super) mod test_support {
     use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
 
-    /// Puts the named stubs first on PATH. A listed helper always resolves to
-    /// its stub; a helper that is not listed falls through to the real PATH, so
-    /// tests that depend on a helper being absent must stub it as failing
-    /// explicitly instead of relying on the host not having it installed.
+    /// Puts only the named stubs on PATH, so any helper not listed behaves as
+    /// if it is not installed.
     pub(super) struct StubPath {
         _dir: tempfile::TempDir,
         prev: Option<std::ffi::OsString>,
@@ -157,15 +156,7 @@ pub(super) mod test_support {
                     .expect("chmod stub");
             }
             let prev = std::env::var_os("PATH");
-            // Stub dir first so the named helpers win, while the real PATH stays
-            // behind it: stub bodies legitimately run ordinary coreutils
-            // (`sleep`, `cat`) and need them resolvable.
-            let mut joined = dir.path().as_os_str().to_os_string();
-            if let Some(prev) = prev.as_ref().filter(|p| !p.is_empty()) {
-                joined.push(":");
-                joined.push(prev);
-            }
-            crate::env::set_var("PATH", joined);
+            crate::env::set_var("PATH", dir.path());
             Self { _dir: dir, prev }
         }
     }
@@ -193,14 +184,13 @@ pub(super) mod test_support {
 /// generous enough that an exit is always observed, and the live-owner window
 /// is short enough that a `sleep` cannot possibly have exited inside it.
 #[cfg(all(test, not(any(windows, target_os = "macos"))))]
-pub(super) const TEST_SETTLE_WINDOW: std::time::Duration = std::time::Duration::from_secs(30);
+pub(super) const TEST_SETTLE_WINDOW: Duration = Duration::from_secs(30);
 
 #[cfg(all(test, not(any(windows, target_os = "macos"))))]
 mod tests {
     use super::test_support::StubPath;
     use super::{
-        Duration, HelperExit, HelperOutcome, Instant, TEST_SETTLE_WINDOW,
-        copy_via_clipboard_helper_within,
+        Duration, HelperOutcome, Instant, TEST_SETTLE_WINDOW, copy_via_clipboard_helper_within,
     };
 
     /// Shorter than any real helper's lifetime, so "still running when the
@@ -208,7 +198,14 @@ mod tests {
     const LIVE_OWNER_WINDOW: Duration = Duration::from_millis(10);
 
     #[test]
-    fn helper_that_exits_successfully_is_accepted() {
+    fn helper_that_exits_successfully_is_accepted_not_owned() {
+        // Every bare program name here resolves through PATH, which sibling
+        // tests swap wholesale via `StubPath`: without the shared lock a
+        // concurrent stub PATH turns `cat` into "not found" and this reports
+        // `Failed`. Measured on the Linux runner: this test failed exactly
+        // that way while `delayed_nonzero_exit_is_unconfirmed_then_fails` held
+        // its stub PATH.
+        let _lock = crate::storage::lock_test_env();
         assert!(matches!(
             copy_via_clipboard_helper_within("cat", &[], "hello", TEST_SETTLE_WINDOW),
             HelperOutcome::Accepted
@@ -220,6 +217,7 @@ mod tests {
     /// that a busy runner can miss.
     #[test]
     fn helper_that_exits_nonzero_falls_through() {
+        let _lock = crate::storage::lock_test_env();
         assert!(matches!(
             copy_via_clipboard_helper_within("false", &[], "hello", TEST_SETTLE_WINDOW),
             HelperOutcome::Failed
@@ -230,6 +228,7 @@ mod tests {
     /// fall-through, so the remaining fallbacks get their turn.
     #[test]
     fn helper_that_exits_nonzero_late_still_falls_through() {
+        let _lock = crate::storage::lock_test_env();
         assert!(matches!(
             copy_via_clipboard_helper_within(
                 "sh",
@@ -243,6 +242,7 @@ mod tests {
 
     #[test]
     fn missing_helper_binary_falls_through() {
+        let _lock = crate::storage::lock_test_env();
         assert!(matches!(
             copy_via_clipboard_helper_within(
                 "kcode-nonexistent-clipboard-helper",
@@ -259,18 +259,17 @@ mod tests {
     #[test]
     fn delayed_nonzero_exit_is_unconfirmed_then_fails() {
         let _lock = crate::storage::lock_test_env();
-        let dir = tempfile::tempdir().expect("temp dir");
-        let sentinel = dir.path().join("release");
-        // The helper exits nonzero only once the test says so, so a descheduled
-        // test thread cannot let it exit before the unconfirmed assertions run.
-        let body = format!(
-            "while [ ! -f '{sentinel}' ]; do sleep 0.02; done; exit 1",
-            sentinel = sentinel.display()
-        );
-        let _stubs = StubPath::with(&[("late-fail", body.as_str())]);
+        // Uses the real PATH and a plain `sh -c` rather than a `StubPath` stub:
+        // a stub PATH carries no coreutils, so the stub body's own `sleep`
+        // failed to resolve, the helper exited nonzero inside the 10ms window,
+        // and the test saw `Failed` instead of the intended `Unconfirmed`.
         let start = Instant::now();
-        let outcome =
-            copy_via_clipboard_helper_within("late-fail", &[], "hello", LIVE_OWNER_WINDOW);
+        let outcome = copy_via_clipboard_helper_within(
+            "sh",
+            &["-c", "sleep 0.25; exit 1"],
+            "hello",
+            LIVE_OWNER_WINDOW,
+        );
         assert!(
             start.elapsed() < Duration::from_secs(1),
             "spawn path blocked for {:?}",
@@ -284,18 +283,9 @@ mod tests {
             None,
             "unobserved helper must not settle"
         );
-        std::fs::write(&sentinel, b"go").expect("release late-failing helper");
-        let mut settled = None;
-        for _ in 0..200 {
-            if let Some(exit) = watch.try_settle() {
-                settled = Some(exit);
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
         assert_eq!(
-            settled,
-            Some(HelperExit::ExitedNonZero),
+            watch.wait_settle(Duration::from_secs(10)),
+            Some(super::super::HelperExit::ExitedNonZero),
             "the reaper must report the delayed nonzero exit"
         );
     }
@@ -332,17 +322,9 @@ mod tests {
         );
 
         std::fs::write(&sentinel, b"go").expect("release resident helper");
-        let mut settled = None;
-        for _ in 0..200 {
-            if let Some(exit) = watch.try_settle() {
-                settled = Some(exit);
-                break;
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
         assert_eq!(
-            settled,
-            Some(HelperExit::ExitedZero),
+            watch.wait_settle(Duration::from_secs(10)),
+            Some(super::super::HelperExit::ExitedZero),
             "the reaper must report the resident helper's eventual exit"
         );
     }
@@ -361,25 +343,16 @@ mod ordering_tests {
     use super::test_support::StubPath;
     use super::{Duration, HelperOutcome, TEST_SETTLE_WINDOW, copy_via_clipboard_helper_within};
 
-    /// Short enough that a never-exiting helper is reported unconfirmed quickly,
-    /// so the resident-helper case does not wait out the settle window.
-    const LIVE_OWNER_WINDOW: Duration = Duration::from_millis(10);
-
     /// Same chain as the Linux arm of `copy_to_clipboard`, returning the first
-    /// helper whose probe did not fail. Tests that expect a resident (never
-    /// exiting) helper pass the short window so the suite does not wait out the
-    /// generous settle window.
+    /// helper whose probe did not fail.
     fn first_helper_outcome() -> Option<(&'static str, HelperOutcome)> {
-        first_helper_outcome_within(TEST_SETTLE_WINDOW)
-    }
-
-    fn first_helper_outcome_within(window: Duration) -> Option<(&'static str, HelperOutcome)> {
         for (program, args) in [
             ("wl-copy", &[][..]),
             ("xclip", &["-selection", "clipboard"][..]),
             ("xsel", &["--clipboard", "--input"][..]),
         ] {
-            let outcome = copy_via_clipboard_helper_within(program, args, "payload", window);
+            let outcome =
+                copy_via_clipboard_helper_within(program, args, "payload", TEST_SETTLE_WINDOW);
             if !outcome.failed() {
                 return Some((program, outcome));
             }
@@ -416,13 +389,9 @@ mod ordering_tests {
     }
 
     #[test]
-    fn xsel_takes_over_when_wl_copy_and_xclip_fail() {
+    fn xsel_takes_over_when_wl_copy_and_xclip_are_missing() {
         let _lock = crate::storage::lock_test_env();
-        let _stubs = StubPath::with(&[
-            ("wl-copy", "exit 1"),
-            ("xclip", "exit 1"),
-            ("xsel", "cat > /dev/null; exit 0"),
-        ]);
+        let _stubs = StubPath::with(&[("xsel", "cat > /dev/null; exit 0")]);
         assert_eq!(first_helper_that_accepts(), Some("xsel"));
     }
 
@@ -437,44 +406,38 @@ mod ordering_tests {
             ("xclip", "exit 1"),
             ("xsel", "exit 1"),
         ]);
-        // `HelperOutcome` carries a `ClipboardWatch`, so it has no `PartialEq`.
-        assert!(
-            first_helper_outcome().is_none(),
-            "a chain of failing helpers must report no outcome"
-        );
+        assert!(first_helper_outcome().is_none());
     }
 
-    /// #231: a resident helper must stop the chain without claiming a copy.
-    /// Falling through to xclip/xsel would start a competing selection owner.
+    /// An unconfirmed helper (still running) must stop the chain: it may own
+    /// the selection, so trying a later helper could steal it, and the result
+    /// must not be reported as a copy.
     #[test]
     fn unconfirmed_helper_stops_the_chain_without_a_copy_claim() {
         let _lock = crate::storage::lock_test_env();
         let dir = tempfile::tempdir().expect("temp dir");
+        let marker = dir.path().join("later-ran");
         let sentinel = dir.path().join("release");
-        let body = format!(
+        let resident = format!(
             "while [ ! -f '{sentinel}' ]; do sleep 0.02; done; exit 0",
             sentinel = sentinel.display()
         );
+        let late_body = format!("touch '{}'", marker.display());
         let _stubs = StubPath::with(&[
-            ("wl-copy", body.as_str()),
-            ("xclip", "cat > /dev/null; exit 0"),
+            ("wl-copy", resident.as_str()),
+            ("xclip", late_body.as_str()),
         ]);
-
-        let (program, outcome) =
-            first_helper_outcome_within(LIVE_OWNER_WINDOW).expect("wl-copy must be tried first");
-        assert_eq!(program, "wl-copy");
+        let outcome =
+            copy_via_clipboard_helper_within("wl-copy", &[], "payload", Duration::from_millis(10));
         assert!(
-            matches!(&outcome, HelperOutcome::Unconfirmed(_)),
+            matches!(outcome, HelperOutcome::Unconfirmed(_)),
             "resident helper must be unconfirmed, got {outcome:?}"
         );
         assert!(
-            !outcome.accepted(),
-            "an unconfirmed helper must never be reported as accepted"
+            !marker.exists(),
+            "the chain must not fall through past an unconfirmed helper"
         );
-
+        // Release the resident stub so the test leaves no stray process.
         std::fs::write(&sentinel, b"go").expect("release resident helper");
-        // Give the reaper a moment to observe the exit so the temp dir and
-        // child are cleaned up before the test returns.
-        std::thread::sleep(Duration::from_millis(100));
     }
 }
