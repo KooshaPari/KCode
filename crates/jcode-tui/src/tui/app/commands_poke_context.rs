@@ -64,10 +64,27 @@ pub fn build_poke_context_prompt(scope: &PokeContextScope) -> String {
     };
     format!(
         "You were started by `/poke` in a fresh Jcode session to recover the operator's active work context and continue safely. Scope: {scope}.\n\n\
-         First recover context before acting: read the global memory registry and its relevant entries under `~/.jcode/memories/global/`; read relevant project memories for the scoped repositories; inspect this session's recent conversation history with `conversation_search` (stats, then recent turns and relevant prior requests). Treat the latest user instruction as authoritative and preserve prior constraints.\n\n\
+         First recover context before acting: read the global memory registry (`memory/global.json` under the KCode home directory, `$KCODE_HOME` or `~/.kcode` when unset) and its relevant entries; use the `memory` tool with action `search` rather than reading the file format directly; read relevant project memories for the scoped repositories; inspect this session's recent conversation history with `conversation_search` (stats, then recent turns and relevant prior requests). Treat the latest user instruction as authoritative and preserve prior constraints.\n\n\
          Then report the active repositories in scope, their current state, work already completed, blockers, and the next concrete actions. Derive active repositories from recovered memories and session history, then verify current repository state with read-only inspection. Mark unavailable facts UNKNOWN.\n\n\
          Continue only with non-harmful, trivially reversible work such as reading, auditing, planning, and isolated local edits or tests. Before any destructive, externally visible, irreversible, or consequential action, stop and request the operator's decision. Preserve unrelated work, never rewrite Git history, and never use screenshots or recordings. Do not ask the operator to restate context that can be recovered from the memories or this session."
     )
+}
+
+/// Rejects a `/poke` recovery launch while an earlier one is still in flight.
+///
+/// The remote transport keeps a single `pending_split_prompt` slot and each `SplitResponse`
+/// takes whatever sits in it, so a second `/poke` before the first session starts would
+/// overwrite the earlier prompt: one session would receive the wrong prompt and the other
+/// would start with no recovery context at all.
+fn reject_poke_while_split_in_flight(app: &mut App) -> bool {
+    if app.pending_split_prompt.is_none() {
+        return false;
+    }
+    app.push_display_message(DisplayMessage::error(
+        "/poke context launch is already in flight. Wait for the new session to start, then retry."
+            .to_string(),
+    ));
+    true
 }
 
 pub(super) fn handle_poke_context_command(app: &mut App, input: &str) -> bool {
@@ -109,7 +126,12 @@ pub(crate) async fn handle_remote_poke(
                 app.push_display_message(DisplayMessage::error(error));
                 return Ok(true);
             }
-            Ok(scope) => build_poke_context_prompt(&scope),
+            Ok(scope) => {
+                if reject_poke_while_split_in_flight(app) {
+                    return Ok(true);
+                }
+                build_poke_context_prompt(&scope)
+            }
         };
         let prepared = crate::tui::app::input::PreparedInput {
             raw_input: trimmed.to_string(),
@@ -201,6 +223,7 @@ mod tests {
         let prompt = build_poke_context_prompt(&PokeContextScope::AllRepos);
         for phrase in [
             "global memory registry",
+            "memory/global.json",
             "project memories",
             "conversation_search",
             "active repositories",
@@ -210,5 +233,9 @@ mod tests {
         ] {
             assert!(prompt.contains(phrase), "missing {phrase:?}");
         }
+        assert!(
+            !prompt.contains("~/.jcode/memories"),
+            "prompt must name the registry the product actually reads"
+        );
     }
 }
