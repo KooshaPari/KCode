@@ -1,0 +1,241 @@
+use super::{App, DisplayMessage};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PokeCommand {
+    On,
+    Off,
+    Status,
+}
+
+pub(crate) enum PokeActivation {
+    EnabledNoIncomplete,
+    Queued,
+    SendNow {
+        incomplete_count: usize,
+        poke_msg: String,
+    },
+}
+
+pub(crate) fn parse_poke_command(trimmed: &str) -> Option<Result<PokeCommand, String>> {
+    match trimmed {
+        "/poke on" => Some(Ok(PokeCommand::On)),
+        "/poke off" => Some(Ok(PokeCommand::Off)),
+        "/poke status" => Some(Ok(PokeCommand::Status)),
+        _ if trimmed.starts_with("/poke ") => {
+            Some(Err("Usage: /poke [repo-name|on|off|status]".to_string()))
+        }
+        _ => None,
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PokeContextScope {
+    AllRepos,
+    Repo(String),
+}
+
+pub fn parse_poke_context_command(input: &str) -> Option<Result<PokeContextScope, String>> {
+    let input = input.trim();
+    if input == "/poke" {
+        return Some(Ok(PokeContextScope::AllRepos));
+    }
+    let rest = input.strip_prefix("/poke ")?;
+    let rest = rest.trim();
+    if rest == "on" || rest == "off" || rest == "status" {
+        return None;
+    }
+    if rest == "all" {
+        return Some(Ok(PokeContextScope::AllRepos));
+    }
+    if rest.is_empty()
+        || !rest
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+    {
+        return Some(Err("Usage: /poke [repo-name]".to_string()));
+    }
+    Some(Ok(PokeContextScope::Repo(rest.to_string())))
+}
+
+pub fn build_poke_context_prompt(scope: &PokeContextScope) -> String {
+    let scope = match scope {
+        PokeContextScope::AllRepos => "all active repositories".to_string(),
+        PokeContextScope::Repo(repo) => format!("repository `{repo}`"),
+    };
+    format!(
+        "You were started by `/poke` in a fresh Jcode session to recover the operator's active work context and continue safely. Scope: {scope}.\n\n\
+         First recover context before acting: read the global memory registry (`memory/global.json` under the KCode home directory, `$KCODE_HOME` or `~/.kcode` when unset) and its relevant entries; use the `memory` tool with action `search` rather than reading the file format directly; read relevant project memories for the scoped repositories; inspect this session's recent conversation history with `conversation_search` (stats, then recent turns and relevant prior requests). Treat the latest user instruction as authoritative and preserve prior constraints.\n\n\
+         Then report the active repositories in scope, their current state, work already completed, blockers, and the next concrete actions. Derive active repositories from recovered memories and session history, then verify current repository state with read-only inspection. Mark unavailable facts UNKNOWN.\n\n\
+         Continue only with non-harmful, trivially reversible work such as reading, auditing, planning, and isolated local edits or tests. Before any destructive, externally visible, irreversible, or consequential action, stop and request the operator's decision. Preserve unrelated work, never rewrite Git history, and never use screenshots or recordings. Do not ask the operator to restate context that can be recovered from the memories or this session."
+    )
+}
+
+/// Rejects a `/poke` recovery launch while an earlier one is still in flight.
+///
+/// The remote transport keeps a single `pending_split_prompt` slot and each `SplitResponse`
+/// takes whatever sits in it, so a second `/poke` before the first session starts would
+/// overwrite the earlier prompt: one session would receive the wrong prompt and the other
+/// would start with no recovery context at all.
+fn reject_poke_while_split_in_flight(app: &mut App) -> bool {
+    if app.pending_split_prompt.is_none() {
+        return false;
+    }
+    app.push_display_message(DisplayMessage::error(
+        "/poke context launch is already in flight. Wait for the new session to start, then retry."
+            .to_string(),
+    ));
+    true
+}
+
+pub(super) fn handle_poke_context_command(app: &mut App, input: &str) -> bool {
+    let Some(parsed) = parse_poke_context_command(input) else {
+        return false;
+    };
+    match parsed {
+        Err(error) => app.push_display_message(DisplayMessage::error(error)),
+        Ok(scope) => {
+            let prompt = build_poke_context_prompt(&scope);
+            if app.is_remote {
+                app.push_display_message(DisplayMessage::error(
+                    "/poke context launch is unavailable while disconnected from the Jcode server. Reconnect and try again.".to_string(),
+                ));
+            } else {
+                match super::launch_prompt_in_new_session_local(app, prompt, Vec::new()) {
+                    Ok(_) => {}
+                    Err(error) => app.push_display_message(DisplayMessage::error(format!(
+                        "Failed to launch /poke context session: {error}"
+                    ))),
+                }
+            }
+        }
+    }
+    true
+}
+
+/// Remote-transport `/poke …` handling. Context recovery takes precedence over on/off/status.
+/// Returns whether the input was consumed, so the caller can stop dispatching it as prose.
+pub(crate) async fn handle_remote_poke(
+    app: &mut App,
+    remote: &mut crate::tui::backend::RemoteConnection,
+    prepared: &crate::tui::app::input::PreparedInput,
+    trimmed: &str,
+) -> anyhow::Result<bool> {
+    if let Some(parsed) = parse_poke_context_command(trimmed) {
+        let prompt = match parsed {
+            Err(error) => {
+                app.push_display_message(DisplayMessage::error(error));
+                return Ok(true);
+            }
+            Ok(scope) => {
+                if reject_poke_while_split_in_flight(app) {
+                    return Ok(true);
+                }
+                build_poke_context_prompt(&scope)
+            }
+        };
+        let prepared = crate::tui::app::input::PreparedInput {
+            raw_input: trimmed.to_string(),
+            expanded: prompt,
+            images: prepared.images.clone(),
+        };
+        crate::tui::app::remote::route_prepared_input_to_new_remote_session(app, remote, prepared)
+            .await?;
+        return Ok(true);
+    }
+    let Some(command) = parse_poke_command(trimmed) else {
+        return Ok(false);
+    };
+    match command {
+        Err(error) => app.push_display_message(DisplayMessage::error(error)),
+        Ok(PokeCommand::Status) => {
+            app.push_display_message(DisplayMessage::system(super::poke_status_message(app)))
+        }
+        Ok(PokeCommand::Off) => {
+            let cleared = super::disable_auto_poke(app);
+            app.set_status_notice("Poke: OFF");
+            app.push_display_message(DisplayMessage::system(super::poke_disabled_message(
+                cleared,
+            )));
+        }
+        Ok(PokeCommand::On) => match super::activate_auto_poke(app) {
+            PokeActivation::EnabledNoIncomplete => app.push_display_message(
+                DisplayMessage::system(super::poke_enabled_without_incomplete_message()),
+            ),
+            PokeActivation::Queued => app
+                .push_display_message(DisplayMessage::system(super::poke_queued_display_message())),
+            PokeActivation::SendNow {
+                incomplete_count,
+                poke_msg,
+            } => {
+                app.push_display_message(DisplayMessage::system(
+                    super::poke_triggered_display_message(incomplete_count),
+                ));
+                let _ = crate::tui::app::remote::begin_remote_send(
+                    app,
+                    remote,
+                    poke_msg,
+                    vec![],
+                    true,
+                    None,
+                    true,
+                    0,
+                )
+                .await;
+                app.visible_turn_started = Some(std::time::Instant::now());
+            }
+        },
+    }
+    Ok(true)
+}
+#[cfg(test)]
+mod tests {
+    use super::{PokeContextScope, build_poke_context_prompt, parse_poke_context_command};
+
+    #[test]
+    fn parse_poke_context_scope() {
+        assert_eq!(
+            parse_poke_context_command("/poke"),
+            Some(Ok(PokeContextScope::AllRepos))
+        );
+        assert_eq!(
+            parse_poke_context_command("/poke all"),
+            Some(Ok(PokeContextScope::AllRepos))
+        );
+        assert_eq!(
+            parse_poke_context_command("/poke jcode"),
+            Some(Ok(PokeContextScope::Repo("jcode".to_string())))
+        );
+        assert_eq!(parse_poke_context_command("/poke on"), None);
+        assert_eq!(parse_poke_context_command("/poke status"), None);
+        assert_eq!(
+            parse_poke_context_command("/poke two words"),
+            Some(Err("Usage: /poke [repo-name]".to_string()))
+        );
+        assert_eq!(
+            parse_poke_context_command("/poke `inspect secrets`"),
+            Some(Err("Usage: /poke [repo-name]".to_string()))
+        );
+        assert_eq!(parse_poke_context_command("/pokeball"), None);
+    }
+
+    #[test]
+    fn prompt_requires_context_recovery_and_safe_progress() {
+        let prompt = build_poke_context_prompt(&PokeContextScope::AllRepos);
+        for phrase in [
+            "global memory registry",
+            "memory/global.json",
+            "project memories",
+            "conversation_search",
+            "active repositories",
+            "trivially reversible",
+            "request the operator's decision",
+            "UNKNOWN",
+        ] {
+            assert!(prompt.contains(phrase), "missing {phrase:?}");
+        }
+        assert!(
+            !prompt.contains("~/.jcode/memories"),
+            "prompt must name the registry the product actually reads"
+        );
+    }
+}
