@@ -46,7 +46,10 @@ pub(crate) enum HelperOutcome {
     Unconfirmed(ClipboardWatch),
 }
 
-#[cfg(not(any(windows, target_os = "macos")))]
+/// Test-only predicates over the observed outcome. Production matches the
+/// variants directly, so gating these on `test` keeps `cargo check` free of a
+/// dead-code warning.
+#[cfg(all(test, not(any(windows, target_os = "macos"))))]
 impl HelperOutcome {
     pub(crate) fn accepted(&self) -> bool {
         matches!(self, Self::Accepted)
@@ -59,11 +62,7 @@ impl HelperOutcome {
 
 #[cfg(not(any(windows, target_os = "macos")))]
 #[cfg_attr(test, allow(dead_code))]
-pub(crate) fn copy_via_clipboard_helper(
-    program: &str,
-    args: &[&str],
-    text: &str,
-) -> HelperOutcome {
+pub(crate) fn copy_via_clipboard_helper(program: &str, args: &[&str], text: &str) -> HelperOutcome {
     copy_via_clipboard_helper_within(program, args, text, HELPER_FAIL_FAST_WINDOW)
 }
 
@@ -200,6 +199,13 @@ mod tests {
 
     #[test]
     fn helper_that_exits_successfully_is_accepted_not_owned() {
+        // Every bare program name here resolves through PATH, which sibling
+        // tests swap wholesale via `StubPath`: without the shared lock a
+        // concurrent stub PATH turns `cat` into "not found" and this reports
+        // `Failed`. Measured on the Linux runner: this test failed exactly
+        // that way while `delayed_nonzero_exit_is_unconfirmed_then_fails` held
+        // its stub PATH.
+        let _lock = crate::storage::lock_test_env();
         assert!(matches!(
             copy_via_clipboard_helper_within("cat", &[], "hello", TEST_SETTLE_WINDOW),
             HelperOutcome::Accepted
@@ -211,6 +217,7 @@ mod tests {
     /// that a busy runner can miss.
     #[test]
     fn helper_that_exits_nonzero_falls_through() {
+        let _lock = crate::storage::lock_test_env();
         assert!(matches!(
             copy_via_clipboard_helper_within("false", &[], "hello", TEST_SETTLE_WINDOW),
             HelperOutcome::Failed
@@ -221,6 +228,7 @@ mod tests {
     /// fall-through, so the remaining fallbacks get their turn.
     #[test]
     fn helper_that_exits_nonzero_late_still_falls_through() {
+        let _lock = crate::storage::lock_test_env();
         assert!(matches!(
             copy_via_clipboard_helper_within(
                 "sh",
@@ -234,6 +242,7 @@ mod tests {
 
     #[test]
     fn missing_helper_binary_falls_through() {
+        let _lock = crate::storage::lock_test_env();
         assert!(matches!(
             copy_via_clipboard_helper_within(
                 "kcode-nonexistent-clipboard-helper",
@@ -250,11 +259,14 @@ mod tests {
     #[test]
     fn delayed_nonzero_exit_is_unconfirmed_then_fails() {
         let _lock = crate::storage::lock_test_env();
-        let _stubs = StubPath::with(&[("late-fail", "sleep 0.25; exit 1")]);
+        // Uses the real PATH and a plain `sh -c` rather than a `StubPath` stub:
+        // a stub PATH carries no coreutils, so the stub body's own `sleep`
+        // failed to resolve, the helper exited nonzero inside the 10ms window,
+        // and the test saw `Failed` instead of the intended `Unconfirmed`.
         let start = Instant::now();
         let outcome = copy_via_clipboard_helper_within(
-            "late-fail",
-            &[],
+            "sh",
+            &["-c", "sleep 0.25; exit 1"],
             "hello",
             LIVE_OWNER_WINDOW,
         );
@@ -266,7 +278,11 @@ mod tests {
         let HelperOutcome::Unconfirmed(watch) = outcome else {
             panic!("a helper that outlived the window was reported as {outcome:?}");
         };
-        assert_eq!(watch.try_settle(), None, "unobserved helper must not settle");
+        assert_eq!(
+            watch.try_settle(),
+            None,
+            "unobserved helper must not settle"
+        );
         assert_eq!(
             watch.wait_settle(Duration::from_secs(10)),
             Some(super::super::HelperExit::ExitedNonZero),
@@ -289,12 +305,8 @@ mod tests {
         let _stubs = StubPath::with(&[("resident-helper", body.as_str())]);
 
         let start = Instant::now();
-        let outcome = copy_via_clipboard_helper_within(
-            "resident-helper",
-            &[],
-            "hello",
-            LIVE_OWNER_WINDOW,
-        );
+        let outcome =
+            copy_via_clipboard_helper_within("resident-helper", &[], "hello", LIVE_OWNER_WINDOW);
         let elapsed = start.elapsed();
         assert!(
             elapsed < Duration::from_secs(1),
@@ -329,9 +341,7 @@ mod tests {
 #[cfg(all(test, not(any(windows, target_os = "macos"))))]
 mod ordering_tests {
     use super::test_support::StubPath;
-    use super::{
-        Duration, HelperOutcome, TEST_SETTLE_WINDOW, copy_via_clipboard_helper_within,
-    };
+    use super::{Duration, HelperOutcome, TEST_SETTLE_WINDOW, copy_via_clipboard_helper_within};
 
     /// Same chain as the Linux arm of `copy_to_clipboard`, returning the first
     /// helper whose probe did not fail.
@@ -341,7 +351,8 @@ mod ordering_tests {
             ("xclip", &["-selection", "clipboard"][..]),
             ("xsel", &["--clipboard", "--input"][..]),
         ] {
-            let outcome = copy_via_clipboard_helper_within(program, args, "payload", TEST_SETTLE_WINDOW);
+            let outcome =
+                copy_via_clipboard_helper_within(program, args, "payload", TEST_SETTLE_WINDOW);
             if !outcome.failed() {
                 return Some((program, outcome));
             }
@@ -395,7 +406,7 @@ mod ordering_tests {
             ("xclip", "exit 1"),
             ("xsel", "exit 1"),
         ]);
-        assert_eq!(first_helper_outcome(), None);
+        assert!(first_helper_outcome().is_none());
     }
 
     /// An unconfirmed helper (still running) must stop the chain: it may own
@@ -412,13 +423,12 @@ mod ordering_tests {
             sentinel = sentinel.display()
         );
         let late_body = format!("touch '{}'", marker.display());
-        let _stubs = StubPath::with(&[("wl-copy", resident.as_str()), ("xclip", late_body.as_str())]);
-        let outcome = copy_via_clipboard_helper_within(
-            "wl-copy",
-            &[],
-            "payload",
-            Duration::from_millis(10),
-        );
+        let _stubs = StubPath::with(&[
+            ("wl-copy", resident.as_str()),
+            ("xclip", late_body.as_str()),
+        ]);
+        let outcome =
+            copy_via_clipboard_helper_within("wl-copy", &[], "payload", Duration::from_millis(10));
         assert!(
             matches!(outcome, HelperOutcome::Unconfirmed(_)),
             "resident helper must be unconfirmed, got {outcome:?}"

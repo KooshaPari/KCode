@@ -57,6 +57,20 @@ impl ClipboardWatch {
             Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(HelperExit::ExitedNonZero),
         }
     }
+
+    /// Blocking wait with a deadline, for the tests that must observe the
+    /// reaper's eventual exit synchronously. `None` means the helper had not
+    /// exited within `timeout`; a disconnected reaper settles as a non-zero
+    /// exit, matching [`ClipboardWatch::try_settle`]. Production never blocks,
+    /// so this exists only for the helper's own tests.
+    #[cfg(all(test, not(any(windows, target_os = "macos"))))]
+    pub(super) fn wait_settle(&self, timeout: std::time::Duration) -> Option<HelperExit> {
+        match self.rx.recv_timeout(timeout) {
+            Ok(exit) => Some(exit),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => None,
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Some(HelperExit::ExitedNonZero),
+        }
+    }
 }
 
 /// A clipboard write plus the optional watch for an unconfirmed helper.
