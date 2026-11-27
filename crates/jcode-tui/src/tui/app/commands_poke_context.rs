@@ -1,5 +1,33 @@
 use super::{App, DisplayMessage};
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PokeCommand {
+    On,
+    Off,
+    Status,
+}
+
+pub(crate) enum PokeActivation {
+    EnabledNoIncomplete,
+    Queued,
+    SendNow {
+        incomplete_count: usize,
+        poke_msg: String,
+    },
+}
+
+pub(crate) fn parse_poke_command(trimmed: &str) -> Option<Result<PokeCommand, String>> {
+    match trimmed {
+        "/poke on" => Some(Ok(PokeCommand::On)),
+        "/poke off" => Some(Ok(PokeCommand::Off)),
+        "/poke status" => Some(Ok(PokeCommand::Status)),
+        _ if trimmed.starts_with("/poke ") => {
+            Some(Err("Usage: /poke [repo-name|on|off|status]".to_string()))
+        }
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PokeContextScope {
     AllRepos,
@@ -11,9 +39,7 @@ pub fn parse_poke_context_command(input: &str) -> Option<Result<PokeContextScope
     if input == "/poke" {
         return Some(Ok(PokeContextScope::AllRepos));
     }
-    let Some(rest) = input.strip_prefix("/poke ") else {
-        return None;
-    };
+    let rest = input.strip_prefix("/poke ")?;
     let rest = rest.trim();
     if rest == "on" || rest == "off" || rest == "status" {
         return None;
@@ -69,6 +95,76 @@ pub(super) fn handle_poke_context_command(app: &mut App, input: &str) -> bool {
     true
 }
 
+/// Remote-transport `/poke …` handling. Context recovery takes precedence over on/off/status.
+/// Returns whether the input was consumed, so the caller can stop dispatching it as prose.
+pub(crate) async fn handle_remote_poke(
+    app: &mut App,
+    remote: &mut crate::tui::backend::RemoteConnection,
+    prepared: &crate::tui::app::input::PreparedInput,
+    trimmed: &str,
+) -> anyhow::Result<bool> {
+    if let Some(parsed) = parse_poke_context_command(trimmed) {
+        let prompt = match parsed {
+            Err(error) => {
+                app.push_display_message(DisplayMessage::error(error));
+                return Ok(true);
+            }
+            Ok(scope) => build_poke_context_prompt(&scope),
+        };
+        let prepared = crate::tui::app::input::PreparedInput {
+            raw_input: trimmed.to_string(),
+            expanded: prompt,
+            images: prepared.images.clone(),
+        };
+        crate::tui::app::remote::route_prepared_input_to_new_remote_session(app, remote, prepared)
+            .await?;
+        return Ok(true);
+    }
+    let Some(command) = parse_poke_command(trimmed) else {
+        return Ok(false);
+    };
+    match command {
+        Err(error) => app.push_display_message(DisplayMessage::error(error)),
+        Ok(PokeCommand::Status) => {
+            app.push_display_message(DisplayMessage::system(super::poke_status_message(app)))
+        }
+        Ok(PokeCommand::Off) => {
+            let cleared = super::disable_auto_poke(app);
+            app.set_status_notice("Poke: OFF");
+            app.push_display_message(DisplayMessage::system(super::poke_disabled_message(
+                cleared,
+            )));
+        }
+        Ok(PokeCommand::On) => match super::activate_auto_poke(app) {
+            PokeActivation::EnabledNoIncomplete => app.push_display_message(
+                DisplayMessage::system(super::poke_enabled_without_incomplete_message()),
+            ),
+            PokeActivation::Queued => app
+                .push_display_message(DisplayMessage::system(super::poke_queued_display_message())),
+            PokeActivation::SendNow {
+                incomplete_count,
+                poke_msg,
+            } => {
+                app.push_display_message(DisplayMessage::system(
+                    super::poke_triggered_display_message(incomplete_count),
+                ));
+                let _ = crate::tui::app::remote::begin_remote_send(
+                    app,
+                    remote,
+                    poke_msg,
+                    vec![],
+                    true,
+                    None,
+                    true,
+                    0,
+                )
+                .await;
+                app.visible_turn_started = Some(std::time::Instant::now());
+            }
+        },
+    }
+    Ok(true)
+}
 #[cfg(test)]
 mod tests {
     use super::{PokeContextScope, build_poke_context_prompt, parse_poke_context_command};

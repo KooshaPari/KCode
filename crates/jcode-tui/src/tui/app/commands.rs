@@ -32,7 +32,9 @@ use std::time::Instant;
 
 #[path = "commands_poke_context.rs"]
 mod poke_context;
-pub(super) use poke_context::{build_poke_context_prompt, parse_poke_context_command};
+pub(super) use poke_context::{
+    PokeActivation, PokeCommand, handle_remote_poke, parse_poke_command,
+};
 
 pub(super) const REVIEW_PREFERRED_MODEL: &str = "gpt-5.5";
 const POKE_OFF_UI_HINT: &str = "/poke off to stop.";
@@ -48,34 +50,6 @@ pub(super) struct TodoConfidenceSummary {
     pub completion_confidence_needs_validation: bool,
     pub confidence_spike_detected: bool,
     pub needs_more_work: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum PokeCommand {
-    On,
-    Off,
-    Status,
-}
-
-pub(super) enum PokeActivation {
-    EnabledNoIncomplete,
-    Queued,
-    SendNow {
-        incomplete_count: usize,
-        poke_msg: String,
-    },
-}
-
-pub(super) fn parse_poke_command(trimmed: &str) -> Option<Result<PokeCommand, String>> {
-    match trimmed {
-        "/poke on" => Some(Ok(PokeCommand::On)),
-        "/poke off" => Some(Ok(PokeCommand::Off)),
-        "/poke status" => Some(Ok(PokeCommand::Status)),
-        _ if trimmed.starts_with("/poke ") => {
-            Some(Err("Usage: /poke [repo-name|on|off|status]".to_string()))
-        }
-        _ => None,
-    }
 }
 
 pub(super) fn is_poke_message(message: &str) -> bool {
