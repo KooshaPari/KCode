@@ -706,6 +706,10 @@ pub fn find_session_by_name_or_id(name_or_id: &str) -> Result<String> {
         }
     }
 
+    // Count candidates while both match lists are independently borrowable.
+    let total_matches = exact_matches.len() + title_matches.len();
+    let ambiguous = total_matches > 1;
+
     let matches = if exact_matches.is_empty() {
         &mut title_matches
     } else {
@@ -718,7 +722,44 @@ pub fn find_session_by_name_or_id(name_or_id: &str) -> Result<String> {
 
     // Sort by updated_at descending and return the most recent match.
     matches.sort_by(|a, b| b.1.cmp(&a.1));
-    Ok(matches[0].0.clone())
+    let chosen = matches[0].0.clone();
+    if ambiguous {
+        eprintln!(
+            "warning: resume query '{}' matched {} sessions; choosing {}",
+            name_or_id, total_matches, chosen
+        );
+    }
+
+    // A client that is already showing a session records the binding in
+    // ~/.kcode/client_sessions/<pid>. Never bind a session another client holds.
+    let mut claimed: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if let Ok(home) = storage::jcode_dir() {
+        let dir = home.join("client_sessions");
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                    let id = content.trim().to_string();
+                    if !id.is_empty() {
+                        claimed.insert(id);
+                    }
+                }
+            }
+        }
+    }
+
+    // Among the sorted matches, take the newest whose id is not already claimed.
+    let chosen = match matches.iter().find(|(id, _)| !claimed.contains(id)) {
+        Some((id, _)) => id.clone(),
+        None => {
+            eprintln!(
+                "warning: resume query '{}' matched only sessions already held by a client; choosing {}",
+                name_or_id, chosen
+            );
+            chosen
+        }
+    };
+
+    Ok(chosen)
 }
 
 #[cfg(test)]
@@ -873,5 +914,125 @@ mod batch_crash_tests {
 
         crate::env::remove_var("KCODE_HOME");
         Ok(())
+    }
+
+    #[test]
+    fn find_session_by_name_or_id_unique_name_resolves_unchanged() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = crate::test_temp::tempdir().expect("tempdir");
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        let session_id = "session_uniquename_1770000000000";
+        let mut session = Session::create_with_id(
+            session_id.to_string(),
+            None,
+            Some("Unique name title".to_string()),
+        );
+        session.status = SessionStatus::Closed;
+        session.save().expect("save session");
+
+        assert_eq!(
+            find_session_by_name_or_id("uniquename").expect("resolve unique name"),
+            session_id
+        );
+
+        crate::env::remove_var("KCODE_HOME");
+    }
+
+    #[test]
+    fn find_session_by_name_or_id_skips_claimed_newest() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = crate::test_temp::tempdir().expect("tempdir");
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        let older_id = "session_sharedname_1770000000000";
+        let newer_id = "session_sharedname_1770000000001";
+        let mut older =
+            Session::create_with_id(older_id.to_string(), None, Some("Shared title".to_string()));
+        older.status = SessionStatus::Closed;
+        older.save().expect("save older");
+        let mut newer =
+            Session::create_with_id(newer_id.to_string(), None, Some("Shared title".to_string()));
+        newer.status = SessionStatus::Closed;
+        newer.save().expect("save newer");
+
+        // Make the binding directory and claim the newer session.
+        let binding_dir = temp.path().join("client_sessions");
+        std::fs::create_dir_all(&binding_dir).expect("binding dir");
+        std::fs::write(binding_dir.join("99999"), newer_id).expect("write binding");
+
+        assert_eq!(
+            find_session_by_name_or_id("sharedname").expect("resolve unclaimed"),
+            older_id
+        );
+
+        crate::env::remove_var("KCODE_HOME");
+    }
+
+    #[test]
+    fn find_session_by_name_or_id_all_claimed_returns_newest() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = crate::test_temp::tempdir().expect("tempdir");
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        let older_id = "session_allclaimed_1770000000000";
+        let newer_id = "session_allclaimed_1770000000001";
+        let mut older = Session::create_with_id(
+            older_id.to_string(),
+            None,
+            Some("All claimed title".to_string()),
+        );
+        older.status = SessionStatus::Closed;
+        older.save().expect("save older");
+        let mut newer = Session::create_with_id(
+            newer_id.to_string(),
+            None,
+            Some("All claimed title".to_string()),
+        );
+        newer.status = SessionStatus::Closed;
+        newer.save().expect("save newer");
+
+        let binding_dir = temp.path().join("client_sessions");
+        std::fs::create_dir_all(&binding_dir).expect("binding dir");
+        std::fs::write(binding_dir.join("99998"), older_id).expect("write older binding");
+        std::fs::write(binding_dir.join("99999"), newer_id).expect("write newer binding");
+
+        assert_eq!(
+            find_session_by_name_or_id("allclaimed").expect("resolve claimed"),
+            newer_id
+        );
+
+        crate::env::remove_var("KCODE_HOME");
+    }
+
+    #[test]
+    fn find_session_by_name_or_id_no_binding_dir_returns_newest() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = crate::test_temp::tempdir().expect("tempdir");
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        let older_id = "session_nobind_1770000000000";
+        let newer_id = "session_nobind_1770000000001";
+        let mut older = Session::create_with_id(
+            older_id.to_string(),
+            None,
+            Some("No binding title".to_string()),
+        );
+        older.status = SessionStatus::Closed;
+        older.save().expect("save older");
+        let mut newer = Session::create_with_id(
+            newer_id.to_string(),
+            None,
+            Some("No binding title".to_string()),
+        );
+        newer.status = SessionStatus::Closed;
+        newer.save().expect("save newer");
+
+        assert_eq!(
+            find_session_by_name_or_id("nobind").expect("resolve newest"),
+            newer_id
+        );
+
+        crate::env::remove_var("KCODE_HOME");
     }
 }
