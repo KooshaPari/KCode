@@ -86,6 +86,7 @@ impl SessionSpawnContext {
     }
 }
 
+#[cfg(any(unix, test))]
 fn kcode_home_env_value() -> Option<String> {
     match std::env::var("KCODE_HOME") {
         Ok(value) if !value.is_empty() => Some(value),
@@ -99,6 +100,7 @@ fn kcode_home_env_value() -> Option<String> {
 /// the client that asked for it. `comm_session` forwards the client snapshot
 /// through `SessionSpawnContext`; CLI-driven and device-driven spawns have no
 /// client snapshot and legitimately use the process value instead.
+#[cfg(any(unix, test))]
 fn client_kcode_home_for_spawn(context: &SessionSpawnContext) -> Option<String> {
     context
         .client_terminal_env
@@ -110,6 +112,7 @@ fn client_kcode_home_for_spawn(context: &SessionSpawnContext) -> Option<String> 
 
 /// Build a terminal command with the effective store root forwarded at argv
 /// level, preserving the original executable for spawn metadata (#424).
+#[cfg(any(unix, test))]
 fn resume_command_with_context(
     exe: &std::path::Path,
     args: Vec<String>,
@@ -145,6 +148,7 @@ fn resume_command_with_context(
 /// Unix only. Windows has no `env` binary, so argv cannot be prefixed there;
 /// a Windows child must inherit the variable or receive it from its hook, which
 /// is still open on #424.
+#[cfg(any(unix, test))]
 pub(crate) fn forward_kcode_home_for_spawn(
     program: std::path::PathBuf,
     args: Vec<String>,
@@ -152,6 +156,7 @@ pub(crate) fn forward_kcode_home_for_spawn(
     forward_kcode_home_for_spawn_with(program, args, kcode_home_env_value().as_deref())
 }
 
+#[cfg(any(unix, test))]
 pub(crate) fn forward_kcode_home_for_spawn_with(
     program: std::path::PathBuf,
     args: Vec<String>,
