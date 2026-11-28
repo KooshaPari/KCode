@@ -44,10 +44,15 @@ jcode --herdr
 Specify agent type for HERDR reporting:
 
 ```bash
-jcode --herdr --herdr-kind jcode      # default
+kcode --herdr                          # default: reports app=kcode
+jcode --herdr --herdr-kind jcode       # vanilla upstream identity
 jcode --herdr --herdr-kind forge       # ForgeCode
 jcode --herdr --herdr-kind forgecode   # ForgeCode (alias)
 ```
+
+The default names the binary you are running. A `kcode` build that reports
+`app=jcode` is shown under the upstream identity in the terminal host's listing,
+which makes a fork pane indistinguishable from vanilla jcode.
 
 ### `kcode herdr-status`
 
