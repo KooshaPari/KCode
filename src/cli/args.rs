@@ -2,11 +2,12 @@ use clap::{Parser, Subcommand, ValueEnum};
 
 use super::provider_init::ProviderChoice;
 
+mod cloud_view;
 mod google;
 mod provider_auth;
 mod session;
-#[allow(unused_imports)]
-pub(crate) use google::{GoogleAccessTierArg, GoogleLoginArgs};
+pub(crate) use cloud_view::CloudSessionViewFormat;
+pub(crate) use google::GoogleLoginArgs;
 pub(crate) use provider_auth::ProviderAuthArg;
 pub(crate) use session::SessionCommand;
 
@@ -1010,23 +1011,6 @@ pub(crate) struct JadeCloudOptions {
     pub(crate) helper: Option<String>,
 }
 
-#[derive(ValueEnum, Debug, Clone, Copy)]
-pub(crate) enum CloudSessionViewFormat {
-    Summary,
-    Json,
-    Html,
-}
-
-impl CloudSessionViewFormat {
-    pub(crate) fn as_arg(self) -> &'static str {
-        match self {
-            Self::Summary => "summary",
-            Self::Json => "json",
-            Self::Html => "html",
-        }
-    }
-}
-
 #[derive(Subcommand, Debug)]
 pub(crate) enum RestartCommand {
     /// Save a reboot snapshot of currently active jcode windows
@@ -1034,8 +1018,7 @@ pub(crate) enum RestartCommand {
         /// Restore this reboot snapshot automatically the next time plain `jcode` starts
         #[arg(long)]
         auto_restore: bool,
-        /// Replace an existing auto-restore snapshot that is already armed
-        #[arg(long)]
+        #[arg(long, help = "Replace an armed auto-restore snapshot")]
         replace_armed: bool,
     },
     /// Restore the most recently saved reboot snapshot

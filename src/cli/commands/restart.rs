@@ -15,19 +15,19 @@ async fn run_restart_save_command_with_writer<W: std::io::Write>(
 ) -> Result<()> {
     let path = crate::restart_snapshot::snapshot_path()?;
     let existing = existing_snapshot_for_save(&path)?;
-    if existing
-        .as_ref()
-        .is_some_and(|snapshot| snapshot.auto_restore_on_next_start)
-        && !replace_armed
-    {
+    if !replace_armed {
         // The restore-side claim that serializes competing restores belongs to #389.
-        let snapshot = existing.as_ref().expect("armed snapshot present");
-        anyhow::bail!(
-            "Refusing to overwrite armed reboot snapshot at {}: created {}, {} session(s), auto-restore armed. Run `jcode restart restore` to consume it, or use `jcode restart save --replace-armed` to replace it.",
-            path.display(),
-            snapshot.created_at,
-            snapshot.sessions.len()
-        );
+        if let Some(snapshot) = existing
+            .as_ref()
+            .filter(|snapshot| snapshot.auto_restore_on_next_start)
+        {
+            anyhow::bail!(
+                "Refusing to overwrite armed reboot snapshot at {}: created {}, {} session(s), auto-restore armed. Run `jcode restart restore` to consume it, or use `jcode restart save --replace-armed` to replace it.",
+                path.display(),
+                snapshot.created_at,
+                snapshot.sessions.len()
+            );
+        }
     }
 
     let mut snapshot = if let Some(snapshot) = capture_connected_restart_snapshot().await? {
