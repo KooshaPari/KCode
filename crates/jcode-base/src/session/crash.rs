@@ -736,13 +736,11 @@ pub fn find_session_by_name_or_id(name_or_id: &str) -> Result<String> {
     if let Ok(home) = storage::jcode_dir() {
         let dir = home.join("client_sessions");
         if let Ok(entries) = std::fs::read_dir(&dir) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if let Ok(content) = std::fs::read_to_string(entry.path()) {
-                        let id = content.trim().to_string();
-                        if !id.is_empty() {
-                            claimed.insert(id);
-                        }
+            for entry in entries.flatten() {
+                if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                    let id = content.trim().to_string();
+                    if !id.is_empty() {
+                        claimed.insert(id);
                     }
                 }
             }
