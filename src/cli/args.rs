@@ -67,12 +67,7 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) herdr: bool,
 
-    /// Agent kind for HC/HERDR reporting (kcode, jcode, forge, forgecode)
-    ///
-    /// This value is sent as the OSC 7501 `app=` field, which is the identity a
-    /// terminal host displays for the program. It must name this binary, not the
-    /// upstream it forked from: a kcode pane that reports `app=jcode` is
-    /// indistinguishable from the vanilla jcode build in the host's listing.
+    /// Agent kind for HC/HERDR reporting: the OSC 7501 app= identity; must name this binary
     #[arg(long, global = true, default_value = "kcode")]
     pub(crate) herdr_kind: String,
 
