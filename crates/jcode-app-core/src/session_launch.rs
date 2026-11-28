@@ -86,6 +86,43 @@ impl SessionSpawnContext {
     }
 }
 
+fn kcode_home_env_value() -> Option<String> {
+    match std::env::var("KCODE_HOME") {
+        Ok(value) if !value.is_empty() => Some(value),
+        _ => None,
+    }
+}
+
+/// Prefix a spawned child command with `env KCODE_HOME=<value>` when the
+/// current process has `KCODE_HOME` set.
+///
+/// Terminal-spawn hooks execute children with the hook runner's environment,
+/// so a restored child would otherwise resolve the default store root instead
+/// of the client's configured store root (#424). Forwarding at argv level
+/// makes the child see the same store root regardless of hook environment.
+pub(crate) fn forward_kcode_home_for_spawn(
+    program: std::path::PathBuf,
+    args: Vec<String>,
+) -> (std::path::PathBuf, Vec<String>) {
+    forward_kcode_home_for_spawn_with(program, args, kcode_home_env_value().as_deref())
+}
+
+pub(crate) fn forward_kcode_home_for_spawn_with(
+    program: std::path::PathBuf,
+    args: Vec<String>,
+    kcode_home: Option<&str>,
+) -> (std::path::PathBuf, Vec<String>) {
+    let Some(kcode_home) = kcode_home.filter(|value| !value.is_empty()) else {
+        return (program, args);
+    };
+
+    let mut forwarded_args = Vec::with_capacity(args.len() + 2);
+    forwarded_args.push(format!("KCODE_HOME={kcode_home}"));
+    forwarded_args.push(program.to_string_lossy().into_owned());
+    forwarded_args.extend(args);
+    (std::path::PathBuf::from("env"), forwarded_args)
+}
+
 /// Compute the window/terminal title used when (re)launching a session.
 pub fn resumed_window_title(session_id: &str) -> String {
     let session_name = crate::process_title::session_name(session_id);
@@ -258,7 +295,8 @@ pub fn spawn_resume_in_new_terminal_with_context(
         args.push(provider_arg.to_string());
     }
     args.extend(["--resume".to_string(), session_id.to_string()]);
-    let command = crate::terminal_launch::TerminalCommand::new(exe, args)
+    let (program, args) = forward_kcode_home_for_spawn(exe.to_path_buf(), args);
+    let command = crate::terminal_launch::TerminalCommand::new(program, args)
         .title(title)
         .fresh_spawn();
     let command = context.apply(command, "resume", session_id);
@@ -309,7 +347,8 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
         session_id.to_string(),
         "self-dev".to_string(),
     ]);
-    let command = crate::terminal_launch::TerminalCommand::new(exe, args)
+    let (program, args) = forward_kcode_home_for_spawn(exe.to_path_buf(), args);
+    let command = crate::terminal_launch::TerminalCommand::new(program, args)
         .title(selfdev_title.clone())
         .fresh_spawn();
     let command = context.apply(command, "selfdev", session_id);
@@ -441,8 +480,12 @@ pub fn spawn_resume_in_new_terminal_with_context(
     jcode_args.push("--resume".to_string());
     jcode_args.push(session_id.to_string());
 
-    let hook_command = crate::terminal_launch::TerminalCommand::new(exe, jcode_args.clone())
-        .title(resumed_window_title(session_id));
+    let (spawn_program, spawn_jcode_args) =
+        forward_kcode_home_for_spawn(exe.to_path_buf(), jcode_args.clone());
+
+    let hook_command =
+        crate::terminal_launch::TerminalCommand::new(spawn_program.clone(), spawn_jcode_args.clone())
+            .title(resumed_window_title(session_id));
     let hook_command = context.apply(hook_command, "resume", session_id);
     if crate::terminal_launch::try_spawn_via_configured_hook(&hook_command, cwd) {
         return Ok(true);
@@ -473,8 +516,8 @@ pub fn spawn_resume_in_new_terminal_with_context(
                 };
                 let mut cmd = Command::new(wezterm_bin);
                 cmd.args(["start", "--always-new-process", "--"])
-                    .arg(exe)
-                    .args(&jcode_args)
+                    .arg(&spawn_program)
+                    .args(&spawn_jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -487,8 +530,8 @@ pub fn spawn_resume_in_new_terminal_with_context(
                 }
                 let mut cmd = Command::new("wt.exe");
                 cmd.args(["-p", "Command Prompt"])
-                    .arg(exe)
-                    .args(&jcode_args)
+                    .arg(&spawn_program)
+                    .args(&spawn_jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -501,8 +544,8 @@ pub fn spawn_resume_in_new_terminal_with_context(
                 }
                 let mut cmd = Command::new("alacritty");
                 cmd.args(["-e"])
-                    .arg(exe)
-                    .args(&jcode_args)
+                    .arg(&spawn_program)
+                    .args(&spawn_jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -566,8 +609,14 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
         "self-dev".to_string(),
     ]);
 
-    let hook_command = crate::terminal_launch::TerminalCommand::new(exe, jcode_args.clone())
-        .title(format!("{} [self-dev]", resumed_window_title(session_id)));
+    let (spawn_program, spawn_jcode_args) =
+        forward_kcode_home_for_spawn(exe.to_path_buf(), jcode_args.clone());
+
+    let hook_command = crate::terminal_launch::TerminalCommand::new(
+        spawn_program.clone(),
+        spawn_jcode_args.clone(),
+    )
+    .title(format!("{} [self-dev]", resumed_window_title(session_id)));
     let hook_command = context.apply(hook_command, "selfdev", session_id);
     if crate::terminal_launch::try_spawn_via_configured_hook(&hook_command, cwd) {
         return Ok(true);
@@ -598,8 +647,8 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                 };
                 let mut cmd = Command::new(wezterm_bin);
                 cmd.args(["start", "--always-new-process", "--"])
-                    .arg(exe)
-                    .args(&jcode_args)
+                    .arg(&spawn_program)
+                    .args(&spawn_jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -612,8 +661,8 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                 }
                 let mut cmd = Command::new("wt.exe");
                 cmd.args(["-p", "Command Prompt"])
-                    .arg(exe)
-                    .args(&jcode_args)
+                    .arg(&spawn_program)
+                    .args(&spawn_jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -626,8 +675,8 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                 }
                 let mut cmd = Command::new("alacritty");
                 cmd.args(["-e"])
-                    .arg(exe)
-                    .args(&jcode_args)
+                    .arg(&spawn_program)
+                    .args(&spawn_jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -643,4 +692,50 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
     }
 
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::forward_kcode_home_for_spawn_with;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn forward_kcode_home_for_spawn_prefixes_env_when_set() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let (program, args) = forward_kcode_home_for_spawn_with(
+            PathBuf::from("/usr/local/bin/kcode"),
+            vec!["--resume".to_string(), "ses-1".to_string()],
+            Some("/tmp/custom-kcode-home"),
+        );
+
+        assert_eq!(program, PathBuf::from("env"));        
+        assert_eq!(
+            args,
+            vec![
+                "KCODE_HOME=/tmp/custom-kcode-home".to_string(),
+                "/usr/local/bin/kcode".to_string(),
+                "--resume".to_string(),
+                "ses-1".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn forward_kcode_home_for_spawn_is_unchanged_when_unset() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let (program, args) = forward_kcode_home_for_spawn_with(
+            PathBuf::from("/usr/local/bin/kcode"),
+            vec!["--resume".to_string(), "ses-1".to_string()],
+            None,
+        );
+
+        assert_eq!(program, PathBuf::from("/usr/local/bin/kcode"));        
+        assert_eq!(
+            args,
+            vec!["--resume".to_string(), "ses-1".to_string()]
+        );
+    }
 }
