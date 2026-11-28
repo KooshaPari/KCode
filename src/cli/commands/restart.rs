@@ -64,7 +64,7 @@ async fn run_restart_save_command_with_writer<W: std::io::Write>(
         } else {
             String::new()
         }
-    );
+    )?;
     for session in &snapshot.sessions {
         let suffix = if session.is_selfdev {
             " [self-dev]"
@@ -75,7 +75,7 @@ async fn run_restart_save_command_with_writer<W: std::io::Write>(
             output,
             "- {} ({}){}",
             session.display_name, session.session_id, suffix
-        );
+        )?;
     }
     if auto_restore {
         writeln!(

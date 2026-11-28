@@ -212,7 +212,7 @@ async fn pending_restore_does_not_auto_restore_recent_crash_without_snapshot() {
     let dead_pid = child.id();
     let _ = child.wait().expect("wait for child");
 
-    let crashed = Session::create_with_id(
+    let mut crashed = Session::create_with_id(
         "session_no_startup_auto_restore_crash".to_string(),
         None,
         Some("Do Not Respawn".to_string()),
