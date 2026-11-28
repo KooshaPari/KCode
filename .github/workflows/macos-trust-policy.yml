@@ -1,0 +1,57 @@
+name: macOS Trust Policy
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "src/main.rs"
+      - ".github/workflows/macos-trust-policy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-trust-policy:
+    # The assertions here are a source-text check plus a platform-independent
+    # pure function (`macos_startup_repair_requested`, cfg(any(test, macos))),
+    # so a free hosted Linux runner proves them. macOS hosted runners are billed
+    # and this repository forbids adding billed runners.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # `alsa-sys` aborts the build without libasound2-dev on a hosted runner.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-trust-policy
+      # The binary target is `kcode` (src/main.rs); there is no `jcode` bin.
+      - name: Check KCode entrypoint
+        run: cargo check --bin kcode
+      - name: Run policy parsing test
+        run: cargo test --bin kcode startup_repair_is_opt_in -- --exact --nocapture
+      - name: Assert default source path is non-mutating
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("src/main.rs").read_text()
+          assert "maybe_repair_macos_code_signature();" in source
+          assert 'std::env::var("JCODE_MACOS_STARTUP_REPAIR")' in source
+          assert "self_heal_macos_code_signature();" not in source
+          print("default startup repair is explicitly gated")
+          PY

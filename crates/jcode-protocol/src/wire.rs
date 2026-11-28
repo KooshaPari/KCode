@@ -1241,6 +1241,23 @@ pub enum ServerEvent {
         native_ssh_protocol: Option<u32>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         capabilities: Vec<String>,
+        /// Runtime version of the daemon that answered this ping.
+        /// Optional for backward compatibility with older daemons.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server_version: Option<String>,
+        /// Runtime git identity of the daemon that answered this ping.
+        /// Optional for backward compatibility with older daemons.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server_git_hash: Option<String>,
+        /// OS process id of the daemon that answered this ping.
+        /// This distinguishes a newly-built client from a pre-existing server.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server_pid: Option<u32>,
+        /// SHA-256 of the executable bytes for the daemon that answered.
+        /// This binds runtime observations to an actual installed artifact
+        /// rather than trusting a version or git label alone.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        server_binary_sha256: Option<String>,
     },
 
     /// Current state (debug)

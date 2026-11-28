@@ -352,6 +352,10 @@ fn test_native_ssh_pong_capability_is_backward_compatible() -> Result<()> {
         id: 7,
         native_ssh_protocol: Some(1),
         capabilities: vec!["session_tools".into()],
+        server_version: None,
+        server_git_hash: None,
+        server_pid: None,
+        server_binary_sha256: None,
     };
     let json = serde_json::to_value(&modern)?;
     assert_eq!(json["native_ssh_protocol"], 1);
