@@ -1,7 +1,7 @@
 use super::{
-    AUTO_RESTORE_CRASH_MAX_AGE_HOURS, arm_auto_restore_from_recent_crashes,
-    capture_current_snapshot, clear_snapshot, load_snapshot, resolve_session_cwd,
-    save_current_snapshot,
+    AUTO_RESTORE_CRASH_MAX_AGE_HOURS, RESTORE_CLAIM_STALE_MAX_AGE_SECS,
+    arm_auto_restore_from_recent_crashes, capture_current_snapshot, clear_snapshot, load_snapshot,
+    resolve_session_cwd, restore_claim_path, save_current_snapshot, try_acquire_restore_claim,
 };
 use crate::session::Session;
 use chrono::Utc;
@@ -16,9 +16,15 @@ struct TestEnvGuard {
 impl TestEnvGuard {
     fn new() -> anyhow::Result<Self> {
         let lock = crate::storage::lock_test_env();
+        let root = std::path::PathBuf::from("/private/tmp");
+        let root = if root.is_dir() {
+            root
+        } else {
+            std::env::temp_dir()
+        };
         let temp_home = tempfile::Builder::new()
             .prefix("kcode-restart-snapshot-test-home-")
-            .tempdir()?;
+            .tempdir_in(root)?;
         let prev_home = std::env::var_os("KCODE_HOME");
         crate::env::set_var("KCODE_HOME", temp_home.path());
         Ok(Self {
@@ -218,4 +224,75 @@ fn resolve_session_cwd_uses_home_when_configured_path_empty() {
     assert!(home.is_dir());
     let resolved = resolve_session_cwd(Some(""));
     assert_eq!(resolved, home);
+}
+
+#[test]
+fn restore_claim_allows_single_winner() {
+    let _guard = TestEnvGuard::new().expect("setup test env");
+
+    let winner = try_acquire_restore_claim()
+        .expect("acquire first claim")
+        .expect("first claim should win");
+    let loser = try_acquire_restore_claim().expect("second claim attempt");
+    assert!(loser.is_none(), "second concurrent restore claim must lose");
+
+    winner.release().expect("release winner claim");
+    assert!(!restore_claim_path().expect("claim path").exists());
+}
+
+#[test]
+fn restore_claim_loser_does_not_corrupt_snapshot() {
+    let _guard = TestEnvGuard::new().expect("setup test env");
+
+    let mut active = Session::create(None, Some("Restore Me".to_string()));
+    active.mark_active_with_pid(std::process::id());
+    active.save().expect("save active session");
+    let saved = save_current_snapshot().expect("save snapshot");
+
+    let winner = try_acquire_restore_claim()
+        .expect("acquire first claim")
+        .expect("first claim should win");
+    let loser = try_acquire_restore_claim().expect("second claim attempt");
+    assert!(loser.is_none());
+
+    let loaded = load_snapshot().expect("snapshot must remain readable");
+    assert_eq!(loaded.sessions.len(), saved.sessions.len());
+    assert_eq!(loaded.sessions[0].session_id, saved.sessions[0].session_id);
+
+    winner.release().expect("release winner claim");
+    let loaded_after = load_snapshot().expect("snapshot must remain after loser");
+    assert_eq!(
+        loaded_after.sessions[0].session_id,
+        saved.sessions[0].session_id
+    );
+}
+
+#[test]
+fn stale_restore_claim_is_reclaimed_after_dead_pid() {
+    let _guard = TestEnvGuard::new().expect("setup test env");
+
+    let mut child = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("exit 0")
+        .spawn()
+        .expect("spawn child");
+    let dead_pid = child.id();
+    let _ = child.wait().expect("wait for child");
+
+    let claim_path = restore_claim_path().expect("claim path");
+    std::fs::create_dir_all(claim_path.parent().expect("claim parent")).expect("create claim dir");
+    let stale = serde_json::json!({
+        "pid": dead_pid,
+        "created_at": (Utc::now() - chrono::Duration::seconds(RESTORE_CLAIM_STALE_MAX_AGE_SECS + 5)).to_rfc3339(),
+    });
+    std::fs::write(
+        &claim_path,
+        serde_json::to_vec(&stale).expect("serialize stale claim"),
+    )
+    .expect("write stale claim");
+
+    let winner = try_acquire_restore_claim()
+        .expect("acquire stale claim")
+        .expect("stale dead-pid claim should be reclaimed");
+    winner.release().expect("release reclaimed claim");
 }
