@@ -374,6 +374,44 @@ jobs:
       - name: Run clippy with warnings denied
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+  # CI half of #408: the ForgeCode CLI contract gate must fail closed. This job
+  # runs the provider-runtime contract tests, including the real-executable
+  # rejection test that proves an on-disk incompatible CLI is refused. Kept
+  # separate from Clippy so a compile cannot blind this gate.
+  forgecode-contract:
+    name: ForgeCode Contract (shim gate)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Native build deps: the desk-linux host carries these already, a hosted
+      # runner does not. `alsa-sys` aborts the build without libasound2-dev.
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libasound2-dev \
+            libxkbcommon-dev \
+            libssl-dev \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: forgecode-contract-ubuntu
+          cache-all-crates: "true"
+          cache-targets: "false"
+
+      - name: Reject an incompatible ForgeCode CLI contract
+        run: cargo test -p jcode-provider-forgecode-runtime
+
   release-automation:
     name: Release Automation
     # Fork PRs never run here: this is a persistent self-hosted runner with

@@ -307,4 +307,99 @@ mod contract_tests {
             "flag-only help must not pass the contract: {msg}"
         );
     }
+
+    // Proves the gate rejects a REAL incompatible executable on disk, not just a
+    // synthetic help string: the test runs actual subprocesses and observes their
+    // exit status through `probe_cli_contract`.
+    #[cfg(unix)]
+    #[test]
+    fn probe_cli_contract_rejects_real_incompatible_executable() {
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir =
+            std::env::temp_dir().join(format!("kcode-forgecode-contract-{}", std::process::id()));
+        fs::create_dir_all(&dir).expect("create temp dir");
+
+        let write_script = |name: &str, body: &str| -> std::path::PathBuf {
+            let path = dir.join(name);
+            fs::write(&path, body).expect("write script");
+            let mut perms = fs::metadata(&path).expect("metadata").permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&path, perms).expect("chmod");
+            path
+        };
+
+        // Script 1: a compliant shim declaring the marker and every required flag.
+        let compliant = write_script(
+            "compliant.sh",
+            "#!/bin/sh\n\
+             echo 'jcode-forgecode-machine-contract-v1'\n\
+             echo '--output-format <FMT>'\n\
+             echo '--input-format <FMT>'\n\
+             echo '--permission-mode <MODE>'\n\
+             echo '--resume <ID>'\n\
+             echo '--tools <TOOLS>'\n\
+             exit 0\n",
+        );
+
+        // Script 2: official-forge style help, no machine contract, exit 0.
+        let incompatible = write_script(
+            "official-forge.sh",
+            "#!/bin/sh\n\
+             echo 'Forge CLI'\n\
+             echo '--print'\n\
+             echo '--help'\n\
+             exit 0\n",
+        );
+
+        // Script 3: prints something and exits non-zero.
+        let nonzero = write_script(
+            "nonzero.sh",
+            "#!/bin/sh\n\
+             echo 'boom'\n\
+             exit 7\n",
+        );
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let cfg = |path: &std::path::Path| ForgeCodeCliConfig {
+            cli_path: path.to_string_lossy().into_owned(),
+            model: "test-model".to_string(),
+            permission_mode: None,
+        };
+
+        runtime.block_on(async {
+            probe_cli_contract(&cfg(&compliant))
+                .await
+                .expect("compliant shim must satisfy the contract");
+
+            let err = probe_cli_contract(&cfg(&incompatible))
+                .await
+                .expect_err("official-forge style CLI must be rejected");
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains("machine contract"),
+                "error must mention the machine contract: {msg}"
+            );
+            assert!(
+                msg.contains(MACHINE_CONTRACT_MARKER),
+                "error must name the required marker constant: {msg}"
+            );
+
+            let err = probe_cli_contract(&cfg(&nonzero))
+                .await
+                .expect_err("non-zero exit must be rejected");
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains("exited with status"),
+                "error must report the subprocess exit status: {msg}"
+            );
+        });
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
