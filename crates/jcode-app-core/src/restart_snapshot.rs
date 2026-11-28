@@ -203,12 +203,6 @@ pub fn capture_current_snapshot() -> Result<RestartSnapshot> {
     })
 }
 
-pub fn restore_snapshot(exe: &Path) -> Result<RestoreSnapshotResult> {
-    let claim = try_acquire_restore_claim()?
-        .ok_or_else(|| anyhow::anyhow!("reboot snapshot restore is already in progress"))?;
-    restore_snapshot_with_claim(exe, claim)
-}
-
 pub fn try_restore_snapshot(exe: &Path) -> Result<Option<RestoreSnapshotResult>> {
     let Some(claim) = try_acquire_restore_claim()? else {
         return Ok(None);
