@@ -732,15 +732,31 @@ pub fn find_session_by_name_or_id(name_or_id: &str) -> Result<String> {
 
     // A client that is already showing a session records the binding in
     // ~/.kcode/client_sessions/<pid>. Never bind a session another client holds.
+    // A dead client's claim file can persist; ignoring it avoids silently
+    // resolving a name to a different older session.
     let mut claimed: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut dead_claimed: std::collections::HashSet<String> = std::collections::HashSet::new();
     if let Ok(home) = storage::jcode_dir() {
         let dir = home.join("client_sessions");
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
+                let pid = match entry.file_name().to_string_lossy().parse::<u32>() {
+                    Ok(pid) => Some(pid),
+                    Err(_) => None,
+                };
                 if let Ok(content) = std::fs::read_to_string(entry.path()) {
                     let id = content.trim().to_string();
-                    if !id.is_empty() {
+                    if id.is_empty() {
+                        continue;
+                    }
+                    let claim_is_live = match pid {
+                        Some(pid) => is_pid_running(pid),
+                        None => true,
+                    };
+                    if claim_is_live {
                         claimed.insert(id);
+                    } else {
+                        dead_claimed.insert(id);
                     }
                 }
             }
@@ -749,7 +765,15 @@ pub fn find_session_by_name_or_id(name_or_id: &str) -> Result<String> {
 
     // Among the sorted matches, take the newest whose id is not already claimed.
     let chosen = match matches.iter().find(|(id, _)| !claimed.contains(id)) {
-        Some((id, _)) => id.clone(),
+        Some((id, _)) => {
+            if dead_claimed.contains(id) {
+                eprintln!(
+                    "warning: resume query '{}' ignored a dead client claim for session {}; choosing it",
+                    name_or_id, id
+                );
+            }
+            id.clone()
+        }
         None => {
             eprintln!(
                 "warning: resume query '{}' matched only sessions already held by a client; choosing {}",
@@ -956,10 +980,11 @@ mod batch_crash_tests {
         newer.status = SessionStatus::Closed;
         newer.save().expect("save newer");
 
-        // Make the binding directory and claim the newer session.
+        // Make the binding directory and claim the newer session with a live pid.
         let binding_dir = temp.path().join("client_sessions");
         std::fs::create_dir_all(&binding_dir).expect("binding dir");
-        std::fs::write(binding_dir.join("99999"), newer_id).expect("write binding");
+        let live_pid = std::process::id();
+        std::fs::write(binding_dir.join(live_pid.to_string()), newer_id).expect("write binding");
 
         assert_eq!(
             find_session_by_name_or_id("sharedname").expect("resolve unclaimed"),
@@ -994,8 +1019,14 @@ mod batch_crash_tests {
 
         let binding_dir = temp.path().join("client_sessions");
         std::fs::create_dir_all(&binding_dir).expect("binding dir");
-        std::fs::write(binding_dir.join("99998"), older_id).expect("write older binding");
-        std::fs::write(binding_dir.join("99999"), newer_id).expect("write newer binding");
+        let live_pid = std::process::id();
+        let other_live_pid = (1u32..=10_000u32)
+            .find(|p| *p != live_pid && super::is_pid_running(*p))
+            .expect("find another live pid");
+        std::fs::write(binding_dir.join(live_pid.to_string()), older_id)
+            .expect("write older binding");
+        std::fs::write(binding_dir.join(other_live_pid.to_string()), newer_id)
+            .expect("write newer binding");
 
         assert_eq!(
             find_session_by_name_or_id("allclaimed").expect("resolve claimed"),
@@ -1030,6 +1061,126 @@ mod batch_crash_tests {
 
         assert_eq!(
             find_session_by_name_or_id("nobind").expect("resolve newest"),
+            newer_id
+        );
+
+        crate::env::remove_var("KCODE_HOME");
+    }
+
+    #[test]
+    fn find_session_by_name_or_id_dead_claim_does_not_block_newer() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = crate::test_temp::tempdir().expect("tempdir");
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        let older_id = "session_deadclaim_1770000000000";
+        let newer_id = "session_deadclaim_1770000000001";
+        let mut older = Session::create_with_id(
+            older_id.to_string(),
+            None,
+            Some("Dead claim title".to_string()),
+        );
+        older.status = SessionStatus::Closed;
+        older.save().expect("save older");
+        let mut newer = Session::create_with_id(
+            newer_id.to_string(),
+            None,
+            Some("Dead claim title".to_string()),
+        );
+        newer.status = SessionStatus::Closed;
+        newer.save().expect("save newer");
+
+        let dead_pid: u32 = 999_999_999;
+        assert!(
+            !super::is_pid_running(dead_pid),
+            "test requires pid {dead_pid} to be dead"
+        );
+        let binding_dir = temp.path().join("client_sessions");
+        std::fs::create_dir_all(&binding_dir).expect("binding dir");
+        std::fs::write(binding_dir.join(dead_pid.to_string()), newer_id)
+            .expect("write dead binding");
+
+        assert_eq!(
+            find_session_by_name_or_id("deadclaim").expect("resolve despite dead claim"),
+            newer_id
+        );
+
+        crate::env::remove_var("KCODE_HOME");
+    }
+
+    #[test]
+    fn find_session_by_name_or_id_live_claim_blocks_newer() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = crate::test_temp::tempdir().expect("tempdir");
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        let older_id = "session_liveclaim_1770000000000";
+        let newer_id = "session_liveclaim_1770000000001";
+        let mut older = Session::create_with_id(
+            older_id.to_string(),
+            None,
+            Some("Live claim title".to_string()),
+        );
+        older.status = SessionStatus::Closed;
+        older.save().expect("save older");
+        let mut newer = Session::create_with_id(
+            newer_id.to_string(),
+            None,
+            Some("Live claim title".to_string()),
+        );
+        newer.status = SessionStatus::Closed;
+        newer.save().expect("save newer");
+
+        let live_pid = std::process::id();
+        let binding_dir = temp.path().join("client_sessions");
+        std::fs::create_dir_all(&binding_dir).expect("binding dir");
+        std::fs::write(binding_dir.join(live_pid.to_string()), newer_id)
+            .expect("write live binding");
+
+        assert_eq!(
+            find_session_by_name_or_id("liveclaim").expect("resolve around live claim"),
+            older_id
+        );
+
+        crate::env::remove_var("KCODE_HOME");
+    }
+
+    #[test]
+    fn find_session_by_name_or_id_all_live_claimed_returns_newest() {
+        let _guard = crate::storage::lock_test_env();
+        let temp = crate::test_temp::tempdir().expect("tempdir");
+        crate::env::set_var("KCODE_HOME", temp.path());
+
+        let older_id = "session_alllive_1770000000000";
+        let newer_id = "session_alllive_1770000000001";
+        let mut older = Session::create_with_id(
+            older_id.to_string(),
+            None,
+            Some("All live title".to_string()),
+        );
+        older.status = SessionStatus::Closed;
+        older.save().expect("save older");
+        let mut newer = Session::create_with_id(
+            newer_id.to_string(),
+            None,
+            Some("All live title".to_string()),
+        );
+        newer.status = SessionStatus::Closed;
+        newer.save().expect("save newer");
+
+        let live_pid = std::process::id();
+        let other_live_pid = (1u32..=10_000u32)
+            .find(|p| *p != live_pid && super::is_pid_running(*p))
+            .expect("find another live pid");
+        let binding_dir = temp.path().join("client_sessions");
+        std::fs::create_dir_all(&binding_dir).expect("binding dir");
+        std::fs::write(binding_dir.join(live_pid.to_string()), older_id)
+            .expect("write older live binding");
+        std::fs::write(binding_dir.join(other_live_pid.to_string()), newer_id)
+            .expect("write newer live binding");
+
+        assert_eq!(
+            find_session_by_name_or_id("alllive").expect("resolve all live claimed"),
             newer_id
         );
 
