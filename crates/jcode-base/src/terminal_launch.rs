@@ -92,6 +92,119 @@ fn spawn_via_hook(hook: &str, command: &TerminalCommand, cwd: &Path) -> Result<(
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+
+    struct KcodeHomeGuard(Option<OsString>);
+
+    impl Drop for KcodeHomeGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => crate::env::set_var("KCODE_HOME", value),
+                None => crate::env::remove_var("KCODE_HOME"),
+            }
+        }
+    }
+
+    fn wait_for_file(path: &std::path::Path) -> String {
+        for _ in 0..100 {
+            if let Ok(data) = std::fs::read_to_string(path)
+                && !data.is_empty()
+            {
+                return data;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!("hook child did not write {}", path.display());
+    }
+
+    #[test]
+    fn launch_hook_forwards_client_kcode_home_to_child_argv() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _lock = crate::storage::lock_test_env();
+        let _guard = KcodeHomeGuard(std::env::var_os("KCODE_HOME"));
+        crate::env::set_var("KCODE_HOME", "/tmp/server-store");
+
+        let temp = tempfile::TempDir::new().expect("temp dir");
+        let metadata_record = temp.path().join("metadata.txt");
+        let child_record = temp.path().join("child.txt");
+        let negative_record = temp.path().join("negative.txt");
+        let hook_path = temp.path().join("hook.sh");
+        let child_path = temp.path().join("child.sh");
+
+        // The hook unsets KCODE_HOME before executing the target argv. Any
+        // value seen by the child therefore came from the `env KCODE_HOME=...`
+        // argv prefix, not from the hook's inherited/client env (#424).
+        std::fs::write(
+            &hook_path,
+            format!(
+                "#!/bin/sh\nprintf '%s' \"$KCODE_SPAWN_PROGRAM\" > {}\nunset KCODE_HOME\nexec \"$@\"\n",
+                sh_escape(&metadata_record.to_string_lossy())
+            ),
+        )
+        .expect("write hook");
+        std::fs::write(
+            &child_path,
+            format!(
+                "#!/bin/sh\nprintf '%s' \"${{KCODE_HOME:-<unset>}}\" > {}\n",
+                sh_escape(&child_record.to_string_lossy())
+            ),
+        )
+        .expect("write child");
+        for path in [&hook_path, &child_path] {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod script");
+        }
+
+        let client_home = "/tmp/client-store";
+        let command = TerminalCommand::new(
+            "env",
+            vec![
+                format!("KCODE_HOME={client_home}"),
+                child_path.to_string_lossy().into_owned(),
+            ],
+        )
+        .metadata_program("/usr/local/bin/kcode")
+        .client_terminal_env(vec![("KCODE_HOME".to_string(), client_home.to_string())])
+        .kind("swarm-agent")
+        .session_id("ses_hooked");
+        spawn_via_hook(&hook_path.to_string_lossy(), &command, temp.path())
+            .expect("hook should spawn");
+
+        assert_eq!(
+            wait_for_file(&metadata_record),
+            "/usr/local/bin/kcode",
+            "spawn metadata must name the original executable"
+        );
+        assert_eq!(
+            wait_for_file(&child_record),
+            client_home,
+            "child must receive the client store root through the production hook argv"
+        );
+
+        // Negative control: the same client env is exported to the hook, but
+        // without the argv prefix the child must not inherit KCODE_HOME.
+        let negative_child_path = temp.path().join("negative-child.sh");
+        std::fs::write(
+            &negative_child_path,
+            format!(
+                "#!/bin/sh\nprintf '%s' \"${{KCODE_HOME:-<unset>}}\" > {}\n",
+                sh_escape(&negative_record.to_string_lossy())
+            ),
+        )
+        .expect("write negative child");
+        std::fs::set_permissions(&negative_child_path, std::fs::Permissions::from_mode(0o755))
+            .expect("chmod negative child");
+        let negative_command = TerminalCommand::new(negative_child_path, Vec::new())
+            .client_terminal_env(vec![("KCODE_HOME".to_string(), client_home.to_string())]);
+        spawn_via_hook(&hook_path.to_string_lossy(), &negative_command, temp.path())
+            .expect("negative hook should spawn");
+        assert_eq!(
+            wait_for_file(&negative_record),
+            "<unset>",
+            "negative control must not see KCODE_HOME without the argv prefix"
+        );
+    }
 
     #[cfg(unix)]
     #[test]
