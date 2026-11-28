@@ -1,6 +1,7 @@
 use super::google::GoogleAccessTierArg;
 use super::*;
 use crate::cli::provider_init::ProviderChoice;
+use crate::cli::startup::apply_home;
 
 #[test]
 fn credential_import_cli_requires_stdin_and_preserves_explicit_provider() {
@@ -1090,4 +1091,23 @@ fn api_stdio_accepts_alias_and_daemon_socket_but_not_api_socket() {
             "stdio must not silently ignore an API socket override"
         );
     }
+}
+
+#[test]
+fn home_and_data_dir_are_global_and_apply_kcode_home() {
+    let _guard = crate::storage::lock_test_env();
+    assert!(Args::try_parse_from(["jcode", "--data-dir", "/tmp/kcode-home"]).is_ok());
+    let args = Args::try_parse_from(["jcode", "--home", "/tmp/kcode-home"]).unwrap();
+    assert_eq!(args.home.as_deref(), Some("/tmp/kcode-home"));
+
+    assert!(apply_home(Some("/tmp/not-there")).is_err());
+
+    let temp = tempfile::tempdir_in("/tmp").unwrap();
+    let dir = temp.path().join("kcode-home");
+    std::fs::create_dir_all(&dir).unwrap();
+    let jcode_dir = temp.path().join(".jcode");
+    std::fs::create_dir_all(&jcode_dir).unwrap();
+    assert!(apply_home(Some(&jcode_dir.to_string_lossy())).is_err());
+    assert!(apply_home(Some(dir.to_str().unwrap())).is_ok());
+    assert_eq!(std::env::var("KCODE_HOME").unwrap(), dir.to_str().unwrap());
 }
