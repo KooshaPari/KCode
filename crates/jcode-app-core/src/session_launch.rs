@@ -793,15 +793,16 @@ mod tests {
             "ses-1",
         );
 
-        assert_eq!(
-            command.metadata_program.as_deref(),
-            Some(std::path::Path::new(EXE))
-        );
         if cfg!(unix) {
+            assert_eq!(
+                command.metadata_program.as_deref(),
+                Some(std::path::Path::new(EXE))
+            );
             assert_eq!(command.program, PathBuf::from("env"));
             assert_eq!(command.args[0], "KCODE_HOME=/tmp/client-store");
             assert_eq!(command.args[1], EXE);
         } else {
+            assert!(command.metadata_program.is_none());
             assert_eq!(command.program, PathBuf::from(EXE));
             assert_eq!(command.args, resume_args());
         }

@@ -1702,7 +1702,8 @@ mod tests {
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
         assert!(
-            args.iter().any(|a| a == "KCODE_HOME=/tmp/custom-kcode-home"),
+            args.iter()
+                .any(|a| a == "KCODE_HOME=/tmp/custom-kcode-home"),
             "the executed argv must still carry the env forwarding prefix"
         );
     }
