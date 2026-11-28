@@ -1034,6 +1034,9 @@ pub(crate) enum RestartCommand {
         /// Restore this reboot snapshot automatically the next time plain `jcode` starts
         #[arg(long)]
         auto_restore: bool,
+        /// Replace an existing auto-restore snapshot that is already armed
+        #[arg(long)]
+        replace_armed: bool,
     },
     /// Restore the most recently saved reboot snapshot
     Restore,
