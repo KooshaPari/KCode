@@ -80,7 +80,6 @@ fn test_openai_switching_models_include_dynamic_catalog_entries() {
 fn test_chatgpt_web_model_bypasses_live_api_catalog() {
     let _guard = jcode_base::storage::lock_test_env();
     jcode_base::auth::codex::set_active_account_override(Some("web-model-test".to_string()));
-    jcode_base::provider::populate_account_models(vec!["gpt-5.6-sol".to_string()]);
     let _model = EnvVarGuard::set("KCODE_OPENAI_MODEL", CHATGPT_WEB_MODEL);
 
     let provider = OpenAIProvider::new(CodexCredentials {
@@ -90,6 +89,14 @@ fn test_chatgpt_web_model_bypasses_live_api_catalog() {
         account_id: None,
         expires_at: None,
     });
+    // Populate the scope this credential actually reads. These creds are
+    // API-key shaped, so `catalog_scope()` resolves to `api-key::<fingerprint>`,
+    // not the active account label. Writing to the account scope left this test
+    // dependent on whatever catalog another test installed on the api-key scope.
+    jcode_base::provider::populate_account_models_for_scope(
+        &provider.catalog_scope(),
+        vec!["gpt-5.6-sol".to_string()],
+    );
 
     assert_eq!(provider.model(), CHATGPT_WEB_MODEL);
     assert_eq!(provider.transport().as_deref(), Some("browser"));
