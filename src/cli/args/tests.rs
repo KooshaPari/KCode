@@ -2,6 +2,8 @@ use super::google::GoogleAccessTierArg;
 use super::*;
 use crate::cli::provider_init::ProviderChoice;
 
+mod startup;
+
 #[test]
 fn credential_import_cli_requires_stdin_and_preserves_explicit_provider() {
     for provider in ["openai", "claude"] {

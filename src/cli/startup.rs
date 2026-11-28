@@ -27,10 +27,30 @@ fn is_coexistence_args(args: Vec<std::ffi::OsString>) -> bool {
     }
 }
 
+pub(crate) fn apply_home(home: Option<&str>) -> anyhow::Result<()> {
+    let Some(home) = home else {
+        return Ok(());
+    };
+    let path = std::path::Path::new(home);
+    match path.metadata() {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(_) => anyhow::bail!("--home must point to a directory: {home}"),
+        Err(error) => anyhow::bail!("--home directory {home} is unavailable: {error}"),
+    }
+    crate::storage::product_paths::require_kcode_path(path)?;
+    crate::env::set_var("KCODE_HOME", home);
+    Ok(())
+}
+
+pub(crate) fn apply_startup_home(args: &Args) -> anyhow::Result<()> {
+    apply_home(args.home.as_deref())
+}
+
 pub async fn run() -> Result<()> {
     // Parse once, before startup side effects. Invalid arguments and --help
     // must not harden credential files or create configuration/telemetry state.
     let args = Args::parse();
+    apply_startup_home(&args)?;
     if matches!(&args.command, Some(Command::Coexistence { .. })) {
         return dispatch::run_main(args).await;
     }
@@ -233,6 +253,8 @@ fn is_telemetry_subcommand_invocation(
                     | "-C"
                     | "--cwd"
                     | "--remote-working-dir"
+                    | "--home"
+                    | "--data-dir"
                     | "--ssh"
                     | "--ssh-binary"
                     | "--ssh-server-socket"
@@ -729,6 +751,19 @@ mod tests {
             "jcode",
             "--provider",
             "openai",
+            "telemetry",
+            "disable"
+        ]));
+        assert!(is_telemetry_subcommand_invocation([
+            "jcode",
+            "--home",
+            "/tmp/kcode-home",
+            "telemetry",
+            "disable"
+        ]));
+        assert!(is_telemetry_subcommand_invocation([
+            "jcode",
+            "--data-dir=/tmp/kcode-home",
             "telemetry",
             "disable"
         ]));
