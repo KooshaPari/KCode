@@ -709,53 +709,37 @@ mod tests {
     use super::forward_kcode_home_for_spawn_with;
     use std::path::PathBuf;
 
+    const EXE: &str = "/usr/local/bin/kcode";
+
     fn resume_args() -> Vec<String> {
         vec!["--resume".to_string(), "ses-1".to_string()]
     }
 
-    #[cfg(unix)]
-    #[test]
-    fn forward_kcode_home_for_spawn_prefixes_env_when_set() {
-        let (program, args) = forward_kcode_home_for_spawn_with(
-            PathBuf::from("/usr/local/bin/kcode"),
-            resume_args(),
-            Some("/tmp/custom-kcode-home"),
-        );
-
-        assert_eq!(program, PathBuf::from("env"));
-
-        let mut expected = vec!["KCODE_HOME=/tmp/custom-kcode-home".to_string()];
-        expected.push("/usr/local/bin/kcode".to_string());
-        expected.extend(resume_args());
-        assert_eq!(args, expected);
+    fn spawn(exe: &str, home: Option<&str>) -> (PathBuf, Vec<String>) {
+        forward_kcode_home_for_spawn_with(PathBuf::from(exe), resume_args(), home)
     }
 
     #[test]
-    fn forward_kcode_home_for_spawn_is_unchanged_when_unset() {
+    fn forward_kcode_home_for_spawn_matches_the_platform_contract() {
         for home in [None, Some("")] {
-            let (program, args) = forward_kcode_home_for_spawn_with(
-                PathBuf::from("/usr/local/bin/kcode"),
-                resume_args(),
-                home,
+            assert_eq!(
+                spawn(EXE, home),
+                (PathBuf::from(EXE), resume_args()),
+                "{home:?}"
             );
-
-            assert_eq!(program, PathBuf::from("/usr/local/bin/kcode"), "{home:?}");
-            assert_eq!(args, resume_args(), "{home:?}");
         }
-    }
 
-    // Windows has no `env` binary, so the helper must leave argv alone and the
-    // store root travels through the spawn environment instead.
-    #[cfg(not(unix))]
-    #[test]
-    fn forward_kcode_home_for_spawn_never_prefixes_argv_on_windows() {
-        let (program, args) = forward_kcode_home_for_spawn_with(
-            PathBuf::from("C:\\kcode\\kcode.exe"),
-            resume_args(),
-            Some("C:\\kcode-home"),
-        );
-
-        assert_eq!(program, PathBuf::from("C:\\kcode\\kcode.exe"));
-        assert_eq!(args, resume_args());
+        let (program, args) = spawn(EXE, Some("/tmp/custom-kcode-home"));
+        if cfg!(unix) {
+            assert_eq!(program, PathBuf::from("env"));
+            let mut expected = vec!["KCODE_HOME=/tmp/custom-kcode-home".to_string()];
+            expected.push(EXE.to_string());
+            expected.extend(resume_args());
+            assert_eq!(args, expected);
+        } else {
+            // Windows has no `env` binary and the hook contract has no env
+            // passthrough, so the command must stay byte-identical there.
+            assert_eq!((program, args), (PathBuf::from(EXE), resume_args()));
+        }
     }
 }
