@@ -23,6 +23,7 @@ import { resolveKcodeBinary } from "../dist/binary.js";
 const binary = resolveKcodeBinary(process.argv[2]);
 const executable = binary.includes(path.sep)
   ? path.resolve(binary)
+  // NOSONAR: fixed command name plus an argv array, no shell; the value is a path this harness resolved itself.
   : execFileSync("which", [binary], { encoding: "utf8" }).trim();
 const failures = [];
 async function step(name, fn) {
@@ -132,6 +133,7 @@ await step("an exit without close() does not leak the daemon", async () => {
     console.log(`     daemon pattern: pgrep -f ${JSON.stringify(pattern)}`);
     let output;
     try {
+      // NOSONAR: fixed command name plus an argv array, no shell; the value is a path this harness resolved itself.
       output = execFileSync("pgrep", ["-f", pattern], { encoding: "utf8" }).trim();
     } catch (error) {
       if (error.status === 1) return 0;
