@@ -207,8 +207,11 @@ impl AuthChanged {
 
 pub type ReloadRecoverySnapshot = jcode_selfdev_types::ReloadRecoveryDirective;
 
+mod pong;
+mod serde_helpers;
 mod session_tool_config;
 mod wire;
+pub use pong::DaemonIdentity;
 pub use session_tool_config::{McpToolGrant, SessionToolConfig, SessionToolDefinition};
 pub use wire::TaskGraphNodeSpec;
 pub use wire::{Request, ServerEvent};

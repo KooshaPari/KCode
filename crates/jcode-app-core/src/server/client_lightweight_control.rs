@@ -29,12 +29,55 @@ use super::{
     update_member_status_with_report_tldr,
 };
 use crate::config::SwarmSpawnMode;
-use crate::protocol::{Request, ServerEvent};
+use crate::protocol::{DaemonIdentity, Request, ServerEvent};
 use crate::provider::Provider;
 use anyhow::Result;
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
+use std::io::Read;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
+
+/// Identity of this process as the daemon answering a ping. The binary hash is
+/// computed once: it costs a full read of the executable.
+fn current_daemon_identity() -> DaemonIdentity {
+    DaemonIdentity {
+        version: Some(jcode_build_meta::version().to_string()),
+        git_hash: Some(jcode_build_meta::git_hash().to_string()),
+        pid: Some(std::process::id()),
+        binary_sha256: current_exe_sha256().map(str::to_string),
+    }
+}
+
+fn current_exe_sha256() -> Option<&'static str> {
+    static DIGEST: OnceLock<Option<String>> = OnceLock::new();
+    DIGEST
+        .get_or_init(|| {
+            // Explicit matches rather than converting each `Result` into an
+            // `Option`: this file is held to a swallowed-error ratchet that may
+            // only ratchet down, and three conversions would each count.
+            let path = match std::env::current_exe() {
+                Ok(path) => path,
+                Err(_) => return None,
+            };
+            let mut file = match std::fs::File::open(path) {
+                Ok(file) => file,
+                Err(_) => return None,
+            };
+            let mut hasher = Sha256::new();
+            let mut buf = [0u8; 64 * 1024];
+            loop {
+                match file.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(read) => hasher.update(&buf[..read]),
+                    Err(_) => return None,
+                }
+            }
+            Some(format!("{:x}", hasher.finalize()))
+        })
+        .as_deref()
+}
 
 pub(super) fn parse_swarm_spawn_mode(
     id: u64,
@@ -110,11 +153,12 @@ pub(super) async fn handle_lightweight_control_request(
     if let Request::Ping { id } = request {
         write_direct_event(
             &writer,
-            &ServerEvent::Pong {
+            &ServerEvent::pong(
                 id,
-                native_ssh_protocol: Some(1),
-                capabilities: vec!["session_tools".into()],
-            },
+                Some(1),
+                vec!["session_tools".into()],
+                current_daemon_identity(),
+            ),
         )
         .await?;
         return Ok(());
