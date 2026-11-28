@@ -10,6 +10,7 @@ pub mod model_names;
 pub mod models;
 pub mod openai_schema;
 pub mod pricing;
+mod qualification_http;
 pub mod reasoning;
 pub mod retry_after;
 pub mod selection;
@@ -730,7 +731,7 @@ pub fn shared_http_client() -> reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            reqwest::Client::builder()
+            qualification_http::builder()
                 .user_agent(KCODE_USER_AGENT)
                 .connect_timeout(Duration::from_secs(15))
                 .tcp_keepalive(Some(Duration::from_secs(30)))
@@ -747,7 +748,7 @@ pub fn shared_http_client() -> reqwest::Client {
                 .build()
                 .unwrap_or_else(|err| {
                     eprintln!("jcode: failed to build shared provider HTTP client: {err}");
-                    match reqwest::Client::builder()
+                    match qualification_http::builder()
                         .user_agent(KCODE_USER_AGENT)
                         .build()
                     {
@@ -756,7 +757,7 @@ pub fn shared_http_client() -> reqwest::Client {
                             eprintln!(
                                 "jcode: failed to build fallback provider HTTP client: {fallback_err}"
                             );
-                            reqwest::Client::new()
+                            qualification_http::fallback_client()
                         }
                     }
                 })
@@ -774,7 +775,7 @@ pub fn shared_http_client() -> reqwest::Client {
 /// that makes transport-fault retries actually succeed). Building a client
 /// costs ~10ms, which is fine on a retry path that already backs off >=1s.
 pub fn fresh_transport_client() -> reqwest::Client {
-    reqwest::Client::builder()
+    qualification_http::builder()
         .user_agent(KCODE_USER_AGENT)
         .connect_timeout(Duration::from_secs(15))
         .tcp_keepalive(Some(Duration::from_secs(30)))
