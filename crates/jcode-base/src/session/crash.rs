@@ -740,19 +740,13 @@ pub fn find_session_by_name_or_id(name_or_id: &str) -> Result<String> {
         let dir = home.join("client_sessions");
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
-                let pid = match entry.file_name().to_string_lossy().parse::<u32>() {
-                    Ok(pid) => Some(pid),
-                    Err(_) => None,
-                };
+                let pid = entry.file_name().to_string_lossy().parse::<u32>();
                 if let Ok(content) = std::fs::read_to_string(entry.path()) {
                     let id = content.trim().to_string();
                     if id.is_empty() {
                         continue;
                     }
-                    let claim_is_live = match pid {
-                        Some(pid) => is_pid_running(pid),
-                        None => true,
-                    };
+                    let claim_is_live = pid.map(is_pid_running).unwrap_or(true);
                     if claim_is_live {
                         claimed.insert(id);
                     } else {
