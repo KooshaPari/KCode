@@ -67,8 +67,8 @@ pub(crate) struct Args {
     #[arg(long, global = true)]
     pub(crate) herdr: bool,
 
-    /// Agent kind for HERDR reporting (jcode, forge, forgecode)
-    #[arg(long, global = true, default_value = "jcode")]
+    /// Agent kind for HC/HERDR reporting: the OSC 7501 app= identity; must name this binary
+    #[arg(long, global = true, default_value = "kcode")]
     pub(crate) herdr_kind: String,
 
     /// Agent operating mode: execute (default), manager (coordinate only), researcher (read-only)
