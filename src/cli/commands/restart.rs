@@ -4,6 +4,23 @@ use serde::Deserialize;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
+use crate::cli::args::RestartCommand;
+
+/// Dispatch a `jcode restart` subcommand. Kept next to the commands it selects so
+/// the CLI entry point stays a single line per top-level command.
+pub(crate) async fn run_restart_command(action: RestartCommand) -> Result<()> {
+    match action {
+        RestartCommand::Save {
+            auto_restore,
+            replace_armed,
+        } => run_restart_save_command(auto_restore, replace_armed).await?,
+        RestartCommand::Restore => run_restart_restore_command()?,
+        RestartCommand::Status => run_restart_status_command()?,
+        RestartCommand::Clear => run_restart_clear_command()?,
+    }
+    Ok(())
+}
+
 pub async fn run_restart_save_command(auto_restore: bool, replace_armed: bool) -> Result<()> {
     run_restart_save_command_with_writer(auto_restore, replace_armed, &mut std::io::stdout()).await
 }

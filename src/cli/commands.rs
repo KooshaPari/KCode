@@ -18,7 +18,7 @@ use super::{output::terminal_title, terminal::init_tui_runtime};
 mod menubar;
 mod provider_setup;
 mod report_info;
-mod restart;
+pub(crate) mod restart;
 
 pub(crate) use super::auth_test::run_post_login_validation;
 #[cfg(test)]
