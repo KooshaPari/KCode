@@ -2,31 +2,68 @@ use anyhow::Result;
 use chrono::Utc;
 use serde::Deserialize;
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub async fn run_restart_save_command(auto_restore: bool) -> Result<()> {
+pub async fn run_restart_save_command(auto_restore: bool, replace_armed: bool) -> Result<()> {
+    run_restart_save_command_with_writer(auto_restore, replace_armed, &mut std::io::stdout()).await
+}
+
+async fn run_restart_save_command_with_writer<W: std::io::Write>(
+    auto_restore: bool,
+    replace_armed: bool,
+    output: &mut W,
+) -> Result<()> {
+    let path = crate::restart_snapshot::snapshot_path()?;
+    let existing = existing_snapshot_for_save(&path)?;
+    if existing
+        .as_ref()
+        .is_some_and(|snapshot| snapshot.auto_restore_on_next_start)
+        && !replace_armed
+    {
+        // The restore-side claim that serializes competing restores belongs to #389.
+        let snapshot = existing.as_ref().expect("armed snapshot present");
+        anyhow::bail!(
+            "Refusing to overwrite armed reboot snapshot at {}: created {}, {} session(s), auto-restore armed. Run `jcode restart restore` to consume it, or use `jcode restart save --replace-armed` to replace it.",
+            path.display(),
+            snapshot.created_at,
+            snapshot.sessions.len()
+        );
+    }
+
     let mut snapshot = if let Some(snapshot) = capture_connected_restart_snapshot().await? {
         snapshot
     } else {
-        crate::restart_snapshot::save_current_snapshot()?
+        crate::restart_snapshot::capture_current_snapshot()?
     };
-    snapshot.auto_restore_on_next_start = auto_restore;
+    snapshot.auto_restore_on_next_start = auto_restore && !snapshot.sessions.is_empty();
     crate::restart_snapshot::write_snapshot(&snapshot)?;
-    let path = crate::restart_snapshot::snapshot_path()?;
 
     if snapshot.sessions.is_empty() {
-        println!("Saved empty reboot snapshot to {}", path.display());
+        writeln!(output, "Saved empty reboot snapshot to {}", path.display())?;
         if auto_restore {
-            println!("Automatic restore is armed for the next plain `jcode` launch.");
+            writeln!(
+                output,
+                "Automatic restore was not armed because no sessions were captured."
+            )?;
         }
-        println!("\nNo active jcode windows were detected.");
+        writeln!(output, "\nNo active jcode windows were detected.")?;
         return Ok(());
     }
 
-    println!(
-        "Saved reboot snapshot with {} session(s) to {}\n",
+    writeln!(
+        output,
+        "Saved reboot snapshot with {} session(s) to {}{}\n",
         snapshot.sessions.len(),
-        path.display()
+        path.display(),
+        if let Some(existing) = &existing {
+            format!(
+                " (replaced unarmed snapshot created {} with {} session(s))",
+                existing.created_at,
+                existing.sessions.len()
+            )
+        } else {
+            String::new()
+        }
     );
     for session in &snapshot.sessions {
         let suffix = if session.is_selfdev {
@@ -34,17 +71,59 @@ pub async fn run_restart_save_command(auto_restore: bool) -> Result<()> {
         } else {
             ""
         };
-        println!(
+        writeln!(
+            output,
             "- {} ({}){}",
             session.display_name, session.session_id, suffix
         );
     }
     if auto_restore {
-        println!("\nAutomatic restore is armed for the next plain `jcode` launch.");
+        writeln!(
+            output,
+            "\nAutomatic restore is armed for the next plain `jcode` launch."
+        )?;
     }
-    println!("\nAfter reboot, restore them with:\n  jcode restart restore");
+    writeln!(
+        output,
+        "\nAfter reboot, restore them with:\n  jcode restart restore"
+    )?;
 
     Ok(())
+}
+
+fn existing_snapshot_for_save(
+    path: &Path,
+) -> Result<Option<crate::restart_snapshot::RestartSnapshot>> {
+    match crate::restart_snapshot::load_snapshot() {
+        Ok(snapshot) => Ok(Some(snapshot)),
+        Err(error) => {
+            let missing =
+                path.try_exists().map_err(|error| {
+                    anyhow::anyhow!(
+                        "Failed to inspect reboot snapshot at {}: {}",
+                        path.display(),
+                        error
+                    )
+                })? || matches!(nested_io_error(&error), Some(std::io::ErrorKind::NotFound));
+            if missing {
+                Ok(None)
+            } else {
+                Err(anyhow::anyhow!(
+                    "Failed to read existing reboot snapshot at {}: {}",
+                    path.display(),
+                    error
+                ))
+            }
+        }
+    }
+}
+
+fn nested_io_error(error: &anyhow::Error) -> Option<std::io::ErrorKind> {
+    error.chain().find_map(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .map(|error| error.kind())
+    })
 }
 
 pub fn run_restart_status_command() -> Result<()> {

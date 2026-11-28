@@ -930,9 +930,11 @@ fn restart_save_subcommand_parses() {
     let args = Args::try_parse_from(["jcode", "restart", "save"]).unwrap();
     match args.command {
         Some(Command::Restart {
-            action: RestartCommand::Save {
-                auto_restore: false,
-            },
+            action:
+                RestartCommand::Save {
+                    auto_restore: false,
+                    replace_armed: false,
+                },
         }) => {}
         other => panic!("unexpected command: {:?}", other),
     }
@@ -943,7 +945,26 @@ fn restart_save_auto_restore_flag_parses() {
     let args = Args::try_parse_from(["jcode", "restart", "save", "--auto-restore"]).unwrap();
     match args.command {
         Some(Command::Restart {
-            action: RestartCommand::Save { auto_restore: true },
+            action:
+                RestartCommand::Save {
+                    auto_restore: true,
+                    replace_armed: false,
+                },
+        }) => {}
+        other => panic!("unexpected command: {:?}", other),
+    }
+}
+
+#[test]
+fn restart_save_replace_armed_flag_parses() {
+    let args = Args::try_parse_from(["jcode", "restart", "save", "--replace-armed"]).unwrap();
+    match args.command {
+        Some(Command::Restart {
+            action:
+                RestartCommand::Save {
+                    auto_restore: false,
+                    replace_armed: true,
+                },
         }) => {}
         other => panic!("unexpected command: {:?}", other),
     }

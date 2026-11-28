@@ -585,9 +585,10 @@ pub(crate) async fn run_main(mut args: Args) -> Result<()> {
             }
         }
         Some(Command::Restart { action }) => match action {
-            RestartCommand::Save { auto_restore } => {
-                commands::run_restart_save_command(auto_restore).await?
-            }
+            RestartCommand::Save {
+                auto_restore,
+                replace_armed,
+            } => commands::run_restart_save_command(auto_restore, replace_armed).await?,
             RestartCommand::Restore => commands::run_restart_restore_command()?,
             RestartCommand::Status => commands::run_restart_status_command()?,
             RestartCommand::Clear => commands::run_restart_clear_command()?,
