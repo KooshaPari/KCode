@@ -124,7 +124,7 @@ await step("the user's jcode never saw the instance", async () => {
 await step("an exit without close() does not leak the daemon", async () => {
   const { execFileSync, execSync } = await import("node:child_process");
   const countDaemons = () =>
-    Number(execSync("pgrep -cf 'jcode --provider auto serve' || true", { encoding: "utf8" }).trim());
+    Number(execSync("pgrep -cf 'kcode --provider auto serve' || true", { encoding: "utf8" }).trim());
 
   const before = countDaemons();
   const script = `
