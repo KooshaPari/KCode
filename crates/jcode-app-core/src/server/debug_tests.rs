@@ -415,12 +415,16 @@ mod transcript_routing_tests {
         std::fs::write(active_dir.join(swan), "222").expect("write swan active pid");
         crate::dictation::remember_last_focused_session(fox).expect("remember fox session");
 
-        let focused_process = ChildGuard::spawn_named("jcode:d:swan");
+        let focused_process =
+            ChildGuard::spawn_named(&format!("{}:d:swan", crate::process_title::PRODUCT_NAME));
         let bin_dir = temp.path().join("bin");
         install_fake_niri(
             &bin_dir,
             focused_process.pid(),
-            "🦢 jcode/cliff Swan [self-dev]",
+            &format!(
+                "🦢 {}/cliff Swan [self-dev]",
+                crate::process_title::PRODUCT_NAME
+            ),
         );
         let prev_path = std::env::var_os("PATH").unwrap_or_default();
         let mut path = OsString::from(bin_dir.as_os_str());
