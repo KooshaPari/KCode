@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Mutex, OnceLock};
 use tokio::time::{Duration, timeout};
 
-const CLIENT_TITLE_PREFIXES: &[&str] = &["jcode:d:", "jcode:c:"];
+const CLIENT_TITLE_PREFIXES: &[&str] = &["kcode:d:", "kcode:c:", "jcode:d:", "jcode:c:"];
 
 #[derive(Debug, Clone)]
 pub struct DictationRun {
@@ -257,9 +257,10 @@ fn registered_client_session(pid: u32) -> Option<String> {
     (!session_id.is_empty()).then_some(session_id)
 }
 
-/// A running `jcode` TUI client, not a server or one-shot subcommand.
+/// A running `kcode` or upstream `jcode` TUI client, not a server or one-shot
+/// subcommand. Both binaries legitimately coexist on the same host.
 fn is_jcode_client_process(pid: u32) -> bool {
-    if process_exe_name(pid).as_deref() != Some("jcode") {
+    if !matches!(process_exe_name(pid).as_deref(), Some("kcode" | "jcode")) {
         return false;
     }
     let Ok(bytes) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
@@ -381,9 +382,14 @@ fn resolve_session_from_window_title(title: &str) -> Option<String> {
 }
 
 fn extract_session_short_name_from_window_title(title: &str) -> Option<String> {
-    let (_, rest) = title
-        .split_once("jcode/")
-        .or_else(|| title.split_once("jcode "))?;
+    let (_, rest) = ["kcode/", "jcode/"]
+        .into_iter()
+        .find_map(|marker| title.split_once(marker))
+        .or_else(|| {
+            ["kcode ", "jcode "]
+                .into_iter()
+                .find_map(|marker| title.split_once(marker))
+        })?;
     // The TUI appends live metrics after " · " (for example "· last ~18s").
     let rest = rest.split(" · ").next().unwrap_or(rest);
     let candidate = rest.split('[').next().unwrap_or(rest).trim();

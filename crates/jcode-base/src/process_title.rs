@@ -1,6 +1,22 @@
+/// The one product name used by process titles, window titles and title parsers.
+pub const PRODUCT_NAME: &str = "kcode";
+
 const LINUX_PROCESS_TITLE_LIMIT: usize = 15;
-#[cfg(target_os = "linux")]
-const KILLALL_PROCESS_NAME: &str = "jcode";
+
+/// Prefix for a client whose process title carries its session short name.
+pub fn client_title_prefix(is_selfdev: bool) -> String {
+    format!("{PRODUCT_NAME}:{}:", if is_selfdev { "d" } else { "c" })
+}
+
+/// Fallback window label when no remote server is involved.
+pub fn window_label(session_label: &str) -> String {
+    format!("{PRODUCT_NAME} {session_label}")
+}
+
+/// Fallback window label that names the remote server.
+pub fn remote_window_label(server_name: &str, session_label: &str) -> String {
+    format!("{PRODUCT_NAME}/{server_name} {session_label}")
+}
 
 pub fn compact_process_title(prefix: &str, name: Option<&str>) -> String {
     let mut title = prefix.to_string();
@@ -69,8 +85,8 @@ pub fn terminal_display_title_for_id(session_id: &str) -> Option<String> {
 }
 
 /// Build the deliberately minimal terminal window title. The emoji already
-/// identifies the session/connection, so do not repeat `jcode` or the memorable
-/// animal name in window chrome.
+/// identifies the session/connection, so do not repeat the product name or the
+/// memorable animal name in window chrome.
 pub fn terminal_window_title(
     icon: &str,
     display_title: Option<&str>,
@@ -109,7 +125,7 @@ fn set_killall_process_name() {
     #[cfg(target_os = "linux")]
     unsafe {
         let mut name = [0u8; 16];
-        let bytes = KILLALL_PROCESS_NAME.as_bytes();
+        let bytes = PRODUCT_NAME.as_bytes();
         let len = bytes.len().min(name.len().saturating_sub(1));
         name[..len].copy_from_slice(&bytes[..len]);
         let _ = libc::prctl(libc::PR_SET_NAME, name.as_ptr(), 0, 0, 0);
@@ -117,16 +133,18 @@ fn set_killall_process_name() {
 }
 
 pub fn set_server_title(server_name: &str) {
-    set_title(compact_process_title("jcode:s:", Some(server_name)));
+    set_title(compact_process_title(
+        &format!("{PRODUCT_NAME}:s:"),
+        Some(server_name),
+    ));
 }
 
 pub fn set_client_generic_title(is_selfdev: bool) {
-    let prefix = if is_selfdev {
-        "jcode:selfdev"
-    } else {
-        "jcode:client"
-    };
-    set_title(compact_process_title(prefix, None));
+    let prefix = format!(
+        "{PRODUCT_NAME}:{}",
+        if is_selfdev { "selfdev" } else { "client" }
+    );
+    set_title(compact_process_title(&prefix, None));
 }
 
 pub fn set_client_session_title(session_id: &str, is_selfdev: bool) {
@@ -134,16 +152,18 @@ pub fn set_client_session_title(session_id: &str, is_selfdev: bool) {
 }
 
 pub fn set_client_display_title(session_name: &str, is_selfdev: bool) {
-    let prefix = if is_selfdev { "jcode:d:" } else { "jcode:c:" };
-    set_title(compact_process_title(prefix, Some(session_name)));
+    set_title(compact_process_title(
+        &client_title_prefix(is_selfdev),
+        Some(session_name),
+    ));
 }
 
 pub fn set_client_remote_display_title(server_name: &str, session_name: &str, is_selfdev: bool) {
-    if server_name.is_empty() || server_name.eq_ignore_ascii_case("jcode") {
+    if server_name.is_empty() || server_name.eq_ignore_ascii_case(PRODUCT_NAME) {
         set_client_display_title(session_name, is_selfdev);
         return;
     }
-    let prefix = if is_selfdev { "jcode:d:" } else { "jcode:c:" };
+    let prefix = client_title_prefix(is_selfdev);
     set_title(format!("{prefix}{server_name}/{session_name}"));
 }
 
@@ -151,6 +171,12 @@ pub fn set_client_remote_display_title(server_name: &str, session_name: &str, is
 mod tests {
     use super::*;
     use crate::storage::lock_test_env;
+
+    #[test]
+    fn client_title_prefix_uses_product_name() {
+        assert_eq!(client_title_prefix(false), format!("{PRODUCT_NAME}:c:"));
+        assert_eq!(client_title_prefix(true), format!("{PRODUCT_NAME}:d:"));
+    }
 
     #[test]
     fn terminal_session_label_includes_custom_title_and_short_name() {
@@ -164,24 +190,25 @@ mod tests {
 
     #[test]
     fn terminal_window_title_omits_product_and_animal_names() {
+        let fallback_label = format!("{PRODUCT_NAME} Octopus");
         assert_eq!(
             terminal_window_title(
                 "🐙",
                 Some("resume window title"),
-                Some("jcode Octopus"),
+                Some(&fallback_label),
                 false
             ),
             "🐙 resume window title"
         );
         assert_eq!(
-            terminal_window_title("🐙", None, Some("jcode Octopus"), false),
-            "🐙 jcode Octopus"
+            terminal_window_title("🐙", None, Some(&fallback_label), false),
+            format!("🐙 {fallback_label}")
         );
         assert_eq!(
             terminal_window_title(
                 "🐙",
                 Some("resume window title"),
-                Some("jcode Octopus"),
+                Some(&fallback_label),
                 true
             ),
             "🐙 resume window title [self-dev]"

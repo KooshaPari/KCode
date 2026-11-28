@@ -6,40 +6,46 @@
 //! `process_title` core module.
 
 use crate::cli::args::{AmbientCommand, Args, Command};
-use crate::process_title::{compact_process_title, session_name, set_title};
+use crate::process_title::{
+    PRODUCT_NAME, client_title_prefix, compact_process_title, session_name, set_title,
+};
+
+fn product_title(suffix: &str) -> String {
+    format!("{PRODUCT_NAME} {suffix}")
+}
 
 pub(crate) fn initial_title(args: &Args) -> String {
     match &args.command {
         Some(Command::Coexistence { .. }) => "kcode coexistence".to_string(),
-        Some(Command::Serve { .. }) => "jcode:server".to_string(),
-        Some(Command::Acp) => "jcode acp".to_string(),
-        Some(Command::Server { .. }) => "jcode server".to_string(),
-        Some(Command::Connect) => "jcode:client".to_string(),
+        Some(Command::Serve { .. }) => format!("{PRODUCT_NAME}:server"),
+        Some(Command::Acp) => product_title("acp"),
+        Some(Command::Server { .. }) => product_title("server"),
+        Some(Command::Connect) => format!("{PRODUCT_NAME}:client"),
         #[cfg(unix)]
-        Some(Command::ApiBridge { .. }) => "jcode api-bridge".to_string(),
-        Some(Command::Run { .. }) => "jcode run".to_string(),
-        Some(Command::Login { .. }) => "jcode login".to_string(),
-        Some(Command::Account { .. }) => "jcode account".to_string(),
-        Some(Command::Repl) => "jcode repl".to_string(),
-        Some(Command::Update) => "jcode update".to_string(),
-        Some(Command::Version { .. }) => "jcode version".to_string(),
-        Some(Command::Usage { .. }) => "jcode usage".to_string(),
-        Some(Command::Telemetry(_)) => "jcode telemetry".to_string(),
-        Some(Command::SelfDev { .. }) => "jcode:selfdev".to_string(),
-        Some(Command::Debug { .. }) => "jcode debug".to_string(),
-        Some(Command::Auth(_)) => "jcode auth".to_string(),
-        Some(Command::Provider(_)) => "jcode provider".to_string(),
-        Some(Command::Memory(_)) => "jcode memory".to_string(),
-        Some(Command::Session(_)) => "jcode session".to_string(),
+        Some(Command::ApiBridge { .. }) => product_title("api-bridge"),
+        Some(Command::Run { .. }) => product_title("run"),
+        Some(Command::Login { .. }) => product_title("login"),
+        Some(Command::Account { .. }) => product_title("account"),
+        Some(Command::Repl) => product_title("repl"),
+        Some(Command::Update) => product_title("update"),
+        Some(Command::Version { .. }) => product_title("version"),
+        Some(Command::Usage { .. }) => product_title("usage"),
+        Some(Command::Telemetry(_)) => product_title("telemetry"),
+        Some(Command::SelfDev { .. }) => format!("{PRODUCT_NAME}:selfdev"),
+        Some(Command::Debug { .. }) => product_title("debug"),
+        Some(Command::Auth(_)) => product_title("auth"),
+        Some(Command::Provider(_)) => product_title("provider"),
+        Some(Command::Memory(_)) => product_title("memory"),
+        Some(Command::Session(_)) => product_title("session"),
         Some(Command::Ambient(subcommand)) => match subcommand {
-            AmbientCommand::RunVisible => "jcode ambient visible".to_string(),
-            _ => "jcode ambient".to_string(),
+            AmbientCommand::RunVisible => product_title("ambient visible"),
+            _ => product_title("ambient"),
         },
-        Some(Command::Cloud(_)) => "jcode cloud".to_string(),
-        Some(Command::Pair { .. }) => "jcode pair".to_string(),
-        Some(Command::Permissions) => "jcode permissions".to_string(),
-        Some(Command::Transcript { .. }) => "jcode transcript".to_string(),
-        Some(Command::Dictate { .. }) => "jcode dictate".to_string(),
+        Some(Command::Cloud(_)) => product_title("cloud"),
+        Some(Command::Pair { .. }) => product_title("pair"),
+        Some(Command::Permissions) => product_title("permissions"),
+        Some(Command::Transcript { .. }) => product_title("transcript"),
+        Some(Command::Dictate { .. }) => product_title("dictate"),
         Some(Command::SetupHotkey {
             listen_macos_hotkey,
             notify_cli_launch,
@@ -47,38 +53,34 @@ pub(crate) fn initial_title(args: &Args) -> String {
             uninstall,
         }) => {
             if *listen_macos_hotkey || *listen_windows_hotkey {
-                "jcode hotkey listener".to_string()
+                product_title("hotkey listener")
             } else if notify_cli_launch.is_some() {
-                "jcode shortcut reminder".to_string()
+                product_title("shortcut reminder")
             } else if *uninstall {
-                "jcode hotkey uninstall".to_string()
+                product_title("hotkey uninstall")
             } else {
-                "jcode hotkey setup".to_string()
+                product_title("hotkey setup")
             }
         }
-        Some(Command::Browser { .. }) => "jcode browser".to_string(),
-        Some(Command::Replay { .. }) => "jcode replay".to_string(),
-        Some(Command::Model(_)) => "jcode model".to_string(),
-        Some(Command::HerdrStatus) => "jcode herdr-status".to_string(),
-        Some(Command::HerdrInstall) => "jcode herdr-install".to_string(),
-        Some(Command::ProviderTestCoverage { .. }) => "jcode provider-test-coverage".to_string(),
-        Some(Command::ProviderDoctor { .. }) => "jcode provider-doctor".to_string(),
-        Some(Command::AuthTest { .. }) => "jcode auth-test".to_string(),
-        Some(Command::Restart { .. }) => "jcode restart".to_string(),
-        Some(Command::Menubar { .. }) => "jcode menubar".to_string(),
-        Some(Command::SetupLauncher) => "jcode setup-launcher".to_string(),
+        Some(Command::Browser { .. }) => product_title("browser"),
+        Some(Command::Replay { .. }) => product_title("replay"),
+        Some(Command::Model(_)) => product_title("model"),
+        Some(Command::HerdrStatus) => product_title("herdr-status"),
+        Some(Command::HerdrInstall) => product_title("herdr-install"),
+        Some(Command::ProviderTestCoverage { .. }) => product_title("provider-test-coverage"),
+        Some(Command::ProviderDoctor { .. }) => product_title("provider-doctor"),
+        Some(Command::AuthTest { .. }) => product_title("auth-test"),
+        Some(Command::Restart { .. }) => product_title("restart"),
+        Some(Command::Menubar { .. }) => product_title("menubar"),
+        Some(Command::SetupLauncher) => product_title("setup-launcher"),
         None => {
             if let Some(resume) = args.resume.as_deref().filter(|resume| !resume.is_empty()) {
-                let prefix = if crate::cli::selfdev::client_selfdev_requested() {
-                    "jcode:d:"
-                } else {
-                    "jcode:c:"
-                };
-                compact_process_title(prefix, Some(&session_name(resume)))
+                let prefix = client_title_prefix(crate::cli::selfdev::client_selfdev_requested());
+                compact_process_title(&prefix, Some(&session_name(resume)))
             } else if crate::cli::selfdev::client_selfdev_requested() {
-                "jcode:selfdev".to_string()
+                format!("{PRODUCT_NAME}:selfdev")
             } else {
-                "jcode:client".to_string()
+                format!("{PRODUCT_NAME}:client")
             }
         }
     }
@@ -110,36 +112,36 @@ mod tests {
     #[test]
     fn initial_title_labels_server() {
         with_selfdev_env_removed(|| {
-            let args = Args::parse_from(["jcode", "serve"]);
-            assert_eq!(initial_title(&args), "jcode:server");
+            let args = Args::parse_from([PRODUCT_NAME, "serve"]);
+            assert_eq!(initial_title(&args), format!("{PRODUCT_NAME}:server"));
         });
     }
 
     #[test]
     fn initial_title_labels_resume_client_with_short_name() {
         with_selfdev_env_removed(|| {
-            let args = Args::parse_from(["jcode", "--resume", "session_fox_123"]);
-            assert_eq!(initial_title(&args), "jcode:c:fox");
+            let args = Args::parse_from([PRODUCT_NAME, "--resume", "session_fox_123"]);
+            assert_eq!(initial_title(&args), format!("{PRODUCT_NAME}:c:fox"));
         });
     }
 
     #[test]
     fn initial_title_labels_selfdev_command() {
         with_selfdev_env_removed(|| {
-            let args = Args::parse_from(["jcode", "self-dev"]);
-            assert_eq!(initial_title(&args), "jcode:selfdev");
+            let args = Args::parse_from([PRODUCT_NAME, "self-dev"]);
+            assert_eq!(initial_title(&args), format!("{PRODUCT_NAME}:selfdev"));
         });
     }
 
     #[test]
     fn initial_title_labels_windows_hotkey_listener() {
-        let args = Args::parse_from(["jcode", "setup-hotkey", "--listen-windows-hotkey"]);
-        assert_eq!(initial_title(&args), "jcode hotkey listener");
+        let args = Args::parse_from([PRODUCT_NAME, "setup-hotkey", "--listen-windows-hotkey"]);
+        assert_eq!(initial_title(&args), product_title("hotkey listener"));
     }
 
     #[test]
     fn initial_title_labels_hotkey_uninstall() {
-        let args = Args::parse_from(["jcode", "setup-hotkey", "--uninstall"]);
-        assert_eq!(initial_title(&args), "jcode hotkey uninstall");
+        let args = Args::parse_from([PRODUCT_NAME, "setup-hotkey", "--uninstall"]);
+        assert_eq!(initial_title(&args), product_title("hotkey uninstall"));
     }
 }
