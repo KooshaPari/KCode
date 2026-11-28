@@ -5,6 +5,7 @@
 //! `jcode_base::provider::external` at startup.
 
 mod config;
+mod contract;
 pub mod parser;
 pub mod translator;
 
@@ -49,6 +50,7 @@ const NATIVE_TOOL_NAMES: &[&str] = &["selfdev", "communicate", "memory", "sessio
 pub struct ForgeCodeProvider {
     config: ForgeCodeCliConfig,
     model: Arc<RwLock<String>>,
+    contract_check: Arc<std::sync::OnceLock<std::result::Result<(), String>>>,
 }
 
 impl ForgeCodeProvider {
@@ -58,6 +60,7 @@ impl ForgeCodeProvider {
         Self {
             config,
             model: Arc::new(RwLock::new(model)),
+            contract_check: Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -107,6 +110,35 @@ impl ForgeCodeProvider {
         }
         anyhow::bail!("No user prompt found for ForgeCode CLI request");
     }
+
+    async fn ensure_cli_contract(&self) -> Result<()> {
+        if let Some(cached) = self.contract_check.get() {
+            return match cached {
+                Ok(()) => Ok(()),
+                Err(err) => Err(anyhow::anyhow!("{err}")),
+            };
+        }
+
+        let checked = match contract::probe_cli_contract(&self.config).await {
+            Ok(()) => Ok(()),
+            Err(err) => Err(format!("{err:#}")),
+        };
+
+        match self.contract_check.set(checked.clone()) {
+            Ok(()) => {}
+            Err(existing) => {
+                return match existing {
+                    Ok(()) => Ok(()),
+                    Err(err) => Err(anyhow::anyhow!("{err}")),
+                };
+            }
+        }
+
+        match checked {
+            Ok(()) => Ok(()),
+            Err(err) => Err(anyhow::anyhow!("{err}")),
+        }
+    }
 }
 
 impl Default for ForgeCodeProvider {
@@ -128,6 +160,7 @@ impl Provider for ForgeCodeProvider {
         system: &str,
         resume_session_id: Option<&str>,
     ) -> Result<EventStream> {
+        self.ensure_cli_contract().await?;
         let tool_names = self.tool_names_for_cli(tools);
         let prompt = self.extract_user_prompt(messages)?;
         let current_model = self
@@ -286,6 +319,7 @@ impl Provider for ForgeCodeProvider {
         Arc::new(ForgeCodeProvider {
             config,
             model: Arc::new(RwLock::new(model)),
+            contract_check: Arc::clone(&self.contract_check),
         })
     }
 }
