@@ -219,6 +219,7 @@ fn resolve_session_cwd(configured: Option<&str>) -> PathBuf {
     configured
         .filter(|path| Path::new(path).is_dir())
         .map(PathBuf::from)
+        .or_else(|| dirs::home_dir().filter(|path| path.is_dir()))
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."))
 }

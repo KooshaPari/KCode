@@ -1,6 +1,7 @@
 use super::{
     AUTO_RESTORE_CRASH_MAX_AGE_HOURS, arm_auto_restore_from_recent_crashes,
-    capture_current_snapshot, clear_snapshot, load_snapshot, save_current_snapshot,
+    capture_current_snapshot, clear_snapshot, load_snapshot, resolve_session_cwd,
+    save_current_snapshot,
 };
 use crate::session::Session;
 use chrono::Utc;
@@ -176,4 +177,45 @@ fn arm_auto_restore_from_recent_crashes_ignores_old_crashes() {
             .is_none()
     );
     assert!(load_snapshot().is_err());
+}
+
+#[test]
+fn resolve_session_cwd_keeps_existing_configured_dir() {
+    let configured = tempfile::Builder::new()
+        .prefix("kcode-restart-cwd-existing-")
+        .tempdir()
+        .expect("create configured dir");
+    let resolved = resolve_session_cwd(configured.path().to_str());
+    assert_eq!(resolved, configured.path());
+}
+
+#[test]
+fn resolve_session_cwd_uses_home_when_configured_missing() {
+    let home = dirs::home_dir().expect("resolve home dir");
+    assert!(home.is_dir());
+    let resolved = resolve_session_cwd(None);
+    assert_eq!(resolved, home);
+}
+
+#[test]
+fn resolve_session_cwd_uses_home_when_configured_path_missing() {
+    let missing = tempfile::Builder::new()
+        .prefix("kcode-restart-cwd-missing-")
+        .tempdir()
+        .expect("create temp dir")
+        .path()
+        .join("does-not-exist");
+    assert!(!missing.exists());
+    let home = dirs::home_dir().expect("resolve home dir");
+    assert!(home.is_dir());
+    let resolved = resolve_session_cwd(missing.to_str());
+    assert_eq!(resolved, home);
+}
+
+#[test]
+fn resolve_session_cwd_uses_home_when_configured_path_empty() {
+    let home = dirs::home_dir().expect("resolve home dir");
+    assert!(home.is_dir());
+    let resolved = resolve_session_cwd(Some(""));
+    assert_eq!(resolved, home);
 }
