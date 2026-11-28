@@ -189,12 +189,15 @@ pub async fn maybe_run_pending_restart_restore_on_startup() -> Result<bool> {
     };
 
     if snapshot.auto_restore_on_next_start {
+        let Some(claim) = crate::restart_snapshot::try_acquire_restore_claim()? else {
+            return Ok(false);
+        };
         let _ = crate::restart_snapshot::set_auto_restore_on_next_start(false);
         println!(
             "Found a reboot snapshot with auto-restore enabled. Restoring {} jcode window(s)...\n",
             snapshot.sessions.len()
         );
-        run_restart_restore_command()?;
+        run_restart_restore_command_with_claim(Some(claim))?;
         return Ok(true);
     }
 
@@ -215,8 +218,24 @@ pub fn run_restart_clear_command() -> Result<()> {
 }
 
 pub fn run_restart_restore_command() -> Result<()> {
+    run_restart_restore_command_with_claim(None)
+}
+
+fn run_restart_restore_command_with_claim(
+    claim: Option<crate::restart_snapshot::RestoreClaimGuard>,
+) -> Result<()> {
     let exe = current_restart_restore_exe()?;
-    let result = match crate::restart_snapshot::restore_snapshot(&exe) {
+    let restore_result = match claim {
+        Some(claim) => crate::restart_snapshot::restore_snapshot_with_claim(&exe, claim),
+        None => match crate::restart_snapshot::try_restore_snapshot(&exe)? {
+            Some(result) => Ok(result),
+            None => {
+                println!("Reboot snapshot restore is already in progress; skipping.");
+                return Ok(());
+            }
+        },
+    };
+    let result = match restore_result {
         Ok(result) => result,
         Err(error) => {
             let path = crate::restart_snapshot::snapshot_path()?;

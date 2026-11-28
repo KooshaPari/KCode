@@ -5,6 +5,24 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 const AUTO_RESTORE_CRASH_MAX_AGE_HOURS: i64 = 24;
+const RESTORE_CLAIM_STALE_MAX_AGE_SECS: i64 = 600;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RestoreClaim {
+    pid: u32,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RestoreClaimGuard {
+    claim_path: PathBuf,
+}
+
+impl RestoreClaimGuard {
+    fn release(self) -> Result<()> {
+        release_claim_path(&self.claim_path)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestartSnapshot {
@@ -40,6 +58,10 @@ pub struct RestoreSnapshotResult {
 
 pub fn snapshot_path() -> Result<PathBuf> {
     Ok(crate::storage::jcode_dir()?.join("restart-snapshot.json"))
+}
+
+pub fn restore_claim_path() -> Result<PathBuf> {
+    Ok(crate::storage::jcode_dir()?.join("restart-snapshot.restore.claim.json"))
 }
 
 pub fn save_current_snapshot() -> Result<RestartSnapshot> {
@@ -181,38 +203,64 @@ pub fn capture_current_snapshot() -> Result<RestartSnapshot> {
     })
 }
 
-pub fn restore_snapshot(exe: &Path) -> Result<RestoreSnapshotResult> {
-    let snapshot = load_snapshot()?;
-    let mut outcomes = Vec::new();
+pub fn try_restore_snapshot(exe: &Path) -> Result<Option<RestoreSnapshotResult>> {
+    let Some(claim) = try_acquire_restore_claim()? else {
+        return Ok(None);
+    };
+    restore_snapshot_with_claim(exe, claim).map(Some)
+}
 
-    for session in &snapshot.sessions {
-        let cwd = resolve_session_cwd(session.working_dir.as_deref());
-        let context = crate::session_launch::SessionSpawnContext::kind("restart");
-        let launched = if session.is_selfdev {
-            crate::session_launch::spawn_selfdev_in_new_terminal_with_context(
-                exe,
-                &session.session_id,
-                &cwd,
-                None,
-                &context,
-            )?
+pub fn restore_snapshot_with_claim(
+    exe: &Path,
+    claim: RestoreClaimGuard,
+) -> Result<RestoreSnapshotResult> {
+    let result = (|| -> Result<RestoreSnapshotResult> {
+        let snapshot = load_snapshot()?;
+        let mut outcomes = Vec::new();
+
+        for session in &snapshot.sessions {
+            let cwd = resolve_session_cwd(session.working_dir.as_deref());
+            let context = crate::session_launch::SessionSpawnContext::kind("restart");
+            let launched = if session.is_selfdev {
+                crate::session_launch::spawn_selfdev_in_new_terminal_with_context(
+                    exe,
+                    &session.session_id,
+                    &cwd,
+                    None,
+                    &context,
+                )?
+            } else {
+                crate::session_launch::spawn_resume_in_new_terminal_with_context(
+                    exe,
+                    &session.session_id,
+                    &cwd,
+                    None,
+                    &context,
+                )?
+            };
+            outcomes.push(RestoreLaunchOutcome {
+                session: session.clone(),
+                launched,
+                command: restore_command_display(exe, session),
+            });
+        }
+
+        Ok(RestoreSnapshotResult { snapshot, outcomes })
+    })();
+
+    if let Err(err) = claim.release() {
+        let phase = if result.is_ok() {
+            "after restore"
         } else {
-            crate::session_launch::spawn_resume_in_new_terminal_with_context(
-                exe,
-                &session.session_id,
-                &cwd,
-                None,
-                &context,
-            )?
+            "after failed restore"
         };
-        outcomes.push(RestoreLaunchOutcome {
-            session: session.clone(),
-            launched,
-            command: restore_command_display(exe, session),
-        });
+        crate::logging::warn(&format!(
+            "Failed to release reboot snapshot restore claim {}: {}",
+            phase, err
+        ));
     }
 
-    Ok(RestoreSnapshotResult { snapshot, outcomes })
+    result
 }
 
 fn resolve_session_cwd(configured: Option<&str>) -> PathBuf {
@@ -222,6 +270,95 @@ fn resolve_session_cwd(configured: Option<&str>) -> PathBuf {
         .or_else(|| dirs::home_dir().filter(|path| path.is_dir()))
         .or_else(|| std::env::current_dir().ok())
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+pub fn try_acquire_restore_claim() -> Result<Option<RestoreClaimGuard>> {
+    let claim_path = restore_claim_path()?;
+    if let Some(parent) = claim_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let claim = RestoreClaim {
+        pid: std::process::id(),
+        created_at: Utc::now(),
+    };
+    let payload = serde_json::to_vec(&claim)?;
+    let mut claim_is_ours = false;
+
+    for _ in 0..2 {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&claim_path)
+        {
+            Ok(mut file) => {
+                use std::io::Write;
+                file.write_all(&payload)?;
+                file.sync_all()?;
+                claim_is_ours = true;
+                break;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                if !claim_is_stale(&claim_path)? {
+                    return Ok(None);
+                }
+                if let Err(err) = crate::storage::remove_state_file(&claim_path) {
+                    crate::logging::warn(&format!(
+                        "Failed to remove stale reboot snapshot restore claim {}: {}",
+                        claim_path.display(),
+                        err
+                    ));
+                }
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
+
+    if !claim_is_ours {
+        return Ok(None);
+    }
+
+    if claim_is_stale(&claim_path)? {
+        if let Err(err) = release_claim_path(&claim_path) {
+            crate::logging::warn(&format!(
+                "Failed to release stale reboot snapshot restore claim {}: {}",
+                claim_path.display(),
+                err
+            ));
+        }
+        return Ok(None);
+    }
+
+    Ok(Some(RestoreClaimGuard { claim_path }))
+}
+
+fn claim_is_stale(claim_path: &Path) -> Result<bool> {
+    let claim = match std::fs::read(claim_path) {
+        Ok(bytes) => match serde_json::from_slice::<RestoreClaim>(&bytes) {
+            Ok(claim) => claim,
+            Err(_) => return Ok(true),
+        },
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(true),
+        Err(err) => return Err(err.into()),
+    };
+
+    if claim.pid == std::process::id() {
+        return Ok(false);
+    }
+
+    let age_secs = Utc::now()
+        .signed_duration_since(claim.created_at)
+        .num_seconds();
+    let age_expired = age_secs >= RESTORE_CLAIM_STALE_MAX_AGE_SECS;
+    let pid_dead = !crate::platform::is_process_running(claim.pid);
+    Ok(pid_dead || age_expired)
+}
+
+fn release_claim_path(claim_path: &Path) -> Result<()> {
+    match crate::storage::remove_state_file(claim_path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err.into()),
+    }
 }
 
 fn shell_escape(text: &str) -> String {
