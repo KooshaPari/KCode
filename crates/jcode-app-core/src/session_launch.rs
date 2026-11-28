@@ -723,58 +723,54 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
 mod tests {
     use super::forward_kcode_home_for_spawn_with;
     use std::path::PathBuf;
-    use std::sync::Mutex;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    fn resume_args() -> Vec<String> {
+        vec!["--resume".to_string(), "ses-1".to_string()]
+    }
 
     #[cfg(unix)]
     #[test]
     fn forward_kcode_home_for_spawn_prefixes_env_when_set() {
-        let _guard = ENV_LOCK.lock().unwrap();
         let (program, args) = forward_kcode_home_for_spawn_with(
             PathBuf::from("/usr/local/bin/kcode"),
-            vec!["--resume".to_string(), "ses-1".to_string()],
+            resume_args(),
             Some("/tmp/custom-kcode-home"),
         );
 
         assert_eq!(program, PathBuf::from("env"));
-        assert_eq!(
-            args,
-            vec![
-                "KCODE_HOME=/tmp/custom-kcode-home".to_string(),
-                "/usr/local/bin/kcode".to_string(),
-                "--resume".to_string(),
-                "ses-1".to_string(),
-            ]
-        );
+
+        let mut expected = vec!["KCODE_HOME=/tmp/custom-kcode-home".to_string()];
+        expected.push("/usr/local/bin/kcode".to_string());
+        expected.extend(resume_args());
+        assert_eq!(args, expected);
     }
 
     #[test]
     fn forward_kcode_home_for_spawn_is_unchanged_when_unset() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let (program, args) = forward_kcode_home_for_spawn_with(
-            PathBuf::from("/usr/local/bin/kcode"),
-            vec!["--resume".to_string(), "ses-1".to_string()],
-            None,
-        );
+        for home in [None, Some("")] {
+            let (program, args) = forward_kcode_home_for_spawn_with(
+                PathBuf::from("/usr/local/bin/kcode"),
+                resume_args(),
+                home,
+            );
 
-        assert_eq!(program, PathBuf::from("/usr/local/bin/kcode"));
-        assert_eq!(args, vec!["--resume".to_string(), "ses-1".to_string()]);
+            assert_eq!(program, PathBuf::from("/usr/local/bin/kcode"), "{home:?}");
+            assert_eq!(args, resume_args(), "{home:?}");
+        }
     }
 
     // Windows has no `env` binary, so the helper must leave argv alone and the
     // store root travels through the spawn environment instead.
     #[cfg(not(unix))]
     #[test]
-    fn forward_kcode_home_for_spawn_leaves_argv_alone_when_set_on_windows() {
-        let _guard = ENV_LOCK.lock().unwrap();
+    fn forward_kcode_home_for_spawn_never_prefixes_argv_on_windows() {
         let (program, args) = forward_kcode_home_for_spawn_with(
             PathBuf::from("C:\\kcode\\kcode.exe"),
-            vec!["--resume".to_string(), "ses-1".to_string()],
+            resume_args(),
             Some("C:\\kcode-home"),
         );
 
         assert_eq!(program, PathBuf::from("C:\\kcode\\kcode.exe"));
-        assert_eq!(args, vec!["--resume".to_string(), "ses-1".to_string()]);
+        assert_eq!(args, resume_args());
     }
 }
