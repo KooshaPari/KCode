@@ -351,14 +351,12 @@ fn claim_is_stale(claim_path: &Path) -> Result<bool> {
         return Ok(false);
     }
 
-    if crate::platform::is_process_running(claim.pid) {
-        return Ok(false);
-    }
-
     let age_secs = Utc::now()
         .signed_duration_since(claim.created_at)
         .num_seconds();
-    Ok(age_secs >= RESTORE_CLAIM_STALE_MAX_AGE_SECS)
+    let age_expired = age_secs >= RESTORE_CLAIM_STALE_MAX_AGE_SECS;
+    let pid_dead = !crate::platform::is_process_running(claim.pid);
+    Ok(pid_dead || age_expired)
 }
 
 fn release_claim_path(claim_path: &Path) -> Result<()> {

@@ -296,3 +296,46 @@ fn stale_restore_claim_is_reclaimed_after_dead_pid() {
         .expect("stale dead-pid claim should be reclaimed");
     winner.release().expect("release reclaimed claim");
 }
+
+#[test]
+fn live_pid_recent_claim_not_stale() {
+    let _guard = TestEnvGuard::new().expect("setup test env");
+
+    let claim_path = restore_claim_path().expect("claim path");
+    std::fs::create_dir_all(claim_path.parent().expect("claim parent")).expect("create claim dir");
+    let live_recent = serde_json::json!({
+        "pid": 1u32,
+        "created_at": Utc::now().to_rfc3339(),
+    });
+    std::fs::write(
+        &claim_path,
+        serde_json::to_vec(&live_recent).expect("serialize claim"),
+    )
+    .expect("write claim");
+
+    let loser = try_acquire_restore_claim().expect("claim attempt");
+    assert!(loser.is_none(), "recent live-pid claim must not be stolen");
+    assert!(claim_path.exists(), "claim file must remain");
+}
+
+#[test]
+fn live_pid_old_claim_is_stale_pid_reuse_escape_hatch() {
+    let _guard = TestEnvGuard::new().expect("setup test env");
+
+    let claim_path = restore_claim_path().expect("claim path");
+    std::fs::create_dir_all(claim_path.parent().expect("claim parent")).expect("create claim dir");
+    let live_old = serde_json::json!({
+        "pid": 1u32,
+        "created_at": (Utc::now() - chrono::Duration::seconds(RESTORE_CLAIM_STALE_MAX_AGE_SECS + 60)).to_rfc3339(),
+    });
+    std::fs::write(
+        &claim_path,
+        serde_json::to_vec(&live_old).expect("serialize claim"),
+    )
+    .expect("write claim");
+
+    let winner = try_acquire_restore_claim()
+        .expect("acquire old live-pid claim")
+        .expect("old live-pid claim must be reclaimed as pid-reuse escape hatch");
+    winner.release().expect("release reclaimed claim");
+}
