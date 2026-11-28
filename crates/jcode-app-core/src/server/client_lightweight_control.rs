@@ -29,7 +29,7 @@ use super::{
     update_member_status_with_report_tldr,
 };
 use crate::config::SwarmSpawnMode;
-use crate::protocol::{Request, ServerEvent};
+use crate::protocol::{DaemonIdentity, Request, ServerEvent};
 use crate::provider::Provider;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
@@ -38,6 +38,17 @@ use std::io::Read;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
+
+/// Identity of this process as the daemon answering a ping. The binary hash is
+/// computed once: it costs a full read of the executable.
+fn current_daemon_identity() -> DaemonIdentity {
+    DaemonIdentity {
+        version: Some(jcode_build_meta::version().to_string()),
+        git_hash: Some(jcode_build_meta::git_hash().to_string()),
+        pid: Some(std::process::id()),
+        binary_sha256: current_exe_sha256().map(str::to_string),
+    }
+}
 
 fn current_exe_sha256() -> Option<&'static str> {
     static DIGEST: OnceLock<Option<String>> = OnceLock::new();
@@ -133,15 +144,12 @@ pub(super) async fn handle_lightweight_control_request(
     if let Request::Ping { id } = request {
         write_direct_event(
             &writer,
-            &ServerEvent::Pong {
+            &ServerEvent::pong(
                 id,
-                native_ssh_protocol: Some(1),
-                capabilities: vec!["session_tools".into()],
-                server_version: Some(jcode_build_meta::version().to_string()),
-                server_git_hash: Some(jcode_build_meta::git_hash().to_string()),
-                server_pid: Some(std::process::id()),
-                server_binary_sha256: current_exe_sha256().map(str::to_string),
-            },
+                Some(1),
+                vec!["session_tools".into()],
+                current_daemon_identity(),
+            ),
         )
         .await?;
         return Ok(());

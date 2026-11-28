@@ -1,12 +1,6 @@
 use super::*;
+use crate::serde_helpers::{default_true, is_false, is_zero_u8};
 use crate::session_tool_config::{SessionToolConfig, SessionToolDefinition};
-
-/// Serde default for boolean fields that should default to `true` when absent,
-/// so older clients that omit the field keep their previous (unconditional)
-/// behavior.
-fn default_true() -> bool {
-    true
-}
 
 /// Wire spec for a task-DAG node submitted by an agent (seed/expand/inject).
 /// Mirrors `jcode_plan::dag::NodeSpec` but kept as an explicit wire type so the
@@ -23,14 +17,6 @@ pub struct TaskGraphNodeSpec {
     pub depends_on: Vec<String>,
     #[serde(default, skip_serializing_if = "is_zero_u8")]
     pub priority: u8,
-}
-
-fn is_zero_u8(value: &u8) -> bool {
-    *value == 0
-}
-
-fn is_false(value: &bool) -> bool {
-    !*value
 }
 
 /// Client request to server
@@ -1241,21 +1227,16 @@ pub enum ServerEvent {
         native_ssh_protocol: Option<u32>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         capabilities: Vec<String>,
-        /// Runtime version of the daemon that answered this ping.
-        /// Optional for backward compatibility with older daemons.
+        /// Runtime identity of the daemon that answered this ping. Every field
+        /// is optional so older daemons stay decodable, and each one binds a
+        /// runtime observation to the actual installed artifact.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         server_version: Option<String>,
-        /// Runtime git identity of the daemon that answered this ping.
-        /// Optional for backward compatibility with older daemons.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         server_git_hash: Option<String>,
-        /// OS process id of the daemon that answered this ping.
-        /// This distinguishes a newly-built client from a pre-existing server.
+        /// OS pid of the daemon: distinguishes a fresh client from an old server.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         server_pid: Option<u32>,
-        /// SHA-256 of the executable bytes for the daemon that answered.
-        /// This binds runtime observations to an actual installed artifact
-        /// rather than trusting a version or git label alone.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         server_binary_sha256: Option<String>,
     },
