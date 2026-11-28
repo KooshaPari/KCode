@@ -347,6 +347,7 @@ fn synthetic_main_release(latest_sha: &str) -> GitHubRelease {
 }
 
 fn install_main_source_update_blocking(latest_sha: &str) -> Result<PathBuf> {
+    update_product::require_update_channel()?;
     let path = build_from_source()?;
     crate::logging::info(&format!(
         "Main channel: built successfully at {}",
@@ -624,11 +625,7 @@ fn check_for_stable_update_blocking() -> Result<Option<GitHubRelease>> {
     Ok(None)
 }
 
-/// Check for updates on the main branch (cutting edge channel).
-/// Compares the current binary's git hash against the latest commit on main.
-/// If a new commit is found:
-///   - Tries to build from source if cargo is available
-///   - Falls back to latest GitHub Release if not
+/// Check for updates on the main branch only when the product update gate allows it.
 fn check_for_main_update_blocking() -> Result<Option<GitHubRelease>> {
     let current_hash = jcode_build_meta::git_hash();
     if current_hash.is_empty() || current_hash == "unknown" {
@@ -701,6 +698,7 @@ fn has_cargo() -> bool {
 
 /// Build jcode from source by cloning/pulling the repo and running cargo build
 fn build_from_source() -> Result<PathBuf> {
+    update_product::require_update_channel()?;
     let started = Instant::now();
     let build_dir = source_build_root()?;
     fs::create_dir_all(&build_dir)?;
