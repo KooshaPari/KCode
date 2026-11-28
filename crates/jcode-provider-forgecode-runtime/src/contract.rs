@@ -34,7 +34,8 @@ KCode's structured provider protocol. Set KCODE_FORGECODE_CLI_PATH to a compatib
 }
 
 fn has_exact_v1_marker(help: &str) -> bool {
-    help.lines().any(|line| line.trim() == MACHINE_CONTRACT_MARKER)
+    help.lines()
+        .any(|line| line.trim() == MACHINE_CONTRACT_MARKER)
 }
 
 fn validate_required_flags(help: &str) -> Result<()> {
