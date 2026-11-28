@@ -347,6 +347,7 @@ fn synthetic_main_release(latest_sha: &str) -> GitHubRelease {
 }
 
 fn install_main_source_update_blocking(latest_sha: &str) -> Result<PathBuf> {
+    update_product::require_update_channel()?;
     let path = build_from_source()?;
     crate::logging::info(&format!(
         "Main channel: built successfully at {}",
@@ -701,6 +702,7 @@ fn has_cargo() -> bool {
 
 /// Build jcode from source by cloning/pulling the repo and running cargo build
 fn build_from_source() -> Result<PathBuf> {
+    update_product::require_update_channel()?;
     let started = Instant::now();
     let build_dir = source_build_root()?;
     fs::create_dir_all(&build_dir)?;
@@ -1318,3 +1320,7 @@ mod tests;
 #[cfg(test)]
 #[path = "update_github_auth_tests.rs"]
 mod github_auth_tests;
+
+#[cfg(test)]
+#[path = "update_product_entry_tests.rs"]
+mod update_product_entry_tests;
