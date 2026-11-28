@@ -1318,3 +1318,7 @@ mod tests;
 #[cfg(test)]
 #[path = "update_github_auth_tests.rs"]
 mod github_auth_tests;
+
+#[cfg(test)]
+#[path = "update_product_entry_tests.rs"]
+mod update_product_entry_tests;
