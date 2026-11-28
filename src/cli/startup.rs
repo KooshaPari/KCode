@@ -42,11 +42,15 @@ pub(crate) fn apply_home(home: Option<&str>) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub(crate) fn apply_startup_home(args: &Args) -> anyhow::Result<()> {
+    apply_home(args.home.as_deref())
+}
+
 pub async fn run() -> Result<()> {
     // Parse once, before startup side effects. Invalid arguments and --help
     // must not harden credential files or create configuration/telemetry state.
     let args = Args::parse();
-    apply_home(args.home.as_deref())?;
+    apply_startup_home(&args)?;
     if matches!(&args.command, Some(Command::Coexistence { .. })) {
         return dispatch::run_main(args).await;
     }
