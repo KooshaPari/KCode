@@ -217,4 +217,94 @@ mod contract_tests {
             "negated --resume should be reported missing: {msg}"
         );
     }
+
+    fn contract_help() -> String {
+        format!(
+            "{}\n--output-format <FMT>\n--input-format <FMT>\n--permission-mode <MODE>\n--resume <ID>\n--tools <TOOLS>\n",
+            MACHINE_CONTRACT_MARKER
+        )
+    }
+
+    fn rejection(help: &str) -> String {
+        validate_machine_contract_help(help)
+            .expect_err("mismatched CLI contract must fail closed")
+            .to_string()
+    }
+
+    #[test]
+    fn valid_help_with_exact_marker_and_all_required_flags_is_accepted() {
+        let help = contract_help();
+        assert!(validate_machine_contract_help(&help).is_ok());
+    }
+
+    #[test]
+    fn missing_marker_line_is_rejected_and_error_names_marker_constant() {
+        let help = contract_help().replace(MACHINE_CONTRACT_MARKER, "ForgeCode CLI");
+        let msg = rejection(&help);
+        assert!(
+            msg.contains(MACHINE_CONTRACT_MARKER),
+            "error must name the required marker constant: {msg}"
+        );
+    }
+
+    #[test]
+    fn marker_only_as_substring_of_longer_line_is_rejected() {
+        let help = contract_help().replace(
+            MACHINE_CONTRACT_MARKER,
+            &format!("prefix {MACHINE_CONTRACT_MARKER} suffix"),
+        );
+        assert!(
+            !has_exact_v1_marker(&help),
+            "a substring must not count as an exact marker line"
+        );
+        let msg = rejection(&help);
+        assert!(
+            msg.contains(MACHINE_CONTRACT_MARKER),
+            "error must name the required marker constant: {msg}"
+        );
+    }
+
+    #[test]
+    fn wrong_contract_version_v2_is_rejected() {
+        let help = contract_help().replace(
+            MACHINE_CONTRACT_MARKER,
+            "jcode-forgecode-machine-contract-v2",
+        );
+        let msg = rejection(&help);
+        assert!(
+            msg.contains(MACHINE_CONTRACT_MARKER),
+            "error must name the required v1 marker: {msg}"
+        );
+    }
+
+    #[test]
+    fn each_required_flag_missing_individually_is_rejected_and_named() {
+        for flag in REQUIRED_MACHINE_FLAGS {
+            let help = contract_help().replace(&format!("{flag} "), "");
+            let msg = rejection(&help);
+            assert!(
+                msg.contains(flag),
+                "error must name missing flag {flag}: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_help_is_rejected() {
+        let msg = rejection("");
+        assert!(
+            msg.contains(MACHINE_CONTRACT_MARKER),
+            "empty help must fail on the marker: {msg}"
+        );
+    }
+
+    #[test]
+    fn all_flags_without_marker_are_rejected() {
+        let help = contract_help().replace(&format!("{}\n", MACHINE_CONTRACT_MARKER), "");
+        let msg = rejection(&help);
+        assert!(
+            msg.contains(MACHINE_CONTRACT_MARKER),
+            "flag-only help must not pass the contract: {msg}"
+        );
+    }
 }
