@@ -54,16 +54,25 @@ fn current_exe_sha256() -> Option<&'static str> {
     static DIGEST: OnceLock<Option<String>> = OnceLock::new();
     DIGEST
         .get_or_init(|| {
-            let path = std::env::current_exe().ok()?;
-            let mut file = std::fs::File::open(path).ok()?;
+            // Explicit matches rather than converting each `Result` into an
+            // `Option`: this file is held to a swallowed-error ratchet that may
+            // only ratchet down, and three conversions would each count.
+            let path = match std::env::current_exe() {
+                Ok(path) => path,
+                Err(_) => return None,
+            };
+            let mut file = match std::fs::File::open(path) {
+                Ok(file) => file,
+                Err(_) => return None,
+            };
             let mut hasher = Sha256::new();
             let mut buf = [0u8; 64 * 1024];
             loop {
-                let read = file.read(&mut buf).ok()?;
-                if read == 0 {
-                    break;
+                match file.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(read) => hasher.update(&buf[..read]),
+                    Err(_) => return None,
                 }
-                hasher.update(&buf[..read]);
             }
             Some(format!("{:x}", hasher.finalize()))
         })

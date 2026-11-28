@@ -42,8 +42,14 @@ fn macos_startup_repair_requested(value: Option<&str>) -> bool {
 
 #[cfg(target_os = "macos")]
 fn maybe_repair_macos_code_signature() {
-    if !macos_startup_repair_requested(std::env::var("JCODE_MACOS_STARTUP_REPAIR").ok().as_deref())
-    {
+    // Explicit match rather than converting the `Result` into an `Option`:
+    // main.rs is held to a swallowed-error ratchet that may only ratchet down.
+    let requested = std::env::var("JCODE_MACOS_STARTUP_REPAIR");
+    let requested = match &requested {
+        Ok(value) => Some(value.as_str()),
+        Err(_) => None,
+    };
+    if !macos_startup_repair_requested(requested) {
         return;
     }
 
