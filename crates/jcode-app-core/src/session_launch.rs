@@ -101,9 +101,9 @@ fn kcode_home_env_value() -> Option<String> {
 /// of the client's configured store root (#424). Forwarding at argv level
 /// makes the child see the same store root regardless of hook environment.
 ///
-/// Unix only: an argv-level prefix needs an `env` binary, which Windows does
-/// not have. On Windows the store root is forwarded through the spawn
-/// environment instead (see `apply_kcode_home_env`).
+/// Unix only. Windows has no `env` binary, so argv cannot be prefixed there;
+/// a Windows child must inherit the variable or receive it from its hook, which
+/// is still open on #424.
 pub(crate) fn forward_kcode_home_for_spawn(
     program: std::path::PathBuf,
     args: Vec<String>,
@@ -129,15 +129,6 @@ pub(crate) fn forward_kcode_home_for_spawn_with(
     forwarded_args.push(program.to_string_lossy().into_owned());
     forwarded_args.extend(args);
     (std::path::PathBuf::from("env"), forwarded_args)
-}
-
-/// Windows counterpart: hand the store root to the child through its spawn
-/// environment, since there is no `env` binary to prefix argv with.
-#[cfg(not(unix))]
-fn apply_kcode_home_env(cmd: &mut std::process::Command) {
-    if let Some(kcode_home) = kcode_home_env_value() {
-        cmd.env("KCODE_HOME", kcode_home);
-    }
 }
 
 /// Compute the window/terminal title used when (re)launching a session.
@@ -534,7 +525,6 @@ pub fn spawn_resume_in_new_terminal_with_context(
                     continue;
                 };
                 let mut cmd = Command::new(wezterm_bin);
-                apply_kcode_home_env(&mut cmd);
                 cmd.args(["start", "--always-new-process", "--"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -549,7 +539,6 @@ pub fn spawn_resume_in_new_terminal_with_context(
                     continue;
                 }
                 let mut cmd = Command::new("wt.exe");
-                apply_kcode_home_env(&mut cmd);
                 cmd.args(["-p", "Command Prompt"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -564,7 +553,6 @@ pub fn spawn_resume_in_new_terminal_with_context(
                     continue;
                 }
                 let mut cmd = Command::new("alacritty");
-                apply_kcode_home_env(&mut cmd);
                 cmd.args(["-e"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -668,7 +656,6 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                     continue;
                 };
                 let mut cmd = Command::new(wezterm_bin);
-                apply_kcode_home_env(&mut cmd);
                 cmd.args(["start", "--always-new-process", "--"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -683,7 +670,6 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                     continue;
                 }
                 let mut cmd = Command::new("wt.exe");
-                apply_kcode_home_env(&mut cmd);
                 cmd.args(["-p", "Command Prompt"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -698,7 +684,6 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                     continue;
                 }
                 let mut cmd = Command::new("alacritty");
-                apply_kcode_home_env(&mut cmd);
                 cmd.args(["-e"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
