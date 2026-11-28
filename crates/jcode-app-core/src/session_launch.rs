@@ -488,14 +488,8 @@ pub fn spawn_resume_in_new_terminal_with_context(
     jcode_args.push("--resume".to_string());
     jcode_args.push(session_id.to_string());
 
-    let (spawn_program, spawn_jcode_args) =
-        forward_kcode_home_for_spawn(exe.to_path_buf(), jcode_args.clone());
-
-    let hook_command = crate::terminal_launch::TerminalCommand::new(
-        spawn_program.clone(),
-        spawn_jcode_args.clone(),
-    )
-    .title(resumed_window_title(session_id));
+    let hook_command = crate::terminal_launch::TerminalCommand::new(exe, jcode_args.clone())
+        .title(resumed_window_title(session_id));
     let hook_command = context.apply(hook_command, "resume", session_id);
     if crate::terminal_launch::try_spawn_via_configured_hook(&hook_command, cwd) {
         return Ok(true);
@@ -526,8 +520,8 @@ pub fn spawn_resume_in_new_terminal_with_context(
                 };
                 let mut cmd = Command::new(wezterm_bin);
                 cmd.args(["start", "--always-new-process", "--"])
-                    .arg(&spawn_program)
-                    .args(&spawn_jcode_args)
+                    .arg(exe)
+                    .args(&jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -540,8 +534,8 @@ pub fn spawn_resume_in_new_terminal_with_context(
                 }
                 let mut cmd = Command::new("wt.exe");
                 cmd.args(["-p", "Command Prompt"])
-                    .arg(&spawn_program)
-                    .args(&spawn_jcode_args)
+                    .arg(exe)
+                    .args(&jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -554,8 +548,8 @@ pub fn spawn_resume_in_new_terminal_with_context(
                 }
                 let mut cmd = Command::new("alacritty");
                 cmd.args(["-e"])
-                    .arg(&spawn_program)
-                    .args(&spawn_jcode_args)
+                    .arg(exe)
+                    .args(&jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -619,14 +613,8 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
         "self-dev".to_string(),
     ]);
 
-    let (spawn_program, spawn_jcode_args) =
-        forward_kcode_home_for_spawn(exe.to_path_buf(), jcode_args.clone());
-
-    let hook_command = crate::terminal_launch::TerminalCommand::new(
-        spawn_program.clone(),
-        spawn_jcode_args.clone(),
-    )
-    .title(format!("{} [self-dev]", resumed_window_title(session_id)));
+    let hook_command = crate::terminal_launch::TerminalCommand::new(exe, jcode_args.clone())
+        .title(format!("{} [self-dev]", resumed_window_title(session_id)));
     let hook_command = context.apply(hook_command, "selfdev", session_id);
     if crate::terminal_launch::try_spawn_via_configured_hook(&hook_command, cwd) {
         return Ok(true);
@@ -657,8 +645,8 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                 };
                 let mut cmd = Command::new(wezterm_bin);
                 cmd.args(["start", "--always-new-process", "--"])
-                    .arg(&spawn_program)
-                    .args(&spawn_jcode_args)
+                    .arg(exe)
+                    .args(&jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -671,8 +659,8 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                 }
                 let mut cmd = Command::new("wt.exe");
                 cmd.args(["-p", "Command Prompt"])
-                    .arg(&spawn_program)
-                    .args(&spawn_jcode_args)
+                    .arg(exe)
+                    .args(&jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
@@ -685,8 +673,8 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                 }
                 let mut cmd = Command::new("alacritty");
                 cmd.args(["-e"])
-                    .arg(&spawn_program)
-                    .args(&spawn_jcode_args)
+                    .arg(exe)
+                    .args(&jcode_args)
                     .current_dir(cwd)
                     .stdin(Stdio::null())
                     .stdout(Stdio::null())
