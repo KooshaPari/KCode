@@ -13,8 +13,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { JcodeClient, userJcodeHome } from "../dist/index.js";
 import { resolveKcodeBinary } from "../dist/binary.js";
 
@@ -22,7 +21,6 @@ import { resolveKcodeBinary } from "../dist/binary.js";
 // to a path segment the guard rejects, so the script would throw
 // `cross_product_path` before it checked a single property.
 const binary = resolveKcodeBinary(process.argv[2]);
-const require = createRequire(import.meta.url);
 const executable = binary.includes(path.sep)
   ? path.resolve(binary)
   : execFileSync("which", [binary], { encoding: "utf8" }).trim();
@@ -129,12 +127,16 @@ await step("the user's jcode never saw the instance", async () => {
 // otherwise accumulate one daemon per restart, each holding a temp directory
 // and a model connection open indefinitely.
 await step("an exit without close() does not leak the daemon", async () => {
-  const { execFileSync, execSync } = await import("node:child_process");
   const countDaemons = () => {
     const pattern = `${executable} --provider auto serve`;
-    const command = `pgrep -f ${JSON.stringify(pattern)} || true`;
-    console.log(`     daemon pattern: ${command}`);
-    const output = execSync(command, { encoding: "utf8", shell: "/bin/sh" }).trim();
+    console.log(`     daemon pattern: pgrep -f ${JSON.stringify(pattern)}`);
+    let output;
+    try {
+      output = execFileSync("pgrep", ["-f", pattern], { encoding: "utf8" }).trim();
+    } catch (error) {
+      if (error.status === 1) return 0;
+      throw error;
+    }
     const matches = output ? output.split(/\r?\n/) : [];
     assert.ok(
       matches.every((pid) => /^\d+$/.test(pid)),
