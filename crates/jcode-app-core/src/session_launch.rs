@@ -100,6 +100,10 @@ fn kcode_home_env_value() -> Option<String> {
 /// so a restored child would otherwise resolve the default store root instead
 /// of the client's configured store root (#424). Forwarding at argv level
 /// makes the child see the same store root regardless of hook environment.
+///
+/// Unix only: an argv-level prefix needs an `env` binary, which Windows does
+/// not have. On Windows the store root is forwarded through the spawn
+/// environment instead (see `apply_kcode_home_env`).
 pub(crate) fn forward_kcode_home_for_spawn(
     program: std::path::PathBuf,
     args: Vec<String>,
@@ -116,11 +120,24 @@ pub(crate) fn forward_kcode_home_for_spawn_with(
         return (program, args);
     };
 
+    if !cfg!(unix) {
+        return (program, args);
+    }
+
     let mut forwarded_args = Vec::with_capacity(args.len() + 2);
     forwarded_args.push(format!("KCODE_HOME={kcode_home}"));
     forwarded_args.push(program.to_string_lossy().into_owned());
     forwarded_args.extend(args);
     (std::path::PathBuf::from("env"), forwarded_args)
+}
+
+/// Windows counterpart: hand the store root to the child through its spawn
+/// environment, since there is no `env` binary to prefix argv with.
+#[cfg(not(unix))]
+fn apply_kcode_home_env(cmd: &mut std::process::Command) {
+    if let Some(kcode_home) = kcode_home_env_value() {
+        cmd.env("KCODE_HOME", kcode_home);
+    }
 }
 
 /// Compute the window/terminal title used when (re)launching a session.
@@ -483,9 +500,11 @@ pub fn spawn_resume_in_new_terminal_with_context(
     let (spawn_program, spawn_jcode_args) =
         forward_kcode_home_for_spawn(exe.to_path_buf(), jcode_args.clone());
 
-    let hook_command =
-        crate::terminal_launch::TerminalCommand::new(spawn_program.clone(), spawn_jcode_args.clone())
-            .title(resumed_window_title(session_id));
+    let hook_command = crate::terminal_launch::TerminalCommand::new(
+        spawn_program.clone(),
+        spawn_jcode_args.clone(),
+    )
+    .title(resumed_window_title(session_id));
     let hook_command = context.apply(hook_command, "resume", session_id);
     if crate::terminal_launch::try_spawn_via_configured_hook(&hook_command, cwd) {
         return Ok(true);
@@ -515,6 +534,7 @@ pub fn spawn_resume_in_new_terminal_with_context(
                     continue;
                 };
                 let mut cmd = Command::new(wezterm_bin);
+                apply_kcode_home_env(&mut cmd);
                 cmd.args(["start", "--always-new-process", "--"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -529,6 +549,7 @@ pub fn spawn_resume_in_new_terminal_with_context(
                     continue;
                 }
                 let mut cmd = Command::new("wt.exe");
+                apply_kcode_home_env(&mut cmd);
                 cmd.args(["-p", "Command Prompt"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -543,6 +564,7 @@ pub fn spawn_resume_in_new_terminal_with_context(
                     continue;
                 }
                 let mut cmd = Command::new("alacritty");
+                apply_kcode_home_env(&mut cmd);
                 cmd.args(["-e"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -646,6 +668,7 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                     continue;
                 };
                 let mut cmd = Command::new(wezterm_bin);
+                apply_kcode_home_env(&mut cmd);
                 cmd.args(["start", "--always-new-process", "--"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -660,6 +683,7 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                     continue;
                 }
                 let mut cmd = Command::new("wt.exe");
+                apply_kcode_home_env(&mut cmd);
                 cmd.args(["-p", "Command Prompt"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -674,6 +698,7 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
                     continue;
                 }
                 let mut cmd = Command::new("alacritty");
+                apply_kcode_home_env(&mut cmd);
                 cmd.args(["-e"])
                     .arg(&spawn_program)
                     .args(&spawn_jcode_args)
@@ -702,6 +727,7 @@ mod tests {
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
+    #[cfg(unix)]
     #[test]
     fn forward_kcode_home_for_spawn_prefixes_env_when_set() {
         let _guard = ENV_LOCK.lock().unwrap();
@@ -711,7 +737,7 @@ mod tests {
             Some("/tmp/custom-kcode-home"),
         );
 
-        assert_eq!(program, PathBuf::from("env"));        
+        assert_eq!(program, PathBuf::from("env"));
         assert_eq!(
             args,
             vec![
@@ -732,10 +758,23 @@ mod tests {
             None,
         );
 
-        assert_eq!(program, PathBuf::from("/usr/local/bin/kcode"));        
-        assert_eq!(
-            args,
-            vec!["--resume".to_string(), "ses-1".to_string()]
+        assert_eq!(program, PathBuf::from("/usr/local/bin/kcode"));
+        assert_eq!(args, vec!["--resume".to_string(), "ses-1".to_string()]);
+    }
+
+    // Windows has no `env` binary, so the helper must leave argv alone and the
+    // store root travels through the spawn environment instead.
+    #[cfg(not(unix))]
+    #[test]
+    fn forward_kcode_home_for_spawn_leaves_argv_alone_when_set_on_windows() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let (program, args) = forward_kcode_home_for_spawn_with(
+            PathBuf::from("C:\\kcode\\kcode.exe"),
+            vec!["--resume".to_string(), "ses-1".to_string()],
+            Some("C:\\kcode-home"),
         );
+
+        assert_eq!(program, PathBuf::from("C:\\kcode\\kcode.exe"));
+        assert_eq!(args, vec!["--resume".to_string(), "ses-1".to_string()]);
     }
 }
