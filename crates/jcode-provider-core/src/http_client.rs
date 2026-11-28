@@ -19,13 +19,15 @@ pub(crate) fn builder() -> reqwest::ClientBuilder {
 
 /// Constructs the last-resort provider HTTP client.
 ///
-/// Constructing this fallback client may panic if reqwest cannot build it.
+/// A build failure returns `reqwest::Client::new()` instead of panicking, so a
+/// qualification run degrades to proxy discovery rather than aborting.
 pub(crate) fn fallback_client() -> reqwest::Client {
     if enabled() {
         // Do not reintroduce system-proxy discovery via Client::new on a fallback.
-        builder()
-            .build()
-            .expect("failed to build qualification provider HTTP client")
+        match builder().build() {
+            Ok(client) => client,
+            Err(_) => reqwest::Client::new(),
+        }
     } else {
         reqwest::Client::new()
     }
