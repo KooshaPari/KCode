@@ -12,6 +12,10 @@ use std::process::{Command, Stdio};
 pub struct TerminalCommand {
     pub program: PathBuf,
     pub args: Vec<String>,
+    /// The jcode executable this command ultimately runs when `program` has
+    /// been rewritten to an env wrapper such as `env KCODE_HOME=...`. Spawn
+    /// metadata must name this original binary, not the wrapper (#424).
+    pub metadata_program: Option<PathBuf>,
     pub title: Option<String>,
     pub fresh_spawn: bool,
     /// What this spawn is for (e.g. "resume", "selfdev", "swarm-agent").
@@ -37,6 +41,7 @@ impl TerminalCommand {
         Self {
             program: program.into(),
             args,
+            metadata_program: None,
             title: None,
             fresh_spawn: false,
             kind: None,
@@ -53,6 +58,13 @@ impl TerminalCommand {
 
     pub fn fresh_spawn(mut self) -> Self {
         self.fresh_spawn = true;
+        self
+    }
+
+    /// Override the program reported as `KCODE_SPAWN_PROGRAM` without changing
+    /// the argv actually executed (#424).
+    pub fn metadata_program(mut self, program: impl Into<PathBuf>) -> Self {
+        self.metadata_program = Some(program.into());
         self
     }
 
@@ -96,6 +108,9 @@ impl TerminalCommand {
 /// server (X11 `DISPLAY`, Wayland `WAYLAND_DISPLAY`) so window placement and
 /// routing all follow the connecting client.
 pub const CLIENT_TERMINAL_ENV_VARS: &[&str] = &[
+    // Client-owned store root. A server-owned spawn must use the requesting
+    // client's root rather than the daemon's inherited one (#424).
+    "KCODE_HOME",
     // Terminal multiplexers
     "ZELLIJ",
     "ZELLIJ_SESSION_NAME",
@@ -595,9 +610,13 @@ fn spawn_metadata_env(command: &TerminalCommand, cwd: &Path) -> Vec<(String, Str
         "KCODE_SPAWN_CWD".to_string(),
         cwd.to_string_lossy().into_owned(),
     ));
+    let metadata_program = command
+        .metadata_program
+        .as_deref()
+        .unwrap_or(&command.program);
     env.push((
         "KCODE_SPAWN_PROGRAM".to_string(),
-        command.program.to_string_lossy().into_owned(),
+        metadata_program.to_string_lossy().into_owned(),
     ));
     env.push((
         "KCODE_SPAWN_COMMAND".to_string(),
@@ -1655,6 +1674,37 @@ mod tests {
             Some("swarm-1")
         );
         assert_eq!(env_value(&cmd, "KCODE_FRESH_SPAWN").as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn spawn_metadata_program_can_name_original_executable_behind_env_wrapper() {
+        let command = TerminalCommand::new(
+            std::path::PathBuf::from("env"),
+            vec![
+                "KCODE_HOME=/tmp/custom-kcode-home".to_string(),
+                "/usr/local/bin/kcode".to_string(),
+                "--resume".to_string(),
+                "ses_abc".to_string(),
+            ],
+        )
+        .metadata_program("/usr/local/bin/kcode");
+
+        let cmd = build_hook_spawn_command("tmux-hook", &command, Path::new("/work/dir"))
+            .expect("hook command should build");
+
+        assert_eq!(
+            env_value(&cmd, "KCODE_SPAWN_PROGRAM").as_deref(),
+            Some("/usr/local/bin/kcode"),
+            "spawn metadata must name the jcode executable, not the env wrapper"
+        );
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            args.iter().any(|a| a == "KCODE_HOME=/tmp/custom-kcode-home"),
+            "the executed argv must still carry the env forwarding prefix"
+        );
     }
 
     #[test]

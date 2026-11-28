@@ -93,6 +93,47 @@ fn kcode_home_env_value() -> Option<String> {
     }
 }
 
+/// Store root explicitly supplied by the requesting client (#424).
+///
+/// A shared server owns its own `KCODE_HOME`, but a visible spawn belongs to
+/// the client that asked for it. `comm_session` forwards the client snapshot
+/// through `SessionSpawnContext`; CLI-driven and device-driven spawns have no
+/// client snapshot and legitimately use the process value instead.
+fn client_kcode_home_for_spawn(context: &SessionSpawnContext) -> Option<String> {
+    context
+        .client_terminal_env
+        .iter()
+        .find(|(key, _)| key == "KCODE_HOME")
+        .map(|(_, value)| value.clone())
+        .filter(|value| !value.is_empty())
+}
+
+/// Build a terminal command with the effective store root forwarded at argv
+/// level, preserving the original executable for spawn metadata (#424).
+fn resume_command_with_context(
+    exe: &std::path::Path,
+    args: Vec<String>,
+    title: String,
+    context: &SessionSpawnContext,
+    default_kind: &str,
+    session_id: &str,
+) -> crate::terminal_launch::TerminalCommand {
+    let (program, args) = match client_kcode_home_for_spawn(context) {
+        Some(home) => forward_kcode_home_for_spawn_with(exe.to_path_buf(), args, Some(&home)),
+        None => forward_kcode_home_for_spawn(exe.to_path_buf(), args),
+    };
+    let wrapped = program.as_path() != exe;
+    let command = crate::terminal_launch::TerminalCommand::new(program, args)
+        .title(title)
+        .fresh_spawn();
+    let command = if wrapped {
+        command.metadata_program(exe.to_path_buf())
+    } else {
+        command
+    };
+    context.apply(command, default_kind, session_id)
+}
+
 /// Prefix a spawned child command with `env KCODE_HOME=<value>` when the
 /// current process has `KCODE_HOME` set.
 ///
@@ -303,11 +344,7 @@ pub fn spawn_resume_in_new_terminal_with_context(
         args.push(provider_arg.to_string());
     }
     args.extend(["--resume".to_string(), session_id.to_string()]);
-    let (program, args) = forward_kcode_home_for_spawn(exe.to_path_buf(), args);
-    let command = crate::terminal_launch::TerminalCommand::new(program, args)
-        .title(title)
-        .fresh_spawn();
-    let command = context.apply(command, "resume", session_id);
+    let command = resume_command_with_context(exe, args, title, context, "resume", session_id);
     crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)
 }
 
@@ -355,11 +392,14 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
         session_id.to_string(),
         "self-dev".to_string(),
     ]);
-    let (program, args) = forward_kcode_home_for_spawn(exe.to_path_buf(), args);
-    let command = crate::terminal_launch::TerminalCommand::new(program, args)
-        .title(selfdev_title.clone())
-        .fresh_spawn();
-    let command = context.apply(command, "selfdev", session_id);
+    let command = resume_command_with_context(
+        exe,
+        args,
+        selfdev_title.clone(),
+        context,
+        "selfdev",
+        session_id,
+    );
     let spawned = crate::terminal_launch::spawn_command_in_new_terminal(&command, cwd)?;
     if spawned {
         focus_session_window_best_effort_with_env(
@@ -694,7 +734,11 @@ pub fn spawn_selfdev_in_new_terminal_with_context(
 
 #[cfg(test)]
 mod tests {
-    use super::forward_kcode_home_for_spawn_with;
+    use super::{
+        SessionSpawnContext, client_kcode_home_for_spawn, forward_kcode_home_for_spawn_with,
+        resume_command_with_context,
+    };
+    use std::ffi::OsString;
     use std::path::PathBuf;
 
     const EXE: &str = "/usr/local/bin/kcode";
@@ -705,6 +749,88 @@ mod tests {
 
     fn spawn(exe: &str, home: Option<&str>) -> (PathBuf, Vec<String>) {
         forward_kcode_home_for_spawn_with(PathBuf::from(exe), resume_args(), home)
+    }
+
+    struct KcodeHomeGuard(Option<OsString>);
+
+    impl Drop for KcodeHomeGuard {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(value) => crate::env::set_var("KCODE_HOME", value),
+                None => crate::env::remove_var("KCODE_HOME"),
+            }
+        }
+    }
+
+    #[test]
+    fn client_kcode_home_is_selected_explicitly_without_mutating_process_env() {
+        let context = SessionSpawnContext::kind("swarm-agent").with_client_terminal_env(vec![
+            ("TMUX_PANE".to_string(), "%1".to_string()),
+            ("KCODE_HOME".to_string(), "/tmp/client-store".to_string()),
+        ]);
+        assert_eq!(
+            client_kcode_home_for_spawn(&context).as_deref(),
+            Some("/tmp/client-store")
+        );
+
+        let empty = SessionSpawnContext::kind("restart")
+            .with_client_terminal_env(vec![("KCODE_HOME".to_string(), String::new())]);
+        assert_eq!(client_kcode_home_for_spawn(&empty), None);
+    }
+
+    #[test]
+    fn client_kcode_home_is_forwarded_and_metadata_keeps_original_executable() {
+        let context = SessionSpawnContext::kind("swarm-agent").with_client_terminal_env(vec![(
+            "KCODE_HOME".to_string(),
+            "/tmp/client-store".to_string(),
+        )]);
+        let command = resume_command_with_context(
+            std::path::Path::new(EXE),
+            resume_args(),
+            "session title".to_string(),
+            &context,
+            "resume",
+            "ses-1",
+        );
+
+        assert_eq!(
+            command.metadata_program.as_deref(),
+            Some(std::path::Path::new(EXE))
+        );
+        if cfg!(unix) {
+            assert_eq!(command.program, PathBuf::from("env"));
+            assert_eq!(command.args[0], "KCODE_HOME=/tmp/client-store");
+            assert_eq!(command.args[1], EXE);
+        } else {
+            assert_eq!(command.program, PathBuf::from(EXE));
+            assert_eq!(command.args, resume_args());
+        }
+        assert_eq!(command.client_terminal_env, context.client_terminal_env);
+    }
+
+    #[test]
+    fn process_kcode_home_is_preserved_when_client_does_not_supply_one() {
+        let _lock = crate::storage::lock_test_env();
+        let _guard = KcodeHomeGuard(std::env::var_os("KCODE_HOME"));
+        crate::env::set_var("KCODE_HOME", "/tmp/server-store");
+
+        let context = SessionSpawnContext::kind("restart");
+        let command = resume_command_with_context(
+            std::path::Path::new(EXE),
+            resume_args(),
+            "session title".to_string(),
+            &context,
+            "restart",
+            "ses-1",
+        );
+
+        if cfg!(unix) {
+            assert_eq!(command.program, PathBuf::from("env"));
+            assert_eq!(command.args[0], "KCODE_HOME=/tmp/server-store");
+        } else {
+            assert_eq!(command.program, PathBuf::from(EXE));
+            assert_eq!(command.args, resume_args());
+        }
     }
 
     #[test]
