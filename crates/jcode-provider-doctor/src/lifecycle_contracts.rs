@@ -170,13 +170,13 @@ impl AuthLifecycleResult {
         let markers = [saved_or_detected.as_str(), "**Model ready:**"];
         let mut previous = None;
         for marker in markers {
-            let first = transcript.find(marker).unwrap_or_else(|| {
-                panic!(
-                    "happy auth lifecycle transcript is missing `{marker}`:\n{}",
-                    self.failure_report(spec)
-                )
-            });
-            let last = transcript.rfind(marker).expect("marker found above");
+            assert!(
+                transcript.contains(marker),
+                "happy auth lifecycle transcript is missing `{marker}`:\n{}",
+                self.failure_report(spec)
+            );
+            let first = transcript.find(marker).unwrap_or(0);
+            let last = transcript.rfind(marker).unwrap_or(0);
             assert_eq!(
                 first,
                 last,

@@ -1,7 +1,7 @@
 # Environment variables
 
 This document catalogues every `KCODE_*` and selected third-party environment
-variable that the workspace reads at runtime. The total count is **676** env vars across the workspace.
+variable that the workspace reads at runtime. The total count is **677** env vars across the workspace.
 
 Source of truth: each `std::env::var(...)`, `env::var(...)`, or `env::var_os(...)`
 call site in `crates/` and `src/`. The first table is generated from
@@ -15,9 +15,9 @@ is regenerated on each release cut.
 
 ## Quick reference
 
-- Total env vars documented: **676**
+- Total env vars documented: **677**
   - `KCODE_*` in env_overrides: **167**
-  - `KCODE_*` read directly elsewhere: **376**
+  - `KCODE_*` read directly elsewhere: **377**
   - Third-party: **133**
 - Run `rg -N 'std::env::var\(\"[A-Z]' crates src` to regenerate this catalog
 - Run `rg -N 'std::env::var\(' crates src | rg -o '"[A-Z][A-Z0-9_]*"' | sort -u`
@@ -279,6 +279,7 @@ is regenerated on each release cut.
 | `KCODE_RETRY_BACKOFF_CAP_SECS` | (unset) | jcode-base | Override the `provider.retry_backoff_cap_secs` duration |
 | `KCODE_COPILOT_PREMIUM` | (unset) | jcode-base | Override `provider.copilot_premium` config field |
 | `KCODE_GEMINI_FORCE_OAUTH` | (unset) | jcode-base | Override `provider.gemini_force_oauth` config field |
+| `KCODE_QUALIFICATION_NO_PROXY` | (unset) | jcode-provider-core | Set to `1` to disable proxy discovery for qualification HTTP clients only; intended for hostile proxy environments |
 | `GOOGLE_CLOUD_PROJECT` | (unset) | jcode-base | Override `provider.gemini_project` config field |
 | `GOOGLE_CLOUD_PROJECT_ID` | (unset) | jcode-base | Override `provider.gemini_project` config field |
 
