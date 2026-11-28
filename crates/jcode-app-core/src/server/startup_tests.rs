@@ -7,8 +7,8 @@ use crate::message::{Message, ToolDefinition};
 use crate::provider::{EventStream, Provider};
 use crate::transport::Listener;
 use anyhow::Result;
-use sha2::{Digest, Sha256};
 use async_trait::async_trait;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -136,8 +136,14 @@ async fn main_accept_loop_reports_exact_runtime_identity() {
         .await
         .expect("main ping should complete")
         .expect("main ping should return daemon identity");
-    assert_eq!(identity.version.as_deref(), Some(jcode_build_meta::version()));
-    assert_eq!(identity.git_hash.as_deref(), Some(jcode_build_meta::git_hash()));
+    assert_eq!(
+        identity.version.as_deref(),
+        Some(jcode_build_meta::version())
+    );
+    assert_eq!(
+        identity.git_hash.as_deref(),
+        Some(jcode_build_meta::git_hash())
+    );
     assert_eq!(identity.pid, Some(std::process::id()));
     let digest = identity
         .binary_sha256

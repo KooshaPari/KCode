@@ -33,10 +33,10 @@ use crate::protocol::{Request, ServerEvent};
 use crate::provider::Provider;
 use anyhow::Result;
 use sha2::{Digest, Sha256};
-use std::io::Read;
-use std::sync::OnceLock;
 use std::collections::{HashMap, HashSet};
+use std::io::Read;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 
 fn current_exe_sha256() -> Option<&'static str> {

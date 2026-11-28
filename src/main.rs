@@ -42,7 +42,8 @@ fn macos_startup_repair_requested(value: Option<&str>) -> bool {
 
 #[cfg(target_os = "macos")]
 fn maybe_repair_macos_code_signature() {
-    if !macos_startup_repair_requested(std::env::var("JCODE_MACOS_STARTUP_REPAIR").ok().as_deref()) {
+    if !macos_startup_repair_requested(std::env::var("JCODE_MACOS_STARTUP_REPAIR").ok().as_deref())
+    {
         return;
     }
 
@@ -154,7 +155,6 @@ fn run_main() -> Result<()> {
     // on a subsequent reboot even when the binary passed on the first try.
     maybe_repair_macos_code_signature();
 
-
     configure_system_allocator();
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
@@ -243,10 +243,23 @@ mod macos_trust_policy_tests {
 
     #[test]
     fn startup_repair_is_opt_in() {
-        for value in [None, Some(""), Some("0"), Some("false"), Some("no"), Some("off")] {
+        for value in [
+            None,
+            Some(""),
+            Some("0"),
+            Some("false"),
+            Some("no"),
+            Some("off"),
+        ] {
             assert!(!macos_startup_repair_requested(value));
         }
-        for value in [Some("1"), Some("true"), Some("TRUE"), Some("yes"), Some("on")] {
+        for value in [
+            Some("1"),
+            Some("true"),
+            Some("TRUE"),
+            Some("yes"),
+            Some("on"),
+        ] {
             assert!(macos_startup_repair_requested(value));
         }
     }
